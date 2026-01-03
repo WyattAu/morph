@@ -1,16 +1,16 @@
 # Implementation Strategy Document (ISD)
 
-**System:** Morph Toolchain
-**Version:** 1.0.0
-**Target:** Bootstrapping Phase (v0.1 $\rightarrow$ v1.0)
+* System:** Morph Toolchain
+* Version:** 1.0.0
+* Target:** Bootstrapping Phase (v0.1 $\rightarrow$ v1.0)
 
----
+- -
 
 ## 1. The Toolchain Language Decision
 
 You suggested **C++**. While C++ is the industry standard for high-performance runtimes (V8, JVM), it is risky for the **Compiler Frontend** due to memory safety issues and slow iteration speeds.
 
-**Recommendation: The Hybrid "Rust + C++" Architecture.**
+* Recommendation: The Hybrid "Rust + C++" Architecture.**
 
 ### 1.1 The Compiler & Build System (MBS) $\rightarrow$ **Rust**
 
@@ -32,7 +32,7 @@ We should write the **Morph Runtime Environment (`libmorphrt`)** in **C++23**.
   - **ABI Control:** We need precise layout control for the `dec128` and `BigInt` primitives.
   - **Vendor SDKs:** CUDA, Vulkan, and OS APIs (Win32/POSIX) have native C++ headers.
 
----
+- -
 
 ## 2. The Intermediate Representation (MorphIR)
 
@@ -42,7 +42,7 @@ MorphIR is the stable interface between the frontend (Analysis) and backend (Cod
 
 We will use **FlatBuffers** to define MorphIR. This allows Zero-Copy reading from disk (critical for fast builds).
 
-**Schema Concept:**
+* Schema Concept:**
 
 ```fbs
 table Module {
@@ -82,7 +82,7 @@ MorphIR is too high-level for CPU execution. We utilize **LLVM IR** as the physi
   );
   ```
 
----
+- -
 
 ## 3. Backend Implementations
 
@@ -127,7 +127,7 @@ For the UI (`morph::ui`) and cross-vendor compute.
   - We generate a small `morph_bridge.js` file.
   - It handles the DOM events (Mouse/Keyboard) and serializes them into the **Input Ring Buffer** in Wasm memory.
 
----
+- -
 
 ## 4. Specific Component Implementations
 
@@ -165,7 +165,7 @@ For the UI (`morph::ui`) and cross-vendor compute.
   - If `data` conforms to `requires` contract, it calls the function.
   - If function panics, `libFuzzer` saves the input.
 
----
+- -
 
 ## 5. Bootstrapping Roadmap
 
@@ -195,7 +195,7 @@ For the UI (`morph::ui`) and cross-vendor compute.
 - Add the UI Renderer (Vulkan backend).
 - _Output:_ v1.0 Release Candidate.
 
----
+- -
 
 ## 6. Summary
 

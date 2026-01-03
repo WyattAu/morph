@@ -1,11 +1,11 @@
 # Layering Architecture Document (LAD)
 
-**System:** Morph Ecosystem
-**Version:** 1.0.0-FINAL
-**Architectural Style:** Strict Layered (Closed)
-**Status:** Architecture Locked
+* System:** Morph Ecosystem
+* Version:** 1.0.0-FINAL
+* Architectural Style:** Strict Layered (Closed)
+* Status:** Architecture Locked
 
----
+- -
 
 ## 1. High-Level Stack Topology
 
@@ -20,13 +20,13 @@ Dependency flow is strictly **Top-to-Bottom**. A layer can only communicate with
 | **L2**   | **Compilation Layer**           | Analysis & Optimization   | Canonical AST, Semantic Tree, MorphIR, OIR            |
 | **L1**   | **Infrastructure Layer**        | Storage & Build           | MBS (Build System), MCM (Codebase DB), Artifact Cache |
 
----
+- -
 
 ## 2. Layer Specifications
 
 ### 2.1 Layer 5: The Agent Interface Layer (Top)
 
-**Role:** The "Senses" of the system. It translates high-level intent from Agents (or Humans) into structured data for the compiler.
+* Role:** The "Senses" of the system. It translates high-level intent from Agents (or Humans) into structured data for the compiler.
 
 - **L5.1 Model Context Protocol (MCP) Server:**
   - Acts as the API Gateway.
@@ -40,7 +40,7 @@ Dependency flow is strictly **Top-to-Bottom**. A layer can only communicate with
 
 ### 2.2 Layer 4: The Application Framework Layer
 
-**Role:** The "Business Logic" abstraction. It provides the standard library primitives that Agents use to construct software.
+* Role:** The "Business Logic" abstraction. It provides the standard library primitives that Agents use to construct software.
 
 - **L4.1 Universal UI (MorphUI):**
   - Abstract Layout Engine (Flexbox-based).
@@ -54,7 +54,7 @@ Dependency flow is strictly **Top-to-Bottom**. A layer can only communicate with
 
 ### 2.3 Layer 3: The Execution Runtime Layer
 
-**Role:** The "Engine." It executes the logic with deterministic behavior. This layer is compiled into the final binary (`.mpx`).
+* Role:** The "Engine." It executes the logic with deterministic behavior. This layer is compiled into the final binary (`.mpx`).
 
 - **L3.1 Green Thread Scheduler (M:N):**
   - Manages `logic` blocks (Actors).
@@ -69,7 +69,7 @@ Dependency flow is strictly **Top-to-Bottom**. A layer can only communicate with
 
 ### 2.4 Layer 2: The Compilation Layer
 
-**Role:** The "Translator." It converts high-level intent into optimized machine code.
+* Role:** The "Translator." It converts high-level intent into optimized machine code.
 
 - **L2.1 Frontend (Parser & Indexer):**
   - Parses Minimal Syntax $\rightarrow$ **Canonical AST**.
@@ -85,7 +85,7 @@ Dependency flow is strictly **Top-to-Bottom**. A layer can only communicate with
 
 ### 2.5 Layer 1: The Infrastructure Layer (Bottom)
 
-**Role:** The "Foundation." It manages the physical storage and construction of artifacts.
+* Role:** The "Foundation." It manages the physical storage and construction of artifacts.
 
 - **L1.1 Morph Codebase Manager (MCM):**
   - SQLite/Vector DB storing the AST and Semantic Vectors.
@@ -96,7 +96,7 @@ Dependency flow is strictly **Top-to-Bottom**. A layer can only communicate with
 - **L1.3 Artifact Cache:**
   - Content-Addressable Store for `.o` files, `.mar` libraries, and `.mpx` binaries.
 
----
+- -
 
 ## 3. Cross-Cutting Concerns (Vertical Stacks)
 
@@ -117,7 +117,7 @@ Some features slice through multiple layers. These are managed via strictly defi
 - **L2:** Type Checking and Serialization Generators.
 - **L1:** Persistence of AST Data.
 
----
+- -
 
 ## 4. Communication Interfaces
 
@@ -141,7 +141,7 @@ Some features slice through multiple layers. These are managed via strictly defi
 - **Mechanism:** Direct DB Access.
 - **Data:** The Compiler (L2) queries the MCM (L1) for source code and writes artifacts to the Cache (L1).
 
----
+- -
 
 ## 5. Deployment View
 
@@ -155,7 +155,7 @@ Some features slice through multiple layers. These are managed via strictly defi
 - **Contains:** L4, L3.
 - **Responsibility:** Executing the `.mpx` binary. The Compiler (L2) and Interface (L5) are stripped out.
 
----
+- -
 
 ## 6. Architecture Constraints
 
@@ -163,7 +163,7 @@ Some features slice through multiple layers. These are managed via strictly defi
 2.  **Bypassing L2:** L5 (Agent) CANNOT write directly to L3 (Runtime Memory). It must modify the AST (L2), which re-compiles to L3 instructions.
 3.  **Hermeticity:** L1 (Build) MUST NOT depend on L5 (Agent State). The build process must be stateless and deterministic.
 
----
+- -
 
 ## 7. Diagrammatic Representation (Textual)
 

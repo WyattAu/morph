@@ -1,11 +1,11 @@
 # Build System Architecture Document (BSAD)
 
-**System:** Morph Build System (MBS)
-**Version:** 1.0.0-FINAL
-**Context:** Integral component of the Morph Ecosystem
-**Status:** Architecture Locked
+* System:** Morph Build System (MBS)
+* Version:** 1.0.0-FINAL
+* Context:** Integral component of the Morph Ecosystem
+* Status:** Architecture Locked
 
----
+- -
 
 ## 1. Architectural Overview
 
@@ -20,7 +20,7 @@ The Morph Build System (MBS) is a **Declarative, Graph-Centric, and Hermetic** o
 3.  **Correctness by Construction:** Build failures are identified as graph topology or semantic errors by the compiler, providing precise, actionable diagnostics before execution.
 4.  **Optimal Efficiency:** Leveraging fine-grained caching and parallel execution to achieve build times comparable to highly optimized, hand-tuned systems.
 
----
+- -
 
 ## 2. System Components (Architecture)
 
@@ -67,7 +67,7 @@ The Morph Build System (MBS) is a **Declarative, Graph-Centric, and Hermetic** o
 - **Role:** Assembles compiled units into final executable or library artifacts.
 - **Algorithm:** Operates on pre-computed machine code segments retrieved from the Artifact Cache. It performs efficient, partial linking by stitching function-level object fragments (`.o`) directly into the final binary's memory layout, avoiding full recompilation of unaffected translation units.
 
----
+- -
 
 ## 3. Data Flow & Build Pipelines
 
@@ -96,7 +96,7 @@ The Morph Build System (MBS) is a **Declarative, Graph-Centric, and Hermetic** o
       - The newly generated artifact is then committed to the Artifact Cache.
 3.  **Final Linking:** The Incremental Linker assembles the final `.mpx` or `.mar` artifact by stitching together cached or newly generated machine code.
 
----
+- -
 
 ## 4. Workspaces & Dependency Management
 
@@ -120,7 +120,7 @@ The Morph Build System (MBS) is a **Declarative, Graph-Centric, and Hermetic** o
 - **Vendoring:** C/C++ dependencies must be explicitly declared in `morph.pkg` with a source URL and hash. The MBS downloads and vendors these sources.
 - **Hermetic Compilation:** The MBS compiles these vendored C/C++ sources internally using its embedded Clang driver, guaranteeing ABI compatibility with Morph-generated code by using the exact same compiler flags and target environment.
 
----
+- -
 
 ## 5. Deployment & Artifacts
 
@@ -136,7 +136,7 @@ The Morph Build System (MBS) is a **Declarative, Graph-Centric, and Hermetic** o
 - **Consumer Workflow:** Upon consuming a `.mar` library, the MBS compiles its MorphIR to machine code _locally_, using the consumer's specific compiler version, target architecture, and build flags.
 - **Benefit:** This approach entirely eliminates ABI compatibility issues across different compiler versions or target platforms, as the final machine code is always generated in a unified context.
 
----
+- -
 
 ## 6. Interfaces
 
@@ -157,7 +157,7 @@ The MBS exposes a structured, queryable API to AI Agents.
 - `morph graph [target]`: Generates a visualization of the BEG (e.g., Graphviz DOT format).
 - `morph inspect [hash]`: Dumps the AST, MorphIR, or metadata for a given content hash.
 
----
+- -
 
 ## 7. Safety & Limits
 
@@ -171,7 +171,7 @@ The MBS exposes a structured, queryable API to AI Agents.
 - **Network Access:** The core compilation process operates in an **offline-by-default** sandbox. Network access is restricted to a dedicated "Fetcher" component for explicit dependency download.
 - **Supply Chain Integrity:** All registry dependencies are fetched via cryptographic hash validation against a lockfile.
 
----
+- -
 
 ## 8. Requirements Traceability Matrix (Cross-Reference to SRS)
 

@@ -1,10 +1,10 @@
 # Morph Security Threat Model (MSTM)
-**System:** Morph Ecosystem
-**Version:** 1.0.0
-**Methodology:** STRIDE / Microsoft SDL
-**Scope:** Compiler, Runtime, Build System, Agent Interface
+* System:** Morph Ecosystem
+* Version:** 1.0.0
+* Methodology:** STRIDE / Microsoft SDL
+* Scope:** Compiler, Runtime, Build System, Agent Interface
 
----
+- -
 
 ## 1. Executive Summary
 
@@ -12,7 +12,7 @@ Morph introduces unique security challenges due to its **Agentic Nature** (LLMs 
 
 The security architecture relies on **Zero-Trust Compilation**, **Capability-Based Memory**, and **Hermetic Infrastructure** to mitigate these risks.
 
----
+- -
 
 ## 2. Threat Analysis Matrix (STRIDE)
 
@@ -62,30 +62,30 @@ The security architecture relies on **Zero-Trust Compilation**, **Capability-Bas
 | **Effects** | **Effect Bypass:** A function marked `[Pure]` performs Network I/O. | **Critical** | **Static Verification:** The Semantic Tree enforces Effect Bounds. The Runtime (Debug build) double-checks syscalls against the allowed effect mask. |
 | **Sandboxing** | **Container Escape:** Build process breaks out of the chroot/namespace to modify host files. | **Critical** | **OS Virtualization:** Usage of Linux Namespaces (Bubblewrap) or Wasm sandboxing. **Read-Only VFS:** Host mounts are Read-Only. |
 
----
+- -
 
 ## 3. Specific Attack Surface Analysis
 
 ### 3.1 The "Prompt Injection" Vector
-*   **Scenario:** An Agent is fed a malicious prompt from the web (e.g., via a scraped README) that instructs it to write a Morph backdoor.
-*   **Morph Defense:** **Design by Contract**.
-    *   Even if the Agent tries to write the backdoor, it must satisfy the `requires`/`ensures` contracts and the Effect System.
-    *   If the Agent tries to add `import net` to a calculator library, the Effect System flags the library as `[Net]`. The Human Architect/Reviewer sees the Effect signature change and rejects it.
+-   **Scenario:** An Agent is fed a malicious prompt from the web (e.g., via a scraped README) that instructs it to write a Morph backdoor.
+-   **Morph Defense:** **Design by Contract**.
+    -   Even if the Agent tries to write the backdoor, it must satisfy the `requires`/`ensures` contracts and the Effect System.
+    -   If the Agent tries to add `import net` to a calculator library, the Effect System flags the library as `[Net]`. The Human Architect/Reviewer sees the Effect signature change and rejects it.
 
 ### 3.2 The "Supply Chain" Vector
-*   **Scenario:** A legitimate library dependency is compromised.
-*   **Morph Defense:** **Hash Pinned Dependencies**.
-    *   The `morph.pkg` locks dependencies to the **AST Hash**.
-    *   If the upstream library changes (malicious update), the Hash changes.
-    *   The build fails immediately because the lockfile hash does not match the downloaded artifact hash.
+-   **Scenario:** A legitimate library dependency is compromised.
+-   **Morph Defense:** **Hash Pinned Dependencies**.
+    -   The `morph.pkg` locks dependencies to the **AST Hash**.
+    -   If the upstream library changes (malicious update), the Hash changes.
+    -   The build fails immediately because the lockfile hash does not match the downloaded artifact hash.
 
 ### 3.3 The "FFI" Vector (The Weakest Link)
-*   **Scenario:** Vulnerable C code causes a Buffer Overflow.
-*   **Morph Defense:** **Memory Isolation**.
-    *   Morph's memory (Arenas) is segregated from the C-Heap.
-    *   While a C overflow can corrupt the process, it cannot easily manipulate Morph's internal object graph due to Address Space Layout Randomization (ASLR) and the non-standard memory layout of Actors.
+-   **Scenario:** Vulnerable C code causes a Buffer Overflow.
+-   **Morph Defense:** **Memory Isolation**.
+    -   Morph's memory (Arenas) is segregated from the C-Heap.
+    -   While a C overflow can corrupt the process, it cannot easily manipulate Morph's internal object graph due to Address Space Layout Randomization (ASLR) and the non-standard memory layout of Actors.
 
----
+- -
 
 ## 4. Security Architecture Diagram
 
@@ -114,7 +114,7 @@ graph TD
 
     ActA -- "Iso Ptr" --> ActB
     ActA -. "Direct Ref (Blocked)" .-> ActB
-    
+
     User -- "MCP Command" --> MBS
     MBS -- "Effect Check" --> ActA
 ```

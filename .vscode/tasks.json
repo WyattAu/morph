@@ -1,0 +1,86 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Format Markdown",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "scripts/format_markdown.py",
+        "${file}"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "silent"
+      },
+      "problemMatcher": [],
+      "detail": "Format the current markdown file according to specification convention"
+    },
+    {
+      "label": "Format All Markdown",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "scripts/format_markdown.py",
+        "."
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": [],
+      "detail": "Format all markdown files in the repository"
+    },
+    {
+      "label": "Format Spec Files",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "scripts/format_markdown.py",
+        "spec/"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "silent"
+      },
+      "problemMatcher": [],
+      "detail": "Format all specification files"
+    },
+    {
+      "label": "Format Documentation",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "scripts/format_markdown.py",
+        "docs/"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "silent"
+      },
+      "problemMatcher": [],
+      "detail": "Format all documentation files"
+    },
+    {
+      "label": "Check Markdown Formatting",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "scripts/format_markdown.py",
+        ".",
+        "--check"
+      ],
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": [],
+      "detail": "Check markdown formatting without modifying files"
+    }
+  ]
+}

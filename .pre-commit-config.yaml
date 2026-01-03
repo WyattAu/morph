@@ -1,0 +1,55 @@
+# Pre-commit configuration for spec-tools
+# This configuration runs specification validation on .md files before commits
+
+repos:
+  - repo: local
+    hooks:
+      - id: spec-format
+        name: Format specifications
+        entry: spec-tools format
+        language: system
+        files: \.md$
+        pass_filenames: true
+        description: Format Markdown specification files according to convention
+      
+      - id: spec-lint
+        name: Lint specifications
+        entry: spec-tools lint
+        language: system
+        files: \.md$
+        pass_filenames: true
+        description: Lint Markdown specification files for convention compliance
+      
+      - id: spec-validate
+        name: Validate specifications
+        entry: spec-tools validate
+        language: system
+        files: \.md$
+        pass_filenames: true
+        description: Validate Markdown specification files against enhanced convention
+      
+      - id: spec-check-links
+        name: Check specification links
+        entry: spec-tools check-links
+        language: system
+        files: \.md$
+        pass_filenames: true
+        description: Check links in Markdown specification files
+
+# Default settings
+default_stages: [commit]
+default_language_version:
+  python: python3.11
+
+# CI configuration
+ci:
+  autofix_commit_msg: |
+    [pre-commit.ci] auto fixes from pre-commit.com hooks
+
+    for more information, see https://pre-commit.ci
+  autofix_prs: true
+  autoupdate_branch: ''
+  autoupdate_commit_msg: '[pre-commit.ci] pre-commit autoupdate'
+  autoupdate_schedule: weekly
+  skip: []
+  submodules: false

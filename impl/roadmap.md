@@ -1,14 +1,14 @@
 # Technical Implementation Plan (TIP)
 
-**Project:** Morph Ecosystem
-**Timeline:** 12 Months (4 Quarters)
-**Repository:** Monorepo (`rust-lang` style)
+* Project:** Morph Ecosystem
+* Timeline:** 12 Months (4 Quarters)
+* Repository:** Monorepo (`rust-lang` style)
 
----
+- -
 
 ## Phase 0: Infrastructure & Scaffolding (Weeks 1-4)
 
-**Goal:** Establish the "Skeleton" where Rust and C++ can talk to each other, and CI guarantees hermetic builds.
+* Goal:** Establish the "Skeleton" where Rust and C++ can talk to each other, and CI guarantees hermetic builds.
 
 ### 0.1 Repository Setup
 
@@ -32,11 +32,11 @@
 - **Content:** Ubuntu Base + LLVM 18 + Clang + Rust (Nightly) + SQLite + Ninja.
 - **Task:** Configure GitHub Actions to run all builds inside this container.
 
----
+- -
 
 ## Phase 1: The Runtime Core (Months 2-4)
 
-**Goal:** A working Execution Engine (MRE) capable of running hand-written Assembly/IR instructions. **(Heavy C++ Focus)**.
+* Goal:** A working Execution Engine (MRE) capable of running hand-written Assembly/IR instructions. **(Heavy C++ Focus)**.
 
 ### 1.1 Memory Subsystem (The Hardest Part)
 
@@ -56,11 +56,11 @@
 - **Task:** Abstract `io_uring` (Linux), `IOCP` (Windows), and `kqueue` (macOS).
 - **Deliverable:** A `morph_ev_loop()` C function that the Scheduler calls when it runs out of work.
 
----
+- -
 
 ## Phase 2: The Compiler Frontend & Middle (Months 5-7)
 
-**Goal:** A Rust compiler that turns text into Logic. **(Heavy Rust Focus)**.
+* Goal:** A Rust compiler that turns text into Logic. **(Heavy Rust Focus)**.
 
 ### 2.1 The Parser (`min` Dialect)
 
@@ -82,11 +82,11 @@
 - **Task:** Allow executing basic math and string concatenation during compilation.
 - **Deliverable:** A test case where `const X = comptime { 1 + 1 };` results in `const X = 2` in the IR.
 
----
+- -
 
 ## Phase 3: Backend & Tooling (Months 8-10)
 
-**Goal:** Code Generation and Agent Interfaces.
+* Goal:** Code Generation and Agent Interfaces.
 
 ### 3.1 LLVM Lowering
 
@@ -110,11 +110,11 @@
 - **Tech:** Utilize `LLVM-MCA` (Machine Code Analyzer) bindings for static cost estimation.
 - **Deliverable:** A test case with `??` that compiles to different constants when the target CPU changes from x86 to ARM.
 
----
+- -
 
 ## Phase 4: Domain Extensions & Polish (Months 11-12)
 
-**Goal:** Implementing the "Special Sauce" (UI, Finance, Science).
+* Goal:** Implementing the "Special Sauce" (UI, Finance, Science).
 
 ### 4.1 The UI Backend
 
@@ -133,7 +133,7 @@
 - **Task:** Create a synthetic dataset.
 - **Method:** Write a Python-to-Morph transpiler. Convert public datasets (e.g., "The Algorithms") into Morph. Use this to fine-tune a specialized Llama-3 model for the "Morph Agent."
 
----
+- -
 
 ## 5. Critical Path & Risk Management
 
@@ -144,7 +144,7 @@
 | **Scheduler Jitter**    | Medium (Perf)    | Benchmark early. If Green Threads are too slow for HFT, prioritize the `@critical` (OS Thread) path early.                                |
 | **Agent Hallucination** | High (Usability) | Prioritize the **LSP/Projectional Editor**. Even if the Agent writes garbage, the Human must be able to fix it easily via the `hum` view. |
 
----
+- -
 
 ## 6. Definition of Done (v1.0)
 

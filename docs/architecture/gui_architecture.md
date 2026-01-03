@@ -9,13 +9,13 @@ The UI process follows a 4-stage pipeline. The Agent interacts with Stage 1. The
 | **3** | **Paint Phase**         | **Render Command Buffer** (MUI-IR) | A linear list of drawing instructions (`DrawRect`, `DrawTextBlob`). |
 | **4** | **Rasterization Phase** | **GPU/DOM/ANSI** (Backend)         | Executing instructions on the specific hardware.                    |
 
----
+- -
 
 ### 2. The Core Technology: Morph UI IR (MUI-IR)
 
 The **MUI-IR** is a platform-agnostic, binary protocol for describing visual primitives. It is **not** pixels; it is vector instructions.
 
-**Structure of a MUI-IR Frame:**
+* Structure of a MUI-IR Frame:**
 
 ```rust
 // Simplified binary representation
@@ -29,7 +29,7 @@ Frame #102:
 
 This list is what gets distributed or generated. It is mathematically pure.
 
----
+- -
 
 ### 3. Backend Implementation (Target Specifics)
 
@@ -37,7 +37,7 @@ This is how the MUI-IR translates to your specific requested targets. The Compil
 
 #### A. Target: Native Desktop/Mobile (x86, ARM, Android, macOS)
 
-**Driver:** `Morph::GpuDriver` (based on WebGPU/WGPU logic).
+* Driver:** `Morph::GpuDriver` (based on WebGPU/WGPU logic).
 
 - **Windowing:** Uses a lightweight shell (like SDL or GLFW) to create a raw OS Window.
 - **Compilation:**
@@ -50,7 +50,7 @@ This is how the MUI-IR translates to your specific requested targets. The Compil
 
 #### B. Target: WebAssembly (Wasm)
 
-**Driver:** `Morph::CanvasDriver` or `Morph::WebGLDriver`.
+* Driver:** `Morph::CanvasDriver` or `Morph::WebGLDriver`.
 
 - **Strategy 1 (Performance):** Uses **WebGL2/WebGPU**.
   - MUI-IR commands are fed directly to the GPU via Wasm. This is pixel-identical to the Native Desktop target.
@@ -61,7 +61,7 @@ This is how the MUI-IR translates to your specific requested targets. The Compil
 
 #### C. Target: Terminal (TUI)
 
-**Driver:** `Morph::AnsiDriver`.
+* Driver:** `Morph::AnsiDriver`.
 
 - **The "Cell Buffer":** Instead of pixels, the screen is a Grid of Cells (Character + FG Color + BG Color + Attributes).
 - **Rasterization:**
@@ -70,14 +70,14 @@ This is how the MUI-IR translates to your specific requested targets. The Compil
   - **High-Res Trick:** Uses **Braille Patterns** or **Block Elements** (e.g., `▀`, `▄`) to simulate "sub-pixel" rendering in the terminal.
 - **Output:** The diff of the Cell Buffer is flushed to `stdout` using ANSI Escape Codes.
 
----
+- -
 
 ### 4. Layout Engine (The "Solver")
 
 Before we can Draw (Stage 3), we must Layout (Stage 2).
 Native UI frameworks (Constraints) are complex. The Web (Flexbox) is complex.
 
-**Morph Decision:** The Layout Engine is a **Single-Pass Flexbox Implementation** written in core Morph.
+* Morph Decision:** The Layout Engine is a **Single-Pass Flexbox Implementation** written in core Morph.
 
 - **Why?** Flexbox is expressive enough for 99% of UI.
 - **Mechanism:**
@@ -87,13 +87,13 @@ Native UI frameworks (Constraints) are complex. The Web (Flexbox) is complex.
   4.  **Result:** Concrete `(x, y, w, h)` coordinates for every node.
 - **Optimization:** When compiling to Native Code, the Layout Engine is compiled to highly optimized SIMD instructions (via OIR), making layout calculation nearly instant (sub-millisecond).
 
----
+- -
 
 ### 5. Handling Fonts (The Hardest Part)
 
 Fonts are the biggest source of "it looks different on my machine."
 
-**Morph Solution:** **Client-Side Rendering via SDF**.
+* Morph Solution:** **Client-Side Rendering via SDF**.
 
 - **Packaging:** The `.mpx` binary embeds the fonts (or downloads them). It does _not_ rely on System Fonts (Arial, San Francisco) by default to ensure Determinism.
 - **Technique:** Uses **Signed Distance Fields (SDF)**.
@@ -101,7 +101,7 @@ Fonts are the biggest source of "it looks different on my machine."
   - This allows the GPU to render crisp text at any size without re-rasterizing CPU-side.
   - This works identically on High-DPI screens, Low-DPI screens, and WebGL.
 
----
+- -
 
 ### 6. Architectural Addendum (GUI Specifications)
 

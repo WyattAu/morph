@@ -14,7 +14,7 @@ Instead of the Agent's code asking the OS for events, the OS **injects** events 
 
 This is the **ONLY** data structure the Agent (and the Semantic Tree) ever sees. It abstracts the physical hardware completely.
 
-**Structure (in Morph Data Syntax):**
+* Structure (in Morph Data Syntax):**
 
 ```rust
 data InputPacket {
@@ -70,7 +70,7 @@ Because all inputs are normalized into the **Input Ring Buffer** (MCIE packets) 
 2.  **Replay:** You can feed those packets back into the runtime.
 3.  **Guarantee:** Because the logic is deterministic (no threads sharing memory), replaying the inputs guarantees the **exact same application state** (Time Travel Debugging).
 
----
+- -
 
 ### Updated BSAD Section: Input Architecture
 

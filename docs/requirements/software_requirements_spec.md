@@ -1,16 +1,16 @@
 # Software Design Description: The Morph Programming Language
 
-**Version:** 1.0.0-FINAL
-**Status:** Frozen / Ready for Prototype
-**Architectural Pattern:** Data-Oriented, Actor-Based, Agent-Centric
+* Version:** 1.0.0-FINAL
+* Status:** Frozen / Ready for Prototype
+* Architectural Pattern:** Data-Oriented, Actor-Based, Agent-Centric
 
----
+- -
 
 ## 1. Scope & Definitions
 
 ### 1.1 System Overview
 
-**Morph** is a statically-typed, multi-paradigm programming language designed to serve as the high-efficiency interface between Artificial Intelligence (LLMs) and Machine Code execution. Unlike traditional languages optimized for human readability, Morph is optimized for **Semantic Density** (Context Window efficiency), **Deterministic Reasoning** (Formal Verification), and **Atomic Refactoring** (Content-Addressing).
+* Morph** is a statically-typed, multi-paradigm programming language designed to serve as the high-efficiency interface between Artificial Intelligence (LLMs) and Machine Code execution. Unlike traditional languages optimized for human readability, Morph is optimized for **Semantic Density** (Context Window efficiency), **Deterministic Reasoning** (Formal Verification), and **Atomic Refactoring** (Content-Addressing).
 
 ### 1.2 Definitions and Acronyms
 
@@ -21,7 +21,7 @@
 - **MBS (Morph Build System):** The hermetic, graph-based toolchain.
 - **Agent:** The Large Language Model (LLM) acting as the primary developer.
 
----
+- -
 
 ## 2. Language Specification (Syntax & Semantics)
 
@@ -46,7 +46,7 @@
 - **REQ-META-02 (Constraint-Based Generics):** Generic type parameters must be constrained by Semantic Concepts (Traits). The compiler shall perform **Monomorphization** (creating specialized copies for each type) to eliminate runtime dispatch overhead.
 - **REQ-META-03 (Comptime Execution):** The `comptime` block shall allow execution of a subset of Morph code during the compilation phase for static table generation and pre-computation.
 
----
+- -
 
 ## 3. Compiler Architecture
 
@@ -61,7 +61,7 @@
 - **REQ-COMP-04 (JIT/AOT Backend Dispatch):** The final compilation step (Consumer-side) shall translate MorphIR to **OIR**, applying optimizations based on the specific target hardware (AVX2, CUDA, Wasm) before emitting Machine Code.
 - **REQ-COMP-05 (Semantic Context):** The compiler shall maintain a persistent **Semantic Tree** and **Vector Database** of all accessible symbols and ABIs to support RAG-based error correction.
 
----
+- -
 
 ## 4. Execution Model (Runtime)
 
@@ -84,7 +84,7 @@
 - **REQ-RUN-01 (State Traversal Graph):** In `debug` mode, the runtime shall maintain a full DAG of state transitions mapped to AST nodes for Time-Travel Debugging.
 - **REQ-RUN-02 (Flight Recorder):** In `release` mode, the runtime shall use a fixed-size Ring Buffer to capture crash context with O(1) memory impact.
 
----
+- -
 
 ## 5. Ecosystem & Infrastructure
 
@@ -110,7 +110,7 @@
   - `get_diagnostics()`: Returns structured JSON errors (Code, Context, SuggestedFix).
   - `debug_state(trace_id)`: Returns the value graph for a specific execution frame.
 
----
+- -
 
 ## 6. Safety & Reliability Standards
 
@@ -119,7 +119,7 @@
 - **REQ-SAFE-03 (Result-Based Errors):** Exception handling is prohibited. All recoverable errors must be returned as `Result<T, E>` and handled or propagated via the `?` operator.
 - **REQ-SAFE-04 (Auto-Fuzzing):** The build system shall automatically generate fuzz tests for public APIs, using Type Definitions and Contracts to constrain the random input generation.
 
----
+- -
 
 ## 7. Standard Library (Core Primitives)
 
@@ -129,7 +129,7 @@
   - `ctx`: Universal Context propagation (Cancellation/Deadline).
   - `logic`: Boilerplate generation for BLoC state management.
 
----
+- -
 
 ## 8. Gap Analysis & Conflict Resolution (Final Audit)
 
