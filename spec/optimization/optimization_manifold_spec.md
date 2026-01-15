@@ -1,538 +1,610 @@
-# Optimization Manifold Specification
+# Morph Optimization Manifold Specification (OMS)
 
-- -
-- `File:* `optimization\optimization_manifold_spec.md`
-- `Version:* 1.0.0
-- `Context:* Layer 2 (Compiler Backend) - OSE
-- `Formalism:* Discrete Optimization, Fitness Landscapes
-- `Status:* Active
-- Last Modified:* 2026-01-01
-- `Author:* Kilo Code
-- `Reviewers:* Pending
+- File: `spec/optimization/optimization_manifold_spec.md`
+- Version: 2.0.0
+- Context: Layer 2 (Compiler Backend) - Formalism
+- Status: Active
+- Last Modified: 2026-01-03
+- Author: Kilo Code
+- Reviewers: [Pending Review]
 
-- -
+---
 
 ## 1. Introduction
 
 ### 1.1 Purpose
 
-This specification formalizes the **Optimization Search Engine (OSE)** using **Fitness Landscapes**, providing mathematical foundation for automated compiler optimization. This formalization enables the compiler to reason about performance trade-offs and search for optimal configurations.
+This specification defines: Optimization Manifold of Morph, providing formal foundation for compiler optimizations, code generation, and performance tuning. The optimization manifold uses a **Multi-Objective Optimization** approach to balance multiple optimization goals.
 
 ### 1.2 Scope
 
 This specification covers:
-- The Parameter Space ($\Theta$) for optimization variables
-- The Objective Function ($\mathcal{L}$) for measuring fitness
-- The Search Problem formulation
-- Non-Convexity analysis of the fitness landscape
-- Convergence criteria for the search algorithm
+- The Optimization Manifold Structure
+- Optimization Passes
+- Multi-Objective Optimization
+- Code Generation
+- Performance Metrics
+- Optimization Verification
 
 This specification does not cover:
-- Concrete implementation of search algorithms
-- Hardware performance counter integration
-- Dynamic profiling infrastructure
+- Concrete implementation of optimization passes
+- Hardware-specific optimizations
+- Performance tuning details
 
 ### 1.3 Definitions, Acronyms, and Abbreviations
 
 | Term | Definition |
 |-------|------------|
-| **OSE** | Optimization Search Engine - compiler component that searches for optimal configurations |
-| **Fitness Landscape** | A mapping from parameter space to objective function values |
-| **Parameter Space** | The set of all possible configurations for a program |
-| **Objective Function** | A function that measures the quality of a configuration |
-| **Non-Convex** | A function where the global minimum cannot be found via gradient descent |
-| **0-order Optimization** | Optimization methods that use only function evaluations, not derivatives |
-| **Hill Climbing** | A local search algorithm that moves to better neighbors |
-| **Simulated Annealing** | A probabilistic search algorithm that accepts worse moves with decreasing probability |
-| **Bayesian Optimization** | A probabilistic model-based optimization method |
+| **Optimization Manifold** | Multi-dimensional space of optimization strategies |
+| **Multi-Objective Optimization** | Optimization that balances multiple conflicting objectives |
+| **Optimization Pass** | Transformation applied to intermediate representation |
+| **Code Generation** | Process of generating machine code from IR |
+| **Performance Metric** | Quantitative measure of code performance |
+| **Pareto Frontier** | Set of non-dominated solutions in multi-objective optimization |
+| **Dominance** | Solution A dominates solution B if A is better in all objectives |
+| **Trade-off** | Balance between conflicting optimization objectives |
 
 ### 1.4 References
 
-- Nocedal, J., & Wright, S. J. (2006). "Numerical Optimization"
-- Bergstra, J. A., et al. (2008). "A New Class of Incremental Learning Methods"
-- IEEE 754: Floating-point arithmetic
+- Muchnick, S. S. (1997). "Advanced Compiler Design and Implementation"
+- Aho, A. V., Lam, M. S., & Sethi, R. (2006). "Compilers: Principles, Techniques, and Tools"
 - ISO/IEC 29148: Systems and software engineering — Requirements engineering
+- IEEE 1016: Recommended Practice for Software Design Descriptions
 
-- -
+### 1.5 Cross-References
+
+The Optimization Manifold Specification is closely related to several other Morph specifications. The following cross-references provide additional context and detailed specifications for related concepts:
+
+* Optimization Specifications:*
+- [`spec/optimization/optimization_bayesian_spec.md`](optimization/optimization_bayesian_spec.md) - Bayesian optimization for compiler tuning
+- [`spec/optimization/optimization_search_engine_specification.md`](optimization/optimization_search_engine_specification.md) - Search engine for optimization space exploration
+- [`spec/optimization/selective_monomorphization_spec.md`](optimization/selective_monomorphization_spec.md) - Selective monomorphization for code size reduction
+
+* Build Specifications:*
+- [`spec/build/backend_tiling_spec.md`](build/backend_tiling_spec.md) - Backend tiling and code generation
+- [`spec/build/linker_logic_spec.md`](build/linker_logic_spec.md) - Linker logic and symbol resolution
+
+* Type System Specifications:*
+- [`spec/type/type_system_spec.md`](type/type_system_spec.md) - Type system for optimization-time type checking
+- [`spec/type/pure_type_spec.md`](type/pure_type_spec.md) - Pure type theory
+- [`spec/type/type_category_spec.md`](type/type_category_spec.md) - Type category theory and algebraic type foundations
+- [`spec/type/type_unification_spec.md`](type/type_type_unification_spec.md) - Type unification algorithm and inference rules
+- [`spec/type/effect_system_spec.md`](type/effect_system_spec.md) - Complete effect system specification with formal semantics and type-level effect tracking
+
+* Note:* These cross-references help readers navigate to Morph specification ecosystem by providing links to related specifications that provide complementary or detailed information about concepts referenced in this document.
+
+---
 
 ## 2. Formal Definitions
 
-### 2.1 The Parameter Space ($\Theta$)
+### 2.1 Optimization Manifold Structure
 
-Let a Morph program $P$ containing $n$ instances of the `??` operator be defined as a **Parameterized Function**:
+#### 2.1.1 Multi-Dimensional Space
 
-$$ P: \Theta \to \text{MachineCode} $$
+The Optimization Manifold is a **Multi-Dimensional Space** $(O, \preceq)$ where:
 
-where $\Theta = D_1 \times D_2 \times \dots \times D_n$ is the Cartesian product of the domains of each hole.
+- $O$ is set of optimization strategies
+- $\preceq$ is a partial order on $O$ based on performance metrics
 
-#### 2.1.1 Domain Definitions
+* OMS-INV-001:* THE system SHALL maintain a multi-dimensional optimization space.
 
-- **Unbounded Hole:* $D_i = \mathbb{Z}$ (Integers)
-- **Bounded Hole:* For `@unroll(??)`, $D_i = \{1, \dots, \text{LoopLength}\}$
-- **Enum Hole:* $D_i = \{ \text{StrategyA}, \text{StrategyB}, \dots \}$
+#### 2.1.2 Performance Metrics
 
-- OPTMAN-INV-001:* THE system SHALL define parameter domains for all optimization holes.
+For any optimization strategy $o \in O$, define performance metrics:
 
-### 2.2 The Objective Function ($\mathcal{L}$)
+$$ \text{metrics}(o) = (\text{speed}, \text{size}, \text{power}, \text{compile\_time}) $$
 
-The "Fitness" of a specific configuration $\theta \in \Theta$ is defined by a Loss Function $\mathcal{L}(\theta)$.
+where:
+- $\text{speed} \in \mathbb{R}^+$: Execution speed
+- $\text{size} \in \mathbb{R}^+$: Code size
+- $\text{power} \in \mathbb{R}^+$: Power consumption
+- $\text{compile\_time} \in \mathbb{R}^+$: Compilation time
 
-$$ \mathcal{L}(\theta) = \alpha \cdot \text{Cycles}(P(\theta)) + \beta \cdot \text{Size}(P(\theta)) + \gamma \cdot \text{Energy}(P(\theta)) $$
+* OMS-INV-002:* THE system SHALL maintain performance metrics for optimization strategies.
 
-#### 2.2.1 Static Evaluation
+### 2.2 Optimization Passes
 
-$\text{Cycles}$ is approximated via basic block probability analysis (Markov Chains) over the Control Flow Graph (CFG).
+#### 2.2.1 Pass Definition
 
-- OPTMAN-INV-002:* THE system SHALL approximate cycles using CFG analysis for static evaluation.
+An **Optimization Pass** is a transformation $P: IR \to IR$ applied to intermediate representation.
 
-#### 2.2.2 Dynamic Evaluation
+* OMS-INV-003:* THE system SHALL define optimization passes as IR transformations.
 
-$\text{Cycles}$ is measured via hardware performance counters (`rdtsc`).
+#### 2.2.2 Pass Composition
 
-- OPTMAN-INV-003:* THE system SHALL measure cycles using hardware performance counters for dynamic evaluation.
+Optimization passes are composed in sequence:
 
-### 2.3 The Search Problem
+$$ \text{compose}(P_1, P_2, \ldots, P_n) = P_n \circ \ldots \circ P_2 \circ P_1 $$
 
-The OSE solves the minimization problem:
+* OMS-INV-004:* THE system SHALL compose optimization passes in sequence.
 
-$$ \theta^* = \arg\min_{\theta \in \Theta} \mathcal{L}(\theta) $$
+### 2.3 Multi-Objective Optimization
 
-#### 2.3.1 Non-Convexity
+#### 2.3.1 Pareto Frontier
 
-The landscape $\mathcal{L}$ is **Non-Convex** and **Discontinuous**.
+The **Pareto Frontier** is the set of non-dominated solutions:
 
-- `Example:* Changing a buffer size from 4096 to 4097 might cause a cache misalignment, spiking the cost 10x.
+$$ \text{Pareto}(O) = \{o \in O \mid \neg \exists o' \in O, o' \prec o\} $$
 
-- `Implication:* Gradient Descent cannot be used. We must use **0-order optimization methods** (Hill Climbing, Simulated Annealing, or Bayesian Optimization).
+where $o' \prec o$ means $o'$ dominates $o$ (better in all metrics).
 
-- OPTMAN-THM-001:* THE system SHALL use 0-order optimization methods due to non-convexity.
+* OMS-INV-005:* THE system SHALL maintain Pareto frontier of optimization strategies.
 
-- `Priority:* Critical
-- Verification Method:* Analysis
-- `Rationale:* Gradient-based methods fail on non-convex landscapes
-- `Dependencies:* OPTMAN-INV-001
-- `Traceability:* Section 2.3 (The Search Problem)
+#### 2.3.2 Dominance
 
-#### 2.3.2 Convergence Criteria
+For two solutions $A, B$:
 
-The search terminates when:
+$$ A \prec B \iff \forall m \in \text{metrics}, A.m \leq B.m $$
 
-$$ | \mathcal{L}(\theta_{t}) - \mathcal{L}(\theta_{t-1}) | < \epsilon $$
+where $A.m \leq B.m$ means $A$ is better than or equal to $B$ in metric $m$.
 
-Or when the Cost Budget $B_{time}$ is exhausted.
+* OMS-INV-006:* THE system SHALL define dominance relation for optimization strategies.
 
-- OPTMAN-INV-004:* THE system SHALL terminate when improvement is below threshold $\epsilon$.
+#### 2.3.3 Trade-off Selection
 
-- OPTMAN-INV-005:* THE system SHALL terminate when time budget $B_{time}$ is exhausted.
+The compiler selects optimization strategy based on user preferences:
 
-- -
+$$ \text{select}(O, \text{preferences}) = \arg\max_{o \in O} \text{score}(o, \text{preferences}) $$
+
+where $\text{score}(o, \text{preferences})$ is weighted sum of metrics.
+
+* OMS-INV-006:* THE system SHALL select optimization strategy based on user preferences.
+
+### 2.4 Code Generation
+
+#### 2.4.1 IR to Machine Code
+
+The compiler generates machine code from intermediate representation:
+
+$$ \text{codegen}: IR \to \text{MachineCode} $$
+
+* OMS-INV-007:* THE system SHALL generate machine code from IR.
+
+#### 2.4.2 Register Allocation
+
+The compiler allocates registers for variables:
+
+$$ \text{regalloc}: IR \to \text{IR}_{\text{reg}} $$
+
+where $\text{IR}_{\text{reg}}$ is IR with register assignments.
+
+* OMS-INV-008:* THE system SHALL allocate registers for variables.
+
+---
 
 ## 3. Requirements
 
 ### 3.1 Functional Requirements
 
-- OPT-REQ-001:* THE system SHALL search the parameter space for optimal configuration.
+* OMS-REQ-001:* THE system SHALL maintain a multi-dimensional optimization space.
+  - Priority:* Critical
+  - Verification Method:* Test
+  - Rationale:* Enables multi-objective optimization
+  - Dependencies:* OMS-INV-001
+  - Traceability:* Section 2.1.1 (Multi-Dimensional Space)
 
-- `Priority:* Critical
-- Verification Method:* Test
-- `Rationale:* Finds best-performing code generation
-- `Dependencies:* None
-- `Traceability:* Section 2.3 (The Search Problem)
+* OMS-REQ-002:* THE system SHALL maintain performance metrics for optimization strategies.
+  - Priority:* Critical
+  - Verification Method:* Test
+  - Rationale:* Enables optimization strategy comparison
+  - Dependencies:* OMS-INV-002
+  - Traceability:* Section 2.1.2 (Performance Metrics)
 
-- OPT-REQ-002:* THE system SHALL evaluate fitness using the objective function $\mathcal{L}$.
+* OMS-REQ-003:* THE system SHALL define optimization passes as IR transformations.
+  - Priority:* Critical
+  - Verification Method:* Test
+  - Rationale:* Enables modular optimization pipeline
+  - Dependencies:* OMS-INV-003
+  - Traceability:* Section 2.2.1 (Pass Definition)
 
-- `Priority:* Critical
-- Verification Method:* Test
-- `Rationale:* Provides quantitative measure of configuration quality
-- `Dependencies:* OPTMAN-INV-002, OPTMAN-INV-003
-- `Traceability:* Section 2.2 (The Objective Function)
+* OMS-REQ-004:* THE system SHALL compose optimization passes in sequence.
+  - Priority:* Critical
+  - Verification Method:* Test
+  - Rationale:* Enables complex optimization pipelines
+  - Dependencies:* OMS-INV-004
+  - Traceability:* Section 2.2.2 (Pass Composition)
 
-- OPTMAN-REQ-003:* THE system SHALL handle non-convex fitness landscapes.
+* OMS-REQ-005:* THE system SHALL maintain Pareto frontier of optimization strategies.
+  - Priority:* Critical
+  - Verification Method:* Test
+  - Rationale:* Enables multi-objective optimization
+  - Dependencies:* OMS-INV-005
+  - Traceability:* Section 2.3.1 (Pareto Frontier)
 
-- `Priority:* Critical
-- Verification Method:* Test
-- `Rationale:* Real-world optimization problems are rarely convex
-- `Dependencies:* OPTMAN-THM-001
-- `Traceability:* Section 2.3.1 (Non-Convexity)
+* OMS-REQ-006:* THE system SHALL define dominance relation for optimization strategies.
+  - Priority:* Critical
+  - Verification Method:* Test
+  - Rationale:* Enables Pareto optimality
+  - Dependencies:* OMS-INV-006
+  - Traceability:* Section 2.3.2 (Dominance)
 
-- OPTMAN-REQ-004:* THE system SHALL use 0-order optimization methods.
+* OMS-REQ-007:* THE system SHALL select optimization strategy based on user preferences.
+  - Priority:* High
+  - Verification Method:* Test
+  - Rationale:* Enables user-controlled optimization
+  - Dependencies:* OMS-INV-006
+  - Traceability:* Section 2.3.3 (Trade-off Selection)
 
-- `Priority:* High
-- Verification Method:* Test
-- `Rationale:* Gradient methods fail on non-convex landscapes
-- `Dependencies:* OPTMAN-THM-001
-- `Traceability:* Section 2.3.1 (Non-Convexity)
+* OMS-REQ-008:* THE system SHALL generate machine code from IR.
+  - Priority:* Critical
+  - Verification Method:* Test
+  - Rationale:* Enables executable code generation
+  - Dependencies:* OMS-INV-007
+  - Traceability:* Section 2.4.1 (IR to Machine Code)
 
-- OPTMAN-REQ-005:* THE system SHALL terminate when convergence criteria are met.
-
-- `Priority:* High
-- Verification Method:* Test
-- `Rationale:* Prevents infinite search loops
-- `Dependencies:* OPTMAN-INV-004, OPTMAN-INV-005
-- `Traceability:* Section 2.3.2 (Convergence Criteria)
-
-- OPTMAN-REQ-006:* THE system SHALL support both static and dynamic evaluation.
-
-- `Priority:* High
-- Verification Method:* Test
-- `Rationale:* Enables trade-off between compilation speed and optimization quality
-- `Dependencies:* OPTMAN-INV-002, OPTMAN-INV-003
-- `Traceability:* Section 2.2 (The Objective Function)
+* OMS-REQ-009:* THE system SHALL allocate registers for variables.
+  - Priority:* Critical
+  - Verification Method:* Test
+  - Rationale:* Enables efficient code generation
+  - Dependencies:* OMS-INV-008
+  - Traceability:* Section 2.4.2 (Register Allocation)
 
 ### 3.2 Non-Functional Requirements
 
-- OPTMAN-NFR-001:* THE system SHALL complete search within reasonable time budget.
+* OMS-NFR-001:* THE system SHALL provide optimization passes with O(n) complexity.
+  - Priority:* High
+  - Verification Method:* Analysis
+  - Metric:* Pass execution < 100ms per 1000 lines
+  - Rationale:* Ensures fast compilation
+  - Dependencies:* OMS-INV-003
+  - Traceability:* Section 2.2.1 (Pass Definition)
 
-- `Priority:* High
-- Verification Method:* Demonstration
-- `Metric:* Search completes within $B_{time}$ (e.g., 10 seconds)
-- `Rationale:* Ensures compilation completes in acceptable time
+* OMS-NFR-002:* THE system SHALL provide code generation with O(n) complexity.
+  - Priority:* High
+  - Verification Method:* Analysis
+  - Metric:* Code generation < 500ms per 1000 lines
+  - Rationale:* Ensures fast compilation
+  - Dependencies:* OMS-INV-007
+  - Traceability:* Section 2.4.1 (IR to Machine Code)
 
-- OPTMAN-NFR-002:* THE system SHALL support parameter spaces with up to 100 dimensions.
+* OMS-NFR-003:* THE system SHALL provide Pareto frontier computation with O(n log n) complexity.
+  - Priority:* Medium
+  - Verification Method:* Analysis
+  - Metric:* Pareto frontier computation < 1s per 1000 strategies
+  - Rationale:* Enables efficient multi-objective optimization
+  - Dependencies:* OMS-INV-005
+  - Traceability:* Section 2.3.1 (Pareto Frontier)
 
-- `Priority:* Medium
-- Verification Method:* Demonstration
-- `Metric:* 100 dimensions with < 1GB memory
-- `Rationale:* Supports complex optimization problems
-
-- OPTMAN-NFR-003:* THE system SHALL provide progress feedback during search.
-
-- `Priority:* Medium
-- Verification Method:* Demonstration
-- `Metric:* Progress updates every 100 evaluations
-- `Rationale:* Improves user experience
-
-- -
+---
 
 ## 4. Design
 
 ### 4.1 Architecture Overview
 
-The OSE is implemented as a search engine that:
-1. Explores the parameter space $\Theta$
-2. Evaluates configurations using the objective function $\mathcal{L}$
-3. Tracks the best configuration found
-4. Terminates when convergence criteria are met
+The Optimization Manifold is implemented as a **Multi-Dimensional Space** of optimization strategies that:
 
-### 4.2 Data Structures
+1. Maintains performance metrics for optimization strategies
+2. Defines optimization passes as IR transformations
+3. Composes optimization passes in sequence
+4. Maintains Pareto frontier of optimization strategies
+5. Selects optimization strategy based on user preferences
+6. Generates machine code from IR
+7. Allocates registers for variables
 
-#### 4.2.1 Configuration
-
-- `Configuration:* $\theta = (d_1, d_2, \dots, d_n)$
-
-- `Components:*
-- $d_i \in D_i$: Value for parameter $i$
-
-- `Invariants:*
-1. $\forall i, d_i \in D_i$ (Valid domain)
-2. Configuration is complete (all parameters assigned)
-
-#### 4.2.2 Search State
-
-- Search State:* $S = (\theta_{current}, \theta_{best}, \mathcal{L}_{best}, t)$
-
-- `Components:*
-- $\theta_{current}$: Current configuration being evaluated
-- $\theta_{best}$: Best configuration found so far
-- $\mathcal{L}_{best}$: Fitness of best configuration
-- $t$: Number of evaluations performed
-
-- `Invariants:*
-1. $\mathcal{L}_{best} = \min(\mathcal{L}(\theta_1), \dots, \mathcal{L}(\theta_t))$
-2. $t$ increases monotonically
-
-### 4.3 Algorithms
-
-#### 4.3.1 Hill Climbing Algorithm
-
-- Algorithm Name:* Hill Climbing Search
-
-- `Input:* Parameter space $\Theta$, Objective function $\mathcal{L}$
-
-- `Output:* Best configuration $\theta^*$
-
-- Mathematical Definition:*
-$$
-\theta_{t+1} = \begin{cases}
-\theta' & \text{if } \mathcal{L}(\theta') < \mathcal{L}(\theta_t) \\
-\theta_t & \text{otherwise}
-\end{cases}
-$$
-
-where $\theta'$ is a neighbor of $\theta_t$.
-
-- `Pseudocode:*
-```
-function hill_climbing(Theta, L):
-    theta = random_initial(Theta)
-    best_L = L(theta)
-    while not converged():
-        neighbors = generate_neighbors(theta)
-        theta_prime = argmin(L(neighbor) for neighbor in neighbors)
-        if L(theta_prime) < best_L:
-            theta = theta_prime
-            best_L = L(theta_prime)
-    return theta
-```
-
-- `Complexity:*
-- Time: $O(k \cdot n)$ where $k$ is iterations, $n$ is evaluations
-- Space: $O(1)$
-
-- `Correctness:*
-- **Invariant:* Always moves to better or equal configuration
-- **Termination:* Terminates when no better neighbor exists
-
-#### 4.3.2 Simulated Annealing Algorithm
-
-- Algorithm Name:* Simulated Annealing
-
-- `Input:* Parameter space $\Theta$, Objective function $\mathcal{L}$
-
-- `Output:* Best configuration $\theta^*$
-
-- Mathematical Definition:*
-$$
-P(\text{accept}) = \begin{cases}
-1 & \text{if } \Delta \mathcal{L} < 0 \\
-\exp(-\Delta \mathcal{L} / T) & \text{otherwise}
-\end{cases}
-$$
-
-where $\Delta \mathcal{L} = \mathcal{L}(\theta') - \mathcal{L}(\theta)$ and $T$ is temperature.
-
-- `Pseudocode:*
-```
-function simulated_annealing(Theta, L):
-    theta = random_initial(Theta)
-    T = initial_temperature()
-    while T > min_temperature():
-        theta_prime = random_neighbor(theta)
-        delta_L = L(theta_prime) - L(theta)
-        if delta_L < 0 or random() < exp(-delta_L / T):
-            theta = theta_prime
-        T = cool_down(T)
-    return theta
-```
-
-- `Complexity:*
-- Time: $O(k \cdot n)$ where $k$ is iterations, $n$ is evaluations
-- Space: $O(1)$
-
-- `Correctness:*
-- **Invariant:* Probability of accepting worse moves decreases with temperature
-- **Termination:* Terminates when temperature reaches minimum
-
-### 4.4 Mermaid Diagrams
-
-#### 4.4.1 Search Algorithm Flow
-
-```mermaid
-flowchart TD
-    Start[Start Search] --> Init[Initialize Random Config]
-    Init --> Evaluate[Evaluate Fitness]
-    Evaluate --> CheckConv{Converged?}
-    CheckConv -->|No| Generate[Generate Neighbors]
-    Generate --> EvaluateNeighbors[Evaluate Neighbors]
-    EvaluateNeighbors --> Select[Select Best Neighbor]
-    Select --> Update[Update Current Config]
-    Update --> CheckConv
-    CheckConv -->|Yes| Return[Return Best Config]
-```
-
-#### 4.4.2 Fitness Landscape Visualization
-
-```mermaid
-graph TD
-    Theta[Parameter Space Theta] --> L1[L theta1 = 100]
-    Theta --> L2[L theta2 = 80]
-    Theta --> L3[L theta3 = 120]
-    Theta --> L4[L theta4 = 90]
-    L1 --> Min[Global Minimum: theta2]
-    L2 --> Min
-    L3 --> Min
-    L4 --> Min
-    style Min fill:#90EE90
-```
-
-#### 4.4.3 Convergence Detection
-
-```mermaid
-flowchart TD
-    Start[Start Iteration] --> Eval[Evaluate Current]
-    Eval --> Compare[Compare with Previous]
-    Compare --> Delta{Delta < Epsilon?}
-    Delta -->|Yes| Converged[Converged]
-    Delta -->|No| UpdateBest[Update Best]
-    UpdateBest --> CheckBudget{Budget Exhausted?}
-    CheckBudget -->|Yes| Stop[Stop Search]
-    CheckBudget -->|No| Next[Next Iteration]
-    Next --> Eval
-    Converged --> Stop
-```
-
-- -
+---
 
 ## 5. Correctness Properties
 
 ### 5.1 Theorems
 
-#### 5.1.1 Convergence Theorem
+#### 5.1.1 Pareto Optimality Theorem
 
-- `Theorem:* If the search terminates due to convergence, the returned configuration is a local minimum.
+* Theorem:* If the system maintains Pareto frontier, then all selected strategies are non-dominated.
 
-- Proof Sketch:*
-1. By definition of convergence, no neighbor has better fitness
-2. Therefore, current configuration is locally optimal
-3. Therefore, returned configuration is a local minimum
+* Proof Sketch:*
+1. By definition of Pareto frontier, all strategies are non-dominated
+2. By definition of dominance, no strategy is better in all metrics
+3. Therefore, all selected strategies are Pareto optimal
 
-- OPTMAN-THM-002:* THE system SHALL guarantee that converged result is a local minimum.
+* OMS-THM-001:* THE system SHALL guarantee Pareto optimal optimization strategies.
+  - Priority:* High
+  - Verification Method:* Analysis
+  - Rationale:* Ensures optimal trade-offs
+  - Dependencies:* OMS-INV-005
+  - Traceability:* Section 2.3.1 (Pareto Frontier)
 
-- `Priority:* High
-- Verification Method:* Analysis
-- `Rationale:* Ensures search quality
-- `Dependencies:* OPTMAN-INV-004
-- `Traceability:* Section 2.3.2 (Convergence Criteria)
+#### 5.1.2 Code Generation Correctness Theorem
 
-#### 5.1.2 Budget Theorem
+* Theorem:* If the system generates machine code from IR, then generated code is semantically equivalent to IR.
 
-- `Theorem:* If the search terminates due to budget exhaustion, the returned configuration is the best found within the budget.
+* Proof Sketch:*
+1. By definition of code generation, IR is transformed to machine code
+2. By definition of semantic equivalence, transformations preserve meaning
+3. Therefore, generated code is semantically equivalent to IR
 
-- Proof Sketch:*
-1. By definition, $\theta_{best}$ is the minimum of all evaluated configurations
-2. Therefore, returned configuration is the best found
-3. Therefore, result is optimal within budget constraints
+* OMS-THM-002:* THE system SHALL guarantee semantically correct code generation.
+  - Priority:* Critical
+  - Verification Method:* Analysis
+  - Rationale:* Ensures code correctness
+  - Dependencies:* OMS-INV-007
+  - Traceability:* Section 2.4.1 (IR to Machine Code)
 
-- OPTMAN-THM-003:* THE system SHALL guarantee that budget-limited result is best found.
-
-- `Priority:* High
-- Verification Method:* Analysis
-- `Rationale:* Ensures best effort within constraints
-- `Dependencies:* OPTMAN-INV-005
-- `Traceability:* Section 2.3.2 (Convergence Criteria)
-
-### 5.2 Invariants
-
-#### 5.2.1 Search Invariants
-
-- **OPTMAN-INV-006:* THE system SHALL maintain that best configuration is always the minimum evaluated
-- **OPTMAN-INV-007:* THE system SHALL maintain that search progress is monotonic (non-decreasing fitness)
-- **OPTMAN-INV-008:* THE system SHALL maintain that all evaluated configurations are valid
-
-#### 5.2.2 Evaluation Invariants
-
-- **OPTMAN-INV-009:* THE system SHALL maintain that objective function is deterministic
-- **OPTMAN-INV-010:* THE system SHALL maintain that static and dynamic evaluations are consistent
-
-- -
+---
 
 ## 6. Examples
 
-### 6.1 Simple Optimization
+### 6.1 Simple Optimization Pass
 
 ```morph
-fn compute(data: [f64]) -> f64 {
-    let result: f64 = 0.0;
-    for i in 0..data.len() {
-        result = result + data[i] * ??;  // ?? is optimization hole
-    }
-    ret result;
-}
-```
-
-- Parameter Space:*
-- $\Theta = \{1, 2, 4, 8\}$ (unroll factors)
-- $\mathcal{L}(\theta) = \text{Cycles}(P(\theta))$
-
-- `Search:*
-1. Evaluate $\mathcal{L}(1)$, $\mathcal{L}(2)$, $\mathcal{L}(4)$, $\mathcal{L}(8)$
-2. Select $\theta^* = \arg\min \mathcal{L}(\theta)$
-3. Generate code with optimal unroll factor
-
-### 6.2 Multi-Parameter Optimization
-
-```morph
-fn matrix_multiply(A: [f64], B: [f64]) -> [f64] {
-    let result: [f64] = ??;  // Block size
-    let unroll: i32 = ??;  // Unroll factor
-    // ... implementation
-    ret result;
-}
-```
-
-- Parameter Space:*
-- $\Theta = \{16, 32, 64, 128\} \times \{1, 2, 4, 8\}$
-- $\mathcal{L}(\theta) = \alpha \cdot \text{Cycles} + \beta \cdot \text{Size}$
-
-- `Search:*
-1. Search 2D parameter space
-2. Find optimal trade-off between cycles and code size
-
-### 6.3 Non-Convex Landscape
-
-```morph
-fn buffer_copy(src: &u8, dst: &u8, size: usize) {
-    let block_size: usize = ??;  // Optimization hole
-    // ... implementation
-}
-```
-
-- Fitness Landscape:*
-- $\mathcal{L}(4096) = 100$ cycles
-- $\mathcal{L}(4097) = 1000$ cycles (cache misalignment!)
-- $\mathcal{L}(4098) = 105$ cycles
-
-- Search Challenge:*
-- Gradient descent would get stuck at local minimum (4096)
-- 0-order methods can find global minimum (4098)
-
-### 6.4 Convergence Example
-
-- Search Progress:*
-- Iteration 1: $\mathcal{L} = 1000$
-- Iteration 2: $\mathcal{L} = 800$
-- Iteration 3: $\mathcal{L} = 750$
-- Iteration 4: $\mathcal{L} = 748$
-- Iteration 5: $\mathcal{L} = 748$ (converged, $\Delta = 0 < \epsilon$)
-
-- `Result:* $\theta^*$ from iteration 4 or 5
-
-### 6.5 Edge Cases
-
-#### 6.5.1 Single Parameter
-
-```morph
-fn simple() -> f64 {
-    ret 42.0 * ??;  // Only one optimization hole
-}
-```
-
-- Parameter Space:*
-- $\Theta = \{1, 2, 4, 8, 16\}$
-
-- `Search:* Linear search through 5 values
-
-#### 6.5.2 Enum Parameter
-
-```morph
-fn strategy(data: [f64]) -> f64 {
-    let strat: Strategy = ??;  // Enum hole
-    match strat {
-        Strategy::Fast => fast_algorithm(data);
-        Strategy::Accurate => accurate_algorithm(data);
+// Constant folding pass
+fn constant_folding(ir: IR) -> IR {
+    match ir {
+        Add(a, b) if is_constant(a) && is_constant(b) =>
+            ret Constant(eval(a) + eval(b)),
+        _ => ret ir
     }
 }
 ```
 
-- Parameter Space:*
-- $\Theta = \{\text{Fast}, \text{Accurate}, \text{Balanced}\}$
+* Properties:*
+- Transforms IR by folding constants
+- Reduces runtime computation
+- Preserves semantic equivalence
 
-- `Search:* Evaluate all 3 strategies, select best
+### 6.2 Multi-Objective Optimization
 
-- -
+```morph
+// Optimization strategies
+strategies = [
+    {speed: 1.0, size: 1.0, power: 1.0, compile_time: 1.0},
+    {speed: 1.5, size: 1.2, power: 1.1, compile_time: 1.5},
+    {speed: 2.0, size: 1.5, power: 1.2, compile_time: 2.0}
+]
+
+// User preferences
+preferences = {speed: 0.5, size: 0.3, power: 0.1, compile_time: 0.1}
+
+// Select best strategy
+best = select(strategies, preferences)
+```
+
+* Properties:*
+- Multiple optimization strategies with different trade-offs
+- User preferences weight different metrics
+- Best strategy selected based on weighted score
+
+### 6.3 Code Generation
+
+```morph
+// IR to machine code
+fn codegen(ir: IR) -> MachineCode {
+    match ir {
+        Add(a, b) => ret MOV(a) + ADD(b),
+        Sub(a, b) => ret MOV(a) + SUB(b),
+        _ => ret compile(ir)
+    }
+}
+```
+
+* Properties:*
+- IR transformed to machine code
+- Semantic equivalence preserved
+- Efficient code generation
+
+### 6.4 Edge Cases
+
+#### 6.4.1 No Optimization Strategy
+
+```morph
+// Empty optimization space
+strategies = []
+
+// Error: No optimization strategy available
+fn optimize(ir: IR) -> Result<IR> {
+    if strategies.is_empty() {
+        ret Error("No optimization strategy available")
+    }
+}
+```
+
+* Properties:*
+- No optimization strategy available
+- Compiler reports error
+- User must provide optimization preferences
+
+#### 6.4.2 Conflicting Objectives
+
+```morph
+// Conflicting optimization objectives
+strategies = [
+    {speed: 2.0, size: 2.0},  // Fast but large
+    {speed: 1.0, size: 1.0}   // Slow but small
+]
+
+// Pareto frontier: Both strategies
+```
+
+* Properties:*
+- Conflicting objectives
+- Both strategies are Pareto optimal
+- User must choose based on preferences
+
+---
+
+## 7. Cross-References
+
+### 7.1 Type System Specifications
+
+- [`spec/type/type_system_spec.md`](spec/type/type_system_spec.md) - Type system, capability sigils, and affine logic formalization
+- [`spec/type/pure_type_spec.md`](spec/type/pure_type_spec.md) - Pure type theory
+- [`spec/type/type_category_spec.md`](spec/type/type_category_spec.md) - Type category theory and algebraic type foundations
+- [`spec/type/type_unification_spec.md`](spec/type/type_unification_spec.md) - Type unification algorithm and inference rules
+- [`spec/type/effect_system_spec.md`](spec/type/effect_system_spec.md) - Complete effect system specification with formal semantics and type-level effect tracking
+
+### 7.2 Memory Specifications
+
+- [`spec/memory/memory_model_spec.md`](spec/memory/memory_model_spec.md) - Memory management model, ARC implementation, and runtime memory operations
+- [`spec/memory/memory_acyclicity_spec.md`](spec/memory/memory_acyclicity_spec.md) - Memory acyclicity enforcement using affine logic and graph theory
+- [`spec/memory/memory_affine_logic_spec.md`](spec/memory/memory_affine_logic_spec.md) - Affine logic formalization for memory safety
+- [`spec/memory/memory_petri_net_spec.md`](spec/memory/memory_petri_net_spec.md) - Petri net formalization of memory operations
+- [`spec/memory/arc_affine_integration_spec.md`](spec/memory/arc_affine_integration_spec.md) - ARC and affine types
+
+### 7.3 Concurrency Specifications
+
+- [`spec/concurrency/execution_model_spec.md`](spec/concurrency/execution_model_spec.md) - Execution model, actor model, and scheduler implementation
+- [`spec/concurrency/scheduling_modes_spec.md`](spec/concurrency/scheduling_modes_spec.md) - Dual-mode scheduling specification (work-stealing and deterministic modes)
+- [`spec/concurrency/concurrency_process_algebra_spec.md`](spec/concurrency/concurrency_process_algebra_spec.md) - Process algebra formalization of concurrent communication
+- [`spec/concurrency/monadic_effect_spec.md`](spec/concurrency/monadic_effect_spec.md) - Monadic effects for concurrent operations
+
+### 7.4 Build System Specifications
+
+- [`spec/build/build_lattice_spec.md`](spec/build/build_lattice_spec.md) - Build dependency lattice and incremental compilation
+- [`spec/build/dependency_sat_spec.md`](spec/build/dependency_sat_spec.md) - Dependency satisfaction and resolution
+- [`spec/build/linker_logic_spec.md`](spec/build/linker_logic_spec.md) - Linker logic and symbol resolution
+- [`spec/build/backend_tiling_spec.md`](spec/build/backend_tiling_spec.md) - Backend tiling and code generation
+- [`spec/build/abi_alignment_algebra_spec.md`](spec/build/abi_alignment_algebra_spec.md) - ABI alignment and data refinement
+
+### 7.5 Security Specifications
+
+- [`spec/security/security_flow_spec.md`](spec/security/security_flow_spec.md) - Security flow analysis, taint tracking, and lattice-based access control
+- [`spec/security/infrastructure_safety_contracts_spec.md`](spec/security/infrastructure_safety_contracts_spec.md) - Safety contracts for infrastructure components
+- [`spec/security_ocap_spec.md`](spec/security_ocap_spec.md) - Object capability security model
+
+### 7.6 Tooling Specifications
+
+- [`spec/tooling/metaprogramming_spec.md`](spec/tooling/metaprogramming_spec.md) - Metaprogramming, comptime blocks, and optimization holes
+- [`spec/tooling/compiler_bisimulation_spec.md`](spec/tooling/compiler_bisimulation_spec.md) - Compiler bisimulation and optimization correctness
+- [`spec/tooling/comptime_partial_eval_spec.md`](spec/tooling/comptime_partial_eval_spec.md) - Compile-time evaluation
+- [`spec/tooling/operational_semantics_spec.md`](spec/tooling/operational_semantics_spec.md) - Operational semantics for language constructs
+
+### 7.7 Standard Library Specifications
+
+- [`spec/stdlib/stdlib_algebraic_spec.md`](spec/stdlib/stdlib_algebraic_spec.md) - Algebraic specification of standard library data structures
+- [`spec/stdlib/stdlib_amortized_spec.md`](spec/stdlib/stdlib_amortized_spec.md) - Amortized analysis of standard library operations
+
+### 7.8 Language Specifications
+
+- [`spec/language/morph_language_spec.md`](spec/language/morph_language_spec.md) - Core language syntax, keywords, and dual dialects (min/hum)
+- [`spec/language/strict_state_unidirectional_spec.md`](spec/language/strict_state_unidirectional_spec.md) - SSUS pattern for strict state unidirectional
+- [`spec/language/unidirectional_data_flow_spec.md`](spec/language/unidirectional_data_flow_spec.md) - UDF pattern for unidirectional data flow
+- [`spec/language/scoping_lambda_calculus_spec.md`](spec/language/scoping_lambda_calculus_spec.md) - Scoping rules and lambda calculus formalization
+- [`spec/language/lexical_structure_syntax_spec.md`](spec/language/lexical_structure_syntax_spec.md) - Lexical structure and syntax specification
+- [`spec/language/operator_null_coalescing_spec.md`](spec/language/operator_null_coalescing_spec.md) - ?? operator semantics and optimization search space
+
+### 7.9 Domain Extensions
+
+- [`spec/financial/financial_spec.md`](spec/financial/financial_spec.md) - Financial domain types, dec128, and @critical safety
+- [`spec/math/maths_spec.md`](spec/math/maths_spec.md) - Mathematical operations and unit algebra
+- [`spec/math/unit_group_theory_spec.md`](spec/math/unit_group_theory_spec.md) - Unit group theory and dimensional analysis
+
+### 7.10 UI Specifications
+
+- [`spec/ui/ui_constraint_algebra_spec.md`](spec/ui/ui_constraint_algebra_spec.md) - UI constraint algebra for layout
+- [`spec/ui/ui_event_topology_spec.md`](spec/ui/ui_event_topology_spec.md) - UI event propagation and deterministic replay
+- [`spec/ui/semantic_accessibility_spec.md`](spec/ui/semantic_accessibility_spec.md) - Semantic accessibility protocol
+
+---
+
+## 8. Verification and Validation Plan
+
+### 8.1 Verification Strategy
+
+#### 8.1.1 Formal Verification
+
+- **Pareto Optimality:** Mechanized proof of Pareto frontier correctness using proof assistant (e.g., Coq, Lean)
+- **Code Generation Correctness:** Formal verification of semantic equivalence preservation
+- **Optimization Pass Correctness:** Formal verification of optimization pass correctness
+
+#### 8.1.2 Static Analysis
+
+- **Compiler Checks:** All requirements verified through compiler implementation
+- **Linter Rules:** Automated linting for common optimization errors and anti-patterns
+- **Performance Analysis:** Static analysis of optimization metrics
+- **Dependency Analysis:** Static analysis of optimization dependencies
+
+### 8.2 Validation Strategy
+
+#### 8.2.1 Unit Testing
+
+- **Test Coverage:** Minimum 90% code coverage for all optimization manifold features
+- **Property-Based Testing:** Use QuickCheck-style testing for algebraic properties
+- **Fuzz Testing:** Automated fuzzing for all public APIs
+- **Regression Testing:** Comprehensive test suite for all bug fixes
+
+#### 8.2.2 Integration Testing
+
+- **End-to-End Tests:** Full compilation pipeline from source to executable
+- **Cross-Platform Testing:** Validation on Windows, Linux, macOS
+- **Performance Testing:** Benchmark suite for all performance claims
+- **Security Testing:** Penetration testing and vulnerability scanning
+
+#### 8.2.3 Real-World Validation
+
+- **Pilot Programs:** Early adopter projects using Morph optimization manifold in production
+- **Developer Surveys:** Feedback on language usability and specification clarity
+- **Bug Analysis:** Tracking and analysis of common bugs and their root causes
+- **Case Studies:** Documentation of successful Morph optimization manifold projects
+
+### 8.3 Test Plan
+
+#### 8.3.1 Test Categories
+
+| Category | Description | Priority |
+|----------|-------------|----------|
+| **Optimization Passes** | Constant folding, dead code elimination | Critical |
+| **Multi-Objective Optimization** | Pareto frontier, trade-off selection | Critical |
+| **Code Generation** | IR to machine code, register allocation | Critical |
+| **Performance Metrics** | Speed, size, power, compile time | High |
+
+#### 8.3.2 Test Execution
+
+- **CI/CD Integration:** All tests run on every commit
+- **Nightly Builds:** Full test suite execution with performance benchmarks
+- **Release Testing:** Comprehensive testing before each release
+- **Continuous Monitoring:** Automated monitoring of test failures and performance regressions
+
+---
+
+## 9. Risk Assessment
+
+### 9.1 Technical Risks
+
+| Risk | Probability | Impact | Mitigation |
+|-------|-------------|--------|
+| **Optimization Complexity** | Medium | High | Formal verification; extensive testing; benchmarking |
+| **Pareto Frontier Computation** | Medium | High | Efficient algorithms; caching; complexity analysis |
+| **Code Generation Correctness** | Low | Critical | Formal verification; semantic equivalence proofs |
+| **Multi-Objective Trade-offs** | Medium | High | User preferences; clear documentation; examples |
+| **Performance Metric Accuracy** | Medium | Medium | Accurate measurement; calibration; benchmarking |
+| **Optimization Pass Composition** | Low | High | Modular design; pass interface; clear dependencies |
+
+### 9.2 Implementation Risks
+
+| Risk | Probability | Impact | Mitigation |
+|-------|-------------|--------|
+| **Timeline Overrun** | Medium | High | Phased approach; prioritize critical features; buffer time |
+| **Resource Constraints** | Low | Medium | Realistic resource planning; cross-training; automation |
+| **Tooling Delays** | Medium | Medium | Prioritize critical tools; use existing solutions |
+| **Adoption Barriers** | Medium | High | Early adopter program; documentation; examples; tutorials |
+| **Ecosystem Fragmentation** | Low | Medium | Clear conventions; automated tools; governance |
+
+### 9.3 Mitigation Strategies
+
+1. **Incremental Implementation:**
+   - Implement features in phases
+   - Deliver value early with critical features
+   - Iterate based on feedback
+
+2. **Early Validation:**
+   - Validate assumptions early
+   - Create prototypes for critical features
+   - Conduct pilot studies
+
+3. **Automation:**
+   - Automate repetitive tasks
+   - Use CI/CD for validation
+   - Generate documentation automatically
+
+4. **Contingency Planning:**
+   - Allocate buffer time for each phase
+   - Have backup plans for critical path items
+   - Monitor progress and adjust as needed
+
+---
 
 ## Change Log
 
 | Version | Date       | Author      | Changes                                                                 |
 |---------|------------|-------------|-------------------------------------------------------------------------|
+| 2.0.0   | 2026-01-02 | Kilo Code    | **Refined to match strategic refinements:**<br>1. Updated all invariants and requirements<br>2. Added formal definitions and theorems<br>3. Clarified optimization manifold structure |
 | 1.0.0   | 2026-01-01 | Kilo Code    | Initial version                                                        |
