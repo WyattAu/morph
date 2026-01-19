@@ -1,0 +1,6 @@
+info: [root]: lakefile.lean and lakefile.toml are both present; using lakefile.lean
+✖ [?/?] Computing build jobs
+error: .\.\.\.\Morph\.backup\phase11\Specs\AbiAlignmentAlgebra\Examples.lean: unterminated comment
+Some builds logged failures:
+- Computing build jobs
+error: build failed

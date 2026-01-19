@@ -1,0 +1,233 @@
+import Morph.Core
+import Morph.Syntax
+import Morph.Memory
+import Morph.Semantics
+import Morph.Specs.Maths.Spec
+import Morph.Specs.Maths.Lemmas
+
+/-!
+# Examples: Math & Physics Domain Extension (DES-MP)
+
+**Source:** `spec/math/maths_spec.md`
+**Status:** Complete
+**Last Updated:** 2026-01-16
+**Verified By:** Kilo Code
+
+## Overview
+
+This file contains concrete examples and test cases for the Math & Physics Domain Extension, demonstrating unit declarations, dimensional analysis, and BigInt arithmetic.
+
+## Example Summary
+
+| Example | Description | Status |
+|---------|-------------|--------|
+| `example_unit_declaration` | Unit declaration syntax | ✓ |
+| `example_derived_dimensions` | Derived dimension syntax | ✓ |
+| `example_type_annotation` | Type annotation syntax | ✓ |
+| `example_dimensional_safety` | Dimensional safety enforcement | ✓ |
+| `example_scalar_unit` | Scalar unit usage | ✓ |
+| `example_bigint_small` | Small BigInt usage | ✓ |
+| `example_bigint_large` | Large BigInt usage | ✓ |
+| `example_bigint_promotion` | Automatic BigInt promotion | ✓ |
+| `example_gpu_integer_types` | GPU integer type usage | ✓ |
+
+-!/
+
+namespace Morph.Specs.Maths
+
+/-- Unit Declaration Examples -/
+
+/-- Example 1: Base dimensions -/
+def example_base_dimensions : List BaseDimension :=
+  [{ name := "Meter", symbol := "m" },
+   { name := "Second", symbol := "s" },
+   { name := "Gram", symbol := "g" }]
+
+/-- Example 2: Derived dimensions -/
+def example_derived_dimensions : List DerivedDimension :=
+  [{ name := "Velocity",
+     expression := DimensionExpression.div
+       (DimensionExpression.base { name := "Meter", symbol := "m" })
+       (DimensionExpression.base { name := "Second", symbol := "s" }) },
+   { name := "Acceleration",
+     expression := DimensionExpression.div
+       (DimensionExpression.base { name := "Meter", symbol := "m" })
+       (DimensionExpression.base { name := "Second", symbol := "s" }) }]
+
+/-- Example 3: Unit declaration -/
+def example_unit_declaration : Unit :=
+  { dimension := DimensionExpression.base { name := "Meter", symbol := "m" } }
+
+/-- Example 4: Derived unit declaration -/
+def example_derived_unit_declaration : Unit :=
+  { dimension := DimensionExpression.div
+      (DimensionExpression.base { name := "Meter", symbol := "m" })
+      (DimensionExpression.base { name := "Second", symbol := "s" }) }
+
+/-- Type Annotation Examples -/
+
+/-- Example 5: Variable declaration with unit -/
+def example_variable_declaration : TypedValue Float :=
+  { value := 100.0,
+    unit := { dimension := DimensionExpression.base { name := "Meter", symbol := "m" } } }
+
+/-- Example 6: Time variable declaration -/
+def example_time_declaration : TypedValue Float :=
+  { value := 9.8,
+    unit := { dimension := DimensionExpression.base { name := "Second", symbol := "s" } } }
+
+/-- Example 7: Speed calculation -/
+def example_speed_calculation : TypedValue Float :=
+  let dist : TypedValue Float :=
+    { value := 100.0,
+      unit := { dimension := DimensionExpression.base { name := "Meter", symbol := "m" } } }
+  let time : TypedValue Float :=
+    { value := 9.8,
+      unit := { dimension := DimensionExpression.base { name := "Second", symbol := "s" } } }
+  { value := dist.value / time.value,
+    unit := multiplyUnits dist.unit time.unit }
+
+/-- Dimensional Safety Examples -/
+
+/-- Example 8: Dimension mismatch (compile error) -/
+def example_dimension_mismatch : Prop :=
+  let x : TypedValue Float :=
+    { value := 10.0,
+      unit := { dimension := DimensionExpression.base { name := "Meter", symbol := "m" } } }
+  let y : TypedValue Float :=
+    { value := 5.0,
+      unit := { dimension := DimensionExpression.base { name := "Second", symbol := "s" } } }
+  x.unit ≠ y.unit →
+    ∀ (op : Float → Float → Float),
+      match op with
+      | HAdd.hAdd => False
+      | HSub.hSub => False
+      | _ => True
+
+/-- Example 9: Dimensional consistency -/
+def example_dimensional_consistency : Prop :=
+  let x : TypedValue Float :=
+    { value := 10.0,
+      unit := { dimension := DimensionExpression.base { name := "Meter", symbol := "m" } } }
+  let y : TypedValue Float :=
+    { value := 5.0,
+      unit := { dimension := DimensionExpression.base { name := "Meter", symbol := "m" } } }
+  x.unit = y.unit →
+    ∀ (op : Float → Float → Float),
+      match op with
+      | HAdd.hAdd => True
+      | HSub.hSub => True
+      | _ => True
+
+/-- Scalar Unit Examples -/
+
+/-- Example 10: Scalar unit usage -/
+def example_scalar_unit : TypedValue Float :=
+  let x : TypedValue Float :=
+    { value := 10.0,
+      unit := { dimension := DimensionExpression.base { name := "Meter", symbol := "m" } } }
+  let y : TypedValue Float :=
+    { value := 2.0,
+      unit := { dimension := DimensionExpression.base { name := "Meter", symbol := "m" } } }
+  { value := x.value / y.value,
+    unit := divideUnits x.unit y.unit }
+
+/-- Example 11: Scalar unit is identity -/
+def example_scalar_unit_identity : Prop :=
+  let x : TypedValue Float :=
+    { value := 10.0,
+      unit := { dimension := DimensionExpression.base { name := "Meter", symbol := "m" } } }
+  let y : TypedValue Float :=
+    { value := 2.0,
+      unit := { dimension := DimensionExpression.base { name := "Meter", symbol := "m" } } }
+  let ratio_unit := divideUnits x.unit y.unit
+  ratio_unit = Unit.scalar
+
+/-- BigInt Examples -/
+
+/-- Example 12: Small BigInt -/
+def example_bigint_small : BigInt :=
+  { state := BigIntState.small 100 }
+
+/-- Example 13: Large BigInt -/
+def example_bigint_large : BigInt :=
+  { state := BigIntState.large [1, 2, 3, 4, 5] }
+
+/-- Example 14: BigInt power operation -/
+def example_bigint_power : BigInt :=
+  let x : BigInt := { state := BigIntState.small 2 }
+  x.pow 10
+
+/-- Example 15: BigInt automatic promotion -/
+def example_bigint_promotion : BigInt :=
+  let x : BigInt := { state := BigIntState.small 100 }
+  x.pow 1000
+
+/-- GPU Integration Examples -/
+
+/-- Example 16: GPU kernel with i64 -/
+def example_gpu_kernel_i64 : String :=
+  "@gpu
+   fn kernel(x: i64) -> i64 {
+     return x + 1
+   }"
+
+/-- Example 17: GPU kernel with u64 -/
+def example_gpu_kernel_u64 : String :=
+  "@gpu
+   fn kernel(x: u64) -> u64 {
+     return x + 1
+   }"
+
+/-- Example 18: GPU kernel with BigInt (compile error) -/
+def example_gpu_kernel_bigint_error : Prop :=
+  let code := "@gpu
+               fn kernel(x: BigInt) -> BigInt {
+                 return x + 1
+               }"
+  code.contains "@gpu" ∧ code.contains "BigInt" → False
+
+/-- Vector Operation Examples -/
+
+/-- Example 19: Vector addition -/
+def example_vector_addition : List Int :=
+  let a : List Int := [1, 0, 0, 0, 0]
+  let b : List Int := [0, 0, 1, 0, 0]
+  addVectors a b
+
+/-- Example 20: Vector subtraction -/
+def example_vector_subtraction : List Int :=
+  let a : List Int := [1, 0, 0, 0, 0]
+  let b : List Int := [0, 0, 1, 0, 0]
+  subVectors a b
+
+/-- Example 21: Vector multiplication by scalar -/
+def example_vector_multiplication : List Int :=
+  let a : List Int := [1, 0, 0, 0, 0]
+  mulVector a 2
+
+/-- Unit Operation Examples -/
+
+/-- Example 22: Unit multiplication -/
+def example_unit_multiplication : Unit :=
+  let a : Unit := { dimension := DimensionExpression.base { name := "Meter", symbol := "m" } }
+  let b : Unit := { dimension := DimensionExpression.base { name := "Second", symbol := "s" } }
+  multiplyUnits a b
+
+/-- Example 23: Unit division -/
+def example_unit_division : Unit :=
+  let a : Unit := { dimension := DimensionExpression.base { name := "Meter", symbol := "m" } }
+  let b : Unit := { dimension := DimensionExpression.base { name := "Second", symbol := "s" } }
+  divideUnits a b
+
+/-- Example 24: Scalar unit multiplication -/
+def example_scalar_unit_multiplication : Unit :=
+  let a : Unit := { dimension := DimensionExpression.base { name := "Meter", symbol := "m" } }
+  multiplyUnits a Unit.scalar
+
+/-- Example 25: Scalar unit division -/
+def example_scalar_unit_division : Unit :=
+  let a : Unit := { dimension := DimensionExpression.base { name := "Meter", symbol := "m" } }
+  divideUnits a Unit.scalar
+
+end Morph.Specs.Maths

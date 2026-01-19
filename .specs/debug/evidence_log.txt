@@ -1,0 +1,235 @@
+================================================================================
+BUILD EVIDENCE LOG - Morph.Semantics Build Error Reproduction
+================================================================================
+Date: 2026-01-19T19:44:37Z
+Task: Reproduce the Build Error
+Target: Morph.Semantics
+Status: ROOT CAUSE IDENTIFIED
+
+================================================================================
+BUILD COMMAND
+================================================================================
+Command: lake build Morph.Semantics
+Working Directory: c:/dev/Current/forks/morph
+
+================================================================================
+BUILD OUTPUT
+================================================================================
+info: [root]: lakefile.lean and lakefile.toml are both present; using lakefile.lean
+✖ [4/4] Building Morph.Semantics
+trace: .> LEAN_PATH=.\.\.lake/packages\batteries\.lake\build\lib;.\.\.lake/packages\Qq\.lake\build\lib;.\.\.lake/packages\aesop\.lake\build\lib;.\.\.lake/packages\proofwidgets\.lake\build\lib;.\.\.lake/packages\Cli\.lake\build\lib;.\.\.lake/packages\importGraph\.lake\build\lib;.\.\.lake/packages\mathlib\.lake\build\lib;.\.\.lake\build\lib PATH c:\Users\wyatt\.elan\toolchains\leanprover--lean4---v4.10.0\bin\lean.exe .\.\.\.\Morph\Semantics.lean -R .\.\.\. -o .\.\.lake\build\lib\Morph\Semantics.olean -i .\.\.lake\build\lib\Morph\Semantics.ilean -c .\.\.lake\build\ir\Morph\Semantics.c --json
+error: .\.\.\.\Morph\Semantics.lean:693:0: unterminated comment
+error: Lean exited with code 1
+Some builds logged failures:
+- Morph.Semantics
+error: build failed
+
+================================================================================
+ERROR ANALYSIS
+================================================================================
+
+Primary Error:
+  Type: Syntax Error
+  Message: "unterminated comment"
+  Location: Morph/Semantics.lean:693:0
+  Exit Code: 1
+
+Build Status:
+  - Total build targets: 4
+  - Failed targets: 1 (Morph.Semantics)
+  - Success targets: 3 (implied from "[4/4] Building Morph.Semantics")
+
+================================================================================
+ROOT CAUSE ANALYSIS
+================================================================================
+
+PROBLEM IDENTIFIED:
+  Comment Syntax Mismatch
+
+Comment Marker Counts:
+  - Opening /-! markers: 24
+  - Closing -!/ markers: 12
+  - Closing -/ markers (single-line): 1 (line 3)
+  - UNCLOSED COMMENT BLOCKS: 12
+
+Lean Comment Syntax Rules:
+  - Single-line comment: /- ... -/
+  - Multi-line comment: /-! ... -!/
+
+ISSUE:
+  Multiple comment blocks use opening marker /-! (multi-line) but close with
+  -/ (single-line) instead of -!/ (multi-line). This causes the parser
+  to treat the comment as unterminated, resulting in the "unterminated
+  comment" error at line 693:0.
+
+================================================================================
+AFFECTED COMMENT BLOCKS (12 total)
+================================================================================
+
+The following comment blocks have mismatched closing markers:
+
+1. Line 139-145: ThreadId documentation
+   - Opens with: /-! (line 139)
+   - Closes with: -/ (line 145)
+   - Should close with: -!/
+
+2. Line 148-154: LockId documentation
+   - Opens with: /-! (line 148)
+   - Closes with: -/ (line 154)
+   - Should close with: -!/
+
+3. Line 157-164: ThreadState documentation
+   - Opens with: /-! (line 157)
+   - Closes with: -/ (line 164)
+   - Should close with: -!/
+
+4. Line 320-324: Config.isUB documentation
+   - Opens with: /-! (line 320)
+   - Closes with: -/ (line 324)
+   - Should close with: -!/
+
+5. Line 328-332: Config.currentThread documentation
+   - Opens with: /-! (line 328)
+   - Closes with: -/ (line 332)
+   - Should close with: -!/
+
+6. Line 336-340: Config.updateCurrentThread documentation
+   - Opens with: /-! (line 336)
+   - Closes with: -/ (line 340)
+   - Should close with: -!/
+
+7. Line 346-350: Config.getThread? documentation
+   - Opens with: /-! (line 346)
+   - Closes with: -/ (line 350)
+   - Should close with: -!/
+
+8. Line 354-358: Config.updateThread documentation
+   - Opens with: /-! (line 354)
+   - Closes with: -/ (line 358)
+   - Should close with: -!/
+
+9. Line 364-368: Config.ownsLock documentation
+   - Opens with: /-! (line 364)
+   - Closes with: -/ (line 368)
+   - Should close with: -!/
+
+10. Line 374-378: Config.acquireLock documentation
+    - Opens with: /-! (line 374)
+    - Closes with: -/ (line 378)
+    - Should close with: -!/
+
+11. Line 383-387: Config.releaseLock documentation
+    - Opens with: /-! (line 383)
+    - Closes with: -/ (line 387)
+    - Should close with: -!/
+
+12. Line 624-628: Helper Functions documentation
+    - Opens with: /-! (line 624)
+    - Closes with: -/ (line 628)
+    - Should close with: -!/
+
+================================================================================
+CORRECT COMMENT BLOCKS (12 total)
+================================================================================
+
+The following comment blocks have correct syntax:
+
+1. Line 1-3: Copyright header
+   - Opens with: /- (line 1)
+   - Closes with: -/ (line 3)
+   - Status: CORRECT
+
+2. Line 10-66: Module documentation
+   - Opens with: /-! (line 10)
+   - Closes with: -!/ (line 66)
+   - Status: CORRECT
+
+3. Line 68-85: Event documentation
+   - Opens with: /-! (line 68)
+   - Closes with: -!/ (line 85)
+   - Status: CORRECT
+
+4. Line 97-122: UBReason documentation
+   - Opens with: /-! (line 97)
+   - Closes with: -!/ (line 122)
+   - Status: CORRECT
+
+5. Line 172-190: Continuation documentation
+   - Opens with: /-! (line 172)
+   - Closes with: -!/ (line 190)
+   - Status: CORRECT
+
+6. Line 197-216: Stmt documentation
+   - Opens with: /-! (line 197)
+   - Closes with: -!/ (line 216)
+   - Status: CORRECT
+
+7. Line 230-244: Expr documentation
+   - Opens with: /-! (line 230)
+   - Closes with: -!/ (line 244)
+   - Status: CORRECT
+
+8. Line 254-281: Config documentation
+   - Opens with: /-! (line 254)
+   - Closes with: -!/ (line 281)
+   - Status: CORRECT
+
+9. Line 295-307: Config.empty documentation
+   - Opens with: /-! (line 295)
+   - Closes with: -!/ (line 307)
+   - Status: CORRECT
+
+10. Line 394-425: Step documentation
+    - Opens with: /-! (line 394)
+    - Closes with: -!/ (line 425)
+    - Status: CORRECT
+
+11. Line 595-610: MultiStep documentation
+    - Opens with: /-! (line 595)
+    - Closes with: -!/ (line 610)
+    - Status: CORRECT
+
+12. Line 630-637: isTerminal documentation
+    - Opens with: /-! (line 630)
+    - Closes with: -!/ (line 637)
+    - Status: CORRECT
+
+================================================================================
+SOLUTION
+================================================================================
+
+To fix the build error, change the following 12 lines from:
+  -/
+to:
+  -!/
+
+Lines to change:
+  145, 154, 164, 324, 332, 340, 350, 358, 368, 378, 387, 628
+
+This will ensure all comment blocks opened with /-! are properly closed with -!/.
+
+================================================================================
+FILE ANALYSIS
+================================================================================
+
+File: Morph/Semantics.lean
+Total Lines: 692
+Last Line Content: "end Morph"
+Line Endings: CRLF (Windows standard)
+Encoding: UTF-8 (no BOM detected)
+
+No hidden characters or encoding issues found at end of file.
+
+================================================================================
+VERIFICATION
+================================================================================
+
+The build error has been successfully reproduced and the root cause has been
+identified as comment syntax mismatches in 12 comment blocks.
+
+Next Steps:
+1. Fix the 12 mismatched closing markers
+2. Rebuild to verify the fix resolves the error
+3. Run full test suite to ensure no regressions
+
+================================================================================

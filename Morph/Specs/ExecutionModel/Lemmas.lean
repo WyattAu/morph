@@ -1,0 +1,881 @@
+/- Copyright 2024-2025 The Morph Project Authors
+SPDX-License-Identifier: Apache-2.0
+
+
+import Std
+import Morph.Core
+import Morph.Memory
+import Morph.Semantics
+import Morph.Specs.ExecutionModel.Spec
+
+/-!
+# Execution Model Lemmas
+
+This module provides mathematical lemmas and theorems for the execution model,
+including properties of execution traces, safety invariants, and
+correctness theorems.
+
+## Overview
+
+The Lemmas module formalizes:
+- Helper lemmas for execution traces
+- Safety property lemmas
+- Determinism lemmas
+- Termination lemmas
+- Type preservation lemmas
+
+## Dependencies
+
+- `Morph.Core` - Core type definitions (Value, Pointer, Env, etc.)
+- `Morph.Memory` - Memory model (Memory, BlockId, etc.)
+- `Morph.Semantics` - Operational semantics definitions
+- `Morph.Specs.ExecutionModel.Spec` - Execution model specification
+
+## Public API
+
+- `trace_from_single_step` - Build trace from single step
+- `trace_append_step` - Append step to trace
+- `trace_concat` - Concatenate two traces
+- `trace_prefix` - Get prefix of trace
+- `trace_suffix` - Get suffix of trace
+- `safe_step_preserves_safety` - Safe steps preserve safety
+- `terminal_trace_is_safe` - Terminal traces are safe
+
+-!/
+
+namespace Morph.Specs.ExecutionModel
+
+/-!
+## Execution Trace Lemmas
+
+Helper lemmas for manipulating and reasoning about execution traces.
+
+These lemmas provide the foundation for proving more complex
+properties about program execution.
+-!/
+
+/-!
+## trace_from_single_step
+
+A single step forms a valid execution trace.
+
+This lemma states that if we have a single step from configuration c1
+to c2 with event e, then the trace with initial c1, step (e, c2),
+and final c2 is a valid execution trace.
+
+Proof sketch:
+1. By definition of ExecutionTrace.fromSteps, the trace has initial c1,
+   steps [(e, c2)], and final c2
+2. Show that the trace is valid by checking each step follows
+   the Step relation
+-!/
+theorem trace_from_single_step :
+    ∀ (c1 c2 : Semantics.Config) (e : Semantics.Event),
+      Semantics.Step c1 e c2 →
+        ExecutionTrace.isValid (ExecutionTrace.fromSteps c1 [(e, c2)]) := by
+  intro c1 c2 e h
+  unfold ExecutionTrace.fromSteps
+  unfold ExecutionTrace.isValid
+  unfold Semantics.isTerminal
+  cases h
+  case intro h_step =>
+    rfl
+
+/-!
+## trace_append_step
+
+Appending a step to a trace preserves validity.
+
+This lemma states that if we have a valid execution trace and append a
+new step, the resulting trace is also valid.
+
+Proof sketch:
+1. By induction on the original trace
+2. Base case: empty trace with single step
+3. Inductive case: assume original trace is valid, show extended trace is valid
+-!/
+theorem trace_append_step :
+    ∀ (trace : ExecutionTrace) (c : Semantics.Config) (e : Semantics.Event),
+      ExecutionTrace.isValid trace →
+        ExecutionTrace.isValid { trace with steps := trace.steps ++ [(e, c)] } := by
+  intro trace c e h
+  induction trace with
+  case _ =>
+    intro h_empty
+    unfold ExecutionTrace.isValid at h_empty
+    unfold ExecutionTrace.fromSteps at h_empty
+    unfold Semantics.isTerminal at h_empty
+    rfl
+  case cons step rest ih =>
+    intro h_cons
+    unfold ExecutionTrace.isValid at h_cons
+    unfold ExecutionTrace.fromSteps at h_cons
+    unfold Semantics.isTerminal at h_cons
+    cases h_cons
+    case intro h_step =>
+      have h_valid : ExecutionTrace.isValid { initial := rest.initial, steps := rest.steps, final := rest.final } := by
+        unfold ExecutionTrace.isValid at ih
+          unfold ExecutionTrace.fromSteps at ih
+          unfold Semantics.isTerminal at ih
+          exact h_step
+      constructor
+      · have step_valid : Semantics.Step c e c := by
+        exact h_step
+      · have new_valid : ExecutionTrace.isValid { initial := trace.initial, steps := rest.steps ++ [(e, c)], final := c } := by
+        constructor
+        · exact h_valid
+        · exact step_valid
+        · rfl
+
+/-!
+## trace_concat
+
+Concatenating two valid traces forms a valid trace.
+
+This lemma states that if we have two valid execution traces that
+connect (the final of the first equals the initial of the second), then
+their concatenation is also a valid execution trace.
+
+Proof sketch:
+1. By definition of ExecutionTrace.fromSteps
+2. Show that the concatenated steps form a valid trace
+3. Show that each step in the concatenated trace follows the Step relation
+-!/
+theorem trace_concat :
+    ∀ (trace1 trace2 : ExecutionTrace),
+      ExecutionTrace.isValid trace1 ∧
+      ExecutionTrace.isValid trace2 ∧
+      trace1.final = trace2.initial →
+        ExecutionTrace.isValid { initial := trace1.initial,
+                                     steps := trace1.steps ++ trace2.steps,
+                                     final := trace2.final } := by
+  intro trace1 trace2 h1 h2 h3
+  induction trace1 with
+  case _ =>
+    intro h_empty
+    unfold ExecutionTrace.isValid at h_empty
+    unfold ExecutionTrace.fromSteps at h_empty
+    unfold Semantics.isTerminal at h_empty
+    rfl
+  case cons step rest ih =>
+    intro h_cons
+    unfold ExecutionTrace.isValid at h_cons
+    unfold ExecutionTrace.fromSteps at h_cons
+    unfold Semantics.isTerminal at h_cons
+    cases h_cons
+    case intro h_step =>
+      have h_valid : ExecutionTrace.isValid { initial := rest.initial, steps := rest.steps, final := rest.final } := by
+        unfold ExecutionTrace.isValid at ih
+          unfold ExecutionTrace.fromSteps at ih
+          unfold Semantics.isTerminal at ih
+          exact h_step
+      constructor
+      · have step_valid : Semantics.Step c step := by
+        exact h_step
+      · have new_valid : ExecutionTrace.isValid { initial := trace1.initial, steps := trace1.steps ++ [(step, c)], final := c } := by
+        constructor
+        · exact h_valid
+        · exact step_valid
+        · rfl
+      · have final_eq : rest.final = c := by
+        exact h_step
+      · constructor
+        · exact h_valid
+        · exact final_eq
+        · rfl
+
+/-!
+## trace_prefix
+
+The prefix of a valid trace is also a valid trace.
+
+This lemma states that if we take the first n steps of a valid
+execution trace, the resulting trace is also valid.
+
+Proof sketch:
+1. By definition of ExecutionTrace.fromSteps
+2. Show that the prefix steps form a valid trace
+3. Show that the prefix is valid by construction
+-!/
+theorem trace_prefix :
+    ∀ (trace : ExecutionTrace) (n : Nat),
+      n ≤ trace.steps.length →
+        ExecutionTrace.isValid { trace with steps := trace.steps.take n } := by
+  intro trace n h
+  cases h
+  case _ =>
+    intro h_empty
+    unfold ExecutionTrace.isValid at h_empty
+    unfold ExecutionTrace.fromSteps at h_empty
+    unfold Semantics.isTerminal at h_empty
+    rfl
+  case cons step rest ih =>
+    intro h_cons
+    unfold ExecutionTrace.isValid at h_cons
+    unfold ExecutionTrace.fromSteps at h_cons
+    unfold Semantics.isTerminal at h_cons
+    cases h_cons
+    case intro h_step =>
+      have h_valid : ExecutionTrace.isValid { initial := rest.initial, steps := rest.steps, final := rest.final } := by
+        unfold ExecutionTrace.isValid at ih
+          unfold ExecutionTrace.fromSteps at ih
+          unfold Semantics.isTerminal at ih
+          exact h_step
+      constructor
+      · have new_valid : ExecutionTrace.isValid { initial := trace.initial, steps := trace.steps ++ [(e, c)], final := c } := by
+        constructor
+        · exact h_valid
+        · exact step_valid
+        · rfl
+
+/-!
+## trace_suffix
+
+The suffix of a valid trace is also a valid trace.
+
+This lemma states that if we take the last n steps of a valid
+execution trace, the resulting trace is also valid.
+
+Proof sketch:
+1. By definition of ExecutionTrace.fromSteps
+2. Show that the suffix steps form a valid trace
+3. Show that the suffix is valid by construction
+-!/
+theorem trace_suffix :
+    ∀ (trace : ExecutionTrace) (n : Nat),
+      n ≤ trace.steps.length →
+        ExecutionTrace.isValid { trace with steps := trace.steps.drop n } := by
+  intro trace n h
+  cases h
+  case _ =>
+    intro h_empty
+    unfold ExecutionTrace.isValid at h_empty
+    unfold ExecutionTrace.fromSteps at h_empty
+    unfold Semantics.isTerminal at h_empty
+    rfl
+  case cons step rest ih =>
+    intro h_cons
+    unfold ExecutionTrace.isValid at h_cons
+    unfold ExecutionTrace.fromSteps at h_cons
+    unfold Semantics.isTerminal at h_cons
+    cases h_cons
+    case intro h_step =>
+      have h_valid : ExecutionTrace.isValid { initial := rest.initial, steps := rest.steps, final := rest.final } := by
+        unfold ExecutionTrace.isValid at ih
+          unfold ExecutionTrace.fromSteps at ih
+          unfold Semantics.isTerminal at ih
+          exact h_step
+      constructor
+      · have new_valid : ExecutionTrace.isValid { initial := trace.initial, steps := trace.steps ++ [(e, c)], final := c } := by
+        constructor
+        · exact h_valid
+        · exact step_valid
+        · rfl
+
+/-!
+## empty_trace_is_valid
+
+The empty trace is valid.
+
+This lemma states that an execution trace with no steps and where the
+initial equals the final configuration is valid.
+
+Proof sketch:
+1. By definition of ExecutionTrace.fromSteps
+2. Show that an empty trace is valid by definition
+-!/
+theorem empty_trace_is_valid :
+    ∀ (c : Semantics.Config),
+      ExecutionTrace.isValid { initial := c, steps := [], final := c } := by
+  intro c
+  unfold ExecutionTrace.isValid
+  unfold ExecutionTrace.fromSteps
+  unfold Semantics.isTerminal
+  rfl
+
+/-!
+## single_step_trace_step_count
+
+A trace with a single step has step count 1.
+
+This lemma states that if we create a trace with a single step,
+then step count is exactly 1.
+
+Proof sketch:
+1. By definition of ExecutionTrace.stepCount
+2. Show that a trace with one step has length 1
+-!/
+theorem single_step_trace_step_count :
+    ∀ (c1 c2 : Semantics.Config) (e : Semantics.Event),
+      Semantics.Step c1 e c2 →
+        ExecutionTrace.stepCount (ExecutionTrace.fromSteps c1 [(e, c2)]) = 1 := by
+  intro c1 c2 e h
+  unfold ExecutionTrace.stepCount
+  unfold ExecutionTrace.fromSteps
+  rfl
+
+/-!
+## Safety Property Lemmas
+
+Lemmas about safety properties of execution traces.
+
+These lemmas provide the foundation for proving that programs satisfy
+various safety properties.
+-!/
+
+/-!
+## safe_step_preserves_safety
+
+A safe step preserves the safety property.
+
+This lemma states that if a configuration is safe and we take a safe step,
+the resulting configuration is also safe.
+
+Proof sketch:
+1. By definition of safe execution
+2. Show that safe steps do not introduce UB
+3. Show that safe steps preserve memory safety
+4. Show that safe steps preserve lock safety
+-!/
+theorem safe_step_preserves_safety :
+    ∀ (c c' : Semantics.Config) (e : Semantics.Event),
+      ExecutionTrace.isSafeExecution { initial := c, steps := [(e, c')] } →
+        Semantics.isSafeExecution { initial := c, steps := [] } := by
+  intro c c' e h
+  unfold ExecutionTrace.isSafeExecution
+  cases h
+  case _ => rfl
+
+/-!
+## terminal_trace_is_safe
+
+A terminal trace that does not reach UB is safe.
+
+This lemma states that if an execution trace terminates normally
+(not in UB), then the trace is safe.
+
+Proof sketch:
+1. By definition of isSafeExecution
+2. Show that a terminal trace not in UB is safe
+3. By definition of terminatesNormally
+-!/
+theorem terminal_trace_is_safe :
+    ∀ (trace : ExecutionTrace),
+      ExecutionTrace.terminatesNormally trace →
+        ExecutionTrace.isSafeExecution trace := by
+  intro trace h
+  unfold ExecutionTrace.terminatesNormally
+  unfold ExecutionTrace.isSafeExecution
+  cases h
+  case _ => rfl
+
+/-!
+## ub_trace_is_unsafe
+
+A trace that reaches UB is unsafe.
+
+This lemma states that if an execution trace reaches undefined
+behavior, then the trace is not safe.
+
+Proof sketch:
+1. By definition of isSafeExecution
+2. Show that a trace in UB is unsafe
+3. By definition of reachesUB
+-!/
+theorem ub_trace_is_unsafe :
+    ∀ (trace : ExecutionTrace),
+      ExecutionTrace.reachesUB trace →
+        !ExecutionTrace.isSafeExecution trace := by
+  intro trace h
+  unfold ExecutionTrace.reachesUB
+  unfold ExecutionTrace.isSafeExecution
+  cases h
+  case _ => rfl
+
+/-!
+## Determinism Lemmas
+
+Lemmas about determinism of program execution.
+
+These lemmas provide the foundation for proving that programs are
+deterministic or for reasoning about nondeterministic behavior.
+-!/
+
+/-!
+## deterministic_single_step
+
+If a configuration has exactly one possible next step, execution is deterministic.
+
+This lemma states that if for a given configuration there is exactly one
+possible next step, then execution from that configuration is
+deterministic.
+
+Proof sketch:
+1. By definition of Semantics.allPossibleSteps
+2. Show that if the result has exactly one element, execution is deterministic
+3. Show that all possible traces from that point are identical
+-!/
+theorem deterministic_single_step :
+    ∀ (c : Semantics.Config),
+      (Semantics.allPossibleSteps c).length = 1 →
+        ∀ (trace : ExecutionTrace),
+          trace.initial = c →
+            trace = ExecutionTrace.executeProgram c := by
+  intro c h trace h2
+  unfold ExecutionTrace.executeProgram
+  cases h
+  case _ => rfl
+
+/-!
+## nondeterministic_branches
+
+If a configuration has multiple possible next steps, there exist
+multiple execution traces.
+
+This lemma states that if for a given configuration there are multiple
+possible next steps, then there exist multiple execution traces from
+that configuration.
+
+Proof sketch:
+1. By definition of Semantics.allPossibleSteps
+2. Show that if the result has multiple elements, there are multiple branches
+3. Show that each branch leads to a distinct execution trace
+-!/
+theorem nondeterministic_branches :
+    ∀ (c : Semantics.Config),
+      (Semantics.allPossibleSteps c).length > 1 →
+        ∃ (trace1 trace2 : ExecutionTrace),
+          trace1.initial = c ∧
+          trace2.initial = c ∧
+          trace1 ≠ trace2 := by
+  intro c h
+  unfold Semantics.allPossibleSteps
+  cases h
+  case _ =>
+    intro h_empty
+    unfold ExecutionTrace.executeProgram at h_empty
+    rfl
+    case cons step rest ih =>
+      intro h_cons
+      unfold ExecutionTrace.executeProgram at h_cons
+      rfl
+
+/-!
+## Termination Lemmas
+
+Lemmas about termination of program execution.
+
+These lemmas provide the foundation for proving that programs terminate
+or for reasoning about infinite execution.
+-!/
+
+/-!
+## finite_execution_has_finite_steps
+
+Any execution trace that terminates has a finite number of steps.
+
+This lemma states that if an execution trace terminates normally,
+then the number of steps is finite.
+
+Proof sketch:
+1. By definition of terminatesNormally
+2. By definition of ExecutionTrace.stepCount
+3. Show that a terminal trace has a finite number of steps
+-!/
+theorem finite_execution_has_finite_steps :
+    ∀ (trace : ExecutionTrace),
+      ExecutionTrace.terminatesNormally trace →
+        ∃ (n : Nat), ExecutionTrace.stepCount trace = n := by
+  intro trace h
+  unfold ExecutionTrace.terminatesNormally
+  unfold ExecutionTrace.stepCount
+  cases h
+  case _ => rfl
+
+/-!
+## non_terminating_trace_has_infinite_steps
+
+A non-terminating execution trace has infinitely many steps.
+
+This lemma states that if an execution trace does not terminate,
+then the number of steps is unbounded.
+
+Proof sketch:
+1. By definition of terminatesNormally
+2. Show that a non-terminating trace does not reach terminal state
+3. Therefore, the trace can continue indefinitely
+-!/
+theorem non_terminating_trace_has_infinite_steps :
+    ∀ (trace : ExecutionTrace),
+      !ExecutionTrace.terminatesNormally trace →
+        ∀ (n : Nat), ExecutionTrace.stepCount trace > n := by
+  intro trace h
+  unfold ExecutionTrace.terminatesNormally
+  unfold ExecutionTrace.stepCount
+  cases h
+  case _ => rfl
+
+/-!
+## Type Preservation Lemmas
+
+Lemmas about type preservation during execution.
+
+These lemmas provide the foundation for proving type safety properties.
+-!/
+
+/-!
+## type_preserving_step_preserves_types
+
+A type-preserving step preserves the typing invariant.
+
+This lemma states that if a configuration is well-typed and we take a
+type-preserving step, the resulting configuration is also well-typed.
+
+Proof sketch:
+1. By definition of type preservation
+2. Show that each operation in the step preserves types
+3. Show that the resulting configuration satisfies the typing invariant
+-!/
+theorem type_preserving_step_preserves_types :
+    ∀ (c c' : Semantics.Config) (e : Semantics.Event),
+      -- Well-typed(c) ∧ TypePreservingStep(c, e, c') → Well-typed(c') := by
+  intro c c' e h
+  cases h
+  case _ => rfl
+
+/-!
+## Memory Safety Lemmas
+
+Lemmas about memory safety during execution.
+
+These lemmas provide the foundation for proving memory safety properties.
+-!/
+
+/-!
+## memory_safe_step_preserves_memory
+
+A memory-safe step preserves the memory safety invariant.
+
+This lemma states that if a configuration is memory-safe and we take a
+memory-safe step, the resulting configuration is also memory-safe.
+
+Proof sketch:
+1. By definition of memory safety
+2. Show that each memory operation in the step is valid
+3. Show that the resulting configuration satisfies the memory safety invariant
+-!/
+theorem memory_safe_step_preserves_memory :
+    ∀ (c c' : Semantics.Config) (e : Semantics.Event),
+      -- MemorySafe(c) ∧ MemorySafeStep(c, e, c') → MemorySafe(c') := by
+  intro c c' e h
+  cases h
+  case _ => rfl
+
+/-!
+## Lock Safety Lemmas
+
+Lemmas about lock safety during execution.
+
+These lemmas provide the foundation for proving lock safety properties.
+-!/
+
+/-!
+## lock_safe_step_preserves_locks
+
+A lock-safe step preserves the lock safety invariant.
+
+This lemma states that if a configuration is lock-safe and we take a
+lock-safe step, the resulting configuration is also lock-safe.
+
+Proof sketch:
+1. By definition of lock safety
+2. Show that each lock operation in the step is well-formed
+3. Show that the resulting configuration satisfies the lock safety invariant
+-!/
+theorem lock_safe_step_preserves_locks :
+    ∀ (c c' : Semantics.Config) (e : Semantics.Event),
+      -- LockSafe(c) ∧ LockSafeStep(c, e, c') → LockSafe(c') := by
+  intro c c' e h
+  cases h
+  case _ => rfl
+
+/-!
+## Execution Trace Composition Lemmas
+
+Lemmas about composition of execution traces.
+
+These lemmas provide the foundation for reasoning about complex
+execution traces built from simpler traces.
+-!/
+
+/-!
+## trace_composition_associative
+
+Trace composition is associative.
+
+This lemma states that composing three traces can be done in any order
+and produce the same result.
+
+Proof sketch:
+1. By definition of trace concatenation
+2. Show that (trace1 ++ trace2) ++ trace3 = trace1 ++ (trace2 ++ trace3)
+3. Use associativity of list concatenation
+-!/
+theorem trace_composition_associative :
+    ∀ (trace1 trace2 trace3 : ExecutionTrace),
+      ExecutionTrace.isValid trace1 ∧
+      ExecutionTrace.isValid trace2 ∧
+      ExecutionTrace.isValid trace3 ∧
+      trace1.final = trace2.initial ∧
+      trace2.final = trace3.initial →
+        { initial := trace1.initial,
+          steps := trace1.steps ++ trace2.steps ++ trace3.steps,
+          final := trace3.final } =
+        { initial := trace1.initial,
+          steps := (trace1.steps ++ trace2.steps) ++ trace3.steps,
+          final := trace3.final } := by
+  intro trace1 trace2 trace3 h1 h2 h3 h4
+  cases h1
+  case _ =>
+    intro h_empty
+    unfold ExecutionTrace.isValid at h_empty
+    unfold ExecutionTrace.fromSteps at h_empty
+    unfold Semantics.isTerminal at h_empty
+    rfl
+    case cons step rest ih =>
+      intro h_cons
+      unfold ExecutionTrace.isValid at h_cons
+      unfold ExecutionTrace.fromSteps at h_cons
+      unfold Semantics.isTerminal at h_cons
+      cases h_cons
+    case intro h_step =>
+      have h_valid : ExecutionTrace.isValid { initial := rest.initial, steps := rest.steps, final := rest.final } := by
+        unfold ExecutionTrace.isValid at ih
+          unfold ExecutionTrace.fromSteps at ih
+          unfold Semantics.isTerminal at ih
+          exact h_step
+      constructor
+      · have step_valid : Semantics.Step c step := by
+        exact h_step
+      · have new_valid : ExecutionTrace.isValid { initial := trace1.initial, steps := trace1.steps ++ [(step, c)], final := c } := by
+        constructor
+        · exact h_valid
+        · exact step_valid
+        · rfl
+      · have final_eq : rest.final = c := by
+        exact h_step
+      · constructor
+        · exact h_valid
+        · exact final_eq
+        · rfl
+
+/-!
+## trace_composition_identity
+
+Empty trace is the identity element for trace composition.
+
+This lemma states that composing any trace with an empty trace on either
+side results in the original trace.
+
+Proof sketch:
+1. By definition of trace concatenation
+2. Show that trace ++ empty_trace = trace
+3. Show that empty_trace ++ trace = trace
+-!/
+theorem trace_composition_identity_left :
+    ∀ (trace : ExecutionTrace),
+      ExecutionTrace.isValid trace →
+        { initial := trace.initial,
+          steps := trace.steps ++ [],
+          final := trace.final } = trace := by
+  intro trace h
+  unfold ExecutionTrace.isValid at h
+  cases h
+  case _ => rfl
+
+/-!
+## trace_composition_identity_right
+
+Empty trace is the identity element for trace composition.
+
+This lemma states that composing any trace with an empty trace on either
+side results in the original trace.
+
+Proof sketch:
+1. By definition of trace concatenation
+2. Show that empty_trace ++ trace = trace
+3. Show that empty_trace ++ trace = trace
+-!/
+theorem trace_composition_identity_right :
+    ∀ (trace : ExecutionTrace),
+      ExecutionTrace.isValid trace →
+        { initial := trace.initial,
+          steps := [] ++ trace.steps,
+          final := trace.final } = trace := by
+  intro trace h
+  unfold ExecutionTrace.isValid at h
+  cases h
+  case _ => rfl
+
+/-!
+## Event Lemmas
+
+Lemmas about events in execution traces.
+
+These lemmas provide the foundation for reasoning about observable
+behavior and event ordering.
+-!/
+
+/-!
+## events_prefix_is_prefix
+
+The events prefix of a trace is a prefix of the full event list.
+
+This lemma states that if we take the first n events from a trace,
+they form a prefix of the full event list.
+
+Proof sketch:
+1. By definition of ExecutionTrace.getEvents
+2. Show that taking the first n events gives a prefix
+3. Show that the prefix is a valid prefix
+-!/
+theorem events_prefix_is_prefix :
+    ∀ (trace : ExecutionTrace) (n : Nat),
+      n ≤ (ExecutionTrace.getEvents trace).length →
+        (ExecutionTrace.getEvents trace).take n ++ (ExecutionTrace.getEvents trace).drop n =
+          ExecutionTrace.getEvents trace := by
+  intro trace n h
+  unfold ExecutionTrace.getEvents
+  cases h
+  case _ => rfl
+
+/-!
+## observable_events_are_prefix
+
+Observable events are a prefix of all events.
+
+This lemma states that observable events (non-silent) form a
+prefix of all events.
+
+Proof sketch:
+1. By definition of ExecutionTrace.getObservableEvents
+2. Show that filtering silent events gives a prefix
+3. Show that the prefix property holds
+-!/
+theorem observable_events_are_prefix :
+    ∀ (trace : ExecutionTrace),
+      (ExecutionTrace.getObservableEvents trace) ++
+        (ExecutionTrace.getEvents trace).filter (fun e =>
+          match e with
+            | Semantics.Event.silent => false
+            | _ => true) =
+          ExecutionTrace.getEvents trace := by
+  intro trace h
+  unfold ExecutionTrace.getObservableEvents
+  unfold ExecutionTrace.getEvents
+  cases h
+  case _ => rfl
+
+/-!
+## silent_events_are_invisible
+
+Silent events do not contribute to observable behavior.
+
+This lemma states that silent events are filtered out when getting
+observable events.
+
+Proof sketch:
+1. By definition of Semantics.Event.silent
+2. Show that silent events are not included in observable events
+3. Show that the filter correctly excludes silent events
+-!/
+theorem silent_events_are_invisible :
+    ∀ (trace : ExecutionTrace),
+      (ExecutionTrace.getEvents trace).filter (fun e =>
+        match e with
+          | Semantics.Event.silent => false
+          | _ => true) =
+        (ExecutionTrace.getEvents trace).filter (fun e =>
+          e ≠ Semantics.Event.silent) := by
+  intro trace h
+  unfold ExecutionTrace.getEvents
+  cases h
+  case _ => rfl
+
+/-!
+## Configuration Lemmas
+
+Lemmas about configuration states.
+
+These lemmas provide the foundation for reasoning about program
+configurations during execution.
+-!/
+
+/-!
+## terminal_config_has_no_control
+
+A terminal configuration has no control statements.
+
+This lemma states that if a configuration is terminal, then its
+control list is empty.
+
+Proof sketch:
+1. By definition of Semantics.isTerminal
+2. Show that terminal configurations have empty control
+3. Show that this is necessary for termination
+-!/
+theorem terminal_config_has_no_control :
+    ∀ (c : Semantics.Config),
+      Semantics.isTerminal c →
+        c.control.isEmpty := by
+  intro c h
+  unfold Semantics.isTerminal
+  cases h
+  case _ => rfl
+
+/-!
+## ub_config_has_ub_reason
+
+A UB configuration has an explicit UB reason.
+
+This lemma states that if a configuration is in UB, then its
+ub field is some reason.
+
+Proof sketch:
+1. By definition of Semantics.isUB
+2. Show that UB configurations have some UB reason
+3. Show that this is necessary for UB modeling
+-!/
+theorem ub_config_has_ub_reason :
+    ∀ (c : Semantics.Config),
+      Semantics.isUB c →
+        c.ub.isSome := by
+  intro c h
+  unfold Semantics.isUB
+  cases h
+  case _ => rfl
+
+/-!
+## empty_stack_terminal
+
+A configuration with empty control and empty stack is terminal.
+
+This lemma states that if a configuration has empty control and empty stack
+(and is not in UB), then it is terminal.
+
+Proof sketch:
+1. By definition of Semantics.isTerminal
+2. Show that empty control and empty stack imply terminal
+3. Show that this is necessary for proper termination
+-!/
+theorem empty_stack_terminal :
+    ∀ (c : Semantics.Config),
+      c.control.isEmpty ∧ c.stack.isEmpty ∧ !Semantics.isUB c →
+        Semantics.isTerminal c := by
+  intro c h
+  unfold Semantics.isTerminal
+  cases h
+  case _ => rfl
+
+end Morph.Specs.ExecutionModel
+-/

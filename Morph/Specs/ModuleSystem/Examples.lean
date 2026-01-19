@@ -1,0 +1,400 @@
+/- Copyright 2024-2025 The Morph Project Authors
+SPDX-License-Identifier: Apache-2.0
+
+
+import Morph.Core
+import Morph.Syntax
+import Morph.Specs.ModuleSystem.Spec
+
+namespace Morph.Specs.ModuleSystem
+
+/-!
+## Module System Examples
+
+This module contains concrete examples and test cases for module
+system specification, demonstrating content-addressable linking, workspace
+resolution, and registry protocol.
+
+## Overview
+
+The Module System Examples module provides:
+- Module creation examples
+- Module declaration examples
+- Link table examples
+- Workspace examples
+- Registry examples
+- Version constraint examples
+- Symbol mangling examples
+- Module loading examples
+- Invariant verification examples
+
+## Key Concepts
+
+- **Module Creation:** Demonstrating creating modules with content-addressable hashes
+- **Module Declaration:** Demonstrating creating module declarations
+- **Link Table:** Demonstrating module linking
+- **Workspace:** Demonstrating workspace resolution
+- **Registry:** Demonstrating registry operations
+- **Version Constraints:** Demonstrating version constraints
+- **Symbol Mangling:** Demonstrating symbol name mangling
+- **Module Loading:** Demonstrating module loading from different sources
+- **Invariants:** Demonstrating verification of system invariants
+
+-!/
+## Example 1: Module Creation
+
+Demonstrates creating a module with declarations.
+
+
+-- Example module content 
+def example_module_content : String :=
+  "fn add(x:i32,y:i32):i32{x+y}fn sub(x:i32,y:i32):i32{x-y}"
+
+-- Compute module hash 
+def example_module_hash : String :=
+  computeModuleHash example_module_content
+
+-- Create module ID 
+def example_module_id : ModuleId :=
+  createModuleId example_module_content 1
+
+/- Example: Verify module ID -/
+#eval example_module_id.hash
+-- Expected: Hash of content
+
+#eval example_module_id.version
+-- Expected: 1
+
+/-!
+## Example 2: Module Declaration
+
+Demonstrates creating module declarations.
+
+
+-- Function declaration 
+def example_function_decl : ModuleDecl :=
+  ModuleDecl.functionDecl "add"
+    [("x", Morph.Core.Typ.intType), ("y", Morph.Core.Typ.intType)]
+    Morph.Core.Typ.intType
+
+-- Struct declaration 
+def example_struct_decl : ModuleDecl :=
+  ModuleDecl.structDecl "Point"
+    [("x", Morph.Core.Typ.floatType), ("y", Morph.Core.Typ.floatType)]
+
+-- Enum declaration 
+def example_enum_decl : ModuleDecl :=
+  ModuleDecl.enumDecl "Color" ["Red", "Green", "Blue"]
+
+/- Example: Verify declarations -/
+#eval example_function_decl
+-- Expected: functionDecl "add" [("x", intType), ("y", intType)] intType
+
+#eval example_struct_decl
+-- Expected: structDecl "Point" [("x", floatType), ("y", floatType)]
+
+#eval example_enum_decl
+-- Expected: enumDecl "Color" ["Red", "Green", "Blue"]
+
+/-!
+## Example 3: Module Definition
+
+Demonstrates creating a complete module.
+
+
+-- Example module 
+def example_module : Module :=
+  {
+      id := example_module_id,
+      name := "math",
+      declarations := [example_function_decl, example_struct_decl, example_enum_decl],
+      dependencies := []
+    }
+
+/- Example: Verify module -/
+#eval example_module.name
+-- Expected: "math"
+
+#eval example_module.declarations.length
+-- Expected: 3
+
+/-!
+## Example 4: Link Table
+
+Demonstrates creating and using a link table.
+
+
+-- Create link table with example module 
+def example_link_table : LinkTable :=
+  addToLinkTable [] example_module
+
+-- Resolve module by ID 
+def example_resolved_module : Option Module :=
+  resolveModule example_link_table example_module_id
+
+/- Example: Verify resolution -/
+#eval example_resolved_module.isSome
+-- Expected: true
+
+#eval example_resolved_module.map fun m => m.name
+-- Expected: some "math"
+
+/-!
+## Example 5: Workspace
+
+Demonstrates creating a workspace.
+
+
+-- Workspace configuration 
+def example_workspace_config : WorkspaceConfig :=
+  {
+      searchPaths := ["./src", "./lib"],
+      excludePatterns := ["*.test.min", "node_modules"],
+      maxDepth := 5
+    }
+
+-- Create workspace 
+def example_workspace : Workspace :=
+  {
+      root := "/project",
+      modules := example_link_table,
+      config := example_workspace_config
+    }
+
+-- Resolve module by name in workspace 
+def example_workspace_resolve : Option Module :=
+  resolveModuleByName example_workspace "math"
+
+/- Example: Verify workspace resolution -/
+#eval example_workspace_resolve.isSome
+-- Expected: true
+
+/-!
+## Example 6: Registry
+
+Demonstrates creating and using a registry.
+
+
+-- Registry metadata 
+def example_registry_metadata : RegistryMetadata :=
+  {
+      description := "Math utility functions",
+      author := "Example Author",
+      tags := ["math", "utility"],
+      publishedAt := "2026-01-16"
+    }
+
+-- Publish module to registry 
+def example_registry : Registry :=
+  publishModule [] example_module example_registry_metadata
+
+-- Search registry by name 
+def example_registry_search : List RegistryEntry :=
+  searchRegistryByName example_registry "math"
+
+/- Example: Verify registry search -/
+#eval example_registry_search.length
+-- Expected: 1 (if "math" is a tag)
+
+/-!
+## Example 7: Version Constraints
+
+Demonstrates version constraint satisfaction.
+
+
+-- Exact version constraint 
+def example_constraint_exact : VersionConstraint :=
+  VersionConstraint.exact 1
+
+-- At least version constraint 
+def example_constraint_at_least : VersionConstraint :=
+  VersionConstraint.atLeast 1
+
+-- At most version constraint 
+def example_constraint_at_most : VersionConstraint :=
+  VersionConstraint.atMost 5
+
+-- Range version constraint 
+def example_constraint_range : VersionConstraint :=
+  VersionConstraint.range 1 5
+
+/- Example: Verify constraint satisfaction -/
+#eval satisfiesConstraint 2 example_constraint_exact
+-- Expected: false
+
+#eval satisfiesConstraint 2 example_constraint_at_least
+-- Expected: true
+
+#eval satisfiesConstraint 3 example_constraint_at_most
+-- Expected: true
+
+#eval satisfiesConstraint 4 example_constraint_range 3
+-- Expected: true
+
+/-!
+## Example 8: Symbol Mangling
+
+Demonstrates symbol mangling to avoid conflicts.
+
+
+-- Mangle symbol name 
+def example_mangled_symbol : String :=
+  mangleSymbol example_module_id "add"
+
+-- Mangle function name 
+def example_mangled_function : String :=
+  mangleFunction example_module_id "add"
+    [("x", Morph.Core.Typ.intType), ("y", Morph.Core.Typ.intType)]
+
+/- Example: Verify symbol mangling -/
+#eval example_mangled_symbol
+-- Expected: "{hash}_v1_add"
+
+#eval example_mangled_function
+-- Expected: "{hash}_v1_add_i32_i32"
+
+/-!
+## Example 9: Type to String
+
+Demonstrates type to string conversion for mangling.
+
+
+-- Example types 
+def example_type_int : Morph.Core.Typ := Morph.Core.Typ.intType
+def example_type_bool : Morph.Core.Typ := Morph.Core.Typ.boolType
+def example_type_array : Morph.Core.Typ := Morph.Core.Typ.arrayType Morph.Core.Typ.intType 10
+def example_type_function : Morph.Core.Typ :=
+  Morph.Core.Typ.functionType [Morph.Core.Typ.intType, Morph.Core.Typ.intType]
+    Morph.Core.Typ.intType
+
+/- Convert types to strings -/
+#eval typeToString example_type_int
+-- Expected: "i32"
+
+#eval typeToString example_type_bool
+-- Expected: "bool"
+
+#eval typeToString example_type_array
+-- Expected: "arr_i32_10"
+
+#eval typeToString example_type_function
+-- Expected: "fn_i32_i32_i32"
+
+/-!
+## Example 10: Multi-Version Linking
+
+Demonstrates linking multiple versions of a module.
+
+
+-- Module ID version 1 
+def example_module_id_v1 : ModuleId :=
+  createModuleId example_module_content 1
+
+-- Module ID version 2 
+def example_module_id_v2 : ModuleId :=
+  createModuleId example_module_content 2
+
+-- Module version 1 
+def example_module_v1 : Module :=
+  { example_module with id := example_module_id_v1 }
+
+-- Module version 2 
+def example_module_v2 : Module :=
+  { example_module with id := example_module_id_v2 }
+
+-- Link table with both versions 
+def example_multi_version_table : LinkTable :=
+  addToLinkTable (addToLinkTable [] example_module_v1) example_module_v2
+
+/- Resolve version 1 -/
+def example_resolve_v1 : Option Module :=
+  resolveModule example_multi_version_table example_module_id_v1
+
+/- Resolve version 2 -/
+def example_resolve_v2 : Option Module :=
+  resolveModule example_multi_version_table example_module_id_v2
+
+/- Example: Verify multi-version resolution -/
+#eval example_resolve_v1.map fun m => m.id.version
+-- Expected: some 1
+
+#eval example_resolve_v2.map fun m => m.id.version
+-- Expected: some 2
+
+/-!
+## Example 11: Module Dependencies
+
+Demonstrates modules with dependencies.
+
+
+-- Dependency module ID 
+def example_dependency_id : ModuleId :=
+  createModuleId "use std::io" 1
+
+-- Module with dependencies 
+def example_module_with_deps : Module :=
+  {
+      id := example_module_id,
+      name := "math",
+      declarations := [example_function_decl],
+      dependencies := [example_dependency_id]
+    }
+
+/- Example: Verify dependencies -/
+#eval example_module_with_deps.dependencies.length
+-- Expected: 1
+
+/-!
+## Example 12: Registry Tag Search
+
+Demonstrates searching registry by tags.
+
+
+-- Search by tag 
+def example_tag_search : List RegistryEntry :=
+  searchRegistryByTag example_registry "math"
+
+/- Example: Verify tag search -/
+#eval example_tag_search.length
+-- Expected: 1 (if "math" is a tag)
+
+/-!
+## Example 13: Invariant Verification
+
+Demonstrates verification of module system invariants.
+
+
+/- Verify INV-001: Module hash is deterministic -/
+example_INV001 : module_hash_deterministic example_module_content := by
+  unfold module_hash_deterministic
+  trivial
+
+/- Verify INV-002: Module ID uniquely identifies module -/
+example_INV002 : module_id_uniquely_identifies_module example_module_id
+  example_module_id := by
+  unfold module_id_uniquely_identifies_module
+  constructor
+  · rfl
+  · rfl
+
+/- Verify INV-003: Link table is consistent -/
+example_INV003 : link_table_consistent example_link_table := by
+  unfold link_table_consistent
+  trivial
+
+/- Verify INV-004: Workspace root is valid -/
+example_INV004 : workspace_root_valid example_workspace := by
+  unfold workspace_root_valid
+  trivial
+
+/-!
+## Notes
+
+- All examples are simplified for clarity
+- Some proofs use `sorry` (placeholder) for brevity
+- These examples demonstrate how to formal definitions apply to practical scenarios
+- Examples can be used as test cases for verification
+- The examples follow the coding standards with 2-space indentation and camelCase naming
+
+end Morph.Specs.ModuleSystem
+-!/

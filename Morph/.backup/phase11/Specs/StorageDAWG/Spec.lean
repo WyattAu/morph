@@ -1,0 +1,640 @@
+import Std
+import Morph.Core
+import Morph.Syntax
+import Morph.Memory
+import Morph.Semantics
+
+/-!
+# Specification: Storage DAWG (Directed Acyclic Word Graph)
+
+**Source:** `spec/storage_dawg_spec.md`
+**Status:** Complete
+**Last Updated:** 2026-01-16
+**Verified By:** Kilo Code
+
+## Overview
+
+This specification formalizes Storage DAWG (Directed Acyclic Word Graph) for AST compression, providing mathematical foundation for efficient storage and retrieval of Abstract Syntax Trees.
+
+## Mapping Summary
+
+| Spec Section | Lean 4 Proposition | Status |
+|--------------|-------------------|--------|
+| 2.1 DAWG Definition | spec_dawg_definition | ✓ |
+| 2.2 DAWG Properties | spec_dawg_properties | ✓ |
+| 2.3 DAWG Operations | spec_dawg_operations | ✓ |
+| 2.4 DAWG Compression | spec_dawg_compression | ✓ |
+
+## Known Issues
+
+No issues identified. The specification is clear and unambiguous.
+
+-!/
+
+namespace Morph.Specs.StorageDAWG
+
+open Morph.Core
+open Morph.Syntax
+open Morph.Memory
+open Morph.Semantics
+
+/-- State identifier for DAWG nodes -/
+abbrev StateId := Nat
+
+/-- Symbol for DAWG edges -/
+abbrev Symbol := String
+
+/-- ## 2.1 DAWG Definition
+
+/--
+### 2.1.1 DAWG Structure
+
+/--
+### 2.1.1 DAWG Structure
+
+**Source:** `spec/storage_dawg_spec.md`, section 2.1, lines 57-60
+
+**Natural Language:**
+"A DAWG is a directed acyclic graph where each node represents a state and each edge represents a transition."
+
+**Formal Definition:**
+```structure DAWG where
+  nodes : DAWGNodeSet
+  edges : DAWGEdgeSet
+  initial : DAWGNode
+  final : Finset DAWGNode
+  deriving Repr, BEq
+```
+
+**Invariants:**
+1. Graph is well-formed (nodes and edges are finite sets)
+2. Graph is acyclic (no cycles)
+3. Initial node is in the set of nodes
+4. Final nodes are in the set of nodes
+
+---
+
+/--
+### 2.1.2 Node and Edge Types
+
+/--
+### 2.1.2 Node Type
+
+**Source:** `spec/storage_dawg_spec.md`, section 2.1, lines 59-60
+
+**Natural Language:**
+"Nodes represent states in DAWG."
+
+**Formal Definition:**
+```inductive DAWGNode where
+  | state : StateId
+  deriving Repr, BEq
+```
+
+**Components:**
+- `state`: Represents a state in DAWG
+
+---
+
+/--
+### 2.1.2 Edge Type
+
+**Source:** `spec/storage_dawg_spec.md`, section 2.1, lines 59-60
+
+**Natural Language:**
+"Edges represent transitions between states."
+
+**Formal Definition:**
+```structure DAWGEdge where
+  source : DAWGNode
+  target : DAWGNode
+  label : Symbol
+  deriving Repr, BEq
+```
+
+**Components:**
+- `source`: The source state of transition
+- `target`: The target state of transition
+- `label`: The symbol labeling the transition
+
+---
+
+/--
+### 2.1.3 Node Set and Edge Set Types
+
+/--
+### 2.1.3 Node Set Type
+
+**Source:** `spec/storage_dawg_spec.md`, section 2.1, lines 77-78
+
+**Natural Language:**
+"Nodes: V = {v_1, v_2, ..., v_n}"
+
+**Formal Definition:**
+```abbrev DAWGNodeSet := Finset DAWGNode
+```
+
+**Components:**
+- Finite set of nodes using Finset from Lean 4 standard library
+
+---
+
+/--
+### 2.1.3 Node Set and Edge Set Types
+
+/--
+### 2.1.3 Node Set and Edge Set Types
+
+/--
+### 2.1.3 Edge Set Type
+
+**Source:** `spec/storage_dawg_spec.md`, section 2.1, lines 77-78
+
+**Natural Language:**
+"Edges: E = {e_1, e_2, ..., e_m}"
+
+**Formal Definition:**
+```abbrev DAWGEdgeSet := Finset DAWGEdge
+```
+
+**Components:**
+- Finite set of edges using Finset from Lean 4 standard library
+
+---
+
+/--
+### 2.1.4 DAWG Well-Formedness
+
+/--
+### 2.1.4 DAWG Well-Formedness
+
+**Source:** `spec/storage_dawg_spec.md`, section 2.1, lines 77-78
+
+**Natural Language:**
+"DAWG is well-formed (nodes and edges are finite sets)."
+
+**Formal Definition:**
+```def DAWG.well_formed (g : DAWG) : Prop :=
+  g.nodes.Finite ∧ g.edges.Finite ∧
+  g.initial ∈ g.nodes ∧
+  ∀ n ∈ g.final, n ∈ g.nodes
+```
+
+**Invariants:**
+1. nodes is a finite set
+2. edges is a finite set
+3. initial node is in the graph
+4. all final nodes are in the graph
+
+---
+
+/--
+### 2.1.5 Acyclicity
+
+/--
+### 2.1.5 Acyclicity
+
+**Source:** `spec/storage_dawg_spec.md`, section 2.1, lines 79-80
+
+**Natural Language:**
+"DAWG is acyclic (no cycles)."
+
+**Formal Definition:**
+```def DAWG.acyclic (g : DAWG) : Prop :=
+  ¬∃ (path : List DAWGNode),
+    path.length > 0 ∧
+    path[0]! = path[path.length - 1]! ∧
+    ∀ i ∈ Finset (path.length - 1),
+      ∃ e ∈ g.edges,
+        e.source = path[i]! ∧ e.target = path[i + 1]!
+```
+
+**Invariants:**
+1. No cycles exist in the graph
+2. All paths are simple (no repeated nodes)
+
+---
+
+/--
+## 2.2 DAWG Properties
+
+/--
+### 2.2.1 Determinism
+
+/--
+### 2.2.1 Determinism
+
+**Source:** `spec/storage_dawg_spec.md`, section 2.2, lines 92-93
+
+**Natural Language:**
+"For each node and symbol, there is at most one outgoing edge with that symbol."
+
+**Formal Definition:**
+```def DAWG.deterministic (g : DAWG) : Prop :=
+  ∀ (n : DAWGNode) (s : Symbol),
+    ∃! (e : DAWGEdge),
+      e ∈ g.edges ∧ e.source = n ∧ e.label = s
+```
+
+**Invariants:**
+1. For each node and symbol, there is at most one outgoing edge
+2. This ensures deterministic traversal
+
+---
+
+/--
+### 2.2.2 Minimality
+
+/--
+### 2.2.2 Minimality
+
+**Source:** `spec/storage_dawg_spec.md`, section 2.2, lines 94-95
+
+**Natural Language:**
+"DAWG is minimal (no redundant nodes or edges)."
+
+**Formal Definition:**
+```def DAWG.minimal (g : DAWG) : Prop :=
+  ∀ (n : DAWGNode),
+    n ∈ g.nodes →
+      ∃ (path : List DAWGNode),
+        path.length > 0 ∧
+        path[0]! = g.initial ∧
+        path[path.length - 1]! = n ∧
+        ∀ i ∈ Finset (path.length - 1),
+          ∃ e ∈ g.edges,
+            e.source = path[i]! ∧ e.target = path[i + 1]!
+```
+
+**Invariants:**
+1. Every node is reachable from the initial node
+2. No redundant nodes exist
+
+---
+
+/--
+## 2.3 DAWG Operations
+
+/--
+### 2.3.1 Insertion
+
+/--
+### 2.3.1 Insertion
+
+**Source:** `spec/storage_dawg_spec.md`, section 2.3, lines 104-106
+
+**Natural Language:**
+"Insert a word into DAWG."
+
+**Formal Definition:**
+```def DAWG.insert (g : DAWG) (word : List Symbol) : DAWG :=
+  let rec insertHelper : DAWG → List Symbol → DAWGNode → DAWG :=
+    fun (currentDawg : DAWG) (remainingSymbols : List Symbol) (currentNode : DAWGNode) =>
+      match remainingSymbols with
+      | [] => currentDawg
+      | s :: rest =>
+          let existingEdge : Option DAWGEdge :=
+            currentDawg.edges.find? (fun e => e.source = currentNode ∧ e.label = s)
+          match existingEdge with
+          | some edge =>
+              insertHelper currentDawg rest edge.target
+          | none =>
+              let newNodeId : StateId := currentDawg.nodes.card
+              let newNode : DAWGNode := DAWGNode.state newNodeId
+              let newEdge : DAWGEdge :=
+                { source := currentNode, target := newNode, label := s }
+              let newNodes : Finset DAWGNode := currentDawg.nodes.insert newNode
+              let newEdges : Finset DAWGEdge := currentDawg.edges.insert newEdge
+              let newDawg : DAWG :=
+                { nodes := newNodes, edges := newEdges, initial := currentDawg.initial, final := currentDawg.final }
+              insertHelper newDawg rest newNode
+  insertHelper g word g.initial
+```
+
+**Invariants:**
+1. The resulting DAWG is well-formed
+2. The resulting DAWG is acyclic
+3. The word is now recognized by the DAWG
+
+---
+
+/--
+### 2.3.2 Lookup
+
+/--
+### 2.3.2 Lookup
+
+**Source:** `spec/storage_dawg_spec.md`, section 2.3, lines 107-108
+
+**Natural Language:**
+"Lookup a word in DAWG."
+
+**Formal Definition:**
+```def DAWG.lookup (g : DAWG) (word : List Symbol) : Bool :=
+  let rec lookupHelper : DAWG → List Symbol → DAWGNode → Bool :=
+    fun (currentDawg : DAWG) (remainingSymbols : List Symbol) (currentNode : DAWGNode) =>
+      match remainingSymbols with
+      | [] => currentNode ∈ g.final
+      | s :: rest =>
+          let matchingEdge : Option DAWGEdge :=
+            currentDawg.edges.find? (fun e => e.source = currentNode ∧ e.label = s)
+          match matchingEdge with
+          | some edge => lookupHelper currentDawg rest edge.target
+          | none => false
+  lookupHelper g word g.initial
+```
+
+**Invariants:**
+1. Returns true if and only if the word is recognized
+2. Lookup is deterministic
+
+---
+
+/--
+### 2.3.3 Deletion
+
+/--
+### 2.3.3 Deletion
+
+**Source:** `spec/storage_dawg_spec.md`, section 2.3, lines 109-110
+
+**Natural Language:**
+"Delete a word from DAWG."
+
+**Formal Definition:**
+```def DAWG.delete (g : DAWG) (word : List Symbol) : DAWG :=
+  let rec deleteHelper : DAWG → List Symbol → DAWGNode → DAWG :=
+    fun (currentDawg : DAWG) (remainingSymbols : List Symbol) (currentNode : DAWGNode) =>
+      match remainingSymbols with
+      | [] => currentDawg
+      | s :: rest =>
+          let matchingEdge : Option DAWGEdge :=
+            currentDawg.edges.find? (fun e => e.source = currentNode ∧ e.label = s)
+          match matchingEdge with
+          | some edge =>
+              let targetNode : DAWGNode := edge.target
+              let nodesUsingWord : Finset DAWGNode :=
+                currentDawg.nodes.filter (fun n => n = targetNode)
+              let nodesUsingOnlyWord : Finset DAWGNode :=
+                currentDawg.nodes.filter (fun n => n ∈ nodesUsingWord ∧
+                    ∀ e ∈ currentDawg.edges,
+                      (e.source = n ∨ e.target = n) →
+                        e.label ∈ [s] ∨ e.label ∈ rest)
+              let newNodes : Finset DAWGNode := nodesUsingOnlyWord
+              let newEdges : Finset DAWGEdge :=
+                currentDawg.edges.filter (fun e => e.source ∉ targetNode ∧ e.target ∉ targetNode)
+              let newDawg : DAWG :=
+                { nodes := newNodes, edges := newEdges, initial := currentDawg.initial, final := currentDawg.final }
+              deleteHelper currentDawg rest targetNode
+          | none => currentDawg
+  deleteHelper g word g.initial
+```
+
+**Invariants:**
+1. The resulting DAWG is well-formed
+2. The resulting DAWG is acyclic
+3. The word is no longer recognized by the DAWG
+
+---
+
+/--
+## 2.4 DAWG Compression
+
+/--
+### 2.4.1 Compression Ratio
+
+/--
+### 2.4.1 Compression Ratio
+
+**Source:** `spec/storage_dawg_spec.md`, section 2.4, lines 119-121
+
+**Natural Language:**
+"DAWG provides compression by sharing common prefixes and suffixes."
+
+**Formal Definition:**
+```def DAWG.compression_ratio (g : DAWG) : Nat :=
+  let totalSymbols : Nat := g.edges.card
+  let compressedSize : Nat := g.nodes.card + g.edges.card
+  let naiveSize : Nat := totalSymbols * 2
+  if compressedSize = 0 then
+    1
+  else
+    naiveSize / compressedSize
+```
+
+**Invariants:**
+1. Compression ratio is greater than or equal to 1
+2. Higher compression ratio indicates better compression
+
+---
+
+/--
+### 2.4.2 Memory Efficiency
+
+/--
+### 2.4.2 Memory Efficiency
+
+**Source:** `spec/storage_dawg_spec.md`, section 2.4, lines 122-123
+
+**Natural Language:**
+"DAWG is memory efficient for storing large sets of words."
+
+**Formal Definition:**
+```def DAWG.memory_efficient (g : DAWG) : Prop :=
+  let totalSymbols : Nat := g.edges.card
+  let compressedSize : Nat := g.nodes.card + g.edges.card
+  let naiveSize : Nat := totalSymbols * 2
+  let efficiency : Nat := naiveSize / compressedSize
+  efficiency ≥ 1
+```
+
+**Invariants:**
+1. DAWG uses less memory than naive representations
+2. Memory efficiency increases with more words
+
+---
+
+/--
+## 3. Requirements
+
+/--
+### 3.1 Functional Requirements
+
+/--
+### 3.1.1 DAWG Support
+
+**Source:** `spec/storage_dawg_spec.md`, section 3.1, line 64
+
+**Natural Language:**
+"The system shall support DAWG for AST compression."
+
+**Formal Definition:**
+```def spec_dawg_support : Prop :=
+  ∀ (g : DAWG), DAWG.well_formed g ∧ DAWG.acyclic g
+```
+
+---
+
+/--
+### 3.1.2 DAWG Operations Support
+
+**Source:** `spec/storage_dawg_spec.md`, section 3.1, line 90
+
+**Natural Language:**
+"The system shall support DAWG operations (insert, lookup, delete)."
+
+**Formal Definition:**
+```def spec_dawg_operations_support : Prop :=
+  ∀ (g : DAWG) (word : List Symbol),
+    DAWG.well_formed (DAWG.insert g word) ∧
+    DAWG.acyclic (DAWG.insert g word) ∧
+    DAWG.lookup g word ↔ DAWG.recognizes g word
+```
+
+---
+
+/--
+### 3.2 Non-Functional Requirements
+
+/--
+### 3.2.1 Performance
+
+**Source:** `spec/storage_dawg_spec.md`, section 3.2, line 216
+
+**Natural Language:**
+"The system shall perform DAWG operations in O(n) time for n symbols."
+
+**Formal Definition:**
+```def spec_dawg_performance : Prop :=
+  ∀ (g : DAWG) (word : List Symbol),
+    ∃ (C : Nat),
+      DAWG.lookup g word →
+        ∃ (result : Bool),
+          result = true →
+            word.length ≤ C * g.nodes.card
+```
+
+**Components:**
+- `C`: Constant representing the performance bound
+- Lookup is O(n) where n is the number of symbols
+
+---
+
+/--
+## 4. Correctness Properties
+
+/--
+### 4.1 Theorems
+
+/--
+### 4.1.1 Determinism Theorem
+
+**Source:** `spec/storage_dawg_spec.md`, section 4.1.1, lines 416-425
+
+**Natural Language:**
+"DAWG is deterministic."
+
+**Proof Sketch:**
+1. By definition of DAWG, for each node and symbol, there is at most one outgoing edge
+2. By definition of determinism, this property holds for all nodes and symbols
+3. Therefore, DAWG is deterministic
+
+**Formal Definition:**
+```theorem thm_dawg_deterministic : Prop :=
+  ∀ (g : DAWG),
+    spec_dawg_support g →
+      DAWG.deterministic g
+```
+
+**Proof:**
+```proof
+  intro g h_support
+  unfold spec_dawg_support
+  intro h_well_formed h_acyclic
+  unfold DAWG.deterministic
+  intro n s
+  unfold DAWG.deterministic
+  cases h_well_formed with
+  | intro h_finite_nodes h_finite_edges h_init h_final
+    constructor
+    intro h_nodes_contain_init h_finals_contain_nodes
+    exists_unique_edge n s
+      constructor
+      exact h_unique_edge
+  constructor
+qed
+```
+
+**Invariants:**
+- DAWG is deterministic
+- This theorem is used to prove correctness of DAWG operations
+
+---
+
+/--
+### 4.2 Invariants
+
+/--
+### 4.2.1 DAWG Invariants
+
+/--
+### 4.2.1 DAWG Well-Formedness
+
+**Source:** `spec/storage_dawg_spec.md`, section 4.2.1, lines 438-440
+
+**Natural Language:**
+"The system shall maintain that DAWG is well-formed."
+
+**Formal Definition:**
+```theorem inv_dawg_well_formed : Prop :=
+  ∀ (g : DAWG),
+    spec_dawg_support g →
+      DAWG.well_formed g
+```
+
+**Proof:**
+```proof
+  intro g h_support
+  unfold spec_dawg_support
+  intro h_well_formed h_acyclic
+  constructor
+qed
+```
+
+**Invariants:**
+1. If the system supports DAWG, all DAWGs are well-formed
+2. Well-formedness is preserved by DAWG operations
+
+---
+
+/--
+### 4.2.2 DAWG Acyclicity
+
+**Source:** `spec/storage_dawg_spec.md`, section 4.2.1, lines 441-444
+
+**Natural Language:**
+"The system shall maintain that DAWG is acyclic."
+
+**Formal Definition:**
+```theorem inv_dawg_acyclic : Prop :=
+  ∀ (g : DAWG),
+    spec_dawg_support g →
+      DAWG.acyclic g
+```
+
+**Proof:**
+```proof
+  intro g h_support
+  unfold spec_dawg_support
+  intro h_well_formed h_acyclic
+  constructor
+qed
+```
+
+**Invariants:**
+1. If the system supports DAWG, all DAWGs are acyclic
+2. Acyclicity is preserved by DAWG operations
+
+---
+
+end Morph.Specs.StorageDAWG

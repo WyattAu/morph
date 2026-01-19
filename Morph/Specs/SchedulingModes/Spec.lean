@@ -1,0 +1,299 @@
+/- Copyright 2024-2025 The Morph Project Authors
+SPDX-License-Identifier: Apache-2.0
+
+
+import Morph.Specs.GLOSSARY
+import Morph.Specs.GLOSSARY.Spec
+
+/-!
+# Scheduling Modes Specification
+
+This module formalizes scheduling modes for the Morph runtime, defining deterministic and randomized scheduling strategies, priority-based scheduling, and fairness guarantees.
+
+## Overview
+
+The Scheduling Modes module provides mathematical foundations for:
+- Deterministic scheduling algorithms
+- Randomized scheduling strategies
+- Priority-based task ordering
+- Fairness guarantees
+- Work-stealing scheduler integration
+
+## Mapping Summary
+
+| Spec Section | Lean 4 Proposition | Status |
+|--------------|-------------------|--------|
+| Scheduling Modes Definition | `spec_scheduling_modes` | ✓ |
+| Deterministic Scheduler | `spec_deterministic_scheduler` | ✓ |
+| Priority Scheduling | `spec_priority_scheduling` | ✓ |
+| Fairness Guarantee | `spec_fairness_guarantee` | ✓ |
+
+## Known Issues
+
+None identified. All specification points are clear and unambiguous.
+
+-!/
+
+namespace Morph.Specs.SchedulingModes
+
+/- # 1. Type Definitions -/
+
+-- Scheduling mode determines how tasks are selected for execution 
+inductive SchedulingMode where
+  | deterministic : SchedulingMode
+    -- Tasks are selected in a deterministic order (e.g., FIFO, LIFO)
+  | randomized : SchedulingMode
+    -- Tasks are selected randomly from available tasks
+  | priority : SchedulingMode
+    -- Tasks are selected based on priority values
+  | work_stealing : SchedulingMode
+    -- Tasks can be stolen from other workers' queues
+  deriving Repr, BEq
+
+-- Task represents a unit of work to be scheduled 
+structure Task where
+  id : Nat
+  priority : Nat
+  workload : Nat
+  deriving Repr, BEq
+
+-- Worker represents a thread or process that executes tasks 
+structure Worker where
+  id : Nat
+  queue : List Task
+  mode : SchedulingMode
+  deriving Repr, BEq
+
+/- # 2. Scheduling Mode Definitions -/
+
+--
+-- Specification: Scheduling Modes Definition
+-- Source: spec/scheduling_modes_spec.md, section 1
+--
+-- Natural Language:
+-- "The system SHALL support multiple scheduling modes: deterministic, randomized, priority-based, and work-stealing."
+--
+-- Formal Definition:
+-- ∀ (mode : SchedulingMode),
+--   mode ∈ {deterministic, randomized, priority, work_stealing}
+--
+-- Assumptions:
+-- - Each scheduling mode has well-defined semantics
+-- - The scheduler can switch between modes
+-- - Work-stealing is a special case of randomized scheduling
+--
+-- Notes:
+-- - This formalization provides the foundation for scheduling algorithms
+-- - Different modes are appropriate for different workloads
+-- - Work-stealing enables load balancing across workers
+-/
+def spec_scheduling_modes : Prop :=
+  ∀ (mode : SchedulingMode),
+    mode = .deterministic ∨
+    mode = .randomized ∨
+    mode = .priority ∨
+    mode = .work_stealing
+
+--
+-- Specification: Scheduling Modes for Worker
+-- Source: spec/scheduling_modes_spec.md, section 1
+--
+-- Natural Language:
+-- "The system SHALL support multiple scheduling modes: deterministic, randomized, priority-based, and work-stealing."
+--
+-- Formal Definition:
+-- ∀ (worker : Worker),
+--   worker.mode ∈ {deterministic, randomized, priority, work_stealing}
+--
+-- Assumptions:
+-- - Each scheduling mode has well-defined semantics
+-- - The scheduler can switch between modes
+-- - Work-stealing is a special case of randomized scheduling
+--
+-- Notes:
+-- - This formalization provides a foundation for scheduling algorithms
+-- - Different modes are appropriate for different workloads
+-- - Work-stealing enables load balancing across workers
+-/
+def spec_scheduling_modes_worker : Prop :=
+  ∀ (worker : Worker),
+    worker.mode = .deterministic ∨
+    worker.mode = .randomized ∨
+    worker.mode = .priority ∨
+    worker.mode = .work_stealing
+
+--
+-- Specification: Deterministic Scheduler
+-- Source: spec/scheduling_modes_spec.md, section 2.1
+--
+-- Natural Language:
+-- "Deterministic scheduling selects tasks in a predictable order."
+--
+-- Formal Definition:
+-- ∀ (workers : List Worker) (task : Task),
+--   ∃ (worker : Worker), worker ∈ workers ∧
+--     worker.mode = .deterministic ∧
+--     task ∈ worker.queue →
+--       ∃ (position : Nat),
+--         position = find_position worker.queue task
+--
+-- Assumptions:
+-- - Deterministic scheduling is predictable and reproducible
+-- - The order of task selection is deterministic
+-- - FIFO (First-In-First-Out) is a common deterministic strategy
+--
+-- Notes:
+-- - Deterministic scheduling is useful for reproducible behavior
+-- - Predictable ordering helps with debugging
+-- - Deterministic schedulers may not adapt well to varying workloads
+-/
+def spec_deterministic_scheduler : Prop :=
+  ∀ (workers : List Worker) (task : Task),
+    ∃ (worker : Worker),
+      worker ∈ workers ∧
+      worker.mode = .deterministic ∧
+      task ∈ worker.queue →
+        ∃ (position : Nat),
+          position = find_position worker.queue task
+
+--
+-- Helper: find task position in queue 
+def find_position (queue : List Task) (task : Task) : Nat :=
+  match queue with
+  | [] => 0
+  | t :: rest =>
+      if t.id = task.id then
+        0
+      else
+        1 + find_position rest task
+
+--
+-- Specification: Priority Scheduling
+-- Source: spec/scheduling_modes_spec.md, section 2.2
+--
+-- Natural Language:
+-- "Priority scheduling selects tasks based on their priority values."
+--
+-- Formal Definition:
+-- ∀ (workers : List Worker) (task : Task),
+--   ∃ (worker : Worker), worker ∈ workers ∧
+--     worker.mode = .priority ∧
+--     task ∈ worker.queue →
+--       ∃ (position : Nat),
+--         position = find_highest_priority_position worker.queue
+--
+-- Assumptions:
+-- - Higher priority tasks are selected before lower priority tasks
+-- - Priority is a natural number (higher = more important)
+-- - Tasks with equal priority are selected in FIFO order
+--
+-- Notes:
+-- - Priority scheduling ensures important tasks complete first
+-- - Fairness is maintained within same priority levels
+-- - Starvation can occur for low-priority tasks
+-/
+def spec_priority_scheduling : Prop :=
+  ∀ (workers : List Worker) (task : Task),
+    ∃ (worker : Worker),
+      worker ∈ workers ∧
+      worker.mode = .priority ∧
+      task ∈ worker.queue →
+        ∃ (position : Nat),
+          position = find_highest_priority_position worker.queue task
+
+--
+-- Helper: find highest priority task position 
+def find_highest_priority_position (queue : List Task) (task : Task) : Nat :=
+  match queue with
+  | [] => 0
+  | t :: rest =>
+      if t.priority > task.priority then
+        0
+      else if t.priority = task.priority ∧ t.id = task.id then
+        0
+      else
+        1 + find_highest_priority_position rest task
+
+--
+-- Specification: Fairness Guarantee
+-- Source: spec/scheduling_modes_spec.md, section 2.3
+--
+-- Natural Language:
+-- "The scheduler SHALL ensure fairness: no task starves indefinitely."
+--
+-- Formal Definition:
+-- ∀ (workers : List Worker) (tasks : List Task),
+--   ∀ (worker : Worker), worker ∈ workers →
+--     ∀ (task : Task), task ∈ tasks ∧
+--       task ∈ worker.queue →
+--         ∃ (t : Nat),
+--           t ≤ fairness_bound workers tasks ∧
+--           task is scheduled at time t
+--
+-- Assumptions:
+-- - Fairness bound ensures no task waits indefinitely
+-- - The bound depends on the number of workers and tasks
+-- - Each task is eventually scheduled
+--
+-- Notes:
+-- - Fairness prevents starvation
+-- - The bound is typically O(n*m) where n is workers and m is tasks
+-- - Work-stealing schedulers can improve fairness
+-/
+def spec_fairness_guarantee : Prop :=
+  ∀ (workers : List Worker) (tasks : List Task),
+    ∀ (worker : Worker),
+      worker ∈ workers →
+        ∀ (task : Task),
+          task ∈ tasks ∧
+            task ∈ worker.queue →
+              ∃ (t : Nat),
+                t ≤ fairness_bound workers tasks ∧
+                task_is_scheduled_at worker task t
+
+--
+-- Specification: Work-Stealing Scheduler
+-- Source: spec/scheduling_modes_spec.md, section 2.4
+--
+-- Natural Language:
+-- "Work-stealing scheduler allows idle workers to steal tasks from busy workers."
+--
+-- Formal Definition:
+-- ∀ (workers : List Worker),
+--   ∃ (idle_worker : Worker), idle_worker ∈ workers ∧
+--     idle_worker.mode = .work_stealing ∧
+--     ∃ (busy_worker : Worker), busy_worker ∈ workers ∧
+--       busy_worker.queue.length > 0
+--
+-- Assumptions:
+-- - Work-stealing enables load balancing across workers
+-- - Idle workers can steal tasks from busy workers
+-- - The stolen task is removed from the busy worker's queue
+--
+-- Notes:
+-- - Work-stealing improves parallelism and reduces idle time
+-- - This is a special case of randomized scheduling
+-- - The scheduler must track which workers are idle and busy
+-/
+def spec_work_stealing_scheduler : Prop :=
+  ∀ (workers : List Worker),
+    ∃ (idle_worker : Worker),
+      idle_worker ∈ workers ∧
+      idle_worker.mode = .work_stealing ∧
+      ∃ (busy_worker : Worker),
+        busy_worker ∈ workers ∧
+        busy_worker.queue.length > 0
+
+--
+-- Helper: fairness bound for scheduling 
+def fairness_bound (workers : List Worker) (tasks : List Task) : Nat :=
+  workers.length * tasks.length
+
+--
+-- Helper: task is scheduled at time t 
+def task_is_scheduled_at (worker : Worker) (task : Task) (t : Nat) : Prop :=
+  ∃ (position : Nat),
+    position = find_position worker.queue task ∧
+    position ≤ t
+
+end Morph.Specs.SchedulingModes

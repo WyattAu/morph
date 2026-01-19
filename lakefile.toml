@@ -1,0 +1,16 @@
+[package]
+name = "morph"
+version = "0.1.0"
+
+[dependencies]
+batteries = { git = "https://github.com/leanprover-community/batteries", rev = "v4.10.0" }
+aesop = { git = "https://github.com/JLimperg/aesop", rev = "v4.10.0" }
+mathlib = { git = "https://github.com/leanprover-community/mathlib4", rev = "v4.10.0" }
+
+[[lean_lib]]
+name = "Morph"
+globs = ["Morph.+"]
+
+[[lean_lib]]
+name = "Morph.Tests"
+globs = ["Morph.Tests.+"]

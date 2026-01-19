@@ -1,0 +1,14 @@
+info: [root]: lakefile.lean and lakefile.toml are both present; using lakefile.lean
+✔ [1/5] Fetched proofwidgets:optRelease
+✔ [2/5] Built Morph.Core
+✔ [3/5] Built Morph.Syntax
+✔ [4/5] Built Morph.Memory
+✖ [5/5] Building Morph.Specs.GLOSSARY
+trace: .> LEAN_PATH=.\.\.lake/packages\batteries\.lake\build\lib;.\.\.lake/packages\Qq\.lake\build\lib;.\.\.lake/packages\aesop\.lake\build\lib;.\.\.lake/packages\proofwidgets\.lake\build\lib;.\.\.lake/packages\Cli\.lake\build\lib;.\.\.lake/packages\importGraph\.lake\build\lib;.\.\.lake/packages\mathlib\.lake\build\lib;.\.\.lake\build\lib PATH c:\Users\wyatt\.elan\toolchains\leanprover--lean4---v4.10.0\bin\lean.exe .\.\.\.\Morph\Specs\GLOSSARY.lean -R .\.\.\. -o .\.\.lake\build\lib\Morph\Specs\GLOSSARY.olean -i .\.\.lake\build\lib\Morph\Specs\GLOSSARY.ilean -c .\.\.lake\build\ir\Morph\Specs\GLOSSARY.c --json
+error: .\.\.\.\Morph\Specs\GLOSSARY.lean:9:0: unexpected token '#'; expected command
+error: .\.\.\.\Morph\Specs\GLOSSARY.lean:12:33: unexpected token 'for'; expected identifier
+error: .\.\.\.\Morph\Specs\GLOSSARY.lean:32:0: invalid 'import' command, it must be used in the beginning of the file
+error: Lean exited with code 1
+Some builds logged failures:
+- Morph.Specs.GLOSSARY
+error: build failed

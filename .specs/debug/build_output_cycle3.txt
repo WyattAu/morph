@@ -1,0 +1,15 @@
+info: [root]: lakefile.lean and lakefile.toml are both present; using lakefile.lean
+✔ [1/5] Fetched proofwidgets:optRelease
+✔ [2/5] Built Morph.Core
+✔ [3/5] Built Morph.Syntax
+✔ [4/5] Built Morph.Memory
+✖ [5/5] Building Morph.Specs.GLOSSARY
+trace: .> LEAN_PATH=.\.\.lake/packages\batteries\.lake\build\lib;.\.\.lake/packages\Qq\.lake\build\lib;.\.\.lake/packages\aesop\.lake\build\lib;.\.\.lake/packages\proofwidgets\.lake\build\lib;.\.\.lake/packages\Cli\.lake\build\lib;.\.\.lake/packages\importGraph\.lake\build\lib;.\.\.lake/packages\mathlib\.lake\build\lib;.\.\.lake\build\lib PATH c:\Users\wyatt\.elan\toolchains\leanprover--lean4---v4.10.0\bin\lean.exe .\.\.\.\Morph\Specs\GLOSSARY.lean -R .\.\.\. -o .\.\.lake\build\lib\Morph\Specs\GLOSSARY.olean -i .\.\.lake\build\lib\Morph\Specs\GLOSSARY.ilean -c .\.\.lake\build\ir\Morph\Specs\GLOSSARY.c --json
+error: .\.\.\.\Morph\Specs\GLOSSARY.lean:77:2: unexpected token 'namespace'; expected '#guard_msgs', 'abbrev', 'add_decl_doc', 'axiom', 'binder_predicate', 'builtin_dsimproc', 'builtin_dsimproc_decl', 'builtin_initialize', 'builtin_simproc', 'builtin_simproc_decl', 'class', 'declare_simp_like_tactic', 'declare_syntax_cat', 'def', 'dsimproc', 'dsimproc_decl', 'elab', 'elab_rules', 'example', 'inductive', 'infix', 'infixl', 'infixr', 'initialize', 'instance', 'macro', 'macro_rules', 'notation', 'opaque', 'postfix', 'prefix', 'register_tactic_tag', 'simproc', 'simproc_decl', 'structure', 'syntax', 'tactic_extension', 'theorem' or 'unif_hint'
+error: .\.\.\.\Morph\Specs\GLOSSARY.lean:82:5: unknown namespace 'Spec'
+error: .\.\.\.\Morph\Specs\GLOSSARY.lean:83:5: unknown namespace 'Lemmas'
+error: .\.\.\.\Morph\Specs\GLOSSARY.lean:84:5: unknown namespace 'Examples'
+error: Lean exited with code 1
+Some builds logged failures:
+- Morph.Specs.GLOSSARY
+error: build failed

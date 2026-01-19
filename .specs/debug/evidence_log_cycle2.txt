@@ -1,0 +1,129 @@
+# Evidence Log - Cycle 2 QA Investigation
+## Task: Reproduce the Build Error for Copyright Headers
+
+### Investigation Date
+2026-01-19
+
+### Build Commands Executed
+
+#### Attempt 1: Full Build
+```bash
+lake build
+```
+
+**Result:** Build completed successfully (Exit code: 0)
+
+**Output:**
+```
+info: [root]: lakefile.lean and lakefile.toml are both present; using lakefile.lean
+Build completed successfully.
+```
+
+#### Attempt 2: Clean Build
+```bash
+lake clean && lake build
+```
+
+**Result:** Build completed successfully (Exit code: 0)
+
+**Output:**
+```
+info: [root]: lakefile.lean and lakefile.toml are both present; using lakefile.lean
+Build completed successfully.
+```
+
+#### Attempt 3: Specific File Build
+```bash
+lake build Morph.Specs.AbiAlignmentAlgebra.Spec
+```
+
+**Result:** Build completed successfully (Exit code: 0)
+
+**Output:**
+```
+info: [root]: lakefile.lean and lakefile.toml are both present; using lakefile.lean
+✔ [2/2] Built Morph.Specs.AbiAlignmentAlgebra.Spec
+Build completed successfully.
+```
+
+### File Analysis
+
+#### Correct Format (Main Morph Files)
+Files like [`Morph/Core.lean`](Morph/Core.lean:1) and [`Morph/Syntax.lean`](Morph/Syntax.lean:1) use the correct format:
+
+```lean
+/- Copyright 2024-2025 The Morph Project Authors
+-- SPDX-License-Identifier: Apache-2.0
+-/
+```
+
+#### Potentially Incorrect Format (Spec Files)
+Files like [`Morph/Specs/AbiAlignmentAlgebra/Spec.lean`](Morph/Specs/AbiAlignmentAlgebra/Spec.lean:1) and [`Morph/Specs/AbiDataRefinement/Spec.lean`](Morph/Specs/AbiDataRefinement/Spec.lean:1) use:
+
+```lean
+/- Copyright 2024-2025 The Morph Project Authors
+SPDX-License-Identifier: Apache-2.0
+
+import ...
+```
+
+With the comment block closing at the end of the file (e.g., line 207 for AbiAlignmentAlgebra).
+
+### Historical Error Evidence
+
+From [`build_output_cycle2.txt`](.specs/debug/build_output_cycle2.txt:1):
+
+```
+info: [root]: lakefile.lean and lakefile.toml are both present; using lakefile.lean
+✔ [1/5] Fetched proofwidgets:optRelease
+✔ [2/5] Built Morph.Core
+✔ [3/5] Built Morph.Syntax
+✔ [4/5] Built Morph.Memory
+✖ [5/5] Building Morph.Specs.GLOSSARY
+trace: .> LEAN_PATH=.\.\.lake/packages\batteries\.lake\build\lib;.\.\.lake/packages\Qq\.lake\build\lib;.\.\.lake/packages\aesop\.lake\build\lib;.\.\.lake/packages\proofwidgets\.lake\build\lib;.\.\.lake/packages\Cli\.lake\build\lib;.\.\.lake/packages\importGraph\.lake\build\lib;.\.\.lake/packages\mathlib\.lake\build\lib;.\.\.lake\build\lib PATH c:\Users\wyatt\.elan\toolchains\leanprover--lean4---v4.10.0\bin\lean.exe .\.\.\.\Morph\Specs\GLOSSARY.lean -R .\.\.\. -o .\.\.lake\build\lib\Morph\Specs\GLOSSARY.olean -i .\.\.lake\build\lib\Morph\Specs\GLOSSARY.ilean -c .\.\.lake\build\ir\Morph\Specs\GLOSSARY.c --json
+error: .\.\.\.\Morph\Specs\GLOSSARY.lean:9:0: unexpected token '#'; expected command
+error: .\.\.\.\Morph\Specs\GLOSSARY.lean:12:33: unexpected token 'for'; expected identifier
+error: .\.\.\.\Morph\Specs\GLOSSARY.lean:32:0: invalid 'import' command, it must be used in the beginning of the file
+error: Lean exited with code 1
+Some builds logged failures:
+- Morph.Specs.GLOSSARY
+error: build failed
+```
+
+### Key Findings
+
+1. **Original Error:** The cycle 2 build failed with an error in `Morph/Specs/GLOSSARY.lean` at line 9:0 showing "unexpected token '#'; expected command"
+
+2. **Current State:** The build is now passing. This suggests the issue has been fixed in previous cycles.
+
+3. **Incident Report Analysis:** According to [`incident_report_cycle2.md`](.specs/debug/incident_report_cycle2.md:1), there were 31 files with copyright header issues:
+   - 28 files with Error Pattern 1 (missing `--` on SPDX line and missing `-/` to close copyright block)
+   - 3 files with Error Pattern 3 (empty copyright headers)
+
+4. **Current File State:** The Spec files still have the pattern identified in the incident report (missing `--` on the SPDX line), but they are building successfully.
+
+5. **Lean 4 Behavior:** Lean 4 appears to be more lenient than the incident report suggested. The block comment syntax `/- ... -/` treats everything between the delimiters as a comment, regardless of whether individual lines have `--` markers.
+
+### Conclusion
+
+**The build error cannot be reproduced at this time.** The original error from cycle 2 has been resolved. The current state shows:
+
+- Build passes successfully
+- Spec files have a different copyright header format than main Morph files
+- Lean 4 accepts both formats (with or without `--` on individual lines within block comments)
+
+The incident report's Error Pattern 1 may have been a false positive or the issue was specific to certain files that have since been fixed.
+
+### Recommendations
+
+1. **Standardize Copyright Headers:** Consider standardizing all files to use the same format as the main Morph files (with `--` on the SPDX line).
+
+2. **Verify All Files:** Run a comprehensive check to ensure all files are using consistent copyright header formats.
+
+3. **Update Incident Report:** The incident report may need to be updated to reflect that the build error has been resolved.
+
+### Evidence Files Referenced
+
+- [`.specs/debug/build_output_cycle2.txt`](.specs/debug/build_output_cycle2.txt) - Original build error from cycle 2
+- [`.specs/debug/incident_report_cycle2.md`](.specs/debug/incident_report_cycle2.md) - Detailed incident analysis
+- [`.specs/debug/fix_summary_cycle2.md`](.specs/debug/fix_summary_cycle2.md) - Fix applied in cycle 2

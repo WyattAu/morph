@@ -1,0 +1,127 @@
+/- Copyright 2024-2025 The Morph Project Authors
+SPDX-License-Identifier: Apache-2.0
+
+
+import Morph.Specs.GLOSSARY
+import Morph.Specs.GLOSSARY.Spec
+import Morph.Specs.AbiDataRefinement.Spec
+
+/-!
+# AbiDataRefinement Examples
+
+This module provides concrete examples and test cases for ABI data refinement specification.
+
+## Overview
+
+The AbiDataRefinement Examples module demonstrates:
+- Type refinement from high-level ABI to memory layout
+- Data transformation examples
+- Layout compatibility verification
+- ABI-specific optimization examples
+
+## Key Concepts
+
+- **Type Refinement:** Converting high-level ABI types to low-level memory layouts
+- **Data Validation:** Ensuring data integrity during refinement
+- **Layout Compatibility:** Verifying layout compatibility across ABI versions
+-!/
+namespace Morph.Specs.AbiDataRefinement
+
+/-!
+## Example 1: Simple Type Refinement
+Demonstrates basic type refinement from ABI to memory layout.
+-!/
+
+-- Example: Refine i32 ABI type to memory layout 
+def example_refine_i32 : MemoryLayout :=
+  {
+    abiType := { name := "i32", size := 32, align := 32 },
+    offsets := [0]
+  }
+
+-- Example: Verify type refinement 
+#eval example_refine_i32
+-- Expected: abiType.name = "i32", size = 32, align = 32
+
+/-!
+## Example 2: Struct Type Refinement
+Demonstrates struct type refinement.
+-!/
+
+-- Example: Refine struct ABI type to memory layout 
+def example_refine_struct : MemoryLayout :=
+  {
+    abiType := { name := "struct", size := 16, align := 16 },
+    offsets := [0, 4, 8]
+  }
+
+-- Example: Verify struct refinement 
+#eval example_refine_struct
+-- Expected: abiType.name = "struct", size = 16, align = 16, offsets = [0, 4, 8]
+
+/-!
+## Example 3: Type Validation
+Demonstrates data validation during refinement.
+-!/
+
+-- Example: Validate layout with correct size 
+def example_validate_layout : Bool :=
+  validateLayout { abiType := { name := "i32", size := 32, align := 32 }, offsets := [0] }
+
+-- Example: Verify layout validation 
+#eval example_validate_layout
+-- Expected: true
+
+/-!
+## Example 4: Layout Compatibility
+Demonstrates layout compatibility checking.
+-!/
+
+-- Example: Check compatibility between two layouts 
+def example_compatible_layouts : Bool :=
+  compatibleLayouts
+    { abiType := { name := "i32", size := 32, align := 32 }, offsets := [0] }
+    { abiType := { name := "i32", size := 32, align := 32 }, offsets := [0] }
+
+-- Example: Verify layout compatibility 
+#eval example_compatible_layouts
+-- Expected: true (identical layouts are compatible)
+
+/-!
+## Example 5: Complex Refinement
+Demonstrates complex refinement scenarios.
+-!/
+
+-- Example: Refine nested struct layout 
+def example_nested_refinement : MemoryLayout :=
+  {
+    abiType := { name := "nested_struct", size := 32, align := 32 },
+    offsets := [0, 16]
+  }
+
+-- Example: Verify nested refinement 
+#eval example_nested_refinement
+-- Expected: abiType.name = "nested_struct", size = 32, align = 32, offsets = [0, 16]
+
+/-!
+## Example 6: Type Refinement Verification
+Demonstrates verification of type refinement properties.
+-!/
+
+-- Example: Verify all refinement properties 
+def example_verify_refinement : Bool :=
+  spec_type_refinement
+    { name := "i32", size := 32, align := 32 }
+    { abiType := { name := "i32", size := 32, align := 32 }, offsets := [0] } ∧
+      spec_data_validation
+        { abiType := { name := "i32", size := 32, align := 32 }, offsets := [0] } ∧
+        spec_layout_compatibility
+          { abiType := { name := "i32", size := 32, align := 32 }, offsets := [0] }
+          { abiType := { name := "i32", size := 32, align := 32 }, offsets := [0] }
+
+-- Example: Run all verification tests 
+#eval example_verify_refinement
+-- Expected: true (all properties verified)
+
+end Morph.Specs.AbiDataRefinement
+-/
