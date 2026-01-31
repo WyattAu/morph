@@ -9,9 +9,9 @@ end_of_line = lf
 insert_final_newline = true
 trim_trailing_whitespace = true
 
-# Lean files - enforce UTF-8 with BOM for proper Unicode character support
+# Lean files - enforce UTF-8 encoding for proper Unicode character support
 [*.lean]
-charset = utf-8-bom
+charset = utf-8
 indent_style = space
 indent_size = 2
 

@@ -31,7 +31,7 @@ This file contains concrete examples and test cases for Semantic Versioning & Co
 | `example_upgrade_path` | Upgrade path | ✓ |
 | `example_deprecation_policy` | Deprecation policy | ✓ |
 
--!/
+-/
 
 namespace Morph.Specs.VersionCompatibility
 

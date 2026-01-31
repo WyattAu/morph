@@ -34,7 +34,7 @@ The Module Existential Lemmas module provides:
 - **Access Control:** Properties about access control rules
 - **Module Composition:** Properties about combining modules
 
--!/
+-/
 namespace Morph.Specs.ModuleExistential
 
 /-!
@@ -399,4 +399,4 @@ lemma lemma_module_composition_preserves_privacy (comp : ModuleComposition) (imp
   trivial
 
 end Morph.Specs.ModuleExistential
--!/
+-/

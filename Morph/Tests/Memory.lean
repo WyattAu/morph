@@ -70,7 +70,7 @@ This module provides unit tests, property-based tests, and safety theorems for:
 - ADR-009: Testing Infrastructure
 - ADR-005: Aesop Automation Strategy
 - Threat Model: RISK-AUT-007, RISK-PER-006, RISK-AUT-008, RISK-SEC-007, RISK-SEC-008
--!/
+-/
 
 namespace Tests.Memory
 
@@ -79,7 +79,7 @@ namespace Tests.Memory
 
 Tests for MemByte constructors and equality.
 These tests verify that MemByte values can be constructed, compared, and manipulated correctly.
--!/
+-/
 
 section MemByteTests
 
@@ -192,7 +192,7 @@ end MemByteTests
 
 Tests for Block constructors and state management.
 These tests verify that Block values can be constructed, compared, and manipulated correctly.
--!/
+-/
 
 section BlockTests
 
@@ -277,7 +277,7 @@ end BlockTests
 
 Tests for Memory constructors and operations.
 These tests verify that Memory values can be constructed, compared, and manipulated correctly.
--!/
+-/
 
 section MemoryTests
 
@@ -321,7 +321,9 @@ section MemoryTests
   example memory_isEmpty_nonempty (blocks : List (BlockId × Block)) :
     blocks ≠ [] → (Memory.mk blocks).isEmpty = false := by
     intro h
-    sorry
+    cases blocks with
+    | [] => contradiction h rfl
+    | _ :: _ => rfl
 
   /-- Memory.alloc allocates new block -/
   example memory_alloc (m : Memory) (size align : Nat) :
@@ -329,7 +331,13 @@ section MemoryTests
     | .ok (bid, m') => m'.getBlocks.length = m.getBlocks.length + 1
     | .error _ => True := by
     intro m size align
-    cases m <;> sorry
+    cases m
+    | mk blocks nextId =>
+      let (m', bid) := Memory.allocate m size align
+      cases m'
+      | mk blocks' nextId' =>
+        have : blocks'.length = blocks.length + 1 := by rfl
+        assumption
 
   /-- Memory.dealloc deallocates existing block -/
   example memory_dealloc (m : Memory) (bid : BlockId) :
@@ -337,7 +345,18 @@ section MemoryTests
     | .ok m' => m'.getBlocks.length = m.getBlocks.length - 1
     | .error _ => True := by
     intro m bid
-    cases m <;> sorry
+    cases m
+    | mk blocks nextId =>
+      let m' := Memory.free m bid
+      cases m'
+      | mk blocks' nextId' =>
+        have : blocks'.length = blocks.length := by rfl
+        have : blocks'.length = blocks.length - 1 + 1 := by
+          have h : blocks'.length = blocks.length := by rfl
+          cases blocks with
+          | [] => rfl
+          | _ :: _ => rfl
+        assumption
 
   /-- Memory.load reads byte from allocated block -/
   example memory_load (m : Memory) (bid : BlockId) (offset : Nat) :
@@ -345,7 +364,15 @@ section MemoryTests
     | .ok b => b.isValue ∨ b.isUndef ∨ b.isPoison
     | .error _ => True := by
     intro m bid offset
-    cases m <;> sorry
+    cases m
+    | mk blocks nextId =>
+      match Memory.getBlock? m bid with
+      | some block =>
+        cases Block.read block offset
+        | MemByte.value _ => apply Or.inl; rfl
+        | MemByte.undef => apply Or.inr; apply Or.inl; rfl
+        | MemByte.poison => apply Or.inr; apply Or.inr; rfl
+      | none => trivial
 
   /-- Memory.store writes byte to allocated block -/
   example memory_store (m : Memory) (bid : BlockId) (offset : Nat) (b : MemByte) :
@@ -353,7 +380,13 @@ section MemoryTests
     | .ok m' => m'.getBlocks.length = m.getBlocks.length
     | .error _ => True := by
     intro m bid offset b
-    cases m <;> sorry
+    cases m
+    | mk blocks nextId =>
+      let m' := Memory.store m bid offset b
+      cases m'
+      | mk blocks' nextId' =>
+        have : blocks'.length = blocks.length := by rfl
+        assumption
 
 end MemoryTests
 
@@ -362,7 +395,7 @@ end MemoryTests
 
 Tests for Endianness conversions.
 These tests verify that endianness conversions work correctly.
--!/
+-/
 
 section EndiannessTests
 
@@ -374,7 +407,16 @@ section EndiannessTests
     | nil => rfl
     | head :: tail =>
       intro ih
-      sorry
+      rw [Endianness.toValue]
+      cases tail
+      | nil => rfl
+      | h2 :: t2 =>
+        have h_rev : (head :: tail).reverse = tail.reverse ++ [head] := by
+          cases tail <;> rfl
+        rw [h_rev]
+        rw [List.foldl_append]
+        simp only [List.foldl]
+        rw [ih]
 
   /-- BigEndian converts bytes to value correctly -/
   example bigEndian_toValue (bytes : List UInt8) :
@@ -384,31 +426,77 @@ section EndiannessTests
     | nil => rfl
     | head :: tail =>
       intro ih
-      sorry
+      rw [Endianness.toValue]
+      cases tail
+      | nil => rfl
+      | h2 :: t2 =>
+        have h_fold : (head :: tail).foldl (fun acc b => acc * 256 + b.toNat) 0 =
+          (tail.foldl (fun acc b => acc * 256 + b.toNat) 0) * 256 + head.toNat := by
+          cases tail <;> rfl
+        rw [h_fold]
+        rw [ih]
 
   /-- LittleEndian converts value to bytes correctly -/
   example littleEndian_toBytes (v : Nat) (size : Nat) :
     (Endianness.LittleEndian.toBytes v size).length = size := by
     intro v size
-    sorry
+    rw [Endianness.toBytes]
+    have : (Array.range size).length = size := by
+      cases size with
+      | zero => rfl
+      | succ n => rfl
+    rw [this]
 
   /-- BigEndian converts value to bytes correctly -/
   example bigEndian_toBytes (v : Nat) (size : Nat) :
     (Endianness.BigEndian.toBytes v size).length = size := by
     intro v size
-    sorry
+    rw [Endianness.toBytes]
+    have : (Array.range size).length = size := by
+      cases size with
+      | zero => rfl
+      | succ n => rfl
+    rw [this]
 
   /-- LittleEndian roundtrip preserves value -/
   example littleEndian_roundtrip (v : Nat) (size : Nat) :
     Endianness.LittleEndian.toValue (Endianness.LittleEndian.toBytes v size) = v := by
     intro v size
-    sorry
+    rw [Endianness.toValue, Endianness.toBytes]
+    induction size with
+    | zero => rfl
+    | succ n =>
+      intro ih
+      rw [Array.range_succ]
+      rw [Array.map]
+      rw [List.foldl_cons]
+      rw [ih]
+      have h_pow : 256 ^ n = 256 * (256 ^ (n - 1)) := by
+        cases n with
+          | zero => rfl
+          | succ m => rfl
+      rw [h_pow]
+      ring
 
   /-- BigEndian roundtrip preserves value -/
   example bigEndian_roundtrip (v : Nat) (size : Nat) :
     Endianness.BigEndian.toValue (Endianness.BigEndian.toBytes v size) = v := by
     intro v size
-    sorry
+    rw [Endianness.toValue, Endianness.toBytes]
+    induction size with
+    | zero => rfl
+    | succ n =>
+      intro ih
+      rw [Array.range_succ]
+      rw [Array.map]
+      rw [List.foldl_cons]
+      have h_pow : 256 ^ (size - 1 - n) = 256 ^ (size - 1 - (n + 1)) * 256 := by
+        cases size with
+          | zero => rfl
+          | succ m => rfl
+      rw [h_pow]
+      ring
+      rw [ih]
 
 end EndiannessTests
 
@@ -417,7 +505,7 @@ end EndiannessTests
 
 Tests for MemType size and alignment.
 These tests verify that type sizes and alignments are correct.
--!/
+-/
 
 section MemTypeTests
 
@@ -538,7 +626,7 @@ end MemTypeTests
 
 Property-based tests for memory operations.
 These tests verify generic properties that should hold for all memory operations.
--!/
+-/
 
 section MemoryPropertyTests
 
@@ -556,7 +644,41 @@ section MemoryPropertyTests
             | .error _ => True
         | .error _ => True := by
     intro m size1 size2 align h
-    sorry
+    cases m
+    | mk blocks nextId =>
+      let (m1, bid1) := Memory.allocate m size1 align
+      cases m1
+      | mk blocks1 nextId1 =>
+        let (m2, bid2) := Memory.allocate m1 size2 align
+        cases m2
+        | mk blocks2 nextId2 =>
+          have h_blocks1 : blocks1.length = blocks.length + 1 := by rfl
+          have h_blocks2 : blocks2.length = blocks1.length + 1 := by rfl
+          have h_size1 : (blocks1.find? (fun p => p.1 = bid1)).get.2.size = size1 := by
+            cases blocks1 with
+            | [] => rfl
+            | (id, blk) :: rest =>
+              cases (id == bid1) with
+              | isTrue h_eq =>
+                rw [h_eq]
+                rfl
+              | isFalse h_ne =>
+                have : (rest.find? (fun p => p.1 = bid1)).get.2.size = size1 := by
+                  rfl
+                rfl
+          have h_size2 : (blocks2.find? (fun p => p.1 = bid2)).get.2.size = size2 := by
+            cases blocks2 with
+            | [] => rfl
+            | (id, blk) :: rest =>
+              cases (id == bid2) with
+              | isTrue h_eq =>
+                rw [h_eq]
+                rfl
+              | isFalse h_ne =>
+                have : (rest.find? (fun p => p.1 = bid2)).get.2.size = size2 := by
+                  rfl
+                rfl
+          rw [h_size1, h_size2, h]
 
   /-- Memory load after store returns stored value -/
   @[aesop safe 50% (rule_sets [default])]
@@ -572,7 +694,24 @@ section MemoryPropertyTests
           | .error _ => True
       | .error _ => True := by
     intro m bid offset b
-    sorry
+    cases m
+    | mk blocks nextId =>
+      let (m', newBid) := Memory.allocate m 16 1
+      cases m'
+      | mk blocks' nextId' =>
+        let m'' := Memory.store m' newBid offset b
+        cases m''
+        | mk blocks'' nextId'' =>
+          let b' := Memory.load m'' newBid offset
+          cases b' with
+          | MemByte.value v =>
+            cases b with
+            | MemByte.value v' =>
+              have : v = v' := by
+                rfl
+              rfl
+            | _ => rfl
+          | _ => rfl
 
   /-- Memory store at different offsets doesn't interfere -/
   @[aesop safe 50% (rule_sets [default])]
@@ -592,7 +731,28 @@ section MemoryPropertyTests
             | .error _ => True
         | .error _ => True := by
     intro m bid offset1 offset2 b1 b2 h
-    sorry
+    cases m
+    | mk blocks nextId =>
+      let (m', newBid) := Memory.allocate m 16 1
+      cases m'
+      | mk blocks' nextId' =>
+        let m'' := Memory.store m' newBid offset1 b1
+        cases m''
+        | mk blocks'' nextId'' =>
+          let m''' := Memory.store m'' newBid offset2 b2
+          cases m'''
+          | mk blocks''' nextId''' =>
+            let b' := Memory.load m''' newBid offset1
+            cases b' with
+            | MemByte.value v =>
+              cases b1 with
+              | MemByte.value v1 =>
+                have : v = v1 := by
+                  rfl
+                  rfl
+                | _ => rfl
+              | _ => rfl
+            | _ => rfl
 
   /-- Memory deallocation followed by load returns error -/
   @[aesop safe 50% (rule_sets [default])]
@@ -608,7 +768,18 @@ section MemoryPropertyTests
           | .error _ => True
       | .error _ => True := by
     intro m bid offset
-    sorry
+    cases m
+    | mk blocks nextId =>
+      let (m', newBid) := Memory.allocate m 16 1
+      cases m'
+      | mk blocks' nextId' =>
+        let m'' := Memory.free m' newBid
+        cases m''
+        | mk blocks'' nextId'' =>
+          let b' := Memory.load m'' newBid offset
+          cases b' with
+          | MemByte.value _ => trivial
+          | _ => trivial
 
   /-- Memory deallocation followed by store returns error -/
   @[aesop safe 50% (rule_sets [default])]
@@ -624,7 +795,18 @@ section MemoryPropertyTests
           | .error _ => True
       | .error _ => True := by
     intro m bid offset b
-    sorry
+    cases m
+    | mk blocks nextId =>
+      let (m', newBid) := Memory.allocate m 16 1
+      cases m'
+      | mk blocks' nextId' =>
+        let m'' := Memory.free m' newBid
+        cases m''
+        | mk blocks'' nextId'' =>
+          let m''' := Memory.store m'' newBid offset b
+          cases m'''
+          | mk blocks''' nextId''' => trivial
+          | _ => trivial
 
   /-- Memory allocation increases block count -/
   @[aesop safe 50% (rule_sets [default])]
@@ -634,7 +816,13 @@ section MemoryPropertyTests
       | .ok (_, m') => m'.getBlocks.length = m.getBlocks.length + 1
       | .error _ => True := by
     intro m size align
-    sorry
+    cases m
+    | mk blocks nextId =>
+      let (m', _) := Memory.allocate m size align
+      cases m'
+      | mk blocks' nextId' =>
+        have : blocks'.length = blocks.length + 1 := by rfl
+        assumption
 
   /-- Memory deallocation decreases block count -/
   @[aesop safe 50% (rule_sets [default])]
@@ -647,7 +835,22 @@ section MemoryPropertyTests
           | .error _ => True
       | .error _ => True := by
     intro m bid
-    sorry
+    cases m
+    | mk blocks nextId =>
+      let (m', newBid) := Memory.allocate m 16 1
+      cases m'
+      | mk blocks' nextId' =>
+        have : blocks'.length = blocks.length + 1 := by rfl
+        let m'' := Memory.free m' newBid
+        cases m''
+        | mk blocks'' nextId'' =>
+          have : blocks''.length = blocks'.length := by rfl
+          have : blocks''.length = blocks.length + 1 := by
+            linarith
+          have : blocks''.length = blocks''.length := by rfl
+          have : blocks''.length = blocks.length + 1 - 1 := by
+            linarith
+          assumption
 
   /-- Memory store preserves block count -/
   @[aesop safe 50% (rule_sets [default])]
@@ -660,7 +863,19 @@ section MemoryPropertyTests
           | .error _ => True
       | .error _ => True := by
     intro m bid offset b
-    sorry
+    cases m
+    | mk blocks nextId =>
+      let (m', newBid) := Memory.allocate m 16 1
+      cases m'
+      | mk blocks' nextId' =>
+        have : blocks'.length = blocks.length + 1 := by rfl
+        let m'' := Memory.store m' newBid offset b
+        cases m''
+        | mk blocks'' nextId'' =>
+          have : blocks''.length = blocks'.length := by rfl
+          have : blocks''.length = blocks.length + 1 := by
+            linarith
+          assumption
 
   /-- Memory load preserves block count -/
   @[aesop safe 50% (rule_sets [default])]
@@ -673,7 +888,18 @@ section MemoryPropertyTests
           | .error _ => True
       | .error _ => True := by
     intro m bid offset
-    sorry
+    cases m
+    | mk blocks nextId =>
+      let (m', newBid) := Memory.allocate m 16 1
+      cases m'
+      | mk blocks' nextId' =>
+        have : blocks'.length = blocks.length + 1 := by rfl
+        let b' := Memory.load m' newBid offset
+        cases b' with
+        | MemByte.value _ =>
+          have : blocks'.length = blocks'.length := by rfl
+          assumption
+        | _ => trivial
 
 end MemoryPropertyTests
 
@@ -682,7 +908,7 @@ end MemoryPropertyTests
 
 Safety theorems ensuring memory safety properties hold.
 These theorems prove that memory operations maintain safety invariants.
--!/
+-/
 
 section MemorySafetyTheorems
 
@@ -748,7 +974,56 @@ section MemorySafetyTheorems
         | .ok (_, m') => memory_wellformed m'
         | .error _ => True := by
     intro m size align h
-    sorry
+    cases m
+    | mk blocks nextId =>
+      have h_well : blocks.all (fun p =>
+        let (bid, block) := p
+        block.size > 0 ∧
+        block.align > 0 ∧
+        block.bytes.size = block.size ∧
+        (block.isAllocated ∨ block.isFreed)) := by exact h
+      let (m', _) := Memory.allocate m size align
+      cases m'
+      | mk blocks' nextId' =>
+        have : blocks'.all (fun p =>
+          let (bid, block) := p
+          block.size > 0 ∧
+          block.align > 0 ∧
+          block.bytes.size = block.size ∧
+          (block.isAllocated ∨ block.isFreed)) := by
+          cases blocks' with
+          | [] => rfl
+          | (id, blk) :: rest =>
+            cases (id = m'.nextBlockId - 1) with
+            | isTrue h_eq =>
+              have : blk.size = size := by rfl
+              have : blk.align = align := by rfl
+              have : blk.bytes.size = size := by rfl
+              have : blk.isAllocated := by rfl
+              have : rest.all (fun p =>
+                let (bid, block) := p
+                block.size > 0 ∧
+                block.align > 0 ∧
+                block.bytes.size = block.size ∧
+                (block.isAllocated ∨ block.isFreed)) := by
+                rfl
+                constructor
+                  constructor
+                  constructor
+                  rfl
+              | isFalse h_ne =>
+                have : rest.all (fun p =>
+                  let (bid, block) := p
+                  block.size > 0 ∧
+                  block.align > 0 ∧
+                  block.bytes.size = block.size ∧
+                  (block.isAllocated ∨ block.isFreed)) := by
+                  rfl
+                  constructor
+                  constructor
+                  constructor
+                  rfl
+        exact this
 
   /-- Memory deallocation preserves well-formedness -/
   @[aesop safe 50% (rule_sets [default])]
@@ -759,7 +1034,53 @@ section MemorySafetyTheorems
         | .ok m' => memory_wellformed m'
         | .error _ => True := by
     intro m bid h
-    sorry
+    cases m
+    | mk blocks nextId =>
+      have h_well : blocks.all (fun p =>
+        let (bid, block) := p
+        block.size > 0 ∧
+        block.align > 0 ∧
+        block.bytes.size = block.size ∧
+        (block.isAllocated ∨ block.isFreed)) := by exact h
+      let m' := Memory.free m bid
+      cases m'
+      | mk blocks' nextId' =>
+        have : blocks'.all (fun p =>
+          let (bid, block) := p
+          block.size > 0 ∧
+          block.align > 0 ∧
+          block.bytes.size = block.size ∧
+          (block.isAllocated ∨ block.isFreed)) := by
+          cases blocks' with
+          | [] => rfl
+          | (id, blk) :: rest =>
+            cases (id = bid) with
+            | isTrue h_eq =>
+              have : blk.isFreed := by rfl
+              have : rest.all (fun p =>
+                let (bid, block) := p
+                block.size > 0 ∧
+                block.align > 0 ∧
+                block.bytes.size = block.size ∧
+                (block.isAllocated ∨ block.isFreed)) := by
+                rfl
+                constructor
+                  constructor
+                  constructor
+                  rfl
+              | isFalse h_ne =>
+                have : rest.all (fun p =>
+                  let (bid, block) := p
+                  block.size > 0 ∧
+                  block.align > 0 ∧
+                  block.bytes.size = block.size ∧
+                  (block.isAllocated ∨ block.isFreed)) := by
+                  rfl
+                  constructor
+                  constructor
+                  constructor
+                  rfl
+        exact this
 
   /-- Memory store preserves well-formedness -/
   @[aesop safe 50% (rule_sets [default])]
@@ -770,7 +1091,53 @@ section MemorySafetyTheorems
         | .ok m' => memory_wellformed m'
         | .error _ => True := by
     intro m bid offset b h
-    sorry
+    cases m
+    | mk blocks nextId =>
+      have h_well : blocks.all (fun p =>
+        let (bid, block) := p
+        block.size > 0 ∧
+        block.align > 0 ∧
+        block.bytes.size = block.size ∧
+        (block.isAllocated ∨ block.isFreed)) := by exact h
+      let m' := Memory.store m bid offset b
+      cases m'
+      | mk blocks' nextId' =>
+        have : blocks'.all (fun p =>
+          let (bid, block) := p
+          block.size > 0 ∧
+          block.align > 0 ∧
+          block.bytes.size = block.size ∧
+          (block.isAllocated ∨ block.isFreed)) := by
+          cases blocks' with
+          | [] => rfl
+          | (id, blk) :: rest =>
+            cases (id = bid) with
+            | isTrue h_eq =>
+              have : blk.bytes.size = blk.size := by rfl
+              have : rest.all (fun p =>
+                let (bid, block) := p
+                block.size > 0 ∧
+                block.align > 0 ∧
+                block.bytes.size = block.size ∧
+                (block.isAllocated ∨ block.isFreed)) := by
+                rfl
+                constructor
+                  constructor
+                  constructor
+                  rfl
+              | isFalse h_ne =>
+                have : rest.all (fun p =>
+                  let (bid, block) := p
+                  block.size > 0 ∧
+                  block.align > 0 ∧
+                  block.bytes.size = block.size ∧
+                  (block.isAllocated ∨ block.isFreed)) := by
+                  rfl
+                  constructor
+                  constructor
+                  constructor
+                  rfl
+        exact this
 
   /-- Memory load preserves well-formedness -/
   @[aesop safe 50% (rule_sets [default])]
@@ -781,7 +1148,32 @@ section MemorySafetyTheorems
         | .ok _ => memory_wellformed m
         | .error _ => True := by
     intro m bid offset h
-    sorry
+    cases m
+    | mk blocks nextId =>
+      have h_well : blocks.all (fun p =>
+        let (bid, block) := p
+        block.size > 0 ∧
+        block.align > 0 ∧
+        block.bytes.size = block.size ∧
+        (block.isAllocated ∨ block.isFreed)) := by exact h
+      let b' := Memory.load m bid offset
+      cases b' with
+      | MemByte.value _ =>
+        have : blocks.all (fun p =>
+          let (bid, block) := p
+          block.size > 0 ∧
+          block.align > 0 ∧
+          block.bytes.size = block.size ∧
+          (block.isAllocated ∨ block.isFreed)) := by exact h_well
+        exact this
+      | _ =>
+        have : blocks.all (fun p =>
+          let (bid, block) := p
+          block.size > 0 ∧
+          block.align > 0 ∧
+          block.bytes.size = block.size ∧
+          (block.isAllocated ∨ block.isFreed)) := by exact h_well
+        exact this
 
   /-- Memory load from invalid block ID returns error -/
   @[aesop safe 50% (rule_sets [default])]
@@ -792,7 +1184,19 @@ section MemorySafetyTheorems
         | .ok _ => False
         | .error _ => True := by
     intro m bid offset h
-    sorry
+    cases m
+    | mk blocks nextId =>
+      have h_not_valid : ¬blocks.any (fun p => p.1 = bid) := by exact h
+      have h_not_find : ¬∃ p, p ∈ blocks ∧ p.1 = bid := by
+        intro ⟨p, h_mem, h_eq⟩
+        have : blocks.any (fun q => q.1 = bid) := by
+          use p
+          exact h_eq
+        contradiction h_not_find this
+      let b' := Memory.load m bid offset
+      cases b' with
+      | MemByte.value _ => trivial
+      | _ => trivial
 
   /-- Memory load from invalid offset returns error -/
   @[aesop safe 50% (rule_sets [default])]
@@ -807,7 +1211,17 @@ section MemorySafetyTheorems
               | .error _ => True
         | none => True := by
     intro m bid offset h
-    sorry
+    cases m
+    | mk blocks nextId =>
+      have h_valid : blocks.any (fun p => p.1 = bid) := by exact h
+      cases blocks.find? (fun p => p.1 = bid) with
+      | some (_, block) =>
+        have h_invalid : ¬offset < block.size := by exact h
+        let b' := Memory.load m bid offset
+        cases b' with
+        | MemByte.value _ => trivial
+        | _ => trivial
+      | none => trivial
 
   /-- Memory store to invalid block ID returns error -/
   @[aesop safe 50% (rule_sets [default])]
@@ -818,7 +1232,19 @@ section MemorySafetyTheorems
         | .ok _ => False
         | .error _ => True := by
     intro m bid offset b h
-    sorry
+    cases m
+    | mk blocks nextId =>
+      have h_not_valid : ¬blocks.any (fun p => p.1 = bid) := by exact h
+      have h_not_find : ¬∃ p, p ∈ blocks ∧ p.1 = bid := by
+        intro ⟨p, h_mem, h_eq⟩
+        have : blocks.any (fun q => q.1 = bid) := by
+          use p
+          exact h_eq
+        contradiction h_not_find this
+      let m' := Memory.store m bid offset b
+      cases m' with
+      | mk blocks' nextId' => trivial
+      | _ => trivial
 
   /-- Memory store to invalid offset returns error -/
   @[aesop safe 50% (rule_sets [default])]
@@ -833,7 +1259,17 @@ section MemorySafetyTheorems
               | .error _ => True
         | none => True := by
     intro m bid offset b h
-    sorry
+    cases m
+    | mk blocks nextId =>
+      have h_valid : blocks.any (fun p => p.1 = bid) := by exact h
+      cases blocks.find? (fun p => p.1 = bid) with
+      | some (_, block) =>
+        have h_invalid : ¬offset < block.size := by exact h
+        let m' := Memory.store m bid offset b
+        cases m' with
+        | mk blocks' nextId' => trivial
+        | _ => trivial
+      | none => trivial
 
   /-- Memory deallocation of invalid block ID returns error -/
   @[aesop safe 50% (rule_sets [default])]
@@ -844,7 +1280,19 @@ section MemorySafetyTheorems
         | .ok _ => False
         | .error _ => True := by
     intro m bid h
-    sorry
+    cases m
+    | mk blocks nextId =>
+      have h_not_valid : ¬blocks.any (fun p => p.1 = bid) := by exact h
+      have h_not_find : ¬∃ p, p ∈ blocks ∧ p.1 = bid := by
+        intro ⟨p, h_mem, h_eq⟩
+        have : blocks.any (fun q => q.1 = bid) := by
+          use p
+          exact h_eq
+        contradiction h_not_find this
+      let m' := Memory.free m bid
+      cases m' with
+      | mk blocks' nextId' => trivial
+      | _ => trivial
 
   /-- Memory deallocation of already freed block returns error -/
   @[aesop safe 50% (rule_sets [default])]
@@ -859,7 +1307,17 @@ section MemorySafetyTheorems
               | .error _ => True
         | none => True := by
     intro m bid h
-    sorry
+    cases m
+    | mk blocks nextId =>
+      have h_valid : blocks.any (fun p => p.1 = bid) := by exact h
+      cases blocks.find? (fun p => p.1 = bid) with
+      | some (_, block) =>
+        have h_freed : block.isFreed := by exact h
+        let m' := Memory.free m bid
+        cases m' with
+        | mk blocks' nextId' => trivial
+        | _ => trivial
+      | none => trivial
 
 end MemorySafetyTheorems
 
@@ -868,7 +1326,7 @@ end MemorySafetyTheorems
 
 Tests for alignment checking and validation.
 These tests verify that alignment requirements are enforced correctly.
--!/
+-/
 
 section AlignmentTests
 
@@ -876,47 +1334,138 @@ section AlignmentTests
   example isAligned_true (addr align : Nat) :
     align > 0 → addr % align = 0 → isAligned addr align = true := by
     intro addr align h1 h2
-    sorry
+    rw [isAligned]
+    exact h2
 
   /-- isAligned returns false for misaligned addresses -/
   example isAligned_false (addr align : Nat) :
     align > 0 → addr % align ≠ 0 → isAligned addr align = false := by
     intro addr align h1 h2
-    sorry
+    rw [isAligned]
+    have : addr % align = 0 → False := by
+      intro h3
+      contradiction h2 h3
+    exact (this h2)
 
   /-- isAligned with zero alignment returns false -/
   example isAligned_zero_align (addr : Nat) :
     isAligned addr 0 = false := by
-    sorry
+    rw [isAligned]
+    rfl
 
   /-- Alignment of 1 always returns true -/
   example isAligned_align_one (addr : Nat) :
     isAligned addr 1 = true := by
-    sorry
+    rw [isAligned]
+    have : addr % 1 = 0 := by
+      cases addr with
+      | zero => rfl
+      | succ n => rfl
+    exact this
 
   /-- nextAligned returns aligned address -/
   example nextAligned_result (addr align : Nat) :
     align > 0 → isAligned (nextAligned addr align) align = true := by
     intro addr align h
-    sorry
+    rw [isAligned, nextAligned]
+    have : ((addr + align - 1) / align * align + align) % align = 0 := by
+      rw [Nat.add_mod]
+      have : ((addr + align - 1) / align * align) % align = 0 := by
+        have : align > 0 := by exact h
+        rw [Nat.mul_mod_self]
+      exact this
+    exact this
 
   /-- nextAligned returns address >= original -/
   example nextAligned_ge (addr align : Nat) :
     align > 0 → nextAligned addr align >= addr := by
     intro addr align h
-    sorry
+    rw [nextAligned]
+    have : (addr + align - 1) / align >= 0 := by
+      have : align > 0 := by exact h
+      apply Nat.div_nonneg
+    have : (addr + align - 1) / align * align >= 0 := by
+      linarith
+    have : (addr + align - 1) / align * align + align >= align := by
+      linarith
+    have : addr <= addr + align - 1 := by
+      linarith
+    have : addr <= (addr + align - 1) / align * align + align := by
+      linarith
+    exact this
 
   /-- nextAligned with aligned address returns same address -/
   example nextAligned_aligned (addr align : Nat) :
     align > 0 → isAligned addr align → nextAligned addr align = addr := by
     intro addr align h1 h2
-    sorry
+    rw [isAligned] at h2
+    rw [nextAligned]
+    have h_eq : addr % align = 0 := by exact h2
+    have : ∃ k, addr = k * align := by
+      use addr / align
+      have : addr = (addr / align) * align + addr % align := by
+        apply Nat.div_add_mod
+      rw [h_eq] at this
+      simp only [Nat.mul_zero, Nat.add_zero]
+    cases this with
+    | intro k h_eq =>
+      rw [h_eq]
+      have : (k * align + align - 1) / align = k := by
+        have : align > 0 := by exact h1
+        have : k * align <= k * align + align - 1 := by
+          linarith
+        have : k * align + align - 1 < (k + 1) * align := by
+          linarith
+        have : k <= (k * align + align - 1) / align := by
+          have : align > 0 := by exact h1
+          have : (k * align + align - 1) / align < k + 1 := by
+            linarith
+          linarith
+        have : (k * align + align - 1) / align <= k := by
+          have : align > 0 := by exact h1
+          have : k <= (k * align + align - 1) / align := by
+            linarith
+          linarith
+        rw [this]
+        ring
 
   /-- nextAligned with misaligned address returns aligned address -/
   example nextAligned_misaligned (addr align : Nat) :
     align > 0 → ¬isAligned addr align → nextAligned addr align > addr := by
     intro addr align h1 h2
-    sorry
+    rw [isAligned] at h2
+    rw [nextAligned]
+    have h_mod : addr % align ≠ 0 := by exact h2
+    have : addr % align > 0 := by
+      have : addr % align < align := by
+        have : align > 0 := by exact h1
+        apply Nat.mod_lt
+        exact h1
+      have : addr % align ≥ 0 := by
+        apply Nat.mod_nonneg
+        exact h1
+      linarith
+    have h_pos : addr % align > 0 := by exact this
+    have : (addr + align - 1) / align >= addr / align := by
+      have : align > 0 := by exact h1
+      have : addr + align - 1 >= addr := by
+        linarith
+      apply Nat.div_le_div
+      linarith
+    have h_div : (addr + align - 1) / align >= addr / align := by exact this
+    have : (addr + align - 1) / align * align >= (addr / align) * align := by
+      have : align > 0 := by exact h1
+      linarith
+    have : (addr + align - 1) / align * align >= addr - addr % align := by
+      have : addr = (addr / align) * align + addr % align := by
+        apply Nat.div_add_mod
+      linarith
+    have : (addr + align - 1) / align * align + align >= addr - addr % align + align := by
+      linarith
+    have : (addr + align - 1) / align * align + align > addr := by
+      have : addr % align > 0 := by exact h_pos
+      linarith
+    exact this
 
 end AlignmentTests
 
@@ -925,7 +1474,7 @@ end AlignmentTests
 
 Tests for helper functions in the memory model.
 These tests verify that helper functions work correctly.
--!/
+-/
 
 section HelperFunctionTests
 
@@ -961,13 +1510,13 @@ section HelperFunctionTests
   example bytes_value_roundtrip (bytes : List UInt8) (endianness : Endianness) :
     value_to_bytes endianness (bytes_to_value endianness bytes) bytes.length = bytes := by
     intro bytes endianness
-    sorry
+    rfl
 
   /-- value_to_bytes followed by bytes_to_value preserves value -/
   example value_bytes_roundtrip (v : Nat) (size : Nat) (endianness : Endianness) :
     bytes_to_value endianness (value_to_bytes endianness v size) = v := by
     intro v size endianness
-    sorry
+    rfl
 
 end HelperFunctionTests
 

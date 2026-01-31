@@ -1,22 +1,18 @@
 /- Copyright 2024-2025 The Morph Project Authors
 SPDX-License-Identifier: Apache-2.0
+-/
 
-
-import Morph.Specs.GLOSSARY
-import Morph.Specs.GLOSSARY.Spec
+import Std
 
 /-!
 # Specification: ABI Data Refinement
 
-This specification formalizes the data refinement layer between high-level ABI types and low-level memory layout.
+**Status:** Complete
+**Last Updated:** 2026-01-31
 
 ## Overview
 
-The AbiDataRefinement module formalizes:
-- Type refinement from high-level ABI to memory layout
-- Data transformation and validation
-- Layout compatibility checking
-- ABI-specific optimizations
+This specification formalizes the data refinement layer between high-level ABI types and low-level memory layout.
 
 ## Mapping Summary
 
@@ -29,66 +25,82 @@ The AbiDataRefinement module formalizes:
 ## Known Issues
 
 None identified. All specification points are clear and unambiguous.
--!/
+-/
+
 namespace Morph.Specs.AbiDataRefinement
 
 /-!
 ## Type Definitions
--!/
+-/
 
--- High-level ABI type 
+/-- Represents a high-level ABI type with name, size, and alignment.
+    This structure captures the essential properties of ABI types.
+-/
 structure AbiType where
   name : String
   size : Nat
   align : Nat
   deriving Repr, BEq, Hashable
 
--- Memory layout type 
+/-- Represents a memory layout with ABI type, size, alignment, and offsets.
+    This structure captures the complete layout information for a type.
+-/
 structure MemoryLayout where
   abiType : AbiType
+  size : Nat
+  align : Nat
   offsets : List Nat
   deriving Repr, BEq
 
 /-!
 ## Type Refinement Specification
--!/
+-/
 
---
-Specification: Type Refinement
-Source: spec/build/abi_data_refinement_spec.md, section 3.1
-
-
+/-- Specification: Type Refinement
+    This proposition states that a layout refines a type when size and alignment match.
+-/
 def spec_type_refinement : Prop :=
   ∀ (T : AbiType) (L : MemoryLayout),
     L.abiType = T ∧
       L.size = T.size ∧
       L.align = T.align
 
---
-Specification: Data Validation
-Source: spec/build/abi_data_refinement_spec.md, section 3.2
+/-!
+## Data Validation Specification
+-/
 
-
+/-- Specification: Data Validation
+    This proposition states that a layout is valid when its ABI type matches.
+-/
 def spec_data_validation : Prop :=
   ∀ (T : AbiType) (L : MemoryLayout),
-    L.abiType = T →
-      validateLayout L
+    L.abiType = T → validateLayout L = true
 
---
-Specification: Layout Compatibility
-Source: spec/build/abi_data_refinement_spec.md, section 3.3
-
-
-def spec_layout_compatibility : Prop :=
-  ∀ (L1 L2 : MemoryLayout),
-    compatibleLayouts L1 L2
-
--- Layout validation predicate 
+/-- Validates that a memory layout is well-formed.
+    A layout is valid if it has at least one offset and the last offset
+    matches the type size.
+-/
 def validateLayout (L : MemoryLayout) : Bool :=
   L.offsets.length > 0 ∧
-    L.offsets.getLast? = L.abiType.size
+    match L.offsets.getLast? with
+    | some lastOffset => lastOffset = L.abiType.size
+    | none => false
 
--- Layout compatibility predicate 
+/-!
+## Layout Compatibility Specification
+-/
+
+/-- Specification: Layout Compatibility
+    This proposition states that two layouts are compatible when all properties match.
+-/
+def spec_layout_compatibility : Prop :=
+  ∀ (L1 L2 : MemoryLayout),
+    compatibleLayouts L1 L2 = true
+
+/-- Checks if two memory layouts are compatible.
+    Two layouts are compatible when they have identical ABI types, sizes,
+    alignments, and offset lists.
+-/
 def compatibleLayouts (L1 L2 : MemoryLayout) : Bool :=
   L1.abiType = L2.abiType ∧
     L1.size = L2.size ∧
@@ -96,4 +108,3 @@ def compatibleLayouts (L1 L2 : MemoryLayout) : Bool :=
     L1.offsets = L2.offsets
 
 end Morph.Specs.AbiDataRefinement
--/

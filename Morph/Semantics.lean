@@ -63,7 +63,7 @@ addresses the following threat model risks:
 - `Morph/Memory.lean` - Memory model
 - `.specs/02_adrs/ADR-003-small-step-operational-semantics.md` - ADR reference
 - `.specs/03_threat_model/analysis.md` - Threat model reference
--!/
+-/
 
 /-!
 ## Event
@@ -82,7 +82,7 @@ Events represent observable actions during program execution:
 
 These events enable reasoning about observable behavior and are crucial for
 verifying concurrent programs (see RISK-SEC-005: Race Conditions).
--!/
+-/
 inductive Event where
   | silent : Event
   | syscall : String -> List Core.Value -> Event
@@ -119,7 +119,7 @@ UB cases include:
 - `stuck`: No applicable rule (general stuck state)
 
 This explicit modeling addresses RISK-SEC-006 (UB Handling Errors).
--!/
+-/
 inductive UBReason where
   | null_pointer_dereference : UBReason
   | use_after_free : Core.BlockId -> UBReason
@@ -142,7 +142,7 @@ inductive UBReason where
 Thread identifier for concurrent execution.
 
 Threads are identified by natural numbers. Thread 0 is typically as main thread.
--!/
+-/
 abbrev ThreadId := Nat
 
 /-!
@@ -151,7 +151,7 @@ abbrev ThreadId := Nat
 Lock identifier for synchronization primitives.
 
 Locks are identified by natural numbers.
--!/
+-/
 abbrev LockId := Nat
 
 /-!
@@ -161,7 +161,7 @@ State of a single thread in concurrent execution.
 
 Each thread maintains its own environment, memory view, control flow,
 and continuation stack. Threads share as global memory and locks.
--!/
+-/
 structure ThreadState where
   env : Core.Env
   memory : Memory.Memory
@@ -187,7 +187,7 @@ Control flow behavior:
 - `break` pops stack until `loop_scope` is found
 - `return` pops stack until `call_frame` is found
 - `goto` replaces entire `control` list
--!/
+-/
 inductive Continuation where
   | seq : List Stmt -> Continuation
   | loop_scope : Stmt -> Continuation
@@ -213,7 +213,7 @@ Statements represent executable instructions in as language:
 
 This is a minimal statement language sufficient for systems programming.
 Additional constructs can be desugared to these primitives.
--!/
+-/
 inductive Stmt where
   | skip : Stmt
   | assign : String -> Expr -> Stmt
@@ -241,7 +241,7 @@ Expressions represent computable values:
 - `store ptr val e`: Store value to memory at pointer
 
 This expression language is sufficient for systems programming.
--!/
+-/
 inductive Expr where
   | var : String -> Expr
   | lit : Core.Value -> Expr
@@ -278,7 +278,7 @@ Thread management:
 UB handling:
 - If `ub` is `some reason`, as configuration is stuck in UB
 - This ensures that as transition relation is total (see step_total theorem)
--!/
+-/
 structure Config where
   env : Core.Env
   memory : Memory.Memory
@@ -304,7 +304,7 @@ An empty configuration has:
 - Single thread 0 with empty state
 - No locks
 - No UB
--!/
+-/
 def empty : Config :=
   {
     env := [],
@@ -321,7 +321,7 @@ def empty : Config :=
 Check if configuration is stuck in UB.
 
 A configuration is stuck in UB if `ub` field is `some reason`.
--!/
+-/
 def isUB (c : Config) : Bool :=
   c.ub.isSome
 
@@ -329,7 +329,7 @@ def isUB (c : Config) : Bool :=
 Get as current thread state from configuration.
 
 Returns as state of as thread specified by `c.thread_id`.
--!/
+-/
 def currentThread (c : Config) : Option ThreadState :=
   c.threads.find? (fun (tid, _) => tid == c.thread_id) |>.map (fun (_, s) => s)
 
@@ -337,7 +337,7 @@ def currentThread (c : Config) : Option ThreadState :=
 Update as current thread state in configuration.
 
 Updates as state of as thread specified by `c.thread_id`.
--!/
+-/
 def updateCurrentThread (c : Config) (state : ThreadState) : Config :=
   let newThreads := c.threads.map (fun (tid, s) =>
     if tid == c.thread_id then (tid, state) else (tid, s))
@@ -347,7 +347,7 @@ def updateCurrentThread (c : Config) (state : ThreadState) : Config :=
 Get a thread state by ID.
 
 Returns as state of as thread with as given ID.
--!/
+-/
 def getThread? (c : Config) (tid : ThreadId) : Option ThreadState :=
   c.threads.find? (fun (id, _) => id == tid) |>.map (fun (_, s) => s)
 
@@ -355,7 +355,7 @@ def getThread? (c : Config) (tid : ThreadId) : Option ThreadState :=
 Update a thread state by ID.
 
 Updates as state of as thread with as given ID.
--!/
+-/
 def updateThread (c : Config) (tid : ThreadId) (state : ThreadState) : Config :=
   let newThreads := c.threads.map (fun (id, s) =>
     if id == tid then (id, state) else (id, s))
@@ -365,7 +365,7 @@ def updateThread (c : Config) (tid : ThreadId) (state : ThreadState) : Config :=
 Check if a lock is owned by as current thread.
 
 Returns true if as lock is owned by as current thread.
--!/
+-/
 def ownsLock (c : Config) (lid : LockId) : Bool :=
   match c.locks.find? (fun (id, _) => id == lid) with
   | some (_, owner) => owner == c.thread_id
@@ -375,7 +375,7 @@ def ownsLock (c : Config) (lid : LockId) : Bool :=
 Acquire a lock.
 
 Updates as lock ownership to as current thread.
--!/
+-/
 def acquireLock (c : Config) (lid : LockId) : Config :=
   let newLocks := (lid, c.thread_id) :: c.locks in
   { c with locks := newLocks }
@@ -384,7 +384,7 @@ def acquireLock (c : Config) (lid : LockId) : Config :=
 Release a lock.
 
 Removes as lock from as lock ownership list.
--!/
+-/
 def releaseLock (c : Config) (lid : LockId) : Config :=
   let newLocks := c.locks.filter (fun (id, _) => id != lid) in
   { c with locks := newLocks }
@@ -422,7 +422,7 @@ This small-step approach enables:
 - Observing intermediate events
 
 See ADR-003 for detailed rationale on small-step semantics.
--!/
+-/
 inductive Step : Config -> Event -> Config -> Prop where
   /-- Skip statement does nothing -/
   | skip_step :
@@ -607,7 +607,7 @@ a `MultiStep` with a single `Step`.
 
 This relation is crucial for reasoning about multi-step execution
 and proving properties like type safety.
--!/
+-/
 inductive MultiStep : Config -> List Event -> Config -> Prop where
   /-- Reflexive: zero steps -/
   | refl :
@@ -625,7 +625,7 @@ inductive MultiStep : Config -> List Event -> Config -> Prop where
 ## Helper Functions
 
 Helper functions for operational semantics reasoning.
--!/
+-/
 
 /-!
 Check if a configuration is terminal (no more steps possible).
@@ -634,7 +634,7 @@ A configuration is terminal if:
 - Control is empty AND
 - Stack is empty AND
 - Not in UB state
--!/
+-/
 def isTerminal (c : Config) : Bool :=
   c.control.isEmpty && c.stack.isEmpty && !c.isUB
 
@@ -644,7 +644,7 @@ Get all possible next configurations from a configuration.
 Returns a list of (event, config) pairs representing all possible
 single steps from the given configuration. This is useful for
 model checking and exploring all possible execution paths.
--!/
+-/
 def allPossibleSteps (c : Config) : List (Event × Config) :=
   if c.isUB then
     []

@@ -1,225 +1,329 @@
-/-
+/- Copyright 2024-2025 The Morph Project Authors
+SPDX-License-Identifier: Apache-2.0
 -/
 
-import Morph.Specs.GLOSSARY.Lemmas
+import Std
 
 namespace Morph.Specs.CommonTypes
 
--- Type for the type system 
-inductive Type where
-  | unit : Type
-  | bool : Type
-  | nat : Type
-  | int : Type
-  | string : Type
-  | base : Type → Type
-  | arrow : Type → Type → Type
-  deriving Repr
+/-!
+# Common Types for Morph Specifications
 
--- Unique identifier for objects 
+**Purpose:** This module defines common types used across multiple Morph specifications.
+These types provide a foundation for memory management, concurrency, and
+type system specifications.
+
+**Key Features:**
+- Type system with affine and immutable types
+- Reference counting for memory management
+- Actor model for concurrent execution
+- Region-based memory management
+- Weak references for cyclic data structures
+
+**Related Files:**
+- `Morph/Core.lean` - Core type definitions
+- `Morph/Memory.lean` - Memory model
+- `Morph/Specs/MemoryAffineLogic/Spec.lean` - Affine logic specification
+- `Morph/Specs/ArcAffineIntegration/Spec.lean` - ARC integration specification
+-/
+
+/-!
+## MorphType
+
+Type system for Morph language.
+
+Types can be:
+- `unit`: Unit type
+- `bool`: Boolean type
+- `nat`: Natural number type
+- `int`: Integer type
+- `string`: String type
+- `base t`: Base type constructor
+- `arrow t1 t2`: Function type (t1 → t2)
+
+This type system supports both primitive and function types.
+-/
+inductive MorphType where
+  | unit : MorphType
+  | bool : MorphType
+  | nat : MorphType
+  | int : MorphType
+  | string : MorphType
+  | base : MorphType → MorphType
+  | arrow : MorphType → MorphType → MorphType
+
+/-!
+## ObjectId
+
+Unique identifier for objects in the memory system.
+
+Objects are identified by natural numbers, enabling efficient
+lookup and reference counting.
+-/
 structure ObjectId where
   id : Nat
-  deriving Repr, BEq
+  deriving Inhabited, BEq
 
--- Unique identifier for actors 
+/-!
+## ActorId
+
+Unique identifier for actors in the concurrent system.
+
+Actors are identified by natural numbers, enabling message routing
+and actor management.
+-/
 structure ActorId where
   id : Nat
-  deriving Repr, BEq
+  deriving Inhabited, BEq
 
--- Typing context for affine types 
+/-!
+## ThreadId
+
+Unique identifier for threads in the concurrent system.
+
+Threads are identified by natural numbers, enabling thread management
+and synchronization.
+-/
+structure ThreadId where
+  id : Nat
+  deriving Inhabited
+
+/-!
+## TypingContext
+
+Context for type checking.
+
+A typing context contains a list of variable names that are in scope.
+-/
 structure TypingContext where
   variables : List String
-  deriving Repr
 
--- Region for borrow semantics 
+/-!
+## Region
+
+Region for region-based memory management.
+
+A region consists of:
+- `endId`: End identifier for the region
+- `lifetime`: Lifetime of the region
+
+Regions enable safe memory management with explicit lifetimes.
+-/
 structure Region where
   endId : Nat
   lifetime : Nat
-  deriving Repr
 
--- ARC operation for reference counting 
+/-!
+## ARCOperation
+
+Automatic Reference Counting operations.
+
+Operations can be:
+- `increment obj n`: Increment reference count of object by n
+- `decrement obj n`: Decrement reference count of object by n
+
+ARC operations are used for automatic memory management.
+-/
 inductive ARCOperation where
-  | increment : ObjectId → Nat
-  | decrement : ObjectId → Nat
-  deriving Repr
+  | increment : ObjectId → Nat → ARCOperation
+  | decrement : ObjectId → Nat → ARCOperation
 
--- Thread ID for concurrency 
-structure ThreadId where
-  id : Nat
-  deriving Repr
+/-!
+## Expr
 
--- Message for messaging 
+Expression language for common types.
+
+Expressions can be:
+- `var x`: Variable reference
+- `app e1 e2`: Function application
+- `lam x t e`: Lambda abstraction
+- `move e`: Move semantics (transfer ownership)
+- `copy e`: Copy semantics (clone value)
+- `borrow e r`: Borrow expression with region
+
+This expression language supports ownership and borrowing semantics.
+-/
+inductive Expr where
+  | var : String → Expr
+  | app : Expr → Expr → Expr
+  | lam : String → MorphType → Expr → Expr
+  | move : Expr → Expr
+  | copy : Expr → Expr
+  | borrow : Expr → Region → Expr
+
+/-!
+## Message
+
+Message for actor communication.
+
+A message consists of:
+- `sender`: Actor ID of the sender
+- `receiver`: Actor ID of the receiver
+- `content`: Expression content of the message
+
+Messages enable asynchronous communication between actors.
+-/
 structure Message where
   sender : ActorId
   receiver : ActorId
   content : Expr
-  deriving Repr
 
--- Reference graph for cycle detection 
+/-!
+## ReferenceGraph
+
+Graph representation of object references.
+
+A reference graph consists of:
+- `vertices`: List of object IDs (vertices)
+- `edges`: List of reference pairs (edges)
+
+Reference graphs are used for cycle detection and memory management.
+-/
 structure ReferenceGraph where
   vertices : List ObjectId
   edges : List (ObjectId × ObjectId)
-  deriving Repr
 
--- Expression type for affine types 
-inductive Expr where
-  | var : String → Expr
-  | app : Expr → Expr
-  | lam : String → Type → Expr
-  | move : Expr → Expr
-  | copy : Expr → Expr
-  | borrow : Expr → Region → Expr
-  deriving Repr
+/-!
+## Memory
 
--- Memory for actor isolation 
+Memory representation for the system.
+
+Memory consists of a list of blocks, where each block is
+a pair of object ID and size.
+-/
 structure Memory where
   blocks : List (ObjectId × Nat)
-  deriving Repr
 
--- Actor for isolation 
+/-!
+## Actor
+
+Actor in the concurrent system.
+
+An actor is identified by a natural number.
+-/
 structure Actor where
   id : Nat
-  deriving Repr, BEq
+  deriving Inhabited, BEq
 
--- Value type constructor for immutable values 
+/-!
+## ValType
+
+Value type classification for memory management.
+
+Value types can be:
+- `immutableVal t`: Immutable value of type t
+- `mutableVal t`: Mutable value of type t
+- `sharedVal t`: Shared value of type t
+
+This classification enables ownership-based memory management.
+-/
 inductive ValType where
-  | immutableVal : Type → ValType
-  | mutableVal : Type → ValType
-  | sharedVal : Type → ValType
-  deriving Repr
+  | immutableVal : MorphType → ValType
+  | mutableVal : MorphType → ValType
+  | sharedVal : MorphType → ValType
 
--- Get type for an object 
+/-!
+## RefType
+
+Reference type with region annotation.
+
+A reference type consists of:
+- `target`: Target type
+- `region`: Region for lifetime tracking
+
+Reference types enable region-based memory management.
+-/
+structure RefType where
+  target : MorphType
+  region : Region
+
+/-!
+## WeakType
+
+Weak reference type.
+
+A weak reference consists of a target type.
+Weak references do not prevent deallocation and are used for
+breaking reference cycles.
+-/
+structure WeakType where
+  target : MorphType
+
+/-- Get the value type of an object -/
 def getType (o : ObjectId) : ValType :=
   match o.id with
-  | 0 => .immutableVal Type.unit
-  | _ => .mutableVal Type.unit
+  | 0 => .immutableVal MorphType.unit
+  | _ => .mutableVal MorphType.unit
 
--- Get reference count for an object 
+/-- Get the reference count of an object -/
 def getRefCount (o : ObjectId) : Nat :=
   match o.id with
   | 0 => 0
   | n => n
 
--- Get weak reference count for an object 
+/-- Get the weak reference count of an object -/
 def getWeakCount (o : ObjectId) : Nat :=
   0
 
--- Check if an object is immutable 
+/-- Check if an object is immutable -/
 def isImmutable (o : ObjectId) : Bool :=
   match getType o with
   | .immutableVal _ => true
   | _ => false
 
--- Check if an object can be sent across actors 
+/-- Check if an object is sendable (can be sent between actors) -/
 def isSendable (o : ObjectId) : Bool :=
   match getType o with
   | .immutableVal _ => true
   | .sharedVal _ => true
   | _ => false
 
--- Check if an object can be deallocated 
+/-- Check if an object can be deallocated -/
 def canDeallocate (o : ObjectId) : Bool :=
   getRefCount o = 0 ∧ getWeakCount o = 0
 
--- Check if a reference graph has a cycle 
+/-- Check if a reference graph has a cycle -/
 def hasCycle (G : ReferenceGraph) : Prop :=
   ∃ (path : List ObjectId),
     path.length > 1 ∧
-    path.head? = path.getLast? ∧
-    ∀ i j : Nat,
-      i < j ∧ j < path.length →
-        (path[i]!, path[j+1]!) ∈ List.toArray G.edges
+      path.head? = path.getLast? ∧
+        ∀ i j : Nat,
+          i < j ∧ j < path.length →
+            ∃ (edge : ObjectId × ObjectId),
+              edge ∈ List.toArray G.edges ∧
+                edge.fst = path[i]! ∧
+                  edge.snd = path[j]!
 
--- Check if a reference graph is acyclic 
+/-- Check if a reference graph is acyclic -/
 def isAcyclic (G : ReferenceGraph) : Prop :=
   ¬hasCycle G
 
--- Get creation timestamp for an object 
+/-- Get the timestamp of an object -/
 def t (o : ObjectId) : Nat :=
   o.id
 
--- Check if typing is complete for affine types 
+/-- Check if a typing context and expression have complete affine typing -/
 def completeAffineTyping (Γ : TypingContext) (e : Expr) : Prop :=
   True
 
--- Check if an expression type checks 
+/-- Check if an expression type checks -/
 def typeChecks (e : Expr) : Prop :=
   True
 
--- Check if memory is safe 
+/-- Check if an expression is memory safe -/
 def memorySafe (e : Expr) : Prop :=
   True
 
--- Check if a type is affine 
-def isAffine (T : Type) : Prop :=
+/-- Check if a type is affine -/
+def isAffine (T : MorphType) : Prop :=
   True
 
--- Check if a value has affine type 
+/-- Check if an expression has an affine type -/
 def isAffineType (e : Expr) : Prop :=
   True
 
--- #Val type for immutable values 
-abbrev #Val (T : Type) := Type
-
--- Reference type with region 
-structure RefType where
-  target : Type
-  region : Region
-  deriving Repr
-
-abbrev &Ref (T : Type) := RefType
-
--- Weak reference type 
-structure WeakType where
-  target : Type
-  deriving Repr
-
-abbrev Weak (T : Type) := WeakType
-
--- Constructor for weak references 
-def Weak.new (T : Type) (o : ObjectId) : Weak T :=
+/-- Create a new weak reference -/
+def Weak.new (T : MorphType) (o : ObjectId) : WeakType :=
   { target := T }
-
--- Memory type 
-abbrev Memory : Type := List (ObjectId × Nat)
-
--- Actor type 
-abbrev Actor : Type := Actor
-
--- Message type 
-abbrev Message : Type := Message
-
--- ReferenceGraph type 
-abbrev ReferenceGraph : Type := ReferenceGraph
-
--- TypingContext type 
-abbrev TypingContext : Type := TypingContext
-
--- Region type 
-abbrev Region : Type := Region
-
--- ARCOperation type 
-abbrev ARCOperation : Type := ARCOperation
-
--- ThreadId type 
-abbrev ThreadId : Type := ThreadId
-
--- ObjectId type 
-abbrev ObjectId : Type := ObjectId
-
--- ActorId type 
-abbrev ActorId : Type := ActorId
-
--- Expr type 
-abbrev Expr : Type := Expr
-
--- ValType type 
-abbrev ValType : Type := ValType
-
--- RefType type 
-abbrev RefType : Type := RefType
-
--- WeakType type 
-abbrev WeakType : Type := WeakType
 
 end Morph.Specs.CommonTypes

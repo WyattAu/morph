@@ -32,7 +32,7 @@ This file contains mathematical lemmas and theorems for Semantic Versioning & Co
 | `version_comparison_lemma` | Version comparison is correct | ✓ |
 | `compatibility_transitive_lemma` | Compatibility is transitive | ✓ |
 
--!/
+-/
 
 namespace Morph.Specs.VersionCompatibility
 

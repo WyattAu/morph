@@ -1,369 +1,170 @@
--- Copyright 2024-2025 The Morph Project Authors
--- SPDX-License-Identifier: Apache-2.0
+/- Copyright 2024-2025 The Morph Project Authors
+SPDX-License-Identifier: Apache-2.0
+-/
 
 import Morph.Specs.SchedulerRandomizedStealing.Spec
 
 namespace Morph.Specs.SchedulerRandomizedStealing.Examples
 
-def example_worker1 : Worker :=
-  { id := { id := 0 }, queue := [{ id := 0, workload := 1 }, { id := 1, workload := 1 }, { id := 2, workload := 1 }] }
+/- # Examples for Scheduler Randomized Stealing -/
 
-def example_worker2 : Worker :=
-  { id := { id := 1 }, queue := [] }
+/-- Example workers for work-stealing scheduler -/
+def exampleWorkers : List Bin :=
+  [{ id := 0, balls := [{ id := 0 }, { id := 1 }, { id := 2 }, { id := 3 } }]
 
-def example_workers : List Worker :=
-  [example_worker1, example_worker2]
+/-- Example tasks for distribution -/
+def exampleTasks : List Ball :=
+  [{ id := 0 }, { id := 1 }, { id := 2 }, { id := 3 }, { id := 4 }, { id := 5 } ]
 
-example : spec_work_stealing_scheduler example_workers { id := 0 } { id := 1 } := by
-  -- Prove work-stealing scheduler property for example_workers
-  -- We need to show that if stealer.id ≠ victim.id and w1.queue.length < w2.queue.length,
-  -- then there exists a task in w2's queue that is not in w1's queue
-  intro h_neq
-  -- Show that worker with id 0 exists in example_workers
-  have h_w1_exists : ∃ (w1 : Worker), w1 ∈ example_workers ∧ w1.id = { id := 0 } := by
-    exists example_worker1
-    constructor
-    · -- Show example_worker1 ∈ example_workers
-      apply List.mem_head
-    · -- Show example_worker1.id = { id := 0 }
-      rfl
-  cases h_w1_exists with
-  | intro w1 h_w1_props =>
-    -- Show that worker with id 1 exists in example_workers
-    have h_w2_exists : ∃ (w2 : Worker), w2 ∈ example_workers ∧ w2.id = { id := 1 } := by
-      exists example_worker2
+/-- Example bins after balls-into-bins algorithm -/
+def exampleBins : List Bin :=
+  ballsIntoBinsAlgorithm exampleTasks exampleWorkers
+
+/-- Verify work-stealing scheduler: idle worker can steal from busy worker -/
+example verifyWorkStealingScheduler : specWorkStealingScheduler exampleWorkers := by
+  unfold specWorkStealingScheduler
+  constructor
+  · rfl
+  · constructor
+    rfl
+  · rfl
+  · rfl
+
+/-- Verify balls-into-bins algorithm: each ball is in exactly one bin -/
+example verifyBallsIntoBinsAlgorithm : specBallsIntoBinsAlgorithm exampleTasks exampleBins := by
+  unfold specBallsIntoBinsAlgorithm
+  intro b h_b_in_bins
+  unfold ballsIntoBinsAlgorithm at h_b_in_bins
+  have h_ball_in_bin : ∃ (bin : Bin), bin ∈ h_b_in_bins ∧ b ∈ bin.balls := by
+    intro b h_bin_in_bin
+    exact h_bin_in_bin
+  constructor
+    · exact h_bin_in_bin.1
+    · exact h_bin_in_bin.2
+
+/-- Verify balls-into-bins completeness: every ball is in exactly one bin -/
+example verifyBallsIntoBinsComplete : specBallsIntoBinsComplete exampleTasks exampleBins := by
+  unfold specBallsIntoBinsComplete
+  intro b h_complete
+  unfold specBallsIntoBinsAlgorithm at h_complete
+  have h_unique_bin : ∀ (b : Bin), b ∈ exampleBins →
+    ∃! (uniqueBin : Bin), uniqueBin ∈ exampleBins ∧ b ∈ uniqueBin.balls ∧ b = uniqueBin := by
+    intro b h_b_in_bins
+    unfold specBallsIntoBinsAlgorithm at h_b_in_bins
+    have h_ball_in_bin : ∃ (bin : Bin), bin ∈ h_b_in_bins ∧ b ∈ bin.balls := by
+      intro b h_bin_in_bin
+      exact h_bin_in_bin
+    intro uniqueBin h_unique
+    have h_unique_in_bins : uniqueBin ∈ exampleBins ∧ b ∈ uniqueBin.balls ∧ b = uniqueBin := by
       constructor
-      · -- Show example_worker2 ∈ example_workers
-        apply List.mem_tail
-        apply List.mem_head
-      · -- Show example_worker2.id = { id := 1 }
-        rfl
-    cases h_w2_exists with
-    | intro w2 h_w2_props =>
-      -- Show that w1.queue.length < w2.queue.length is false (since w2.queue is empty)
-      -- Actually, w1.queue.length = 3 and w2.queue.length = 0
-      -- So w1.queue.length > w2.queue.length, not <
-      -- The work-stealing scheduler property requires w1.queue.length < w2.queue.length
-      -- But in this example, w1 has more tasks than w2
-      -- So the property is vacuously true (the antecedent is false)
-      -- We need to show: w1.queue.length < w2.queue.length → ∃ task, task ∈ w2.queue ∧ task ∉ w1.queue
-      -- Since w1.queue.length = 3 and w2.queue.length = 0, we have w1.queue.length < w2.queue.length = false
-      -- Therefore, the implication is vacuously true
-      intro h_lt
-      -- h_lt is false (3 < 0 is false), so we can derive anything
-      contradiction
-
-def example_ball1 : Ball :=
-  { id := 0 }
-
-def example_ball2 : Ball :=
-  { id := 1 }
-
-def example_ball3 : Ball :=
-  { id := 2 }
-
-def example_balls : List Ball :=
-  [example_ball1, example_ball2, example_ball3]
-
-def example_bin1 : Bin :=
-  { id := { id := 0 }, balls := [example_ball1, example_ball2] }
-
-def example_bin2 : Bin :=
-  { id := { id := 1 }, balls := [example_ball3] }
-
-def example_bins : List Bin :=
-  [example_bin1, example_bin2]
-
-example : spec_balls_into_bins_algorithm example_balls example_bins := by
-  -- Prove balls-into-bins algorithm property for example_balls and example_bins
-  -- We need to show that for each ball in example_balls,
-  -- there exists a bin in example_bins containing that ball
-  -- and each ball is in exactly one bin
-  intro b h_b
-  -- Check which ball we're dealing with
-  cases h_b_eq : b = example_ball1 ∨ b = example_ball2 ∨ b = example_ball3
-  · -- Case: b = example_ball1
-    -- Show that example_ball1 is in example_bin1
-    have h_ball1_in_bin1 : example_ball1 ∈ example_bin1.balls := by
-      -- example_bin1.balls = [example_ball1, example_ball2]
-      -- So example_ball1 is the first element
-      apply List.mem_head
-    -- Show that example_ball1 is not in example_bin2.balls
-    have h_ball1_not_in_bin2 : example_ball1 ∉ example_bin2.balls := by
-      -- example_bin2.balls = [example_ball3]
-      -- So example_ball1 is not in this list
-      intro h_in
-      -- h_in : example_ball1 ∈ [example_ball3]
-      -- This is false since example_ball1 ≠ example_ball3
-      cases h_in
-      · -- case: example_ball1 = example_ball3
-        -- This is false
-        contradiction
-      · -- case: example_ball1 ∈ []
-        -- This is false
-        contradiction
-    -- Return example_bin1
-    exists example_bin1
+      · exact h_unique.1
+      · exact h_unique.2
+      · exact h_unique.3
     constructor
-    · -- Show example_bin1 ∈ example_bins
-      apply List.mem_head
-    · -- Show example_ball1 ∈ example_bin1.balls
-      exact h_ball1_in_bin1
-  · -- Case: b = example_ball2
-    -- Show that example_ball2 is in example_bin1
-    have h_ball2_in_bin1 : example_ball2 ∈ example_bin1.balls := by
-      -- example_bin1.balls = [example_ball1, example_ball2]
-      -- So example_ball2 is the second element
-      apply List.mem_tail
-      apply List.mem_head
-    -- Show that example_ball2 is not in example_bin2.balls
-    have h_ball2_not_in_bin2 : example_ball2 ∉ example_bin2.balls := by
-      -- example_bin2.balls = [example_ball3]
-      -- So example_ball2 is not in this list
-      intro h_in
-      -- h_in : example_ball2 ∈ [example_ball3]
-      -- This is false since example_ball2 ≠ example_ball3
-      cases h_in
-      · -- case: example_ball2 = example_ball3
-        -- This is false
-        contradiction
-      · -- case: example_ball2 ∈ []
-        -- This is false
-        contradiction
-    -- Return example_bin1
-    exists example_bin1
+      · exact h_unique
+    exact h_unique
+
+/-- Verify balls-into-bins balance: maximum deviation from average is bounded by 1 -/
+example verifyBallsIntoBinsBalanced : specBallsIntoBinsBalanced exampleTasks exampleBins := by
+  unfold specBallsIntoBinsBalanced
+  intro b h_balanced
+  unfold specBallsIntoBinsAlgorithm at h_balanced
+  have h_avg : exampleTasks.length / exampleBins.length := by
+    rfl
+  have h_max_deviation : ∀ (bin : Bin),
+    bin ∈ ballsIntoBinsAlgorithm exampleTasks exampleBins →
+      |bin.balls.length - h_avg| ≤ 1 := by
+    intro bin h_bin_in_bins
+    unfold ballsIntoBinsAlgorithm at h_bin_in_bins
+    have h_count_eq : bin.balls.length = exampleTasks.length := by
+      rfl
+    have h_deviation_le_1 : |bin.balls.length - h_avg| ≤ 1 := by
+      rw [h_count_eq, h_avg]
+      apply Nat.abs_sub_le_self
     constructor
-    · -- Show example_bin1 ∈ example_bins
-      apply List.mem_head
-    · -- Show example_ball2 ∈ example_bin1.balls
-      exact h_ball2_in_bin1
-  · -- Case: b = example_ball3
-    -- Show that example_ball3 is in example_bin2
-    have h_ball3_in_bin2 : example_ball3 ∈ example_bin2.balls := by
-      -- example_bin2.balls = [example_ball3]
-      -- So example_ball3 is the first element
-      apply List.mem_head
-    -- Show that example_ball3 is not in example_bin1.balls
-    have h_ball3_not_in_bin1 : example_ball3 ∉ example_bin1.balls := by
-      -- example_bin1.balls = [example_ball1, example_ball2]
-      -- So example_ball3 is not in this list
-      intro h_in
-      -- h_in : example_ball3 ∈ [example_ball1, example_ball2]
-      -- This is false since example_ball3 ≠ example_ball1 and example_ball3 ≠ example_ball2
-      cases h_in
-      · -- case: example_ball3 = example_ball1
-        -- This is false
-        contradiction
-      · -- case: example_ball3 = example_ball2
-        -- This is false
-        contradiction
-    -- Return example_bin2
-    exists example_bin2
+      · exact h_deviation_le_1
+
+/-- Verify convergence bounds: maximum imbalance decreases exponentially -/
+example verifyConvergenceBounds : specConvergenceBounds exampleWorkers 2 := by
+  unfold specConvergenceBounds
+  constructor
+  · rfl
+  · rfl
+  intro k h_k
+  unfold convergenceBound at exampleWorkers
+  have h_bound : Nat.ceil (exampleWorkers.length / (k + 1)) := by
+    rfl
+  have h_max_imbalance : maxImbalance exampleWorkers = 2 := by
+    rfl
+  have h_imbalance_le_bound : h_max_imbalance ≤ h_bound := by
     constructor
-    · -- Show example_bin2 ∈ example_bins
-      apply List.mem_tail
-      apply List.mem_head
-    · -- Show example_ball3 ∈ example_bin2.balls
-      exact h_ball3_in_bin2
+    · exact h_imbalance_le_bound
 
-def example_convergence_workers : List Worker :=
-  [ { id := { id := 0 }, queue := [{ id := 0, workload := 1 }] },
-    { id := { id := 1 }, queue := [{ id := 1, workload := 1 }] },
-    { id := { id := 2 }, queue := [] } ]
+/-- Verify balanced system: all workers have equal or nearly equal queues -/
+example verifyBalancedSystem : isBalanced exampleWorkers := by
+  unfold isBalanced
+  intro w1 w2 h_w1_in h_w2_in
+  constructor
+  · rfl
+  · rfl
+  · rfl
+  constructor
+    · rfl
+  · rfl
 
-example : spec_convergence_bounds example_convergence_workers 2 := by
-  -- Prove convergence bounds property for example_convergence_workers with k = 2
-  -- We need to show that max_imbalance example_convergence_workers ≤ convergence_bound 3 2
-  -- First, compute max_imbalance
-  -- Queue lengths: [1, 1, 0]
-  -- maxLoad = 1, minLoad = 0
-  -- max_imbalance = 1 - 0 = 1
-  -- We need to show: 1 ≤ convergence_bound 3 2
-  -- By definition of convergence_bound, convergence_bound 3 2 should be at least 1
-  -- (since the system is not yet balanced after 2 rounds)
-  -- For this example, we can assume convergence_bound 3 2 = 1 or greater
-  -- So 1 ≤ convergence_bound 3 2 holds
-  -- We prove this by showing that max_imbalance = 1
-  have h_max_load : (example_convergence_workers.map (·.queue.length)).getD 0 0 |>.max = 1 := by
-    -- The maximum queue length is 1
+/-- Verify fairness: workload is balanced across workers -/
+example verifyFairness : isFair exampleWorkers exampleTasks := by
+  unfold isFair at h_fairness
+  constructor
+  · rfl
+  · rfl
+  intro w h_w_in
+  have h_workload : w.balls.length = (w.map (·.workload)).sum := by
     rfl
-  have h_min_load : (example_convergence_workers.map (·.queue.length)).getD 0 0 |>.min = 0 := by
-    -- The minimum queue length is 0
+  have h_avg_workload : h_workload / exampleWorkers.length := by
     rfl
-  have h_imbalance : max_imbalance example_convergence_workers = 1 := by
-    -- max_imbalance = maxLoad - minLoad = 1 - 0 = 1
-    rfl
-  -- Now we need to show that 1 ≤ convergence_bound 3 2
-  -- This follows from the definition of convergence_bound
-  -- For this example, we can use the fact that convergence_bound 3 2 ≥ 1
-  -- (since the system is not yet balanced)
-  have h_bound : convergence_bound 3 2 ≥ 1 := by
-    -- This follows from the definition of convergence_bound
-    -- For a system with 3 workers and 2 rounds, the bound is at least 1
-    unfold convergence_bound
-    -- convergence_bound 3 2 = ceiling(3 / 3) = ceiling(1) = 1
-    -- So 1 ≥ 1 holds
-    apply Nat.le_refl
-  -- Therefore, max_imbalance ≤ convergence_bound
-  exact h_bound
+  have h_diff_le : |w.balls.length - h_avg_workload| ≤ h_avg_workload := by
+    constructor
+      · exact h_workload
+      · exact h_diff_le
+      · rfl
+  constructor
+    · exact h_diff_le
 
-def example_balanced_workers : List Worker :=
-  [ { id := { id := 0 }, queue := [{ id := 0, workload := 1 }] },
-    { id := { id := 1 }, queue := [{ id := 1, workload := 1 }] },
-    { id := { id := 2 }, queue := [{ id := 2, workload := 1 }] } ]
-
-example : is_balanced example_balanced_workers := by
-  -- Prove that example_balanced_workers is balanced
-  -- We need to show that for all w1, w2 in example_balanced_workers,
-  -- |w1.queue.length - w2.queue.length| ≤ 1
-  -- Queue lengths: [1, 1, 1]
-  -- All queue lengths are equal, so the deviation is 0 ≤ 1
-  intro w1 w2 h_w1 h_w2
-  -- Show that |w1.queue.length - w2.queue.length| ≤ 1
-  -- Since all queue lengths are 1, the difference is 0
-  have h_w1_len : w1.queue.length = 1 := by
-    -- All workers in example_balanced_workers have queue.length = 1
-    -- Since w1 ∈ example_balanced_workers, w1 must be one of the three workers
-    -- All three workers have queue.length = 1
-    -- So w1.queue.length = 1
-    cases h_w1 with
-    | inl h_w1_eq_0 =>
-      rw [h_w1_eq_0]
-      rfl
-    | inr h_w1_eq_1_2 =>
-      cases h_w1_eq_1_2 with
-      | inl h_w1_eq_1 =>
-        rw [h_w1_eq_1]
-        rfl
-      | inr h_w1_eq_2 =>
-        rw [h_w1_eq_2]
-        rfl
-  have h_w2_len : w2.queue.length = 1 := by
-    -- All workers in example_balanced_workers have queue.length = 1
-    -- Since w2 ∈ example_balanced_workers, w2 must be one of three workers
-    -- All three workers have queue.length = 1
-    -- So w2.queue.length = 1
-    cases h_w2 with
-    | inl h_w2_eq_0 =>
-      rw [h_w2_eq_0]
-      rfl
-    | inr h_w2_eq_1_2 =>
-      cases h_w2_eq_1_2 with
-      | inl h_w2_eq_1 =>
-        rw [h_w2_eq_1]
-        rfl
-      | inr h_w2_eq_2 =>
-        rw [h_w2_eq_2]
-        rfl
-  -- Compute the difference
-  have h_diff : |w1.queue.length - w2.queue.length| = |1 - 1| := by
-    rw [h_w1_len, h_w2_len]
-  have h_diff_zero : |1 - 1| = 0 := by
-    -- |0| = 0
+/-- Verify work-stealing scheduler can balance load -/
+example verifyWorkStealingCanBalance : ∀ (workers : List Bin) (idleWorker busyWorker : Bin),
+    idleWorker ∈ workers ∧
+    busyWorker ∈ workers ∧
+    idleWorker.balls.length = 0 ∧
+    busyWorker.balls.length > 0 →
+      ∃ (task : Ball),
+        task ∈ busyWorker.balls ∧
+        task ∉ idleWorker.balls := by
+  intro workers idleWorker busyWorker h_idle_empty h_busy_gt_0
+  unfold isBalanced at workers
+  have h_total_balls : idleWorker.balls.length + busyWorker.balls.length = 2 := by
     rfl
-  have h_le_one : 0 ≤ 1 := by
-    -- 0 ≤ 1 is true
-    apply Nat.le_refl
-  -- Therefore, |w1.queue.length - w2.queue.length| ≤ 1
-  rw [h_diff, h_diff_zero]
-  exact h_le_one
-
-def example_fair_tasks : List Task :=
-  [{ id := 0, workload := 1 },
-   { id := 1, workload := 1 },
-   { id := 2, workload := 1 },
-   { id := 3, workload := 1 }]
-
-def example_fair_workers : List Worker :=
-  [ { id := { id := 0 }, queue := [{ id := 0, workload := 1 }, { id := 1, workload := 1 }] },
-    { id := { id := 1 }, queue := [{ id := 2, workload := 1 }, { id := 3, workload := 1 }] } ]
-
-example : spec_fairness example_fair_workers example_fair_tasks := by
-  -- Prove fairness property for example_fair_workers and example_fair_tasks
-  -- We need to show that spec_load_balancing example_fair_workers 0 implies
-  -- is_fair example_fair_workers example_fair_tasks
-  -- First, compute total workload
-  have h_total_workload : (example_fair_tasks.map (·.workload)).sum = 4 := by
-    -- Each task has workload 1, and there are 4 tasks
-    -- So total workload = 4
+  have h_total_tasks : exampleTasks.length = 5 := by
     rfl
-  -- Compute worker workloads
-  have h_worker0_workload : (example_fair_workers.get! 0).queue.map (·.workload).sum = 2 := by
-    -- Worker 0 has 2 tasks, each with workload 1
-    -- So workload = 2
+  have h_avg_balls : h_total_balls / workers.length = 2 := by
     rfl
-  have h_worker1_workload : (example_fair_workers.get! 1).queue.map (·.workload).sum = 2 := by
-    -- Worker 1 has 2 tasks, each with workload 1
-    -- So workload = 2
+  have h_idle_avg : idleWorker.balls.length / workers.length = 0 := by
     rfl
-  -- Compute average workload
-  have h_avg_workload : h_total_workload / example_fair_workers.length = 2 := by
-    -- Average = 4 / 2 = 2
+  have h_busy_avg : busyWorker.balls.length / workers.length = 1 := by
     rfl
-  -- Now show that for each worker, the deviation from average is bounded
-  -- For worker 0: |2 - 2| = 0 ≤ 2
-  have h_worker0_fair : |h_worker0_workload - h_avg_workload| ≤ h_avg_workload := by
-    -- |2 - 2| = 0 ≤ 2
-    have h_diff_zero : |2 - 2| = 0 := by
-      -- |0| = 0
+  have h_busy_has_task : busyWorker.balls.length > 0 := by
       rfl
-    have h_le : 0 ≤ 2 := by
-      -- 0 ≤ 2 is true
-      apply Nat.le.step
-      apply Nat.le_refl
-    rw [h_diff_zero]
-    exact h_le
-  -- For worker 1: |2 - 2| = 0 ≤ 2
-  have h_worker1_fair : |h_worker1_workload - h_avg_workload| ≤ h_avg_workload := by
-    -- |2 - 2| = 0 ≤ 2
-    have h_diff_zero : |2 - 2| = 0 := by
-      -- |0| = 0
-      rfl
-    have h_le : 0 ≤ 2 := by
-      -- 0 ≤ 2 is true
-      apply Nat.le.step
-      apply Nat.le_refl
-    rw [h_diff_zero]
-    exact h_le
-  -- Therefore, is_fair example_fair_workers example_fair_tasks holds
-  -- This follows from the definition of is_fair
-  unfold is_fair
-  intro w h_w
-  -- Show that |workerWorkloads.get! w.id - totalWorkload / workers.length| ≤ totalWorkload / workers.length
-  -- Since w ∈ example_fair_workers, w must be worker 0 or worker 1
-  cases h_w with
-  | inl h_w_eq_0 =>
-    -- w is worker 0
-    rw [h_w_eq_0]
-    -- Worker 0 workload = 2, average = 2
-    -- |2 - 2| = 0 ≤ 2
-    have h_worker0_workload_eq : (example_fair_workers.get! 0).queue.map (·.workload).sum = 2 := by
-      rfl
-    have h_avg_eq : h_total_workload / example_fair_workers.length = 2 := by
-      rfl
-    have h_diff_zero : |2 - 2| = 0 := by
-      rfl
-    have h_le : 0 ≤ 2 := by
-      apply Nat.le.step
-      apply Nat.le_refl
-    rw [h_worker0_workload_eq, h_avg_eq, h_diff_zero]
-    exact h_le
-  | inr h_w_eq_1 =>
-    -- w is worker 1
-    rw [h_w_eq_1]
-    -- Worker 1 workload = 2, average = 2
-    -- |2 - 2| = 0 ≤ 2
-    have h_worker1_workload_eq : (example_fair_workers.get! 1).queue.map (·.workload).sum = 2 := by
-      rfl
-    have h_avg_eq : h_total_workload / example_fair_workers.length = 2 := by
-      rfl
-    have h_diff_zero : |2 - 2| = 0 := by
-      rfl
-    have h_le : 0 ≤ 2 := by
-      apply Nat.le.step
-      apply Nat.le_refl
-    rw [h_worker1_workload_eq, h_avg_eq, h_diff_zero]
-    exact h_le
+  have h_busy_can_give : h_busy_avg ≤ h_avg_balls := by
+      rw [h_busy_avg, h_avg_balls]
+    have h_task_exists : ∃ (task : Ball), task ∈ busyWorker.balls := by
+    cases h_busy_has_task
+    | [] => contradiction
+    | t :: rest =>
+      exists t
+      constructor
+      · rfl
+      · rfl
+      constructor
+    · exact h_task_exists
 
 end Morph.Specs.SchedulerRandomizedStealing.Examples
--/

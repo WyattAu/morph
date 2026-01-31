@@ -34,7 +34,7 @@ This implementation addresses:
 - `Endianness`: Endianness handling at load/store boundary
 - `MemType`: Type representation for typed memory
 - `MonadMemory`: Typeclass for memory operations
--!/
+-/
 
 /-!
 ## MemByte
@@ -45,7 +45,7 @@ Memory byte with three possible states:
 - `poison`: Poisoned byte (result of undefined operation)
 
 This explicit modeling prevents undefined behavior from uninitialized memory reads.
--!/
+-/
 inductive MemByte where
   | value (v : UInt8)
   | undef
@@ -83,7 +83,7 @@ end MemByte
 
 Block state for tracking allocation status.
 This helps prevent use-after-free and double-free bugs.
--!/
+-/
 inductive BlockState where
   | allocated
   | freed
@@ -94,7 +94,7 @@ inductive BlockState where
 
 Memory block with explicit byte-level representation.
 Each block tracks its size, byte contents, state, and alignment.
--!/
+-/
 structure Block where
   id : Core.BlockId
   size : Nat
@@ -150,7 +150,7 @@ end Block
 
 Global memory state using block-offset addressing.
 Memory is organized as a collection of blocks, each with unique IDs.
--!/
+-/
 structure Memory where
   blocks : List (Core.BlockId × Block)
   nextBlockId : Nat
@@ -203,7 +203,7 @@ end Memory
 Endianness for load/store operations.
 Endianness is handled at the load/store boundary to support
 both little-endian and big-endian architectures.
--!/
+-/
 inductive Endianness where
   | LittleEndian
   | BigEndian
@@ -214,7 +214,7 @@ inductive Endianness where
 
 Memory type representation for typed memory operations.
 This enables type-tagged memory and prevents type confusion.
--!/
+-/
 inductive MemType where
   | Int8
   | Int16
@@ -271,7 +271,7 @@ end MemType
 
 Alignment checking for memory operations.
 Proper alignment is required for correct behavior on many architectures.
--!/
+-/
 
 /-- Get the alignment requirement for a given memory type -/
 def alignment_of (t : MemType) : Nat :=
@@ -290,7 +290,7 @@ def check_pointer_alignment (p : Core.Pointer) (alignment : Nat) : Bool :=
 
 Helper functions for memory operations.
 These provide utilities for common memory manipulation tasks.
--!/
+-/
 
 /-- Convert an array of MemBytes to a single value based on endianness -/
 def bytes_to_value (bytes : Array MemByte) (endianness : Endianness) : Nat :=
@@ -326,7 +326,7 @@ def check_pointer_valid (m : Memory) (ptr : Core.Pointer) : Bool :=
 
 Memory error type for error handling.
 This provides explicit error reporting for memory operations.
--!/
+-/
 inductive MemoryError where
   | invalidPointer (ptr : Core.Pointer)
   | outOfBounds (block : Core.BlockId) (offset size : Nat)
@@ -342,7 +342,7 @@ inductive MemoryError where
 
 Result type for memory operations.
 This provides explicit error handling for memory operations.
--!/
+-/
 def MemoryResult (α : Type) : Type := Except MemoryError α
 
 /-!
@@ -351,7 +351,7 @@ def MemoryResult (α : Type) : Type := Except MemoryError α
 MonadMemory typeclass for memory operations.
 This provides a monadic interface for memory operations,
 enabling compositional and effectful memory manipulation.
--!/
+-/
 class MonadMemory (m : Type → Type) where
   /-- Allocate a block of memory -/
   allocate (size alignment : Nat) : m Core.BlockId

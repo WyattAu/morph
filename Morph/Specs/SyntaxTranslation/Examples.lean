@@ -115,4 +115,4 @@ def example_pattern_hum : String :=
 -- Expected: "match (opt) {case Some(v) => v + 1, case None => 0}"
 
 end Morph.Specs.SyntaxTranslation
--!/
+-/

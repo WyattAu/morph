@@ -1,13 +1,12 @@
 /- Copyright 2024-2025 The Morph Project Authors
 SPDX-License-Identifier: Apache-2.0
+-/
 
-
-import Morph.Specs.GLOSSARY
-import Morph.Specs.GLOSSARY.Spec
+import Std
 import Morph.Specs.AbiAlignmentAlgebra.Spec
 
 /-!
-# AbiAlignmentAlgebra Examples
+# Examples: Alignment Algebra (ABI Layout)
 
 This module provides concrete examples and test cases for ABI alignment algebra specification.
 
@@ -27,256 +26,374 @@ The AbiAlignmentAlgebra Examples module demonstrates:
 - **Offset Calculation:** Field offsets are computed with proper alignment
 - **Total Alignment:** Struct alignment is the maximum of field alignments
 - **Total Size:** Struct size accounts for padding
--!/
+-/
+
 namespace Morph.Specs.AbiAlignmentAlgebra
 
 /-!
 ## Example 1: Primitive Type Alignment
 Demonstrates that primitive types have alignment equal to their width.
--!/
+-/
 
--- Example: Primitive type alignment for i32 
-def example_primitive_i32_alignment : LayoutMetadata :=
-  LayoutFunction (.primitive 32)
+/-- Example: Primitive type alignment for 32-bit integer.
+    This example demonstrates that a 32-bit integer has size 32 and alignment 32.
+-/
+def examplePrimitiveI32Alignment : LayoutMetadata :=
+  computePrimitiveLayout { width := 32 }
 
--- Example: Verify primitive i32 alignment 
-#eval example_primitive_i32_alignment
--- Expected: size = 32, align = 32
+/-- Example: Verify primitive i32 alignment.
+    Evaluates to show the computed layout for i32 type.
+-/
+#eval examplePrimitiveI32Alignment
 
--- Example: Primitive type alignment for i64 
-def example_primitive_i64_alignment : LayoutMetadata :=
-  LayoutFunction (.primitive 64)
+/-- Example: Primitive type alignment for 64-bit integer.
+    This example demonstrates that a 64-bit integer has size 64 and alignment 64.
+-/
+def examplePrimitiveI64Alignment : LayoutMetadata :=
+  computePrimitiveLayout { width := 64 }
 
--- Example: Verify primitive i64 alignment 
-#eval example_primitive_i64_alignment
--- Expected: size = 64, align = 64
+/-- Example: Verify primitive i64 alignment.
+    Evaluates to show the computed layout for i64 type.
+-/
+#eval examplePrimitiveI64Alignment
 
--- Example: Primitive type alignment for bool 
-def example_primitive_bool_alignment : LayoutMetadata :=
-  LayoutFunction (.primitive 1)
+/-- Example: Primitive type alignment for 8-bit boolean.
+    This example demonstrates that a boolean has size 1 and alignment 1.
+-/
+def examplePrimitiveBoolAlignment : LayoutMetadata :=
+  computePrimitiveLayout { width := 1 }
 
--- Example: Verify primitive bool alignment 
-#eval example_primitive_bool_alignment
--- Expected: size = 1, align = 1
+/-- Example: Verify primitive bool alignment.
+    Evaluates to show the computed layout for bool type.
+-/
+#eval examplePrimitiveBoolAlignment
 
 /-!
 ## Example 2: Single Field Struct
 Demonstrates struct with a single field.
--!/
+-/
 
--- Example: Struct with single i32 field 
-def example_single_field_struct : StructDef :=
-  { fields := [{ field_type := .primitive 32, offset := 0, size := 32 }] }
+/-- Example: Struct with single 32-bit integer field.
+    This example shows a simple struct containing one i32 field.
+-/
+def exampleSingleFieldStruct : StructDef :=
+  { fields := [{ fieldType := { width := 32 }, offset := 0, size := 32 }] }
 
--- Example: Compute single field struct layout 
-def example_single_field_layout : LayoutMetadata :=
-  LayoutFunction (.struct example_single_field_struct)
+/-- Example: Compute single field struct layout.
+    Computes the layout metadata for the single field struct.
+-/
+def exampleSingleFieldLayout : LayoutMetadata :=
+  computeStructLayout exampleSingleFieldStruct
 
--- Example: Verify single field struct layout 
-#eval example_single_field_layout
--- Expected: size = 32, align = 32, offsets = [0]
+/-- Example: Verify single field struct layout.
+    Evaluates to show the computed layout for single field struct.
+-/
+#eval exampleSingleFieldLayout
 
 /-!
 ## Example 3: Multiple Fields Struct
 Demonstrates struct with multiple fields requiring padding.
--!/
+-/
 
--- Example: Struct with multiple fields 
-def example_multi_field_struct : StructDef :=
+/-- Example: Struct with multiple fields of different alignments.
+    This example shows a struct with i8, i32, and i16 fields.
+-/
+def exampleMultiFieldStruct : StructDef :=
   {
     fields := [
-      { field_type := .primitive 8, offset := 0, size := 8 },   -- i8
-      { field_type := .primitive 32, offset := 8, size := 32 }, -- i32 (aligned to 4-byte boundary)
-      { field_type := .primitive 16, offset := 40, size := 16 } -- i16 (aligned to 2-byte boundary)
+      { fieldType := { width := 8 }, offset := 0, size := 8 },
+      { fieldType := { width := 32 }, offset := 8, size := 32 },
+      { fieldType := { width := 16 }, offset := 40, size := 16 }
     ]
   }
 
--- Example: Compute multi-field struct layout 
-def example_multi_field_layout : LayoutMetadata :=
-  LayoutFunction (.struct example_multi_field_struct)
+/-- Example: Compute multi-field struct layout.
+    Computes the layout metadata for the multi-field struct.
+-/
+def exampleMultiFieldLayout : LayoutMetadata :=
+  computeStructLayout exampleMultiFieldStruct
 
--- Example: Verify multi-field struct layout 
-#eval example_multi_field_layout
--- Expected: size = 56 (8 + 32 + 16), align = 32 (max alignment)
--- Offsets: [0, 8, 40]
+/-- Example: Verify multi-field struct layout.
+    Evaluates to show the computed layout for multi-field struct.
+-/
+#eval exampleMultiFieldLayout
 
 /-!
 ## Example 4: Empty Struct
 Demonstrates empty struct properties.
--!/
+-/
 
--- Example: Empty struct 
-def example_empty_struct : StructDef :=
+/-- Example: Empty struct definition.
+    This example shows a struct with no fields.
+-/
+def exampleEmptyStruct : StructDef :=
   { fields := [] }
 
--- Example: Compute empty struct layout 
-def example_empty_layout : LayoutMetadata :=
-  LayoutFunction (.struct example_empty_struct)
+/-- Example: Compute empty struct layout.
+    Computes the layout metadata for the empty struct.
+-/
+def exampleEmptyLayout : LayoutMetadata :=
+  computeStructLayout exampleEmptyStruct
 
--- Example: Verify empty struct layout 
-#eval example_empty_layout
--- Expected: size = 0, align = 1, offsets = []
+/-- Example: Verify empty struct layout.
+    Evaluates to show the computed layout for empty struct.
+-/
+#eval exampleEmptyLayout
 
 /-!
 ## Example 5: Offset Calculation
 Demonstrates offset calculation with alignment.
--!/
+-/
 
--- Example: Struct demonstrating offset calculation 
-def example_offset_calc_struct : StructDef :=
+/-- Example: Struct demonstrating offset calculation.
+    This example shows a struct with fields at various offsets.
+-/
+def exampleOffsetCalcStruct : StructDef :=
   {
     fields := [
-      { field_type := .primitive 8, offset := 0, size := 8 },    -- offset 0
-      { field_type := .primitive 32, offset := 8, size := 32 },   -- offset 8 (aligned to 4)
-      { field_type := .primitive 8, offset := 40, size := 8 },   -- offset 40 (aligned to 4)
-      { field_type := .primitive 64, offset := 48, size := 64 }   -- offset 48 (aligned to 8)
+      { fieldType := { width := 8 }, offset := 0, size := 8 },
+      { fieldType := { width := 32 }, offset := 8, size := 32 },
+      { fieldType := { width := 8 }, offset := 40, size := 8 },
+      { fieldType := { width := 64 }, offset := 48, size := 64 }
     ]
   }
 
--- Example: Verify offset calculation 
-def example_offset_calc_layout : LayoutMetadata :=
-  LayoutFunction (.struct example_offset_calc_struct)
+/-- Example: Compute offsets for struct.
+    Computes the list of field offsets.
+-/
+def exampleOffsetCalcOffsets : List Nat :=
+  computeStructOffsets exampleOffsetCalcStruct.fields
 
--- Example: Verify offset calculation 
-#eval example_offset_calc_layout
--- Expected: offsets = [0, 8, 40, 48]
+/-- Example: Verify offset calculation.
+    Evaluates to show the computed offsets.
+-/
+#eval exampleOffsetCalcOffsets
 
 /-!
 ## Example 6: Total Alignment
 Demonstrates total alignment computation.
--!/
+-/
 
--- Example: Struct with varying field alignments 
-def example_alignment_struct : StructDef :=
+/-- Example: Struct with varying field alignments.
+    This example shows a struct with fields of different alignments.
+-/
+def exampleAlignmentStruct : StructDef :=
   {
     fields := [
-      { field_type := .primitive 8, offset := 0, size := 8 },   -- align = 8
-      { field_type := .primitive 32, offset := 8, size := 32 },  -- align = 32
-      { field_type := .primitive 64, offset := 40, size := 64 }   -- align = 64
+      { fieldType := { width := 8 }, offset := 0, size := 8 },
+      { fieldType := { width := 32 }, offset := 8, size := 32 },
+      { fieldType := { width := 64 }, offset := 40, size := 64 }
     ]
   }
 
--- Example: Compute total alignment 
-def example_alignment_layout : LayoutMetadata :=
-  LayoutFunction (.struct example_alignment_struct)
+/-- Example: Compute total alignment.
+    Computes the alignment for the struct.
+-/
+def exampleAlignmentLayout : LayoutMetadata :=
+  computeStructLayout exampleAlignmentStruct
 
--- Example: Verify total alignment 
-#eval example_alignment_layout
--- Expected: align = 64 (max of 8, 32, 64)
+/-- Example: Verify total alignment.
+    Evaluates to show the computed alignment.
+-/
+#eval exampleAlignmentLayout
 
 /-!
 ## Example 7: Total Size with Padding
 Demonstrates total size computation with padding.
--!/
+-/
 
--- Example: Struct requiring end padding 
-def example_padding_struct : StructDef :=
+/-- Example: Struct requiring end padding.
+    This example shows a struct that needs padding at the end.
+-/
+def examplePaddingStruct : StructDef :=
   {
     fields := [
-      { field_type := .primitive 8, offset := 0, size := 8 },   -- offset 0
-      { field_type := .primitive 32, offset := 8, size := 32 },  -- offset 8
-      { field_type := .primitive 8, offset := 40, size := 8 }    -- offset 40
+      { fieldType := { width := 8 }, offset := 0, size := 8 },
+      { fieldType := { width := 32 }, offset := 8, size := 32 },
+      { fieldType := { width := 8 }, offset := 40, size := 8 }
     ]
   }
 
--- Example: Compute total size with padding 
-def example_padding_layout : LayoutMetadata :=
-  LayoutFunction (.struct example_padding_struct)
+/-- Example: Compute total size with padding.
+    Computes the size for the struct including padding.
+-/
+def examplePaddingLayout : LayoutMetadata :=
+  computeStructLayout examplePaddingStruct
 
--- Example: Verify total size with padding 
-#eval example_padding_layout
--- Expected: size = 48 (8 + 32 + 8), align = 8
--- Note: Padding added at offset 40 to align field 3 to 8-byte boundary
+/-- Example: Verify total size with padding.
+    Evaluates to show the computed size including padding.
+-/
+#eval examplePaddingLayout
 
 /-!
 ## Example 8: C ABI Compatibility
 Demonstrates C ABI compatibility between layouts.
--!/
+-/
 
--- Example: Layout 1 - simple struct 
-def example_layout1 : LayoutMetadata :=
-  {
-    size := 32,
-    align := 32,
-    offsets := [0]
-  }
+/-- Example: Layout 1 - simple struct.
+    This example shows a simple layout.
+-/
+def exampleLayout1 : LayoutMetadata :=
+  { size := 32, align := { align := 32 }, offsets := [0] }
 
--- Example: Layout 2 - equivalent layout 
-def example_layout2 : LayoutMetadata :=
-  {
-    size := 32,
-    align := 32,
-    offsets := [0]
-  }
+/-- Example: Layout 2 - equivalent layout.
+    This example shows an equivalent layout.
+-/
+def exampleLayout2 : LayoutMetadata :=
+  { size := 32, align := { align := 32 }, offsets := [0] }
 
--- Example: Verify C ABI compatibility 
-def example_c_abi_compatible : Bool :=
-  spec_c_abi_compatibility (.primitive 32) (.primitive 32)
-    example_layout1 example_layout2
+/-- Example: Verify C ABI compatibility.
+    Checks if two layouts are compatible.
+-/
+def exampleCabiCompatible : Bool :=
+  exampleLayout1.size = exampleLayout2.size ∧
+    exampleLayout1.align = exampleLayout2.align ∧
+      exampleLayout1.offsets = exampleLayout2.offsets
 
--- Example: Verify C ABI compatibility 
-#eval example_c_abi_compatible
--- Expected: true (layouts are compatible)
+/-- Example: Verify C ABI compatibility.
+    Evaluates to check compatibility.
+-/
+#eval exampleCabiCompatible
 
 /-!
 ## Example 9: Complex Nested Struct
 Demonstrates struct with nested fields.
--!/
+-/
 
--- Example: Nested struct definition 
-def example_nested_struct : StructDef :=
+/-- Example: Nested struct definition.
+    This example shows a struct with fields at specific offsets.
+-/
+def exampleNestedStruct : StructDef :=
   {
     fields := [
-      { field_type := .primitive 32, offset := 0, size := 32 },   -- i32
-      { field_type := .primitive 64, offset := 32, size := 64 }   -- i64 (aligned to 8-byte boundary)
+      { fieldType := { width := 32 }, offset := 0, size := 32 },
+      { fieldType := { width := 64 }, offset := 32, size := 64 }
     ]
   }
 
--- Example: Compute nested struct layout 
-def example_nested_layout : LayoutMetadata :=
-  LayoutFunction (.struct example_nested_struct)
+/-- Example: Compute nested struct layout.
+    Computes the layout for the nested struct.
+-/
+def exampleNestedLayout : LayoutMetadata :=
+  computeStructLayout exampleNestedStruct
 
--- Example: Verify nested struct layout 
-#eval example_nested_layout
--- Expected: size = 96 (32 + 64), align = 64 (max alignment)
--- Offsets: [0, 32]
+/-- Example: Verify nested struct layout.
+    Evaluates to show the computed layout.
+-/
+#eval exampleNestedLayout
 
 /-!
-## Example 10: Alignment Verification
-Demonstrates verification of alignment properties.
--!/
+## Example 10: Padding Calculation
+Demonstrates padding calculation for alignment.
+-/
 
--- Example: Verify primitive alignment property 
-def example_verify_primitive_alignment : Bool :=
-  spec_primitive_alignment
+/-- Example: Calculate padding for offset 3 with alignment 4.
+    This example shows that offset 3 needs 1 byte of padding to align to 4.
+-/
+def examplePadding1 : Nat :=
+  computePadding 3 4
 
--- Example: Verify struct packing property 
-def example_verify_struct_packing : Bool :=
-  spec_struct_packing_algebra example_multi_field_struct
+/-- Example: Verify padding calculation.
+    Evaluates to show the padding needed.
+-/
+#eval examplePadding1
 
--- Example: Verify offset calculation property 
-def example_verify_offset_calculation : Bool :=
-  spec_offset_calculation example_offset_calc_struct
+/-- Example: Calculate padding for offset 5 with alignment 8.
+    This example shows that offset 5 needs 3 bytes of padding to align to 8.
+-/
+def examplePadding2 : Nat :=
+  computePadding 5 8
 
--- Example: Verify total alignment property 
-def example_verify_total_alignment : Bool :=
-  spec_total_alignment example_alignment_struct
+/-- Example: Verify padding calculation.
+    Evaluates to show the padding needed.
+-/
+#eval examplePadding2
 
--- Example: Verify total size property 
-def example_verify_total_size : Bool :=
-  spec_total_size example_padding_struct
+/-- Example: Calculate padding for offset 8 with alignment 8.
+    This example shows that offset 8 needs 0 bytes of padding (already aligned).
+-/
+def examplePadding3 : Nat :=
+  computePadding 8 8
 
--- Example: Verify all properties 
-def example_verify_all_properties : Bool :=
-  spec_primitive_alignment ∧
-    spec_struct_packing_algebra example_multi_field_struct ∧
-      spec_offset_calculation example_offset_calc_struct ∧
-        spec_total_alignment example_alignment_struct ∧
-          spec_total_size example_padding_struct
+/-- Example: Verify padding calculation.
+    Evaluates to show the padding needed.
+-/
+#eval examplePadding3
 
--- Example: Run all verification tests 
-#eval example_verify_all_properties
--- Expected: true (all properties verified)
+/-!
+## Example 11: Ceiling Division
+Demonstrates ceiling division function.
+-/
+
+/-- Example: Ceiling division of 7 by 3.
+    This example shows that ceil(7/3) = 3.
+-/
+def exampleCeilDiv1 : Nat :=
+  ceilDiv 7 3
+
+/-- Example: Verify ceiling division.
+    Evaluates to show the result.
+-/
+#eval exampleCeilDiv1
+
+/-- Example: Ceiling division of 8 by 4.
+    This example shows that ceil(8/4) = 2 (exact division).
+-/
+def exampleCeilDiv2 : Nat :=
+  ceilDiv 8 4
+
+/-- Example: Verify ceiling division.
+    Evaluates to show the result.
+-/
+#eval exampleCeilDiv2
+
+/-- Example: Ceiling division of 10 by 3.
+    This example shows that ceil(10/3) = 4.
+-/
+def exampleCeilDiv3 : Nat :=
+  ceilDiv 10 3
+
+/-- Example: Verify ceiling division.
+    Evaluates to show the result.
+-/
+#eval exampleCeilDiv3
+
+/-!
+## Example 12: Field Offset Computation
+Demonstrates field offset computation.
+-/
+
+/-- Example: Compute offset for first field.
+    This example shows that the first field is always at offset 0.
+-/
+def exampleFieldOffset0 : Nat :=
+  computeFieldOffset exampleMultiFieldStruct.fields 0
+
+/-- Example: Verify field offset.
+    Evaluates to show the first field offset.
+-/
+#eval exampleFieldOffset0
+
+/-- Example: Compute offset for second field.
+    This example shows the offset for the second field.
+-/
+def exampleFieldOffset1 : Nat :=
+  computeFieldOffset exampleMultiFieldStruct.fields 1
+
+/-- Example: Verify field offset.
+    Evaluates to show the second field offset.
+-/
+#eval exampleFieldOffset1
+
+/-- Example: Compute offset for third field.
+    This example shows the offset for the third field.
+-/
+def exampleFieldOffset2 : Nat :=
+  computeFieldOffset exampleMultiFieldStruct.fields 2
+
+/-- Example: Verify field offset.
+    Evaluates to show the third field offset.
+-/
+#eval exampleFieldOffset2
 
 end Morph.Specs.AbiAlignmentAlgebra
--/

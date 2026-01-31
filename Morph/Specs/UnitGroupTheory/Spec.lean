@@ -287,4 +287,3 @@ structure ExchangeRate where
   deriving Repr, BEq
 
 end Morph.Specs.UnitGroupTheory
--/

@@ -1,4 +1,4 @@
-{"platform": "x86_64-w64-windows-gnu",
+{"platform": "x86_64-unknown-linux-gnu",
  "options": {},
  "leanHash": "c375e19f6b656fcd594cdca3a38b8578634df8cd",
  "configHash": "14118593489789238850"}

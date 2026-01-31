@@ -38,7 +38,7 @@ This specification formalizes canonical terminology and naming conventions for M
 
 None identified. All specification points are clear and unambiguous.
 
--!/
+-/
 
 namespace Morph.Specs.TerminologyStandardization
 

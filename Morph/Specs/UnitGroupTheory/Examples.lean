@@ -35,7 +35,7 @@ This file contains concrete examples and test cases for the Dimensional Algebra 
 | `example_user_defined_units` | User-defined units (pixel, DPI) | ✓ |
 | `example_edge_cases` | Edge cases (zero exponent, negative exponent) | ✓ |
 
--!/
+-/
 
 namespace Morph.Specs.UnitGroupTheory
 

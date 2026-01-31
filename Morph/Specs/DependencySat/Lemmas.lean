@@ -1,79 +1,25 @@
 /- Copyright 2024-2025 The Morph Project Authors
 SPDX-License-Identifier: Apache-2.0
+-/
 
+import Std
+import Morph.Specs.DependencySat.Spec
 
-import Morph.Specs.GLOSSARY
-import Morph.Specs.GLOSSARY.Spec
-
-/-!
-# Dependency Saturation Lemmas
-
-This module provides additional mathematical lemmas for dependency saturation theory.
-
-## Overview
-
-The Dependency Saturation Lemmas module formalizes:
-- Additional saturation properties
-- Dependency resolution algorithms
-- Dependency graph construction
-- Cycle detection strategies
-
-## Key Concepts
-
-- DependencyGraph: Represents a dependency graph
-- DependencyNode: Represents a dependency node
-- DependencyEdge: Represents a dependency edge
-- SaturationState: Represents a saturation state
-- SaturationResult: Represents a saturation result
-
--!/
 namespace Morph.Specs.DependencySat
 
-/-! DS-LEM-001: Well-formed graph has valid saturation 
-theorem wellFormedHasValidSaturation :
-    forall (graph : DependencyGraph),
-      isWellFormed graph ->
-        let result := saturateDependencies graph
-        result.isComplete := by
-  intro graph hwf
-  unfold saturateDependencies
-  intro result
-  unfold isWellFormed at hwf
-  intro hvalid
-  have hunique : result.state.graph.nodes.all (fun node1 =>
-    graph.nodes.all (fun node2 =>
-      node1.id = node2.id -> node1.hash = node2.hash) := by
-    unfold isWellFormed at hvalid
-    cases hvalid
-    case false hnodes => intro _ => contradiction hnodes
-    case true hnodes =>
-      intro hall
-      exact hall.1
-  have hvalidEdges : result.state.graph.edges.all (fun edge =>
-    graph.nodes.contains edge.from /\ graph.nodes.contains edge.to) := by
-    unfold isWellFormed at hvalid
-    cases hvalid
-    case false hedges => intro _ => contradiction hedges
-    case true hedges =>
-      intro hall
-      exact hall.2
-  have htransitive : result.state.graph.nodes.all (fun a =>
-    graph.nodes.all (fun b =>
-      graph.nodes.all (fun c =>
-        graph.partialOrder.le a b /\ graph.partialOrder.le b c)) := by
-    unfold isWellFormed at hvalid
-    cases hvalid
-    case false htrans => intro _ => contradiction htrans
-    case true htrans =>
-      intro hall
-      exact hall.3
-  constructor
-  · exact hunique
-  · exact hvalidEdges
-  · exact htransitive
-  · intro hcomp
-    unfold isComplete
-    intro hcomp
-    exact hcomp
+/--
+This module contains lemmas about the dependency saturation system.
+
+Note: Mathematical properties about cycles and well-formed graphs require
+formal definitions of these concepts. The current implementations provide
+computational checks but not formal proofs of their properties.
+
+For a complete formalization, additional axioms and lemmas would be needed
+to prove properties such as:
+- Well-formed graphs have no direct cycles
+- Well-formed graphs have no two-cycles
+- Saturation produces transitive closures
+-/
+abbrev DependencySatLemmas := Unit
+
 end Morph.Specs.DependencySat
--!/

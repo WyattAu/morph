@@ -36,7 +36,7 @@ The Module Existential specification provides:
 - **Access Control:** Fine-grained access control rules
 - **Module Composition:** Combining multiple modules with import relationships
 
--!/
+-/
 
 /-!
 ## Module Identifiers
@@ -361,4 +361,4 @@ def inv_composition_transitive (comp : ModuleComposition) : Prop :=
     comp.imports A C
 
 end Morph.Specs.ModuleExistential
--!/
+-/

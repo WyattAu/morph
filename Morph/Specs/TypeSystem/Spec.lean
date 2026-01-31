@@ -31,7 +31,7 @@ The TypeSystem module formalizes:
 - **Subtyping:** Type compatibility and variance
 - **Type Safety:** Well-typed programs don't go wrong
 
--!/
+-/
 
 /-!
 ## Type Environment
@@ -851,4 +851,4 @@ theorem subtyping_reflexive :
   constructor
 
 end Morph.Specs.TypeSystem
--!/
+-/

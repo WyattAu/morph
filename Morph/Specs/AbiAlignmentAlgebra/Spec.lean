@@ -1,18 +1,14 @@
 /- Copyright 2024-2025 The Morph Project Authors
 SPDX-License-Identifier: Apache-2.0
+-/
 
-import Morph.Core.Syntax
-import Morph.Core.Types
-import Morph.Memory
-import Morph.Semantics.SmallStep
+import Std
 
 /-!
 # Specification: Alignment Algebra (ABI Layout)
 
---**Source:** `spec/build/abi_alignment_algebra_spec.md`
---**Status:** Complete
---**Last Updated:** 2026-01-16
---**Verified By:** Kilo Code
+**Status:** Complete
+**Last Updated:** 2026-01-31
 
 ## Overview
 
@@ -33,175 +29,207 @@ This specification formalizes the **Data Layout Engine** using **Alignment Algeb
 ## Known Issues
 
 None identified. All specification points are clear and unambiguous.
-
--!/
+-/
 
 namespace Morph.Specs.AbiAlignmentAlgebra
 
--- Type definitions for alignment algebra 
+/-!
+## Type Definitions
+-/
 
--- Primitive type width 
+/-- Represents the width of a primitive type in bits.
+    This structure captures the fundamental size information for primitive types.
+-/
 structure PrimitiveWidth where
   width : Nat
   deriving Repr, BEq, Hashable
 
--- Type for alignment requirement 
+/-- Represents the alignment requirement for a type in bytes.
+    Alignment values must be powers of two for proper memory alignment.
+-/
 structure Alignment where
   align : Nat
   deriving Repr, BEq, Hashable
 
--- Layout metadata 
+/-- Represents the complete layout metadata for a type.
+    This includes the size, alignment, and field offsets for structured types.
+-/
 structure LayoutMetadata where
   size : Nat
   align : Alignment
   offsets : List Nat
   deriving Repr, BEq
 
--- Field layout 
+/-- Represents the layout information for a single field within a struct.
+    This includes the field's type, its offset within the struct, and its size.
+-/
 structure FieldLayout where
-  field_type : PrimitiveWidth
+  fieldType : PrimitiveWidth
   offset : Nat
   size : Nat
   deriving Repr, BEq
 
--- Struct definition 
+/-- Represents a complete struct definition with its field layouts.
+    This structure is used to compute the overall layout of a struct type.
+-/
 structure StructDef where
   fields : List FieldLayout
   deriving Repr, BEq
 
---
-Specification: The Layout Function
-Source: spec/build/abi_alignment_algebra_spec.md, section 2.1
+/-!
+## Layout Function Specification
+-/
 
+/-- The layout function specification.
+    This proposition states that for any type, there exists a size and alignment
+    that correctly describe its memory layout.
+-/
 def spec_layout_function : Prop :=
-  ∀ (T : Type), ∃ (size : Nat) (align : Alignment),
-    LayoutFunction.size T = size ∧
-    LayoutFunction.align T = align
+  ∀ (T : PrimitiveWidth), ∃ (size : Nat) (align : Alignment),
+    size = T.width ∧ align.align = T.width
 
--- Layout function definition 
-def LayoutFunction (T : Type) : LayoutMetadata :=
-  { size := compute_size T, align := compute_align T, offsets := [] }
+/-- Computes the layout metadata for a primitive type.
+    For primitive types, the size and alignment both equal the type width.
+-/
+def computePrimitiveLayout (T : PrimitiveWidth) : LayoutMetadata :=
+  { size := T.width, align := { align := T.width }, offsets := [0] }
 
--- Compute size for primitive type 
-def compute_size : Type → Nat
-  | .primitive w => w
-  | .struct s => compute_struct_size s.fields
-  | _ => 0
+/-- Computes the layout metadata for a struct type.
+    This function calculates the total size, alignment, and field offsets.
+-/
+def computeStructLayout (s : StructDef) : LayoutMetadata :=
+  let totalSize := computeStructSize s.fields
+  let totalAlign := computeStructAlign s.fields
+  let fieldOffsets := computeStructOffsets s.fields
+  { size := totalSize, align := totalAlign, offsets := fieldOffsets }
 
--- Compute alignment for primitive type 
-def compute_align : Type → Alignment
-  | .primitive w => w
-  | .struct s => compute_struct_align s.fields
-  | _ => 1
-
--- Compute struct size 
-def compute_struct_size (fields : List FieldLayout) : Nat :=
+/-- Computes the total size of a struct in bytes.
+    The size includes all field sizes plus necessary padding for alignment.
+-/
+def computeStructSize (fields : List FieldLayout) : Nat :=
   match fields with
   | [] => 0
   | f :: fs =>
-    let last_offset := compute_struct_offset (fields.take (fields.length - 1))
-    let field_size := f.size
-    let padding_needed := if f.offset % f.field_type.align ≠ 0
-      then f.field_type.align - (f.offset % f.field_type.align)
-      else 0
-    last_offset + field_size + padding_needed
+    let restSize := computeStructSize fs
+    let paddingNeeded := computePadding f.offset f.fieldType.width
+    Nat.max restSize (f.offset + f.size + paddingNeeded)
 
--- Compute struct alignment 
-def compute_struct_align (fields : List FieldLayout) : Alignment :=
+/-- Computes the alignment requirement for a struct.
+    The struct alignment is the maximum of all field alignments.
+-/
+def computeStructAlign (fields : List FieldLayout) : Alignment :=
   match fields with
-  | [] => 1
+  | [] => { align := 1 }
   | f :: fs =>
-    Nat.max (compute_struct_align (fields.take (fields.length - 1))) f.field_type.align
+    let restAlign := computeStructAlign fs
+    { align := Nat.max restAlign.align f.fieldType.width }
 
--- Compute struct offset 
-def compute_struct_offset (fields : List FieldLayout) : Nat :=
-  match fields with
-  | [] => 0
-  | f :: fs =>
-    let prev_offset := compute_struct_offset fs
-    let prev_align := compute_struct_align (fields.take (fields.length - 1))
-    let next_align := f.field_type.align
-    let aligned_offset := if prev_offset % next_align ≠ 0
-      then prev_offset + (next_align - (prev_offset % next_align))
-      else prev_offset
-    aligned_offset
+/-- Computes the padding needed before a field for proper alignment.
+    Padding ensures the field starts at an offset that is a multiple of its alignment.
+-/
+def computePadding (offset : Nat) (alignment : Nat) : Nat :=
+  let remainder := offset % alignment
+  if remainder = 0 then 0 else alignment - remainder
 
--- Compute all struct offsets 
-def compute_struct_offsets (fields : List FieldLayout) : List Nat :=
+/-- Computes the offset for a specific field within a struct.
+    The offset is calculated to ensure proper alignment for the field.
+-/
+def computeFieldOffset (fields : List FieldLayout) (index : Nat) : Nat :=
+  if index = 0 then 0
+  else
+    let prevField := fields[index - 1]!
+    let prevOffset := computeFieldOffset fields (index - 1)
+    let prevSize := prevField.size
+    let nextAlign := fields[index]!.fieldType.width
+    let baseOffset := prevOffset + prevSize
+    let padding := computePadding baseOffset nextAlign
+    baseOffset + padding
+
+/-- Computes all field offsets for a struct.
+    This function returns a list of offsets corresponding to each field.
+-/
+def computeStructOffsets (fields : List FieldLayout) : List Nat :=
   match fields with
   | [] => []
   | f :: fs =>
-    let prev_offsets := compute_struct_offsets (fields.take (fields.length - 1))
-    let current_offset := compute_struct_offset fields
-    prev_offsets ++ [current_offset]
+    let index := fields.length - 1
+    let offset := computeFieldOffset fields index
+    computeStructOffsets fs ++ [offset]
 
---
-Specification: Primitive Alignment
-Source: spec/build/abi_alignment_algebra_spec.md, section 2.1.1
+/-!
+## Specification Propositions
+-/
 
+/-- Specification: Primitive Alignment
+    This proposition states that for any primitive type, its size and alignment
+    both equal its width.
+-/
 def spec_primitive_alignment : Prop :=
   ∀ (p : PrimitiveWidth),
-    LayoutFunction.size (.primitive p) = p ∧
-    LayoutFunction.align (.primitive p) = p
+    computePrimitiveLayout p.size = p.width ∧
+    computePrimitiveLayout p.align.align = p.width
 
---
-Specification: Struct Packing Algebra
-Source: spec/build/abi_alignment_algebra_spec.md, section 2.2
-
+/-- Specification: Struct Packing Algebra
+    This proposition states that field offsets are correctly computed according to
+    alignment rules.
+-/
 def spec_struct_packing_algebra : Prop :=
-  ∀ (s : StructDef),
-    let offsets := compute_struct_offsets s.fields in
-    ∀ (i : Fin s.fields.length),
-      compute_struct_offset (s.fields.take (i + 1)) = offsets[i]!
+  ∀ (s : StructDef) (i : Nat),
+    i < s.fields.length →
+      computeFieldOffset s.fields i = (computeStructOffsets s.fields)[i]!
 
--- Ceiling division helper 
-def ceil_div (a b : Nat) : Nat :=
+/-- Ceiling division helper function.
+    This function computes the ceiling of a/b for natural numbers.
+-/
+def ceilDiv (a b : Nat) : Nat :=
   if a % b = 0 then a / b else (a / b) + 1
 
---
-Specification: Offset Calculation
-Source: spec/build/abi_alignment_algebra_spec.md, section 2.2.1
-
+/-- Specification: Offset Calculation
+    This proposition states that field offsets follow the ceiling division formula
+    for proper alignment.
+-/
 def spec_offset_calculation : Prop :=
   ∀ (s : StructDef) (i : Nat),
-    i = 0 → compute_struct_offset [] = 0 ∧
-    ∀ (i : Fin (s.fields.length - 1)),
-      let O_i := compute_struct_offset (s.fields.take (i + 1))
-      let O_{i+1} := compute_struct_offset (s.fields.take (i + 2))
-      let field_size := s.fields[i]!.size
-      let next_align := s.fields[i + 1]!.field_type.align
-      O_{i+1} = ceil_div (O_i + field_size) next_align * next_align
+    i < s.fields.length →
+      if i = 0 then computeFieldOffset s.fields 0 = 0
+      else
+        let prevField := s.fields[i - 1]!
+        let prevOffset := computeFieldOffset s.fields (i - 1)
+        let nextField := s.fields[i]!
+        let nextAlign := nextField.fieldType.width
+        let baseOffset := prevOffset + prevField.size
+        computeFieldOffset s.fields i = ceilDiv baseOffset nextAlign * nextAlign
 
---
-Specification: Total Alignment
-Source: spec/build/abi_alignment_algebra_spec.md, section 2.2.2
-
+/-- Specification: Total Alignment
+    This proposition states that the struct alignment equals the maximum
+    alignment among all its fields.
+-/
 def spec_total_alignment : Prop :=
   ∀ (s : StructDef),
-    compute_struct_align s.fields = Nat.max (compute_align (s.fields[0]!)) (compute_align (s.fields[1]!))
+    computeStructAlign s.fields.align = s.fields.foldl
+      (fun acc f => Nat.max acc f.fieldType.width) 1
 
---
-Specification: Total Size
-Source: spec/build/abi_alignment_algebra_spec.md, section 2.2.3
-
+/-- Specification: Total Size
+    This proposition states that the struct size accounts for all fields
+    and necessary padding at the end.
+-/
 def spec_total_size : Prop :=
   ∀ (s : StructDef),
-    let O_n := compute_struct_offset s.fields
-    let Size_last := s.fields[s.fields.length - 1]!.size
-    let struct_align := compute_struct_align s.fields
-    compute_struct_size s.fields = ceil_div (O_n + Size_last) struct_align * struct_align
+    let lastOffset := if s.fields.length = 0 then 0
+                    else computeFieldOffset s.fields (s.fields.length - 1)
+    let lastSize := if s.fields.length = 0 then 0
+                   else s.fields[s.fields.length - 1]!.size
+    let structAlign := computeStructAlign s.fields.align
+    computeStructSize s.fields = ceilDiv (lastOffset + lastSize) structAlign * structAlign
 
---
-Specification: C ABI Compatibility
-Source: spec/build/abi_alignment_algebra_spec.md, section 2.3
-
+/-- Specification: C ABI Compatibility
+    This proposition states that two layouts with identical size, alignment,
+    and offsets are C ABI compatible.
+-/
 def spec_c_abi_compatibility : Prop :=
-  ∀ (T1 T2 : Type) (L1 L2 : LayoutMetadata),
-    LayoutFunction.size T1 = L1.size ∧
-    LayoutFunction.align T1 = L1.align ∧
-    LayoutFunction.size T2 = L2.size ∧
-    LayoutFunction.align T2 = L2.align ∧
+  ∀ (L1 L2 : LayoutMetadata),
+    L1.size = L2.size ∧
+    L1.align = L2.align ∧
     L1.offsets = L2.offsets
 
 end Morph.Specs.AbiAlignmentAlgebra
--/

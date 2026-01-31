@@ -6,5 +6,5 @@ import Morph.Syntax
 
 namespace Morph.Specs.UnidirectionalDataFlow
 
-/-
+/-!
 -/

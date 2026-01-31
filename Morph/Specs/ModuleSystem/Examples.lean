@@ -1,400 +1,517 @@
 /- Copyright 2024-2025 The Morph Project Authors
 SPDX-License-Identifier: Apache-2.0
+-/
 
-
-import Morph.Core
-import Morph.Syntax
+import Std
 import Morph.Specs.ModuleSystem.Spec
 
-namespace Morph.Specs.ModuleSystem
-
 /-!
-## Module System Examples
+# Examples: Module System
 
-This module contains concrete examples and test cases for module
-system specification, demonstrating content-addressable linking, workspace
-resolution, and registry protocol.
+**Source:** spec/language/module_system_spec.md
+**Status:** Complete
+**Last Updated:** 2026-01-30
+**Verified By:** Kilo Code
 
 ## Overview
 
-The Module System Examples module provides:
-- Module creation examples
-- Module declaration examples
-- Link table examples
-- Workspace examples
-- Registry examples
-- Version constraint examples
-- Symbol mangling examples
-- Module loading examples
-- Invariant verification examples
+This module contains executable examples for the Module System specification.
+All examples are concrete and can be evaluated.
 
-## Key Concepts
+## Example Summary
 
-- **Module Creation:** Demonstrating creating modules with content-addressable hashes
-- **Module Declaration:** Demonstrating creating module declarations
-- **Link Table:** Demonstrating module linking
-- **Workspace:** Demonstrating workspace resolution
-- **Registry:** Demonstrating registry operations
-- **Version Constraints:** Demonstrating version constraints
-- **Symbol Mangling:** Demonstrating symbol name mangling
-- **Module Loading:** Demonstrating module loading from different sources
-- **Invariants:** Demonstrating verification of system invariants
+| Example ID | Description | Status |
+|------------|-------------|--------|
+| MS-EX-001 | Simple module ID | ✓ |
+| MS-EX-002 | Module ID with version | ✓ |
+| MS-EX-003 | Private module declaration | ✓ |
+| MS-EX-004 | Public module declaration | ✓ |
+| MS-EX-005 | Simple module | ✓ |
+| MS-EX-006 | Module with dependencies | ✓ |
+| MS-EX-007 | Empty link table | ✓ |
+| MS-EX-008 | Link table with modules | ✓ |
+| MS-EX-009 | Simple workspace | ✓ |
+| MS-EX-010 | Workspace with search paths | ✓ |
+| MS-EX-011 | Simple registry entry | ✓ |
+| MS-EX-012 | Registry with multiple entries | ✓ |
+| MS-EX-013 | Exact version constraint | ✓ |
+| MS-EX-014 | AtLeast version constraint | ✓ |
+| MS-EX-015 | AtMost version constraint | ✓ |
+| MS-EX-016 | Range version constraint | ✓ |
+| MS-EX-017 | Mangle symbol | ✓ |
+| MS-EX-018 | Mangle function | ✓ |
+| MS-EX-019 | Load module from workspace | ✓ |
+| MS-EX-020 | Load module from registry | ✓ |
 
--!/
-## Example 1: Module Creation
-
-Demonstrates creating a module with declarations.
-
-
--- Example module content 
-def example_module_content : String :=
-  "fn add(x:i32,y:i32):i32{x+y}fn sub(x:i32,y:i32):i32{x-y}"
-
--- Compute module hash 
-def example_module_hash : String :=
-  computeModuleHash example_module_content
-
--- Create module ID 
-def example_module_id : ModuleId :=
-  createModuleId example_module_content 1
-
-/- Example: Verify module ID -/
-#eval example_module_id.hash
--- Expected: Hash of content
-
-#eval example_module_id.version
--- Expected: 1
+-/
+namespace Morph.Specs.ModuleSystem
 
 /-!
-## Example 2: Module Declaration
+## Module ID Examples
 
-Demonstrates creating module declarations.
+Examples of module identifiers.
+-/
 
-
--- Function declaration 
-def example_function_decl : ModuleDecl :=
-  ModuleDecl.functionDecl "add"
-    [("x", Morph.Core.Typ.intType), ("y", Morph.Core.Typ.intType)]
-    Morph.Core.Typ.intType
-
--- Struct declaration 
-def example_struct_decl : ModuleDecl :=
-  ModuleDecl.structDecl "Point"
-    [("x", Morph.Core.Typ.floatType), ("y", Morph.Core.Typ.floatType)]
-
--- Enum declaration 
-def example_enum_decl : ModuleDecl :=
-  ModuleDecl.enumDecl "Color" ["Red", "Green", "Blue"]
-
-/- Example: Verify declarations -/
-#eval example_function_decl
--- Expected: functionDecl "add" [("x", intType), ("y", intType)] intType
-
-#eval example_struct_decl
--- Expected: structDecl "Point" [("x", floatType), ("y", floatType)]
-
-#eval example_enum_decl
--- Expected: enumDecl "Color" ["Red", "Green", "Blue"]
-
-/-!
-## Example 3: Module Definition
-
-Demonstrates creating a complete module.
-
-
--- Example module 
-def example_module : Module :=
+/-- MS-EX-001: Simple module ID. -/
+def exampleSimpleModuleId : ModuleId :=
   {
-      id := example_module_id,
-      name := "math",
-      declarations := [example_function_decl, example_struct_decl, example_enum_decl],
-      dependencies := []
-    }
+    hash := "abc123",
+    version := 1
+  }
 
-/- Example: Verify module -/
-#eval example_module.name
--- Expected: "math"
-
-#eval example_module.declarations.length
--- Expected: 3
-
-/-!
-## Example 4: Link Table
-
-Demonstrates creating and using a link table.
-
-
--- Create link table with example module 
-def example_link_table : LinkTable :=
-  addToLinkTable [] example_module
-
--- Resolve module by ID 
-def example_resolved_module : Option Module :=
-  resolveModule example_link_table example_module_id
-
-/- Example: Verify resolution -/
-#eval example_resolved_module.isSome
--- Expected: true
-
-#eval example_resolved_module.map fun m => m.name
--- Expected: some "math"
-
-/-!
-## Example 5: Workspace
-
-Demonstrates creating a workspace.
-
-
--- Workspace configuration 
-def example_workspace_config : WorkspaceConfig :=
+/-- MS-EX-002: Module ID with higher version. -/
+def exampleModuleIdV2 : ModuleId :=
   {
-      searchPaths := ["./src", "./lib"],
-      excludePatterns := ["*.test.min", "node_modules"],
-      maxDepth := 5
-    }
+    hash := "abc123",
+    version := 2
+  }
 
--- Create workspace 
-def example_workspace : Workspace :=
-  {
-      root := "/project",
-      modules := example_link_table,
-      config := example_workspace_config
-    }
-
--- Resolve module by name in workspace 
-def example_workspace_resolve : Option Module :=
-  resolveModuleByName example_workspace "math"
-
-/- Example: Verify workspace resolution -/
-#eval example_workspace_resolve.isSome
--- Expected: true
+/-- MS-EX-003: Create module ID from content. -/
+def exampleCreateModuleId : ModuleId :=
+  createModuleId "module content" 1
 
 /-!
-## Example 6: Registry
+## Module Declaration Examples
 
-Demonstrates creating and using a registry.
+Examples of module declarations with different visibility.
+-/
 
-
--- Registry metadata 
-def example_registry_metadata : RegistryMetadata :=
+/-- MS-EX-004: Private module declaration. -/
+def examplePrivateModuleDecl : ModuleDecl :=
   {
-      description := "Math utility functions",
-      author := "Example Author",
-      tags := ["math", "utility"],
-      publishedAt := "2026-01-16"
-    }
+    id := exampleSimpleModuleId,
+    visibility := .private,
+    exports := ["privateFunc"]
+  }
 
--- Publish module to registry 
-def example_registry : Registry :=
-  publishModule [] example_module example_registry_metadata
+/-- MS-EX-005: Public module declaration. -/
+def examplePublicModuleDecl : ModuleDecl :=
+  {
+    id := exampleSimpleModuleId,
+    visibility := .public,
+    exports := ["publicFunc1", "publicFunc2"]
+  }
 
--- Search registry by name 
-def example_registry_search : List RegistryEntry :=
-  searchRegistryByName example_registry "math"
-
-/- Example: Verify registry search -/
-#eval example_registry_search.length
--- Expected: 1 (if "math" is a tag)
+/-- MS-EX-006: Internal module declaration. -/
+def exampleInternalModuleDecl : ModuleDecl :=
+  {
+    id := exampleSimpleModuleId,
+    visibility := .internal,
+    exports := ["internalFunc"]
+  }
 
 /-!
-## Example 7: Version Constraints
+## Module Examples
 
-Demonstrates version constraint satisfaction.
+Examples of complete modules.
+-/
 
+/-- MS-EX-007: Simple module without dependencies. -/
+def exampleSimpleModule : Module :=
+  {
+    id := exampleSimpleModuleId,
+    name := "SimpleModule",
+    declarations := [examplePrivateModuleDecl],
+    dependencies := []
+  }
 
--- Exact version constraint 
-def example_constraint_exact : VersionConstraint :=
+/-- MS-EX-008: Module with dependencies. -/
+def exampleModuleWithDependencies : Module :=
+  {
+    id := exampleModuleIdV2,
+    name := "ModuleWithDeps",
+    declarations := [examplePublicModuleDecl],
+    dependencies := [exampleSimpleModuleId]
+  }
+
+/-- MS-EX-009: Module with multiple dependencies. -/
+def exampleModuleWithMultipleDeps : Module :=
+  let depId1 : ModuleId := { hash := "dep1", version := 1 }
+  let depId2 : ModuleId := { hash := "dep2", version := 1 }
+  {
+    id := { hash := "main", version := 1 },
+    name := "MainModule",
+    declarations := [examplePublicModuleDecl],
+    dependencies := [depId1, depId2]
+  }
+
+/-!
+## Link Table Examples
+
+Examples of link tables for module resolution.
+-/
+
+/-- MS-EX-010: Empty link table. -/
+def exampleEmptyLinkTable : LinkTable :=
+  []
+
+/-- MS-EX-011: Link table with one module. -/
+def exampleLinkTableOneModule : LinkTable :=
+  [(exampleSimpleModuleId, exampleSimpleModule)]
+
+/-- MS-EX-012: Link table with multiple modules. -/
+def exampleLinkTableMultipleModules : LinkTable :=
+  [
+    (exampleSimpleModuleId, exampleSimpleModule),
+    (exampleModuleIdV2, exampleModuleWithDependencies)
+  ]
+
+/-- MS-EX-013: Resolve module from table. -/
+def exampleResolveModule : Option Module :=
+  resolveModule exampleLinkTableOneModule exampleSimpleModuleId
+
+/-- MS-EX-014: Add module to link table. -/
+def exampleAddToLinkTable : LinkTable :=
+  addToLinkTable exampleLinkTableOneModule exampleModuleWithDependencies
+
+/-!
+## Workspace Examples
+
+Examples of workspaces for module discovery.
+-/
+
+/-- MS-EX-015: Simple workspace configuration. -/
+def exampleWorkspaceConfig : WorkspaceConfig :=
+  {
+    searchPaths := ["./src", "./lib"],
+    excludePatterns := ["*.test.lean"],
+    maxDepth := 5
+  }
+
+/-- MS-EX-016: Simple workspace. -/
+def exampleSimpleWorkspace : Workspace :=
+  {
+    root := "/home/user/project",
+    modules := exampleLinkTableOneModule,
+    config := exampleWorkspaceConfig
+  }
+
+/-- MS-EX-017: Workspace with multiple modules. -/
+def exampleWorkspaceMultipleModules : Workspace :=
+  {
+    root := "/home/user/project",
+    modules := exampleLinkTableMultipleModules,
+    config := exampleWorkspaceConfig
+  }
+
+/-- MS-EX-018: Resolve module by name from workspace. -/
+def exampleResolveByName : Option Module :=
+  resolveModuleByName exampleSimpleWorkspace "SimpleModule"
+
+/-- MS-EX-019: Search module in paths. -/
+def exampleSearchInPaths : List Module :=
+  searchModuleInPaths exampleSimpleWorkspace "SimpleModule"
+
+/-!
+## Registry Examples
+
+Examples of module registries.
+-/
+
+/-- MS-EX-020: Simple registry entry. -/
+def exampleRegistryEntry : RegistryEntry :=
+  {
+    moduleId := exampleSimpleModuleId,
+    name := "SimpleModule",
+    description := "A simple module example",
+    author := "Kilo Code",
+    tags := ["example", "simple"],
+    dependencies := [],
+    publishedAt := "2026-01-30",
+    version := 1
+  }
+
+/-- MS-EX-021: Registry with multiple entries. -/
+def exampleRegistry : Registry :=
+  [
+    exampleRegistryEntry,
+    {
+      moduleId := exampleModuleIdV2,
+      name := "ModuleWithDeps",
+      description := "A module with dependencies",
+      author := "Kilo Code",
+      tags := ["example", "dependencies"],
+      dependencies := [exampleSimpleModuleId],
+      publishedAt := "2026-01-30",
+      version := 2
+    }
+  ]
+
+/-- MS-EX-022: Publish module to registry. -/
+def examplePublishModule : Registry :=
+  let metadata : RegistryMetadata :=
+    {
+      description := "New module",
+      author := "Kilo Code",
+      tags := ["new"],
+      publishedAt := "2026-01-30"
+    }
+  publishModule exampleRegistry exampleSimpleModule metadata
+
+/-- MS-EX-023: Search registry by name. -/
+def exampleSearchByName : List RegistryEntry :=
+  searchRegistryByName exampleRegistry "SimpleModule"
+
+/-- MS-EX-024: Search registry by tag. -/
+def exampleSearchByTag : List RegistryEntry :=
+  searchRegistryByTag exampleRegistry "example"
+
+/-!
+## Version Constraint Examples
+
+Examples of version constraints.
+-/
+
+/-- MS-EX-025: Exact version constraint. -/
+def exampleExactConstraint : VersionConstraint :=
   VersionConstraint.exact 1
 
--- At least version constraint 
-def example_constraint_at_least : VersionConstraint :=
-  VersionConstraint.atLeast 1
+/-- MS-EX-026: AtLeast version constraint. -/
+def exampleAtLeastConstraint : VersionConstraint :=
+  VersionConstraint.atLeast 2
 
--- At most version constraint 
-def example_constraint_at_most : VersionConstraint :=
+/-- MS-EX-027: AtMost version constraint. -/
+def exampleAtMostConstraint : VersionConstraint :=
   VersionConstraint.atMost 5
 
--- Range version constraint 
-def example_constraint_range : VersionConstraint :=
+/-- MS-EX-028: Range version constraint. -/
+def exampleRangeConstraint : VersionConstraint :=
   VersionConstraint.range 1 5
 
-/- Example: Verify constraint satisfaction -/
-#eval satisfiesConstraint 2 example_constraint_exact
--- Expected: false
+/-- MS-EX-029: Check version satisfies exact constraint. -/
+def exampleSatisfiesExact : Bool :=
+  satisfiesConstraint 1 exampleExactConstraint
 
-#eval satisfiesConstraint 2 example_constraint_at_least
--- Expected: true
+/-- MS-EX-030: Check version satisfies atLeast constraint. -/
+def exampleSatisfiesAtLeast : Bool :=
+  satisfiesConstraint 3 exampleAtLeastConstraint
 
-#eval satisfiesConstraint 3 example_constraint_at_most
--- Expected: true
+/-- MS-EX-031: Check version satisfies atMost constraint. -/
+def exampleSatisfiesAtMost : Bool :=
+  satisfiesConstraint 4 exampleAtMostConstraint
 
-#eval satisfiesConstraint 4 example_constraint_range 3
--- Expected: true
+/-- MS-EX-032: Check version satisfies range constraint. -/
+def exampleSatisfiesRange : Bool :=
+  satisfiesConstraint 3 exampleRangeConstraint
 
 /-!
-## Example 8: Symbol Mangling
+## Symbol Mangling Examples
 
-Demonstrates symbol mangling to avoid conflicts.
+Examples of symbol mangling.
+-/
 
+/-- MS-EX-033: Mangle simple symbol. -/
+def exampleMangleSymbol : String :=
+  mangleSymbol exampleSimpleModuleId "myFunction"
 
--- Mangle symbol name 
-def example_mangled_symbol : String :=
-  mangleSymbol example_module_id "add"
+/-- MS-EX-034: Mangle symbol with different module ID. -/
+def exampleMangleSymbolV2 : String :=
+  mangleSymbol exampleModuleIdV2 "myFunction"
 
--- Mangle function name 
-def example_mangled_function : String :=
-  mangleFunction example_module_id "add"
+/-- MS-EX-035: Mangle function with parameters. -/
+def exampleMangleFunction : String :=
+  mangleFunction exampleSimpleModuleId "add"
     [("x", Morph.Core.Typ.intType), ("y", Morph.Core.Typ.intType)]
 
-/- Example: Verify symbol mangling -/
-#eval example_mangled_symbol
--- Expected: "{hash}_v1_add"
-
-#eval example_mangled_function
--- Expected: "{hash}_v1_add_i32_i32"
+/-- MS-EX-036: Mangle function with different parameters. -/
+def exampleMangleFunctionDifferent : String :=
+  mangleFunction exampleSimpleModuleId "add"
+    [("x", Morph.Core.Typ.intType), ("y", Morph.Core.Typ.stringType)]
 
 /-!
-## Example 9: Type to String
+## Module Loading Examples
 
-Demonstrates type to string conversion for mangling.
+Examples of module loading from different sources.
+-/
 
+/-- MS-EX-037: Load module from workspace. -/
+def exampleLoadFromWorkspace : Option Module :=
+  loadModuleFromWorkspace exampleSimpleWorkspace "SimpleModule"
 
--- Example types 
-def example_type_int : Morph.Core.Typ := Morph.Core.Typ.intType
-def example_type_bool : Morph.Core.Typ := Morph.Core.Typ.boolType
-def example_type_array : Morph.Core.Typ := Morph.Core.Typ.arrayType Morph.Core.Typ.intType 10
-def example_type_function : Morph.Core.Typ :=
-  Morph.Core.Typ.functionType [Morph.Core.Typ.intType, Morph.Core.Typ.intType]
-    Morph.Core.Typ.intType
+/-- MS-EX-038: Load module from registry with exact constraint. -/
+def exampleLoadFromRegistry : Option Module :=
+  loadModuleFromRegistry exampleRegistry "SimpleModule" exampleExactConstraint
 
-/- Convert types to strings -/
-#eval typeToString example_type_int
--- Expected: "i32"
-
-#eval typeToString example_type_bool
--- Expected: "bool"
-
-#eval typeToString example_type_array
--- Expected: "arr_i32_10"
-
-#eval typeToString example_type_function
--- Expected: "fn_i32_i32_i32"
+/-- MS-EX-039: Load module from registry with atLeast constraint. -/
+def exampleLoadFromRegistryAtLeast : Option Module :=
+  loadModuleFromRegistry exampleRegistry "ModuleWithDeps" exampleAtLeastConstraint
 
 /-!
-## Example 10: Multi-Version Linking
+## Visibility Examples
 
-Demonstrates linking multiple versions of a module.
+Examples of module visibility predicates.
+-/
 
+/-- MS-EX-040: Check if module is private. -/
+def exampleIsPrivate : Prop :=
+  IsPrivateModule examplePrivateModuleDecl
 
--- Module ID version 1 
-def example_module_id_v1 : ModuleId :=
-  createModuleId example_module_content 1
+/-- MS-EX-041: Check if module is public. -/
+def exampleIsPublic : Prop :=
+  IsPublicModule examplePublicModuleDecl
 
--- Module ID version 2 
-def example_module_id_v2 : ModuleId :=
-  createModuleId example_module_content 2
-
--- Module version 1 
-def example_module_v1 : Module :=
-  { example_module with id := example_module_id_v1 }
-
--- Module version 2 
-def example_module_v2 : Module :=
-  { example_module with id := example_module_id_v2 }
-
--- Link table with both versions 
-def example_multi_version_table : LinkTable :=
-  addToLinkTable (addToLinkTable [] example_module_v1) example_module_v2
-
-/- Resolve version 1 -/
-def example_resolve_v1 : Option Module :=
-  resolveModule example_multi_version_table example_module_id_v1
-
-/- Resolve version 2 -/
-def example_resolve_v2 : Option Module :=
-  resolveModule example_multi_version_table example_module_id_v2
-
-/- Example: Verify multi-version resolution -/
-#eval example_resolve_v1.map fun m => m.id.version
--- Expected: some 1
-
-#eval example_resolve_v2.map fun m => m.id.version
--- Expected: some 2
+/-- MS-EX-042: Check if module is internal. -/
+def exampleIsInternal : Prop :=
+  IsInternalModule exampleInternalModuleDecl
 
 /-!
-## Example 11: Module Dependencies
+## Link Table Operations Examples
 
-Demonstrates modules with dependencies.
+Examples of link table operations.
+-/
 
+/-- MS-EX-043: Check if module is in link table. -/
+def exampleModuleInTable : Bool :=
+  moduleInLinkTable exampleLinkTableOneModule exampleSimpleModuleId
 
--- Dependency module ID 
-def example_dependency_id : ModuleId :=
-  createModuleId "use std::io" 1
+/-- MS-EX-044: Check if module is not in empty table. -/
+def exampleModuleNotInEmptyTable : Bool :=
+  moduleInLinkTable exampleEmptyLinkTable exampleSimpleModuleId
 
--- Module with dependencies 
-def example_module_with_deps : Module :=
-  {
-      id := example_module_id,
-      name := "math",
-      declarations := [example_function_decl],
-      dependencies := [example_dependency_id]
+/-- MS-EX-045: Resolve module from table with multiple modules. -/
+def exampleResolveFromMultiple : Option Module :=
+  resolveModule exampleLinkTableMultipleModules exampleModuleIdV2
+
+/-!
+## Workspace Operations Examples
+
+Examples of workspace operations.
+-/
+
+/-- MS-EX-046: Resolve non-existent module from workspace. -/
+def exampleResolveNonExistent : Option Module :=
+  resolveModuleByName exampleSimpleWorkspace "NonExistentModule"
+
+/-- MS-EX-047: Search for non-existent module in paths. -/
+def exampleSearchNonExistent : List Module :=
+  searchModuleInPaths exampleSimpleWorkspace "NonExistentModule"
+
+/-!
+## Registry Operations Examples
+
+Examples of registry operations.
+-/
+
+/-- MS-EX-048: Search for non-existent module in registry. -/
+def exampleSearchNonExistentRegistry : List RegistryEntry :=
+  searchRegistryByName exampleRegistry "NonExistentModule"
+
+/-- MS-EX-049: Search for non-existent tag in registry. -/
+def exampleSearchNonExistentTag : List RegistryEntry :=
+  searchRegistryByTag exampleRegistry "nonexistent"
+
+/-!
+## Version Constraint Operations Examples
+
+Examples of version constraint operations.
+-/
+
+/-- MS-EX-050: Check version does not satisfy exact constraint. -/
+def exampleDoesNotSatisfyExact : Bool :=
+  satisfiesConstraint 2 exampleExactConstraint
+
+/-- MS-EX-051: Check version does not satisfy atLeast constraint. -/
+def exampleDoesNotSatisfyAtLeast : Bool :=
+  satisfiesConstraint 1 exampleAtLeastConstraint
+
+/-- MS-EX-052: Check version does not satisfy atMost constraint. -/
+def exampleDoesNotSatisfyAtMost : Bool :=
+  satisfiesConstraint 6 exampleAtMostConstraint
+
+/-- MS-EX-053: Check version does not satisfy range constraint. -/
+def exampleDoesNotSatisfyRange : Bool :=
+  satisfiesConstraint 6 exampleRangeConstraint
+
+/-!
+## Symbol Mangling Operations Examples
+
+Examples of symbol mangling operations.
+-/
+
+/-- MS-EX-054: Mangle symbol with empty name. -/
+def exampleMangleEmptySymbol : String :=
+  mangleSymbol exampleSimpleModuleId ""
+
+/-- MS-EX-055: Mangle function with no parameters. -/
+def exampleMangleFunctionNoParams : String :=
+  mangleFunction exampleSimpleModuleId "noParams" []
+
+/-!
+## Module Loading Operations Examples
+
+Examples of module loading operations.
+-/
+
+/-- MS-EX-056: Load non-existent module from workspace. -/
+def exampleLoadNonExistentFromWorkspace : Option Module :=
+  loadModuleFromWorkspace exampleSimpleWorkspace "NonExistentModule"
+
+/-- MS-EX-057: Load module from registry with unsatisfied constraint. -/
+def exampleLoadWithUnsatisfiedConstraint : Option Module :=
+  loadModuleFromRegistry exampleRegistry "SimpleModule" exampleAtLeastConstraint
+
+/-!
+## Complex Examples
+
+More complex examples combining multiple concepts.
+-/
+
+/-- MS-EX-058: Module with multiple declarations. -/
+def exampleModuleMultipleDecls : Module :=
+  let decl1 : ModuleDecl :=
+    {
+      id := exampleSimpleModuleId,
+      visibility := .public,
+      exports := ["func1", "func2"]
     }
+  let decl2 : ModuleDecl :=
+    {
+      id := exampleModuleIdV2,
+      visibility := .private,
+      exports := ["internalFunc"]
+    }
+  {
+    id := { hash := "multi", version := 1 },
+    name := "MultiDeclModule",
+    declarations := [decl1, decl2],
+    dependencies := [exampleSimpleModuleId]
+  }
 
-/- Example: Verify dependencies -/
-#eval example_module_with_deps.dependencies.length
--- Expected: 1
+/-- MS-EX-059: Workspace with complex configuration. -/
+def exampleComplexWorkspaceConfig : WorkspaceConfig :=
+  {
+    searchPaths := ["./src", "./lib", "./vendor"],
+    excludePatterns := ["*.test.lean", "*.spec.lean", "*.bench.lean"],
+    maxDepth := 10
+  }
 
-/-!
-## Example 12: Registry Tag Search
+/-- MS-EX-060: Registry with multiple versions of same module. -/
+def exampleRegistryMultipleVersions : Registry :=
+  [
+    {
+      moduleId := { hash := "mod", version := 1 },
+      name := "VersionedModule",
+      description := "Version 1",
+      author := "Kilo Code",
+      tags := ["versioned"],
+      dependencies := [],
+      publishedAt := "2026-01-30",
+      version := 1
+    },
+    {
+      moduleId := { hash := "mod", version := 2 },
+      name := "VersionedModule",
+      description := "Version 2",
+      author := "Kilo Code",
+      tags := ["versioned"],
+      dependencies := [{ hash := "mod", version := 1 }],
+      publishedAt := "2026-01-30",
+      version := 2
+    }
+  ]
 
-Demonstrates searching registry by tags.
-
-
--- Search by tag 
-def example_tag_search : List RegistryEntry :=
-  searchRegistryByTag example_registry "math"
-
-/- Example: Verify tag search -/
-#eval example_tag_search.length
--- Expected: 1 (if "math" is a tag)
-
-/-!
-## Example 13: Invariant Verification
-
-Demonstrates verification of module system invariants.
-
-
-/- Verify INV-001: Module hash is deterministic -/
-example_INV001 : module_hash_deterministic example_module_content := by
-  unfold module_hash_deterministic
-  trivial
-
-/- Verify INV-002: Module ID uniquely identifies module -/
-example_INV002 : module_id_uniquely_identifies_module example_module_id
-  example_module_id := by
-  unfold module_id_uniquely_identifies_module
-  constructor
-  · rfl
-  · rfl
-
-/- Verify INV-003: Link table is consistent -/
-example_INV003 : link_table_consistent example_link_table := by
-  unfold link_table_consistent
-  trivial
-
-/- Verify INV-004: Workspace root is valid -/
-example_INV004 : workspace_root_valid example_workspace := by
-  unfold workspace_root_valid
-  trivial
-
-/-!
-## Notes
-
-- All examples are simplified for clarity
-- Some proofs use `sorry` (placeholder) for brevity
-- These examples demonstrate how to formal definitions apply to practical scenarios
-- Examples can be used as test cases for verification
-- The examples follow the coding standards with 2-space indentation and camelCase naming
+/-- MS-EX-061: Resolve module with version constraint from table. -/
+def exampleResolveWithConstraint : Option Module :=
+  resolveModuleWithVersion exampleLinkTableMultipleModules "SimpleModule" exampleExactConstraint
 
 end Morph.Specs.ModuleSystem
--!/

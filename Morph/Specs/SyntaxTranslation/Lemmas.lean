@@ -43,4 +43,4 @@ theorem round_trip_property
   trivial
 
 end Morph.Specs.SyntaxTranslation
--!/
+-/

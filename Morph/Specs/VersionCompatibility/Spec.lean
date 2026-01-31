@@ -53,7 +53,7 @@ This specification formalizes version compatibility framework for Morph specific
 
 None identified. All specification points are clear and unambiguous.
 
--!/
+-/
 
 namespace Morph.Specs.VersionCompatibility
 

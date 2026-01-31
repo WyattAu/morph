@@ -6,6 +6,66 @@
 
 - -
 
+## 0. Formal Verification Layer (COMPLETED)
+
+**Status: Lean 4 Migration COMPLETED** ✓
+
+The Morph project includes a comprehensive formal verification layer that provides mathematical guarantees about the language's semantics, type system, and execution model. This layer has been successfully migrated to Lean 4 v4.10.0.
+
+### 0.1 Technology Stack
+
+- **Formal Verification Framework**: Lean 4 v4.10.0
+- **Standard Library**: mathlib4 (comprehensive mathematical library)
+- **Proof Automation**: aesop (automated proof search), batteries (collection of useful tactics)
+- **Build System**: Lake (Lean's package manager and build tool)
+
+### 0.2 Completed Work
+
+The formal verification layer includes the following completed work:
+
+- **40+ Specification Modules**: All modules have been migrated to Lean 4 v4.10.0
+- **Complete Proofs**: All proofs are complete (no `sorry` placeholders)
+- **Build System Configuration**: Lake build system configured for Lean 4
+- **CI/CD Integration**: GitLab CI and Jenkins pipelines updated for Lean 4 compilation
+- **Documentation**: Comprehensive documentation for all specification modules
+
+### 0.3 Specification Modules
+
+The formal verification layer includes the following specification modules:
+
+- **Algebraic Structures**: AbiAlignmentAlgebra, BuildLattice, DualOptimization
+- **Process Calculi**: ConcurrencyProcessAlgebra, LayeredConcurrency, SchedulerRandomizedStealing
+- **Memory Models**: MemoryModel, MemoryAcyclicity, MemoryAffineLogic
+- **Type Systems**: ScopingLambdaCalculus, DialectProjection, MonadicEffect
+- **Security**: SecurityFlow, SecurityOCap, InfrastructureSafetyContracts
+- **Language Features**: LexicalStructureSyntax, MorphLanguage, OperatorNullCoalescing
+- **Domain-Specific**: Financial, Licensing, LinkerLogic
+
+### 0.4 Relationship to Runtime Implementation
+
+The formal verification layer (Lean 4) and the runtime implementation (Rust/C++) serve complementary purposes:
+
+- **Formal Verification Layer**: Provides mathematical guarantees about the language specification, type system, and semantics. This is the "specification" layer that defines what the Morph language should do.
+- **Runtime Implementation**: Provides the actual executable implementation of the Morph language, including the compiler, runtime environment, and tooling. This is the "implementation" layer that defines how the Morph language works in practice.
+
+The formal verification layer serves as the "source of truth" for the runtime implementation. The Rust/C++ implementation should conform to the specifications defined in Lean 4, and where possible, the formal proofs can guide implementation decisions and verify correctness properties.
+
+### 0.5 Future Formal Verification Work
+
+While the Lean 4 migration is complete, the following ongoing formal verification activities are planned:
+
+- **Proof Refinement**: Continue improving and optimizing proofs for better performance and clarity
+- **New Specifications**: Add new specification modules as the Morph language evolves
+- **Proof Automation**: Develop custom tactics for domain-specific proof patterns
+- **Verification of Implementation**: Verify that the Rust/C++ implementation conforms to the Lean 4 specifications
+
+For more details on the Lean 4 migration, see:
+- [ADR-003: Lean 4 with mathlib4](../.specs/02_adrs/ADR-003-lean4-mathlib4.md)
+- [ADR-004: Lake Build System](../.specs/02_adrs/ADR-004-lake-build-system.md)
+- [Coding Standards](../.specs/01_standards/coding_standards.md)
+
+- -
+
 ## Phase 0: Infrastructure & Scaffolding (Weeks 1-4)
 
 * Goal:** Establish the "Skeleton" where Rust and C++ can talk to each other, and CI guarantees hermetic builds.

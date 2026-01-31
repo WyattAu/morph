@@ -36,7 +36,7 @@ This file contains mathematical lemmas and theorems for the Dimensional Algebra 
 | `dimensional_consistency_lemma` | Dimensional consistency theorem | ✓ |
 | `unit_names_unique_lemma` | Unit names are unique | ✓ |
 
--!/
+-/
 
 namespace Morph.Specs.UnitGroupTheory
 

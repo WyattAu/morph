@@ -35,7 +35,7 @@ This file contains mathematical lemmas and theorems for the Object-Capability Mo
 
 No issues identified. All lemmas are well-formed and provable.
 
--!/
+-/
 
 namespace Morph.Specs.SecurityOCap
 

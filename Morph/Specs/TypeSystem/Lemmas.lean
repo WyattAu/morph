@@ -662,4 +662,4 @@ theorem extend_adds_binding :
   rfl
 
 end Morph.Specs.TypeSystem
--!/
+-/

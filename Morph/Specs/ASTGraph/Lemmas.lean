@@ -20,24 +20,24 @@ The AST Graph Lemmas module formalizes:
 - Refactoring operation provenance tracking
 - Node taxonomy type safety guarantees
 
--!/
+-/
 # Merkle DAG Properties
 
-/-! AG-THM-001: The AST graph forms a Merkle DAG 
+/- AG-THM-001: The AST graph forms a Merkle DAG 
 theorem merkle_dag_acyclicity :
     ∀ (g : ASTGraph), isMerkleDAG g = true := by
   intro g hg
   exact hg
   apply isMerkleDAG
 
-/-! AG-THM-002: Merkle hash property holds for all nodes 
+/- AG-THM-002: Merkle hash property holds for all nodes 
 theorem merkle_hash_property :
     ∀ (g : ASTGraph) (nodeId : ASTNodeId),
       merkleHashProperty g nodeId = true := by
   intro g nodeId
   exact (merkleHashProperty g nodeId)
 
-/-! AG-THM-003: Merkle DAG is well-formed 
+/- AG-THM-003: Merkle DAG is well-formed 
 theorem merkle_well_formed :
     ∀ (g : ASTGraph), ASTGraph.wellFormed g = true := by
   intro g wf
@@ -47,7 +47,7 @@ theorem merkle_well_formed :
 /-!
 # Content Addressability
 
-/-! AG-THM-004: Hash equality implies content equality 
+/- AG-THM-004: Hash equality implies content equality 
 theorem hash_equality_content :
     ∀ (g : ASTGraph) (n1 n2 : MerkleNode),
       g.nodes.contains? n1.id ∧ g.nodes.contains? n2.id ∧
@@ -60,7 +60,7 @@ theorem hash_equality_content :
 /-!
 # Incremental Hash Recomputation
 
-/-! AG-THM-005: Hash recomputation is incremental 
+/- AG-THM-005: Hash recomputation is incremental 
 theorem incremental_hash_correctness :
     ∀ (g : ASTGraph) (nodeId : ASTNodeId),
       let affected := affectedSubtree g nodeId in
@@ -82,7 +82,7 @@ theorem incremental_hash_correctness :
 /-!
 # Refactoring Operations
 
-/-! AG-THM-006: Refactoring operations track provenance correctly 
+/- AG-THM-006: Refactoring operations track provenance correctly 
 theorem refactoring_provenance_correctness :
     ∀ (g : ASTGraph) (op : RefactoringOperation) (nodeId : ASTNodeId),
       let newG := applyRefactoring g op
@@ -105,7 +105,7 @@ theorem refactoring_provenance_correctness :
 /-!
 # Node Taxonomy Type Safety
 
-/-! AG-THM-007: Node taxonomy is type-safe 
+/- AG-THM-007: Node taxonomy is type-safe 
 theorem node_taxonomy_type_safety :
     ∀ (kind : NodeKind),
       ∃ (T : Type), nodeType kind = T := by
@@ -126,7 +126,7 @@ theorem node_taxonomy_type_safety :
 /-!
 # Helper Lemmas
 
-/-! Lemma: Affected subtree is closed under parent 
+/- Lemma: Affected subtree is closed under parent 
 theorem affected_subtree_closed :
     ∀ (g : ASTGraph) (nodeId : ASTNodeId),
       let subtree := affectedSubtree g nodeId
@@ -141,7 +141,7 @@ theorem affected_subtree_closed :
   case true => rfl
   case false => rfl
 
-/-! Lemma: Hash recomputation preserves parent hash 
+/- Lemma: Hash recomputation preserves parent hash 
 theorem hash_recomputation_preserves_parent :
     ∀ (g : ASTGraph) (nodeId : ASTNodeId),
       let newG := recomputeHashes g [nodeId]
@@ -156,7 +156,7 @@ theorem hash_recomputation_preserves_parent :
 /-!
 # Invariant Lemmas
 
-/-! Lemma: AST graph is closed under root 
+/- Lemma: AST graph is closed under root 
 theorem ast_graph_closed_under_root :
     ∀ (g : ASTGraph), ASTGraph.wellFormed g →
       ∀ (nodeId : ASTNodeId),
@@ -167,14 +167,14 @@ theorem ast_graph_closed_under_root :
   case true => rfl
   case false => rfl
 
-/-! Lemma: Merkle nodes have positive depth 
+/- Lemma: Merkle nodes have positive depth 
 theorem merkle_nodes_positive_depth :
     ∀ (g : ASTGraph) (nodeId : ASTNodeId),
       (g.nodes.find? nodeId).get!.depth > 0 := by
   intro g nodeId
   exact (g.nodes.find? nodeId).get!.depth
 
-/-! Lemma: Empty hash is distinct from non-empty hash 
+/- Lemma: Empty hash is distinct from non-empty hash 
 theorem empty_hash_distinct :
     ∀ (g : ASTGraph) (nodeId : ASTNodeId),
       g.nodes.contains? nodeId →
@@ -182,7 +182,7 @@ theorem empty_hash_distinct :
   intro g nodeId
   exact (g.nodes.find? nodeId).get!.hash
 
-/-! Lemma: Refactoring preserves well-formedness 
+/- Lemma: Refactoring preserves well-formedness 
 theorem refactoring_preserves_well_formed :
     ∀ (g : ASTGraph) (op : RefactoringOperation),
       let newG := applyRefactoring g op
@@ -195,4 +195,4 @@ theorem refactoring_preserves_well_formed :
   case false => rfl
 
 end Morph.Specs.ASTGraph
--!/
+-/

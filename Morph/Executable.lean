@@ -74,7 +74,7 @@ This provides:
 - `Morph/Semantics.lean` - Operational semantics
 - `.specs/02_adrs/ADR-006-monad-stack-executable-reference.md` - ADR reference
 - `.specs/03_threat_model/analysis.md` - Threat model reference
--!/
+-/
 
 /-!
 ## Context
@@ -84,7 +84,7 @@ Read-only typing environment for the interpreter.
 The context contains type information that is shared across all threads
 and does not change during execution. This is passed through the ReaderT
 monad transformer for efficient read access.
--!/
+-/
 structure Context where
   types : Std.HashMap String Typ
   lifetimes : Std.HashMap String String
@@ -96,7 +96,7 @@ namespace Context
 Create an empty context.
 
 An empty context has no type bindings or lifetime information.
--!/
+-/
 def empty : Context :=
   { types := Std.HashMap.empty, lifetimes := Std.HashMap.empty }
 
@@ -104,7 +104,7 @@ def empty : Context :=
 Add a type binding to the context.
 
 Used during type checking to track variable types.
--!/
+-/
 def addType (ctx : Context) (name : String) (ty : Typ) : Context :=
   { ctx with types := ctx.types.insert name ty }
 
@@ -112,7 +112,7 @@ def addType (ctx : Context) (name : String) (ty : Typ) : Context :=
 Get the type of a variable from the context.
 
 Returns `none` if the variable is not in the context.
--!/
+-/
 def getType? (ctx : Context) (name : String) : Option Typ :=
   ctx.types.find? name
 
@@ -138,7 +138,7 @@ The monad stack enables:
 - Centralized error handling
 - Explicit state management
 - Type-safe state transitions
--!/
+-/
 abbrev InterpM (α : Type) : Type :=
   ReaderT Context (
   StateT Config (
@@ -152,13 +152,13 @@ Functions for accessing and modifying the interpreter state.
 
 These functions provide convenient access to the Config state managed
 by the StateT monad transformer.
--!/
+-/
 
 /-!
 Get the current configuration state.
 
 Returns the entire Config structure.
--!/
+-/
 def get_config : InterpM Config :=
   get
 
@@ -166,7 +166,7 @@ def get_config : InterpM Config :=
 Get the current environment (variable bindings).
 
 Returns the env field from the current Config.
--!/
+-/
 def get_env : InterpM Core.Env :=
   return (← get_config).env
 
@@ -174,7 +174,7 @@ def get_env : InterpM Core.Env :=
 Modify the current environment.
 
 Applies a function to the env field and updates the Config.
--!/
+-/
 def modify_env (f : Core.Env → Core.Env) : InterpM Unit := do
   modify (fun cfg => { cfg with env := f cfg.env })
 
@@ -182,7 +182,7 @@ def modify_env (f : Core.Env → Core.Env) : InterpM Unit := do
 Get the current memory state.
 
 Returns the memory field from the current Config.
--!/
+-/
 def get_memory : InterpM Memory.Memory :=
   return (← get_config).memory
 
@@ -190,7 +190,7 @@ def get_memory : InterpM Memory.Memory :=
 Modify the current memory state.
 
 Applies a function to the memory field and updates the Config.
--!/
+-/
 def modify_memory (f : Memory.Memory → Memory.Memory) : InterpM Unit := do
   modify (fun cfg => { cfg with memory := f cfg.memory })
 
@@ -198,7 +198,7 @@ def modify_memory (f : Memory.Memory → Memory.Memory) : InterpM Unit := do
 Get the current control flow (instruction pointer).
 
 Returns the control field from the current Config.
--!/
+-/
 def get_control : InterpM (List Stmt) :=
   return (← get_config).control
 
@@ -206,7 +206,7 @@ def get_control : InterpM (List Stmt) :=
 Modify the current control flow.
 
 Applies a function to the control field and updates the Config.
--!/
+-/
 def modify_control (f : List Stmt → List Stmt) : InterpM Unit := do
   modify (fun cfg => { cfg with control := f cfg.control })
 
@@ -214,7 +214,7 @@ def modify_control (f : List Stmt → List Stmt) : InterpM Unit := do
 Get the current continuation stack.
 
 Returns the stack field from the current Config.
--!/
+-/
 def get_stack : InterpM (List Continuation) :=
   return (← get_config).stack
 
@@ -222,7 +222,7 @@ def get_stack : InterpM (List Continuation) :=
 Modify the continuation stack.
 
 Applies a function to the stack field and updates the Config.
--!/
+-/
 def modify_stack (f : List Continuation → List Continuation) : InterpM Unit := do
   modify (fun cfg => { cfg with stack := f cfg.stack })
 
@@ -230,7 +230,7 @@ def modify_stack (f : List Continuation → List Continuation) : InterpM Unit :=
 Get the current thread ID.
 
 Returns the thread_id field from the current Config.
--!/
+-/
 def get_thread_id : InterpM ThreadId :=
   return (← get_config).thread_id
 
@@ -238,7 +238,7 @@ def get_thread_id : InterpM ThreadId :=
 Modify the current thread ID.
 
 Applies a function to the thread_id field and updates the Config.
--!/
+-/
 def modify_thread_id (f : ThreadId → ThreadId) : InterpM Unit := do
   modify (fun cfg => { cfg with thread_id := f cfg.thread_id })
 
@@ -246,7 +246,7 @@ def modify_thread_id (f : ThreadId → ThreadId) : InterpM Unit := do
 Get all thread states.
 
 Returns the threads field from the current Config.
--!/
+-/
 def get_threads : InterpM (List (ThreadId × ThreadState)) :=
   return (← get_config).threads
 
@@ -254,7 +254,7 @@ def get_threads : InterpM (List (ThreadId × ThreadState)) :=
 Modify all thread states.
 
 Applies a function to the threads field and updates the Config.
--!/
+-/
 def modify_threads (f : List (ThreadId × ThreadState) → List (ThreadId × ThreadState)) : InterpM Unit := do
   modify (fun cfg => { cfg with threads := f cfg.threads })
 
@@ -262,7 +262,7 @@ def modify_threads (f : List (ThreadId × ThreadState) → List (ThreadId × Thr
 Get the current lock ownership state.
 
 Returns the locks field from the current Config.
--!/
+-/
 def get_locks : InterpM (List (LockId × ThreadId)) :=
   return (← get_config).locks
 
@@ -270,7 +270,7 @@ def get_locks : InterpM (List (LockId × ThreadId)) :=
 Modify the lock ownership state.
 
 Applies a function to the locks field and updates the Config.
--!/
+-/
 def modify_locks (f : List (LockId × ThreadId) → List (LockId × ThreadId)) : InterpM Unit := do
   modify (fun cfg => { cfg with locks := f cfg.locks })
 
@@ -278,7 +278,7 @@ def modify_locks (f : List (LockId × ThreadId) → List (LockId × ThreadId)) :
 Check if the current configuration is in UB state.
 
 Returns true if the ub field is some reason.
--!/
+-/
 def is_ub : InterpM Bool :=
   return (← get_config).ub.isSome
 
@@ -286,7 +286,7 @@ def is_ub : InterpM Bool :=
 Throw an UB error.
 
 Throws the given UBReason, causing the interpreter to stop.
--!/
+-/
 def throw_ub (reason : UBReason) : InterpM α :=
   throw reason
 
@@ -294,7 +294,7 @@ def throw_ub (reason : UBReason) : InterpM α :=
 Require a condition to be true, otherwise throw UB.
 
 Used to validate preconditions and throw UB if they fail.
--!/
+-/
 def require (cond : Bool) (reason : UBReason) : InterpM Unit := do
   unless cond do
     throw_ub reason
@@ -306,7 +306,7 @@ Functions for evaluating expressions in the interpreter.
 
 These functions compute the value of expressions given the current
 environment and memory state.
--!/
+-/
 
 /-!
 Evaluate an expression to a value.
@@ -320,7 +320,7 @@ Performs the evaluation based on the expression type:
 - `store ptr val e`: Evaluate e, then store value at ptr
 
 This is the core evaluation function for the interpreter.
--!/
+-/
 def eval_expr (e : Expr) : InterpM Core.Value := do
   env ← get_env
   match e with
@@ -358,7 +358,7 @@ Evaluate a binary operation on two values.
 
 Performs arithmetic, comparison, logical, bitwise, and pointer operations.
 Throws UB for division by zero.
--!/
+-/
 def eval_binop (op : Core.Operator) (v1 v2 : Core.Value) : Core.Value :=
   match v1, v2 with
   | .int n1, .int n2 =>
@@ -401,7 +401,7 @@ def eval_binop (op : Core.Operator) (v1 v2 : Core.Value) : Core.Value :=
 Evaluate a unary operation on a value.
 
 Performs logical negation and bitwise NOT operations.
--!/
+-/
 def eval_unop (op : Core.Operator) (v : Core.Value) : Core.Value :=
   match v with
   | .int n =>
@@ -422,7 +422,7 @@ Functions for executing statements in the interpreter.
 
 These functions perform the side effects of statements, updating the
 environment, memory, control flow, and continuation stack.
--!/
+-/
 
 /-!
 Execute a single statement.
@@ -440,7 +440,7 @@ Performs the execution based on the statement type:
 - `syscall fn args ret_var`: Execute system call fn with args, store result in ret_var
 
 This is the core statement execution function.
--!/
+-/
 def exec_stmt (s : Stmt) : InterpM Unit := do
   match s with
   | .skip => pure ()
@@ -495,7 +495,7 @@ Functions for executing system calls.
 These functions model I/O operations that can be called from the
 interpreted program. They emit events for tracing and can be
 used for conformance checking.
--!/
+-/
 
 /-!
 Execute a system call.
@@ -510,7 +510,7 @@ Supported syscalls:
 - `release`: Release a lock
 
 Throws UB for unknown syscalls.
--!/
+-/
 def exec_syscall (fn : String) (args : List Core.Value) : InterpM Core.Value :=
   match fn with
   | "read" => syscall_read args
@@ -528,7 +528,7 @@ Args: [fd, buf, count]
 Returns: Number of bytes read
 
 This is a stub implementation that always returns 0.
--!/
+-/
 def syscall_read (args : List Core.Value) : InterpM Core.Value :=
   match args with
   | [_, _, _] => pure (Core.Value.int 0)
@@ -541,7 +541,7 @@ Args: [fd, buf, count]
 Returns: Number of bytes written
 
 This is a stub implementation that always returns the count.
--!/
+-/
 def syscall_write (args : List Core.Value) : InterpM Core.Value :=
   match args with
   | [_, _, Core.Value.int count] => pure (Core.Value.int count)
@@ -554,7 +554,7 @@ Args: [fn, arg]
 Returns: New thread ID
 
 Creates a new thread state and adds it to the threads list.
--!/
+-/
 def syscall_spawn (args : List Core.Value) : InterpM Core.Value :=
   match args with
   | [_, _] =>
@@ -573,7 +573,7 @@ Args: [tid]
 Returns: Unit
 
 This is a stub implementation that does nothing.
--!/
+-/
 def syscall_join (args : List Core.Value) : InterpM Core.Value :=
   match args with
   | [Core.Value.int tid] => pure Core.Value.unit
@@ -586,7 +586,7 @@ Args: [lid]
 Returns: Unit
 
 Updates the lock ownership to the current thread.
--!/
+-/
 def syscall_acquire (args : List Core.Value) : InterpM Core.Value :=
   match args with
   | [Core.Value.int lid] =>
@@ -605,7 +605,7 @@ Args: [lid]
 Returns: Unit
 
 Removes the lock from the lock ownership list.
--!/
+-/
 def syscall_release (args : List Core.Value) : InterpM Core.Value :=
   match args with
   | [Core.Value.int lid] =>
@@ -624,7 +624,7 @@ Main entry points for the interpreter.
 
 These functions provide single-step and multi-step execution
 interfaces for testing and conformance checking.
--!/
+-/
 
 /-!
 Execute a single step of the interpreter.
@@ -645,7 +645,7 @@ The event is one of:
 - `.thread_join tid`: Thread join
 - `.lock_acquire lid`: Lock acquisition
 - `.lock_release lid`: Lock release
--!/
+-/
 def step_executable : InterpM (Event × Config) := do
   cfg ← get_config
   control ← get_control
@@ -724,7 +724,7 @@ Returns:
 - `Except.ok (events, config)`: If execution completed
 
 The events list contains all events emitted during execution.
--!/
+-/
 def run_executable (max_steps : Nat := 10000) : InterpM (List Event × Config) := do
   let mut_events ← Ref.mk #[]
   for _ in [:max_steps] do
@@ -750,7 +750,7 @@ Args:
 Returns:
 - `Except.error reason`: If UB occurred
 - `Except.ok (events, config)`: If execution completed
--!/
+-/
 def run_with_program (init : Config) (program : List Stmt) (max_steps : Nat := 10000) :
     Except UBReason (List Event × Config) :=
   let init_cfg : Config := { init with control := program }
@@ -768,7 +768,7 @@ Args:
 Returns:
 - `Except.error reason`: If UB occurred
 - `Except.ok (events, config)`: If execution completed
--!/
+-/
 def run (program : List Stmt) (max_steps : Nat := 10000) :
     Except UBReason (List Event × Config) :=
   run_with_program Config.empty program max_steps

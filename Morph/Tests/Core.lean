@@ -1,4 +1,4 @@
-﻿import Std
+import Std
 import Morph.Core
 import Aesop
 
@@ -62,7 +62,7 @@ This module provides unit tests, property-based tests, and safety theorems for:
 - ADR-009: Testing Infrastructure
 - ADR-005: Aesop Automation Strategy
 - Threat Model: RISK-AUT-007, RISK-PER-006, RISK-AUT-008
--!/
+-/
 
 namespace Tests.Core
 
@@ -71,7 +71,7 @@ namespace Tests.Core
 
 Tests for Phase enumeration (Surface, Resolved, Core).
 These tests verify that Phase values can be constructed, compared, and hashed correctly.
--!/
+-/
 
 section PhaseTests
 
@@ -115,7 +115,7 @@ end PhaseTests
 
 Tests for BlockId structure (unique identifier for memory blocks).
 These tests verify that BlockId values can be constructed, compared, and hashed correctly.
--!/
+-/
 
 section BlockIdTests
 
@@ -153,7 +153,7 @@ end BlockIdTests
 
 Tests for ProvenanceId structure (unique identifier for pointer provenance tracking).
 These tests verify that ProvenanceId values can be constructed, compared, and hashed correctly.
--!/
+-/
 
 section ProvenanceIdTests
 
@@ -191,7 +191,7 @@ end ProvenanceIdTests
 
 Tests for Pointer structure (block-offset pointer with optional provenance).
 These tests verify that Pointer values can be constructed, compared, and manipulated correctly.
--!/
+-/
 
 section PointerTests
 
@@ -252,7 +252,7 @@ end PointerTests
 
 Tests for Value inductive type (runtime value representation).
 These tests verify that Value constructors work correctly and values can be compared.
--!/
+-/
 
 section ValueTests
 
@@ -334,7 +334,7 @@ end ValueTests
 
 Tests for Typ inductive type (type system enumeration).
 These tests verify that Typ constructors work correctly and types can be compared.
--!/
+-/
 
 section TypTests
 
@@ -412,7 +412,7 @@ end TypTests
 
 Tests for Operator inductive type (arithmetic and logical operators).
 These tests verify that Operator constructors work correctly and operators can be compared.
--!/
+-/
 
 section OperatorTests
 
@@ -481,7 +481,7 @@ end OperatorTests
 
 Tests for Env structure (List-based environment for variable bindings).
 These tests verify that environment operations work correctly.
--!/
+-/
 
 section EnvTests
 
@@ -533,7 +533,7 @@ end EnvTests
 
 Property-based tests for HashMap operations using Std.HashMap.
 These tests verify generic properties that should hold for all HashMap operations.
--!/
+-/
 
 section HashMapPropertyTests
 
@@ -624,7 +624,7 @@ end HashMapPropertyTests
 
 Safety theorems ensuring type invariants hold for core types.
 These theorems prove that well-formed types maintain their invariants.
--!/
+-/
 
 section SafetyTheoremTests
 
@@ -709,30 +709,29 @@ section SafetyTheoremTests
       List.find? (fun p => p.1 = x) env = some (x, v) →
         ∃ (t : Typ), value_has_type v t := by
     intro env x v h
-    cases h
-    case h_1 =>
-      intro rest
+    cases v
+    case int n =>
       exists Typ.intType
-      sorry
-    case h_2 =>
-      intro rest
+      constructor
+      rfl
+    case bool b =>
       exists Typ.boolType
-      sorry
-    case h_3 =>
-      intro rest
+      constructor
+      rfl
+    case string s =>
       exists Typ.stringType
-      sorry
-    case h_4 =>
-      intro rest
+      constructor
+      rfl
+    case pointer ptr =>
       exists Typ.pointerType
-      sorry
-    case h_5 =>
-      intro rest
+      constructor
+      rfl
+    case unit =>
       exists Typ.unitType
-      sorry
-    case h_6 =>
-      intro rest
-      sorry
+      rfl
+    case undef =>
+      exists Typ.unitType
+      rfl
 
   /-- Type invariants are preserved under equality -/
   /-- This theorem ensures that type invariants are preserved when values are equal.
@@ -743,21 +742,60 @@ section SafetyTheoremTests
     intro v1 v2 t h1 h2
     cases h1
     case h_1 =>
-      intro n
-      cases v2 <;> sorry
+      intro n hn
+      cases t
+      case intType =>
+        constructor
+        exact n
+        exact hn
+      case _ =>
+        cases h2
+        rfl
     case h_2 =>
-      intro b
-      cases v2 <;> sorry
+      intro b hb
+      cases t
+      case boolType =>
+        constructor
+        exact b
+        exact hb
+      case _ =>
+        cases h2
+        rfl
     case h_3 =>
-      intro s
-      cases v2 <;> sorry
+      intro s hs
+      cases t
+      case stringType =>
+        constructor
+        exact s
+        exact hs
+      case _ =>
+        cases h2
+        rfl
     case h_4 =>
-      intro ptr
-      cases v2 <;> sorry
+      intro ptr hp
+      cases t
+      case pointerType =>
+        constructor
+        exact ptr
+        exact hp
+      case _ =>
+        cases h2
+        rfl
     case h_5 =>
-      cases v2 <;> sorry
+      cases t
+      case unitType =>
+        exact h2
+      case _ =>
+        cases h2
+        rfl
     case h_6 =>
-      cases v2 <;> sorry
+      cases t
+      case unitType =>
+        cases h2
+        rfl
+      case _ =>
+        cases h2
+        rfl
 
   /-- Helper predicate: value has type -/
   /-- This helper predicate is used in safety theorems to check if a value has a given type. -/

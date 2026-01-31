@@ -21,7 +21,7 @@ Examples illustrate:
 - Incremental hash updates
 - Refactoring operations with provenance tracking
 
--!/
+-/
 # Example 1: Simple Merkle DAG
 
 def simpleMerkleDAG : ASTGraph :=
@@ -101,7 +101,7 @@ example_simple_merkle_dag : Prop :=
 
 def merkleHashPropertyExample : ASTGraph := ASTGraph.wellFormed simpleMerkleDAG := by
   merkleHashProperty simpleMerkleDAG
--!/
+-/
 
 /-!
 # Example 3: Node Taxonomy Type Safety
@@ -109,7 +109,7 @@ def merkleHashPropertyExample : ASTGraph := ASTGraph.wellFormed simpleMerkleDAG 
 def nodeTaxonomyExample : Prop :=
   by
     apply node_type_safety (NodeKind.Literal (Unit))
--!/
+-/
 
 /-!
 # Example 4: Incremental Hash Recomputation
@@ -143,7 +143,7 @@ def incrementalHashExample : ASTGraph :=
   let newGraph := recomputeHashes graphWithChild affected
   
   example_incremental_hash_recomputation incrementalHashExample
--!/
+-/
 
 /-!
 # Example 5: Refactoring Operation
@@ -167,7 +167,7 @@ def refactoringExample : ASTGraph :=
   let graphWithInline := applyRefactoring graphWithFunction (RefactoringOperation.InlineFunction 0 0)
   
   example_refactoring_provenance refactoringExample
--!/
+-/
 
 /-!
 # Example 6: Content Addressability
@@ -210,7 +210,7 @@ def contentAddressabilityExample : ASTGraph :=
   }
   
   example_content_addressability hash_equality_content graph1 graph2
--!/
+-/
 
 /-!
 # Example 7: DAG Acyclicity
@@ -247,7 +247,7 @@ def dagAcyclicityExample : Prop :=
   ¬ASTGraph.wellFormed graphWithCycle
 
 example_dag_acyclicity dagAcyclicityExample
--!/
+-/
 
 /-!
 # Example 8: Merkle Node Validity
@@ -299,6 +299,6 @@ def merkleNodeValidityExample : Prop :=
 
 example_merkle_node_validity merkleNodeValidityExample
 
--!/
+-/
 end Morph.Specs.ASTGraph
 -/

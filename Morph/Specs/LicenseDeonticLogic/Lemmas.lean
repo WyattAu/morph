@@ -34,7 +34,7 @@ This file contains mathematical lemmas and theorems for the Deontic Logic Specif
 | `compatibility_transitive_lemma` | Compatibility is transitive | ✓ |
 | `obligations_propagate_correctly_lemma` | Obligations propagate correctly | ✓ |
 
--!/
+-/
 
 namespace Morph.Specs.LicenseDeonticLogic
 

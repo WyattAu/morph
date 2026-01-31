@@ -1,150 +1,145 @@
--- Copyright 2024-2025 The Morph Project Authors
--- SPDX-License-Identifier: Apache-2.0
-
-import Morph.Specs.LayeredConcurrency.Spec
-import Morph.Core
-import Morph.Syntax
-import Morph.Memory
-import Morph.Semantics
-
-/-
+/- Copyright 2024-2025 The Morph Project Authors
+SPDX-License-Identifier: Apache-2.0
 -/
 
-## Simple Counter Application
+import Morph.Specs.LayeredConcurrency.Spec
 
--- Application Layer: Unidirectional State Management 
+namespace Morph.Specs.LayeredConcurrency.Examples
 
+/- # Examples for Layered Concurrency Architecture -/
+
+/-- Simple counter application demonstrating unidirectional state management -/
 structure CounterState where
   count : Nat
   deriving Repr, BEq
 
-structure CounterEvent where
-  increment : CounterEvent
+/-- Counter events for increment and decrement -/
+inductive CounterEvent where
+  | increment : CounterEvent
+  | decrement : CounterEvent
+  | getValue : CounterEvent
+  deriving Repr, BEq
 
--- Application Layer Reducer 
-
-def counterReducer : Reducer CounterState CounterEvent :=
+/-- Counter reducer: pure function producing new state from event -/
+def counterReducer : Reducer := fun state event =>
   match event with
-  | .increment => { count := s.count + 1, state := s.count }
-  | _ => { count := s.count, state := s.count }
+  | .increment => { count := state.count + 1 }
+  | .decrement => { count := state.count - 1 }
+  | .getValue => state
 
--- Concurrency Layer: Bidirectional Actor Messaging 
+/-- Counter command: descriptor for state transitions -/
+def counterCommand : Command := fun _ event =>
+  match event with
+  | .increment => fun state => { count := state.count + 1 }
+  | .decrement => fun state => { count := state.count - 1 }
+  | .getValue => fun state => state
 
-structure CounterActor where
-  mailbox : Mailbox
-  state : Nat
-  behavior : Behavior CounterMessage -> CounterState × Option CounterMessage
-  deriving Repr, BEq
+/-- Example application layer state with counter -/
+def exampleApplicationLayer : ApplicationLayerState :=
+  { state := { count := 0 }
+    reducer := counterReducer
+    command := counterCommand }
 
-structure CounterMessage where
-  request_count : Nat
-  deriving Repr, BEq
+/-- Example counter actor with mailbox and behavior -/
+def exampleCounterActor : Actor :=
+  { mailbox := { messages := [] }
+    state := { count := 0 }
+    behavior := {
+      process := fun msg _ =>
+        match msg.content with
+        | .str "increment" =>
+          ({ count := defaultState.count + 1 }, some { content := .str "incremented", sender := msg.sender })
+        | .str "decrement" =>
+          ({ count := defaultState.count - 1 }, some { content := .str "decremented", sender := msg.sender })
+        | .str "get" =>
+          ({ count := defaultState.count }, some { content := .str (s!"{defaultState.count}"), sender := msg.sender })
+        | _ =>
+          (defaultState, none)
+      }
+    }
 
-structure Mailbox where
-  messages : List Message
-  deriving Repr, BEq
+/-- Example layer boundary for spawning, sending, and receiving -/
+def exampleLayerBoundary : LayerBoundary :=
+  { spawn := fun id app =>
+      { mailbox := { messages := [] }
+        state := app.state
+        behavior := {
+          process := fun msg _ =>
+            ({ app.state }, some msg)
+          }
+      }
+    send := fun id msg app =>
+      { app with state := app.reducer app.state (.str "send") }
+    receive := fun id msg app =>
+      { app with state := app.reducer app.state (.str "receive") }
+  }
 
-structure CounterActor where
-  state : CounterState
-  behavior : Behavior CounterMessage -> CounterState × Option CounterMessage
-  deriving Repr, BEq
+/-- Verify unidirectional state flow: all transitions are forward -/
+example verifyUnidirectionalFlow : stateTransitionsFlowUnidirectional exampleApplicationLayer.state := by
+  intro s1 s2 e
+  exists { from := s1, event := e, to := s2, direction := .forward }
+  constructor <; rfl <; rfl <; rfl <; rfl
 
--- Helper Functions 
+/-- Verify pure function properties: no side effects, deterministic -/
+example verifyPureFunction : isPureFunction counterReducer := by
+  constructor
+  · intro s1 s2 e1 e2 h_eq
+    cases h_eq
+    rfl
+  · intro s e
+    cases e
+    < rfl
+    < rfl
+    < rfl
+  · intro s1 s2 e h_det
+    exact h_det
 
-def process_counter_message (actor : CounterActor) (msg : CounterMessage) : CounterActor :=
-  match msg with
-  | .request_count =>
-      let new_state := { count := actor.state + 1 }
-      (new_state, .increment)
-  | .get_count =>
-      let new_state := { count := actor.state }
-      (new_state, .request_count)
-  | .decrement =>
-      let new_state := { count := actor.state - 1 }
-      (new_state, .decrement)
+/-- Verify bidirectional messaging: actor can send and receive -/
+example verifyBidirectionalMessaging : supportsBidirectionalMessaging exampleCounterActor.behavior := by
+  exists { content := .str "test", sender := { id := 0 } }
+  exists { content := .str "response", sender := { id := 0 } }
+  intro msg response
+  unfold supportsBidirectionalMessaging
+  unfold Behavior.process
+  unfold defaultState
+  unfold Message.content
+  unfold ActorId.id
+  constructor <; rfl <; rfl <; rfl
 
--- Layer Boundary Integration 
+/-- Verify layer boundary is well-defined: all operations produce valid results -/
+example verifyLayerBoundary : wellDefinedLayerBoundary exampleLayerBoundary := by
+  constructor
+  · intro id app
+    unfold wellDefinedSpawnBoundary
+    unfold LayerBoundary.spawn
+    unfold exampleLayerBoundary
+    unfold Actor.ne
+    unfold defaultState
+    intro h_eq
+    contradiction
+  · intro id msg app
+    unfold wellDefinedSendBoundary
+    unfold LayerBoundary.send
+    unfold exampleLayerBoundary
+    unfold ApplicationLayerState.ne
+    unfold defaultState
+    intro h_eq
+    contradiction
+  · intro id msg app
+    unfold wellDefinedReceiveBoundary
+    unfold LayerBoundary.receive
+    unfold exampleLayerBoundary
+    unfold ApplicationLayerState.ne
+    unfold defaultState
+    intro h_eq
+    contradiction
 
-structure CounterApp where
-  counter_actor : ActorId
-  counter_state : CounterState
-
-def spawn_counter_actor (app : CounterApp) : CounterApp -> ActorId :=
-  let actor_id := ActorId.mk app.counter_state.count
-  let new_app := { counter_actor := actor_id, counter_state := app.counter_state }
-  (new_app, actor_id)
-
-def send_counter_request (app : CounterApp) (actor_id : ActorId) : CounterApp -> CounterApp :=
-  let msg := .request_count actor_id
-  let new_app := boundary.send actor_id msg app
-  (new_app, msg)
-
-def receive_counter_response (app : CounterApp) (actor_id : ActorId) (msg : CounterMessage) : CounterApp -> CounterApp :=
-  match msg with
-  | .get_count =>
-      let new_app := boundary.receive actor_id (some msg) app
-      (new_app, msg)
-  | .request_count =>
-      let new_app := boundary.send actor_id msg app
-      (new_app, msg)
-  | .decrement =>
-      let new_app := boundary.send actor_id msg app
-      (new_app, msg)
-
--- Edge Cases 
-
-def verify_unidirectional_state_transitions (app : CounterApp) (actor_id : ActorId) : Prop :=
-  ∀ (s1 s2 : CounterState) (e1 e2 : Event),
-    state_transitions_flow_unidirectional app.state s1 e2 →
-      app.reducer s1 e1 = app.reducer s2 e2
-  -- By spec_lca_unidirectional_theorem, state transitions flow unidirectional
-
-def verify_bidirectional_messaging (actor : CounterActor) : Prop :=
-  ∀ (msg1 msg2 : CounterMessage) (s1 s2 : State),
-    let (s1', r1) := actor.behavior.process msg1 actor.state in
-    let (s2', r2) := actor.behavior.process msg2 s1' in
-    r1.is_some ∧ r2.is_some →
-      ∃ (response : CounterMessage),
-        actor.behavior.process msg2 s1 = (s2', some response)
-  -- By spec_lca_bidirectionality_theorem, bidirectional messaging is deterministic
-
-def verify_layer_integration_maintains_unidirectional (app : CounterApp) (actor_id : ActorId) (boundary : LayerBoundary) : Prop :=
-  ∀ (app : CounterApp) (actor_id : ActorId) (msg : CounterMessage),
-    let app' := boundary.send actor_id msg app
-    let app'' := boundary.receive actor_id (some msg) app'
-  -- By spec_lca_layer_integration_theorem, layer integration maintains unidirectional
-
-def verify_layer_boundary_preserves_no_shared_state (app : CounterApp) (actor : Actor) (s_actor : CounterState) : Prop :=
-  no_shared_state_between_layers app.state s_actor
-  -- By spec_lca_layer_separation_theorem, no shared state between layers
-
-def verify_determinism (app : CounterApp) (s1 s2 : CounterState) (e1 e2 : Event) : Prop :=
-  ∀ (s1 s2 : CounterState) (e1 e2 : Event),
-    app.reducer s1 e1 = app.reducer s2 e2 →
-      s1 = s2
-  -- By spec_lca_determinism_theorem, unidirectional state transitions are deterministic
-
-def verify_bidirectionality (actor : CounterActor) : Prop :=
-  ∀ (msg1 msg2 : CounterMessage) (s1 s2 : State),
-    let (s1', r1) := actor.behavior.process msg1 actor.state in
-    let (s2', r2) := actor.behavior.process msg2 s1' in
-    r1.is_some ∧ r2.is_some →
-      ∃ (response : CounterMessage),
-        actor.behavior.process msg2 s1 = (s2', some response)
-  -- By spec_lca_bidirectionality_theorem, bidirectional messaging is deterministic
-
-def verify_sequential_processing (actor : CounterActor) : Prop :=
-  ∀ (msg1 msg2 : CounterMessage) (s1 s2 : State),
-    let (s1', _) := actor.behavior.process msg1 actor.state in
-    let (s2', _) := actor.behavior.process msg2 s1' in
-    s1 ≠ s2'
-  -- By spec_lca_bidirectionality_theorem, sequential processing is deterministic
-
-def verify_layer_separation (app : CounterApp) (actor : Actor) (s_actor : CounterState) : Prop :
-  ∀ (app : CounterApp) (actor_id : ActorId) (boundary : LayerBoundary) : Prop :=
-    spec_lca_layer_boundary boundary →
-      no_shared_state_between_layers app.state s_actor
-  -- By spec_lca_layer_separation_theorem, layers are separated
+/-- Verify no shared state: application and actor states are separate -/
+example verifyNoSharedState : noSharedStateBetweenLayers exampleApplicationLayer exampleCounterActor := by
+  intro sApp sActor h_app_eq h_actor_eq
+  cases h_app_eq
+  rfl
+  cases h_actor_eq
+  rfl
 
 end Morph.Specs.LayeredConcurrency.Examples
--/

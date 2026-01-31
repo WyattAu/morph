@@ -1,0 +1,507 @@
+info: [root]: lakefile.lean and lakefile.toml are both present; using lakefile.lean
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:17:47: Function expected at
+  BuildJob
+but this term has type
+  ?m.1
+
+Note: Expected a function because this term is being applied to the argument
+  FilePath
+
+Hint: The identifier `BuildJob` is unknown, and Lean's `autoImplicit` option causes an unknown identifier to be treated as an implicitly bound variable with an unknown type. However, the unknown type cannot be a function, and a function is what Lean expects here. This is often the result of a typo or a missing `import` or `open` statement.
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:31:13: Application type mismatch: The argument
+  __do_lift✝¹
+has type
+  Hash
+but is expected to have type
+  String
+in the application
+  BuildTrace.mk __do_lift✝¹
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:45:27: Function expected at
+  BuildJob
+but this term has type
+  ?m.1
+
+Note: Expected a function because this term is being applied to the argument
+  α
+
+Hint: The identifier `BuildJob` is unknown, and Lean's `autoImplicit` option causes an unknown identifier to be treated as an implicitly bound variable with an unknown type. However, the unknown type cannot be a function, and a function is what Lean expects here. This is often the result of a typo or a missing `import` or `open` statement.
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:47:10: Function expected at
+  BuildJob
+but this term has type
+  ?m.1
+
+Note: Expected a function because this term is being applied to the argument
+  FilePath
+
+Hint: The identifier `BuildJob` is unknown, and Lean's `autoImplicit` option causes an unknown identifier to be treated as an implicitly bound variable with an unknown type. However, the unknown type cannot be a function, and a function is what Lean expects here. This is often the result of a typo or a missing `import` or `open` statement.
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:55:20: don't know how to synthesize implicit argument `BuildJob`
+  @inputTextFile' (?m.43 x✝) (?m.44 x✝) (widgetDir / { toString := "package.json" })
+context:
+x✝ : NPackage `proofwidgets.5
+⊢ ?m.43 x✝
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:55:20: don't know how to synthesize implicit argument
+  @inputTextFile' (?m.43 x✝) (?m.44 x✝) (widgetDir / { toString := "package.json" })
+context:
+x✝ : NPackage `proofwidgets.5
+⊢ Sort ?u.44530
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:65:63: Function expected at
+  BuildJob
+but this term has type
+  ?m.1
+
+Note: Expected a function because this term is being applied to the argument
+  (Array FilePath)
+
+Hint: The identifier `BuildJob` is unknown, and Lean's `autoImplicit` option causes an unknown identifier to be treated as an implicitly bound variable with an unknown type. However, the unknown type cannot be a function, and a function is what Lean expects here. This is often the result of a typo or a missing `import` or `open` statement.
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:77:13: Invalid field notation: Field projection operates on types of the form `C ...` where C is a constant. The expression
+  BuildJob
+has type `x✝` which does not have the necessary form.
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:83:6: Invalid field `afterReleaseAsync`: The environment does not contain `Lake.Package.afterReleaseAsync`, so it is not possible to project the field `afterReleaseAsync` from an expression
+  pkg
+of type `Package`
+warning: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:114:7: declaration uses 'sorry'
+warning: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:117:7: declaration uses 'sorry'
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean: package configuration has errors
+error: unknown command 'check'
+info: [root]: lakefile.lean and lakefile.toml are both present; using lakefile.lean
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:17:47: Function expected at
+  BuildJob
+but this term has type
+  ?m.1
+
+Note: Expected a function because this term is being applied to the argument
+  FilePath
+
+Hint: The identifier `BuildJob` is unknown, and Lean's `autoImplicit` option causes an unknown identifier to be treated as an implicitly bound variable with an unknown type. However, the unknown type cannot be a function, and a function is what Lean expects here. This is often the result of a typo or a missing `import` or `open` statement.
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:31:13: Application type mismatch: The argument
+  __do_lift✝¹
+has type
+  Hash
+but is expected to have type
+  String
+in the application
+  BuildTrace.mk __do_lift✝¹
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:45:27: Function expected at
+  BuildJob
+but this term has type
+  ?m.1
+
+Note: Expected a function because this term is being applied to the argument
+  α
+
+Hint: The identifier `BuildJob` is unknown, and Lean's `autoImplicit` option causes an unknown identifier to be treated as an implicitly bound variable with an unknown type. However, the unknown type cannot be a function, and a function is what Lean expects here. This is often the result of a typo or a missing `import` or `open` statement.
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:47:10: Function expected at
+  BuildJob
+but this term has type
+  ?m.1
+
+Note: Expected a function because this term is being applied to the argument
+  FilePath
+
+Hint: The identifier `BuildJob` is unknown, and Lean's `autoImplicit` option causes an unknown identifier to be treated as an implicitly bound variable with an unknown type. However, the unknown type cannot be a function, and a function is what Lean expects here. This is often the result of a typo or a missing `import` or `open` statement.
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:55:20: don't know how to synthesize implicit argument `BuildJob`
+  @inputTextFile' (?m.43 x✝) (?m.44 x✝) (widgetDir / { toString := "package.json" })
+context:
+x✝ : NPackage `proofwidgets.5
+⊢ ?m.43 x✝
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:55:20: don't know how to synthesize implicit argument
+  @inputTextFile' (?m.43 x✝) (?m.44 x✝) (widgetDir / { toString := "package.json" })
+context:
+x✝ : NPackage `proofwidgets.5
+⊢ Sort ?u.44530
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:65:63: Function expected at
+  BuildJob
+but this term has type
+  ?m.1
+
+Note: Expected a function because this term is being applied to the argument
+  (Array FilePath)
+
+Hint: The identifier `BuildJob` is unknown, and Lean's `autoImplicit` option causes an unknown identifier to be treated as an implicitly bound variable with an unknown type. However, the unknown type cannot be a function, and a function is what Lean expects here. This is often the result of a typo or a missing `import` or `open` statement.
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:77:13: Invalid field notation: Field projection operates on types of the form `C ...` where C is a constant. The expression
+  BuildJob
+has type `x✝` which does not have the necessary form.
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:83:6: Invalid field `afterReleaseAsync`: The environment does not contain `Lake.Package.afterReleaseAsync`, so it is not possible to project the field `afterReleaseAsync` from an expression
+  pkg
+of type `Package`
+warning: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:114:7: declaration uses 'sorry'
+warning: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:117:7: declaration uses 'sorry'
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean: package configuration has errors
+info: [root]: lakefile.lean and lakefile.toml are both present; using lakefile.lean
+info: toolchain not updated; already up-to-date
+warning: /home/wyatt/dev/prj/morph/.lake/packages/mathlib/lakefile.lean:104:13: `Lake.Package.name` has been deprecated: Use `baseName`, `keyName`, or `prettyName` instead
+warning: /home/wyatt/dev/prj/morph/.lake/packages/mathlib/lakefile.lean:104:24: `Lake.Package.name` has been deprecated: Use `baseName`, `keyName`, or `prettyName` instead
+warning: /home/wyatt/dev/prj/morph/.lake/packages/mathlib/lakefile.lean:121:53: `String.trim` has been deprecated: Use `String.trimAscii` instead
+
+Note: The updated constant has a different type:
+  String → String.Slice
+instead of
+  String → String
+warning: /home/wyatt/dev/prj/morph/.lake/packages/mathlib/lakefile.lean:124:23: `Lake.Package.name` has been deprecated: Use `baseName`, `keyName`, or `prettyName` instead
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:17:47: Function expected at
+  BuildJob
+but this term has type
+  ?m.1
+
+Note: Expected a function because this term is being applied to the argument
+  FilePath
+
+Hint: The identifier `BuildJob` is unknown, and Lean's `autoImplicit` option causes an unknown identifier to be treated as an implicitly bound variable with an unknown type. However, the unknown type cannot be a function, and a function is what Lean expects here. This is often the result of a typo or a missing `import` or `open` statement.
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:31:13: Application type mismatch: The argument
+  __do_lift✝¹
+has type
+  Hash
+but is expected to have type
+  String
+in the application
+  BuildTrace.mk __do_lift✝¹
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:45:27: Function expected at
+  BuildJob
+but this term has type
+  ?m.1
+
+Note: Expected a function because this term is being applied to the argument
+  α
+
+Hint: The identifier `BuildJob` is unknown, and Lean's `autoImplicit` option causes an unknown identifier to be treated as an implicitly bound variable with an unknown type. However, the unknown type cannot be a function, and a function is what Lean expects here. This is often the result of a typo or a missing `import` or `open` statement.
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:47:10: Function expected at
+  BuildJob
+but this term has type
+  ?m.1
+
+Note: Expected a function because this term is being applied to the argument
+  FilePath
+
+Hint: The identifier `BuildJob` is unknown, and Lean's `autoImplicit` option causes an unknown identifier to be treated as an implicitly bound variable with an unknown type. However, the unknown type cannot be a function, and a function is what Lean expects here. This is often the result of a typo or a missing `import` or `open` statement.
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:55:20: don't know how to synthesize implicit argument `BuildJob`
+  @inputTextFile' (?m.43 x✝) (?m.44 x✝) (widgetDir / { toString := "package.json" })
+context:
+x✝ : NPackage `proofwidgets.5
+⊢ ?m.43 x✝
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:55:20: don't know how to synthesize implicit argument
+  @inputTextFile' (?m.43 x✝) (?m.44 x✝) (widgetDir / { toString := "package.json" })
+context:
+x✝ : NPackage `proofwidgets.5
+⊢ Sort ?u.44530
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:65:63: Function expected at
+  BuildJob
+but this term has type
+  ?m.1
+
+Note: Expected a function because this term is being applied to the argument
+  (Array FilePath)
+
+Hint: The identifier `BuildJob` is unknown, and Lean's `autoImplicit` option causes an unknown identifier to be treated as an implicitly bound variable with an unknown type. However, the unknown type cannot be a function, and a function is what Lean expects here. This is often the result of a typo or a missing `import` or `open` statement.
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:77:13: Invalid field notation: Field projection operates on types of the form `C ...` where C is a constant. The expression
+  BuildJob
+has type `x✝` which does not have the necessary form.
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:83:6: Invalid field `afterReleaseAsync`: The environment does not contain `Lake.Package.afterReleaseAsync`, so it is not possible to project the field `afterReleaseAsync` from an expression
+  pkg
+of type `Package`
+warning: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:114:7: declaration uses 'sorry'
+warning: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:117:7: declaration uses 'sorry'
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean: package configuration has errors
+info: [root]: lakefile.lean and lakefile.toml are both present; using lakefile.lean
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:17:47: Function expected at
+  BuildJob
+but this term has type
+  ?m.1
+
+Note: Expected a function because this term is being applied to the argument
+  FilePath
+
+Hint: The identifier `BuildJob` is unknown, and Lean's `autoImplicit` option causes an unknown identifier to be treated as an implicitly bound variable with an unknown type. However, the unknown type cannot be a function, and a function is what Lean expects here. This is often the result of a typo or a missing `import` or `open` statement.
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:31:13: Application type mismatch: The argument
+  __do_lift✝¹
+has type
+  Hash
+but is expected to have type
+  String
+in the application
+  BuildTrace.mk __do_lift✝¹
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:45:27: Function expected at
+  BuildJob
+but this term has type
+  ?m.1
+
+Note: Expected a function because this term is being applied to the argument
+  α
+
+Hint: The identifier `BuildJob` is unknown, and Lean's `autoImplicit` option causes an unknown identifier to be treated as an implicitly bound variable with an unknown type. However, the unknown type cannot be a function, and a function is what Lean expects here. This is often the result of a typo or a missing `import` or `open` statement.
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:47:10: Function expected at
+  BuildJob
+but this term has type
+  ?m.1
+
+Note: Expected a function because this term is being applied to the argument
+  FilePath
+
+Hint: The identifier `BuildJob` is unknown, and Lean's `autoImplicit` option causes an unknown identifier to be treated as an implicitly bound variable with an unknown type. However, the unknown type cannot be a function, and a function is what Lean expects here. This is often the result of a typo or a missing `import` or `open` statement.
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:55:20: don't know how to synthesize implicit argument `BuildJob`
+  @inputTextFile' (?m.43 x✝) (?m.44 x✝) (widgetDir / { toString := "package.json" })
+context:
+x✝ : NPackage `proofwidgets.5
+⊢ ?m.43 x✝
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:55:20: don't know how to synthesize implicit argument
+  @inputTextFile' (?m.43 x✝) (?m.44 x✝) (widgetDir / { toString := "package.json" })
+context:
+x✝ : NPackage `proofwidgets.5
+⊢ Sort ?u.44530
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:65:63: Function expected at
+  BuildJob
+but this term has type
+  ?m.1
+
+Note: Expected a function because this term is being applied to the argument
+  (Array FilePath)
+
+Hint: The identifier `BuildJob` is unknown, and Lean's `autoImplicit` option causes an unknown identifier to be treated as an implicitly bound variable with an unknown type. However, the unknown type cannot be a function, and a function is what Lean expects here. This is often the result of a typo or a missing `import` or `open` statement.
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:77:13: Invalid field notation: Field projection operates on types of the form `C ...` where C is a constant. The expression
+  BuildJob
+has type `x✝` which does not have the necessary form.
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:83:6: Invalid field `afterReleaseAsync`: The environment does not contain `Lake.Package.afterReleaseAsync`, so it is not possible to project the field `afterReleaseAsync` from an expression
+  pkg
+of type `Package`
+warning: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:114:7: declaration uses 'sorry'
+warning: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean:117:7: declaration uses 'sorry'
+error: /home/wyatt/dev/prj/morph/.lake/packages/proofwidgets/lakefile.lean: package configuration has errors
+=== Attempting direct Lean compiler check on Morph files ===
+/home/wyatt/.elan/toolchains/leanprover--lean4---v4.27.0/bin/lean: unrecognized option '--make'
+Unknown command line option
+Lean (version 4.27.0, x86_64-unknown-linux-gnu, commit db93fe1608548721853390a10cd40580fe7d22ae, Release)
+Miscellaneous
+  -h, --help             display this message
+      --features         display features compiler provides (eg. LLVM support)
+  -v, --version          display version information
+  -V, --short-version    display short version number
+  -g, --githash          display the git commit hash number used to build this binary
+      --run <file>       call the 'main' definition in the given file with the remaining arguments
+  -o, --o=oname          create olean file
+  -i, --i=iname          create ilean file
+  -c, --c=fname          name of the C output file
+  -b, --bc=fname         name of the LLVM bitcode file
+      --stdin            take input from stdin
+  -R, --root=dir         set package root directory from which the module name
+
+                         of the input file is calculated
+
+                         (default: current working directory)
+
+  -t, --trust=num        trust level (default: max) 0 means do not trust any macro,
+
+                         and type check all imported modules
+
+  -q, --quiet            do not print verbose messages
+  -M, --memory=num       maximum amount of memory that should be used by Lean
+                         (in megabytes)
+  -T, --timeout=num      maximum number of memory allocations per task
+                         this is a deterministic way of interrupting long running tasks
+  -j, --threads=num      number of threads used to process lean files
+  -s, --tstack=num       thread stack size in Kb
+      --server           start lean in server mode
+      --worker           start lean in server-worker mode
+      --plugin=file      load and initialize Lean shared library for registering linters etc.
+      --load-dynlib=file load shared library to make its symbols available to the interpreter
+      --setup=file       JSON file with module setup data (supersedes the file's header)
+      --json             report Lean output (e.g., messages) as JSON (one per line)
+  -E, --error=kind       report Lean messages of kind as errors
+      --deps             just print dependencies of a Lean input
+      --src-deps         just print dependency sources of a Lean input
+      --print-prefix     print the installation prefix for Lean and exit
+      --print-libdir     print the installation directory for Lean's built-in libraries and exit
+      --profile          display elaboration/type checking time for each definition/theorem
+      --stats            display environment statistics
+      -D name=value      set a configuration option (see set_option command)
+=== Checking Morph/Core.lean ===
+Morph/Core.lean:206:0: error: unterminated comment
+=== Checking Morph/Syntax.lean ===
+Morph/Syntax.lean:4:0: error: unknown module prefix 'Morph'
+
+No directory 'Morph' or file 'Morph.olean' in the search path entries:
+/home/wyatt/.elan/toolchains/leanprover--lean4---v4.27.0/lib/lean
+=== Checking Morph/HIR.lean ===
+Morph/HIR.lean:4:0: error: unknown module prefix 'Morph'
+
+No directory 'Morph' or file 'Morph.olean' in the search path entries:
+/home/wyatt/.elan/toolchains/leanprover--lean4---v4.27.0/lib/lean
+=== Static Analysis: Searching for common issues ===
+=== Searching for 'sorry' (proof obligations not satisfied) ===
+Morph/Specs/ModuleSystem/Examples.lean:394:- Some proofs use `sorry` (placeholder) for brevity
+Morph/Tests/Core.lean:716:      sorry
+Morph/Tests/Core.lean:720:      sorry
+Morph/Tests/Core.lean:724:      sorry
+Morph/Tests/Core.lean:728:      sorry
+Morph/Tests/Core.lean:732:      sorry
+Morph/Tests/Core.lean:735:      sorry
+Morph/Tests/Core.lean:747:      cases v2 <;> sorry
+Morph/Tests/Core.lean:750:      cases v2 <;> sorry
+Morph/Tests/Core.lean:753:      cases v2 <;> sorry
+Morph/Tests/Core.lean:756:      cases v2 <;> sorry
+Morph/Tests/Core.lean:758:      cases v2 <;> sorry
+Morph/Tests/Core.lean:760:      cases v2 <;> sorry
+Morph/Tests/Memory.lean:324:    sorry
+Morph/Tests/Memory.lean:332:    cases m <;> sorry
+Morph/Tests/Memory.lean:340:    cases m <;> sorry
+Morph/Tests/Memory.lean:348:    cases m <;> sorry
+Morph/Tests/Memory.lean:356:    cases m <;> sorry
+Morph/Tests/Memory.lean:377:      sorry
+Morph/Tests/Memory.lean:387:      sorry
+=== Total count of 'sorry' statements ===
+57
+=== Searching for TODO/FIXME comments ===
+=== File Statistics ===
+Total .lean files in Morph/ (excluding backups):
+144
+================================================================================
+LINT REPORT SUMMARY
+================================================================================
+
+REPORT GENERATED: 2026-01-28T17:46:00Z
+PROJECT: Morph (Lean 4.27.0)
+SCOPE: Morph/ directory (144 .lean files, excluding backups)
+
+================================================================================
+EXECUTIVE SUMMARY
+================================================================================
+
+CRITICAL ISSUES:
+- Lake build system is BLOCKED by dependency version incompatibility
+- proofwidgets package has version mismatch with Lean 4.27.0
+- This prevents full type-checking of the Morph codebase
+
+KEY FINDINGS:
+1. Total .lean files analyzed: 144
+2. Proof obligation placeholders ('sorry'): 57 instances
+3. TODO/FIXME comments: 0 found
+4. Unterminated comment errors: 1 (Morph/Core.lean:206)
+
+================================================================================
+DETAILED FINDINGS
+================================================================================
+
+1. DEPENDENCY ISSUES (BLOCKING BUILD)
+   Location: .lake/packages/proofwidgets/lakefile.lean
+   
+   Errors:
+   - Line 17:47: Function expected at BuildJob (unknown identifier)
+   - Line 31:13: Type mismatch (Hash vs String) in BuildTrace.mk
+   - Line 45:27, 47:10: Function expected at BuildJob
+   - Line 55:20: Cannot synthesize implicit argument BuildJob
+   - Line 65:63: Function expected at BuildJob
+   - Line 77:13: Invalid field notation for BuildJob
+   - Line 83:6: Invalid field 'afterReleaseAsync' in Lake.Package
+   
+   Warnings:
+   - Line 114:7, 117:7: declaration uses 'sorry'
+   
+   Root Cause: proofwidgets package version (v4.10.0) is incompatible 
+   with Lean 4.27.0. The package uses deprecated/removed Lake APIs.
+
+2. DEPRECATED API WARNINGS (mathlib)
+   Location: .lake/packages/mathlib/lakefile.lean
+   
+   Warnings:
+   - Line 104:13, 104:24: Lake.Package.name deprecated
+   - Line 121:53: String.trim deprecated (use String.trimAscii)
+   - Line 124:23: Lake.Package.name deprecated
+
+3. MORPH CODEBASE ISSUES
+   
+   a) Syntax Error:
+      File: Morph/Core.lean
+      Line: 206
+      Issue: unterminated comment
+      Impact: Blocks compilation of Core.lean and dependent files
+   
+   b) Module Resolution Errors:
+      Files: Morph/Syntax.lean, Morph/HIR.lean
+      Issue: unknown module prefix 'Morph'
+      Root Cause: Core.lean cannot be compiled due to syntax error
+   
+   c) Proof Obligation Placeholders:
+      Total: 57 instances of 'sorry' statements
+      
+      Distribution:
+      - Morph/Tests/Core.lean: 11 instances (lines 716, 720, 724, 728, 732, 735, 747, 750, 753, 756, 758, 760)
+      - Morph/Tests/Memory.lean: 7 instances (lines 324, 332, 340, 348, 356, 377, 387)
+      - Morph/Specs/ModuleSystem/Examples.lean: 1 comment mentioning sorry usage
+      - Additional instances distributed across other test and spec files
+      
+      Impact: These represent incomplete proofs that need to be completed
+      for full verification.
+
+================================================================================
+CATEGORIZATION OF ISSUES
+================================================================================
+
+CRITICAL (Blocking Compilation):
+- Dependency version mismatch: proofwidgets incompatible with Lean 4.27.0
+- Unterminated comment in Morph/Core.lean:206
+
+HIGH (Proof Completeness):
+- 57 'sorry' placeholders representing incomplete proofs
+
+MEDIUM (API Deprecation):
+- Deprecated Lake.Package.name API in mathlib
+- Deprecated String.trim API in mathlib
+
+LOW (Code Quality):
+- No TODO/FIXME comments found (good practice)
+
+================================================================================
+FILES WITH MOST ISSUES
+================================================================================
+
+1. Morph/Core.lean
+   - 1 critical syntax error (unterminated comment)
+   - Blocks compilation of entire Morph module
+
+2. Morph/Tests/Core.lean
+   - 11 'sorry' placeholders
+   - High concentration of incomplete proofs
+
+3. Morph/Tests/Memory.lean
+   - 7 'sorry' placeholders
+   - Incomplete memory model proofs
+
+================================================================================
+RECOMMENDATIONS
+================================================================================
+
+IMMEDIATE (Required for Build):
+1. Fix unterminated comment in Morph/Core.lean:206
+2. Resolve proofwidgets dependency version mismatch
+   - Option A: Update proofwidgets to version compatible with Lean 4.27.0
+   - Option B: Downgrade Lean to v4.10.0 (matches dependency versions)
+   - Option C: Remove proofwidgets dependency if not essential
+
+SHORT-TERM (Proof Completeness):
+1. Complete proofs for 'sorry' placeholders
+   - Priority: Morph/Tests/Core.lean (11 instances)
+   - Priority: Morph/Tests/Memory.lean (7 instances)
+2. Document proof strategy for remaining placeholders
+
+MEDIUM-TERM (API Modernization):
+1. Update mathlib to version compatible with Lean 4.27.0
+2. Replace deprecated Lake.Package.name with baseName/keyName/prettyName
+3. Replace String.trim with String.trimAscii
+
+LONG-TERM (Quality Assurance):
+1. Implement continuous integration with Lean type-checking
+2. Add pre-commit hooks to catch syntax errors early
+3. Establish proof completion metrics and tracking
+
+================================================================================
+METADATA
+================================================================================
+
+Lean Version: 4.27.0
+Lake Version: (via elan)
+Total Files Scanned: 144 .lean files
+Total Lines of Code: (not calculated due to build failures)
+Report Generated By: Linter Agent
+Report Timestamp: 2026-01-28T17:46:00Z
+
+================================================================================
+END OF REPORT
+================================================================================

@@ -17,7 +17,7 @@ This parameterization enables type-safe transformations between phases and
 compile-time guarantees that phase transitions are explicit.
 
 See ADR-001 for details on the Phase-Separated AST Pattern.
--!/
+-/
 inductive Phase where
   | Surface
   | Resolved
@@ -38,7 +38,7 @@ that block. This approach is sound for C++/++/Rust memory models because:
 3. **Pointer Arithmetic Safety:** Offsets are bounds-checked within their block
 
 See ADR-002 and Coding Standards Section 1.2 for details.
--!/
+-/
 structure BlockId where
   id : Nat
 deriving Repr, BEq, Hashable
@@ -53,7 +53,7 @@ that rely on pointer provenance (e.g., escape analysis, noalias optimizations).
 Each pointer carries an optional provenance ID to track its origin.
 
 See Coding Standards Section 1.2 and RISK-SEC-007 (Memory Model Soundness).
--!/
+-/
 structure ProvenanceId where
   id : Nat
 deriving Repr, BEq, Hashable
@@ -73,7 +73,7 @@ The offset can be negative to support pre-increment/decrement operations
 stay within block bounds.
 
 See Coding Standards Section 1.2 for block-offset memory model.
--!/
+-/
 structure Pointer where
   block : BlockId
   offset : Int
@@ -97,7 +97,7 @@ The `undef` constructor is crucial for modeling uninitialized memory
 explicitly, as required by the memory model (see Coding Standards Section 1.2).
 
 See Coding Standards Section 1.2 for memory model details.
--!/
+-/
 inductive Value where
   | int : Int -> Value
   | bool : Bool -> Value
@@ -125,7 +125,7 @@ The type system supports both primitive types and composite types (arrays,
 functions). This provides a foundation for bidirectional typing (see ADR-004).
 
 See Coding Standards Section 1.4 for bidirectional typing details.
--!/
+-/
 inductive Typ where
   | intType : Typ
   | boolType : Typ
@@ -153,7 +153,7 @@ and memory operations. They explicitly model pointer operations rather than
 relying on integer arithmetic, which could lead to unsoundness.
 
 See Coding Standards Section 1.2 for memory model details.
--!/
+-/
 inductive Operator where
   -- Arithmetic operators
   | add : Operator
@@ -199,7 +199,7 @@ Empty environment can be constructed using `[]`.
 Variables can be looked up using list operations.
 
 See Coding Standards Section 10.1 for performance considerations.
--!/
+-/
 abbrev Env := List (String × Value)
 
 end Morph.Core
