@@ -1,1319 +1,827 @@
-# Morph Language Lean 4 Validation - Task Execution Graph
+# Morph Language Lean 4.28.0-rc1 Migration - Execution Graph
 
 **Phase 9 - Tasking**
-**Generated:** 2026-01-30
-**Purpose:** Comprehensive task breakdown for executing the Morph language Lean validation project rewrite
+**Generated:** 2026-01-31
+**Purpose:** Comprehensive task breakdown for executing the Morph project migration to Lean 4.28.0-rc1
 
 ---
 
 ## Executive Summary
 
-This document defines the complete execution graph of tasks for the Morph language Lean validation project. The project is a brownfield rewrite of 40+ specification modules originally authored by undergraduate students. The tasks are organized into phases with clear priorities, dependencies, and acceptance criteria.
+This document defines the complete execution graph of tasks for the Morph project migration from Lean 4.10.0 to Lean 4.28.0-rc1. The tasks are organized into batches matching the migration process, with clear priorities, dependencies, and acceptance criteria.
 
 ### Task Overview
 
-| Phase | Description | Task Count | Status |
-|-------|-------------|------------|--------|
-| Phase 0-8 | Planning Complete | 0 | ✅ Completed |
-| Phase 10 | Pre-Execution Setup | 4 | ⏳ Pending |
-| Phase 11 | Module-by-Module Rewrite | 14 | ⏳ Pending |
-| Phase 12 | Final Verification | 5 | ⏳ Pending |
+| Batch | Description | Task Count | Priority | Status |
+|-------|-------------|------------|----------|--------|
+| Batch 1 | Critical Error Resolution | 3 | P0 (Critical) | ⏳ Pending |
+| Batch 2 | Dependency Version Alignment | 4 | P1 (High) | ⏳ Pending |
+| Batch 3 | Code Standards Compliance | 3 | P2 (Medium) | ⏳ Pending |
+| Batch 4 | Deprecated API Remediation | 2 | P2 (Medium) | ⏳ Pending |
+| Batch 5 | Verification | 3 | P0 (Critical) | ⏳ Pending |
 
-**Total Tasks:** 23
-
----
-
-## Phase 0-8: Planning Complete ✅
-
-All planning phases have been completed. The following documents are available as reference:
-
-| Phase | Document | Status |
-|-------|----------|--------|
-| Phase 0 | Current State Analysis | ✅ Complete |
-| Phase 1 | Archaeology | ✅ Complete |
-| Phase 2 | Visioning | ✅ Complete |
-| Phase 3 | Requirements | ✅ Complete |
-| Phase 4 | Architecture Design | ✅ Complete |
-| Phase 5 | Threat Modeling | ✅ Complete |
-| Phase 6 | Standards & ADRs | ✅ Complete |
-| Phase 7 | Test Planning | ✅ Complete |
-| Phase 8 | Migration Planning | ✅ Complete |
+**Total Tasks:** 15
 
 ---
 
-## Phase 10: Pre-Execution Setup
+## Batch 1: Critical Error Resolution (P0)
 
-### TASK-001: Create Migration Branch
+### TASK-001: Fix Unterminated Comment in ArcAffineIntegration/Examples.lean
 
 | Attribute | Value |
 |-----------|-------|
 | **Task ID** | TASK-001 |
-| **Title** | Create Migration Branch |
-| **Priority** | Critical |
+| **Title** | Fix Unterminated Comment in ArcAffineIntegration/Examples.lean |
+| **Priority** | Critical (P0) |
 | **Estimated Effort** | 0.5 hours |
-| **Assignee Role** | DevOps Lead |
+| **Assignee Role** | Lean Developer |
 | **Dependencies** | None |
+| **Related Requirements** | REQ-001 (FR-001.1), REQ-003 (FR-003.1) |
+| **Related Risks** | RISK-COMP-007 |
 
 #### Description
-Create a new Git branch for the migration work to isolate changes from the main branch and enable safe rollback if needed.
+
+The file [`Morph/Specs/ArcAffineIntegration/Examples.lean`](../Morph/Specs/ArcAffineIntegration/Examples.lean:237) contains an unterminated comment at line 237 that prevents the file from being parsed. This is a blocking error that must be resolved before any other migration work can proceed.
 
 #### Task Steps
-1. Ensure current branch is clean (no uncommitted changes)
-2. Create branch `feature/morph-lean-validation-rewrite`
-3. Push branch to remote repository
-4. Verify branch tracking is configured
+
+1. Open [`Morph/Specs/ArcAffineIntegration/Examples.lean`](../Morph/Specs/ArcAffineIntegration/Examples.lean:237)
+2. Identify the unterminated comment structure
+3. Add the appropriate closing comment delimiter (`-/` or `--`) at the end of the file
+4. Save the file
+5. Verify the file parses without syntax errors
 
 #### Acceptance Criteria
-- Branch `feature/morph-lean-validation-rewrite` exists locally
-- Branch is pushed to remote repository
-- Branch is tracking remote correctly
-- No uncommitted changes on previous branch
+
+| Criterion | Verification Method |
+|-----------|---------------------|
+| Comment is properly terminated | File parses without syntax errors |
+| File compiles successfully | `lean --make Morph/Specs/ArcAffineIntegration/Examples.lean` exits with code 0 |
+| No syntax errors in output | No "unterminated comment" error messages |
 
 #### Related Documents
-- [`.specs/05_migration/rollback_plan.md`](./05_migration/rollback_plan.md)
+
+- [`.specs/04_future_state/reqs/REQ-001-critical-error-resolution.md`](./04_future_state/reqs/REQ-001-critical-error-resolution.md) (Section 3.1)
+- [`.specs/04_future_state/reqs/REQ-003-syntax-standards-compliance.md`](./04_future_state/reqs/REQ-003-syntax-standards-compliance.md) (Section 3.1)
+- [`.specs/04_future_state/test_plan.md`](./04_future_state/test_plan.md) (TS-001)
 
 ---
 
-### TASK-002: Backup Current State
+### TASK-002: Remove ProofWidgets Dependency from lakefile.lean
 
 | Attribute | Value |
 |-----------|-------|
 | **Task ID** | TASK-002 |
-| **Title** | Backup Current State |
-| **Priority** | Critical |
+| **Title** | Remove ProofWidgets Dependency from lakefile.lean |
+| **Priority** | Critical (P0) |
 | **Estimated Effort** | 1 hour |
-| **Assignee Role** | DevOps Lead |
+| **Assignee Role** | DevOps Engineer |
 | **Dependencies** | TASK-001 |
+| **Related Requirements** | REQ-001 (FR-001.2) |
+| **Related Risks** | RISK-COMP-002 |
 
 #### Description
-Create a backup of the current state of the repository to enable rollback if the migration encounters critical issues.
+
+The ProofWidgets4 dependency (version v0.0.84) has configuration errors in its lakefile.lean that are incompatible with Lean 4.28.0-rc1. This dependency must be removed from the project's dependency tree. ProofWidgets is a transitive dependency inherited from `leanprover-community` and is not directly used by Morph code.
 
 #### Task Steps
-1. Create a Git tag `backup-before-migration-YYYYMMDD`
-2. Push tag to remote repository
-3. Create a tarball of the entire repository
-4. Store tarball in secure backup location
-5. Document backup location and restoration procedure
+
+1. Verify no Morph code directly imports or uses ProofWidgets functionality
+2. Remove ProofWidgets entry from [`lake-manifest.json`](../lake-manifest.json)
+3. Remove ProofWidgets entry from [`lakefile.lean`](../lakefile.lean) if present
+4. Clean build artifacts: `rm -rf .lake/packages/proofwidgets && lake clean`
+5. Run `lake configure` to verify workspace configuration succeeds
+6. Verify all affected files compile
+
+#### Affected Files (7 total)
+
+1. [`Morph/Executable.lean`](../Morph/Executable.lean)
+2. [`Morph/Specs/AbiAlignmentAlgebra/Lemmas.lean`](../Morph/Specs/AbiAlignmentAlgebra/Lemmas.lean)
+3. [`Morph/Specs/AbiDataRefinement/Examples.lean`](../Morph/Specs/AbiDataRefinement/Examples.lean)
+4. [`Morph/Specs/AbiDataRefinement/Lemmas.lean`](../Morph/Specs/AbiDataRefinement/Lemmas.lean)
+5. [`Morph/Specs/ConcurrencyProcessAlgebra/Examples.lean`](../Morph/Specs/ConcurrencyProcessAlgebra/Examples.lean)
+6. [`Morph/Specs/ConcurrencyProcessAlgebra/Lemmas.lean`](../Morph/Specs/ConcurrencyProcessAlgebra/Lemmas.lean)
+7. [`Morph/Specs/ConcurrencyProcessAlgebra/Spec.lean`](../Morph/Specs/ConcurrencyProcessAlgebra/Spec.lean)
 
 #### Acceptance Criteria
-- Git tag `backup-before-migration-YYYYMMDD` created and pushed
-- Tarball backup created and stored securely
-- Backup location documented in rollback plan
-- Restoration procedure documented
+
+| Criterion | Verification Method |
+|-----------|---------------------|
+| ProofWidgets removed from dependency tree | `grep -r "ProofWidgets" .lake/packages/` returns empty |
+| Lake workspace configures successfully | `lake configure` exits with code 0 |
+| No ProofWidgets-related errors | Build output contains no ProofWidgets error messages |
+| All 7 affected files compile | All affected files compile without errors |
 
 #### Related Documents
-- [`.specs/05_migration/rollback_plan.md`](./05_migration/rollback_plan.md)
+
+- [`.specs/04_future_state/reqs/REQ-001-critical-error-resolution.md`](./04_future_state/reqs/REQ-001-critical-error-resolution.md) (Section 3.2)
+- [ADR-002: ProofWidgets Dependency Removal](./02_adrs/ADR-002-proofwidgets-removal.md)
+- [`.specs/04_future_state/test_plan.md`](./04_future_state/test_plan.md) (TS-002)
 
 ---
 
-### TASK-003: Verify Build Environment
+### TASK-003: Clean Lake Cache and Regenerate Manifest
 
 | Attribute | Value |
 |-----------|-------|
 | **Task ID** | TASK-003 |
-| **Title** | Verify Build Environment |
-| **Priority** | Critical |
-| **Estimated Effort** | 2 hours |
+| **Title** | Clean Lake Cache and Regenerate Manifest |
+| **Priority** | Critical (P0) |
+| **Estimated Effort** | 0.5 hours |
 | **Assignee Role** | DevOps Engineer |
-| **Dependencies** | TASK-001 |
+| **Dependencies** | TASK-002 |
+| **Related Requirements** | REQ-001 (FR-001.3) |
+| **Related Risks** | RISK-COMP-002 |
 
 #### Description
-Verify that the build environment is correctly configured with all required tools and dependencies for Lean 4 development.
+
+After removing ProofWidgets, ensure the Lake workspace configures successfully and the manifest is regenerated without any configuration errors. This task validates that the critical error resolution is complete.
 
 #### Task Steps
-1. Verify Lean 4 version is 4.10.0 (check [`lean-toolchain`](../lean-toolchain:1))
-2. Verify Lake is installed and compatible
-3. Verify mathlib4 dependency is available
-4. Verify aesop dependency is available
-5. Verify batteries dependency is available
-6. Run `lake build` to verify current state compiles
-7. Document any environment issues
+
+1. Clean all Lake build artifacts: `lake clean`
+2. Remove all package directories: `rm -rf .lake/packages`
+3. Run `lake configure` and verify successful completion
+4. Run `lake update` to regenerate [`lake-manifest.json`](../lake-manifest.json)
+5. Check for any remaining dependency configuration issues
+6. Verify all remaining dependencies are compatible with Lean 4.28.0-rc1
 
 #### Acceptance Criteria
-- Lean 4 v4.10.0 is installed and active
-- Lake is installed and functional
-- All dependencies (mathlib4, aesop, batteries) are available
-- Current codebase compiles with `lake build`
-- Environment issues (if any) are documented
+
+| Criterion | Verification Method |
+|-----------|---------------------|
+| Lake workspace configures | `lake configure` exits with code 0 |
+| No configuration errors | Build output contains no configuration error messages |
+| All dependencies resolve | All dependencies in lake-manifest.json are valid |
+| Lake manifest is regenerated | `lake update` completes successfully |
 
 #### Related Documents
-- [`.specs/04_future_state/design/DESIGN-006-build-system.md`](./04_future_state/design/DESIGN-006-build-system.md)
-- [ADR-004](./02_adrs/ADR-004-lake-build-system.md)
+
+- [`.specs/04_future_state/reqs/REQ-001-critical-error-resolution.md`](./04_future_state/reqs/REQ-001-critical-error-resolution.md) (Section 3.3)
+- [`.specs/04_future_state/test_plan.md`](./04_future_state/test_plan.md) (IT-BLD-001, IT-BLD-002)
 
 ---
 
-### TASK-004: Run Baseline Tests
+## Batch 2: Dependency Version Alignment (P1)
 
-| Attribute | Value |
-|-----------|-------|
-| **Task ID** | TASK-004 |
-| **Title** | Run Baseline Tests |
-| **Priority** | Critical |
-| **Estimated Effort** | 2 hours |
-| **Assignee Role** | QA Lead |
-| **Dependencies** | TASK-003 |
-
-#### Description
-Run the full test suite to establish a baseline of current test results before making any changes.
-
-#### Task Steps
-1. Run `lake build` and record compilation time
-2. Run all unit tests and record results
-3. Run all integration tests and record results
-4. Count current number of `sorry` placeholders
-5. Count current number of commented-out code blocks
-6. Count current number of stub files
-7. Document baseline metrics in test report
-
-#### Acceptance Criteria
-- Baseline compilation time recorded
-- Baseline test results recorded
-- Baseline `sorry` count documented
-- Baseline commented-out code count documented
-- Baseline stub file count documented
-- Baseline test report created
-
-#### Related Documents
-- [`.specs/04_future_state/test_plan.md`](./04_future_state/test_plan.md)
-
----
-
-## Phase 11: Execution - Module-by-Module Rewrite
-
-### Batch 1: Critical Foundation Modules (Priority 1)
-
-### TASK-010: Rewrite AbiDataRefinement/Lemmas.lean
+### TASK-010: Verify Lean Toolchain at v4.28.0-rc1
 
 | Attribute | Value |
 |-----------|-------|
 | **Task ID** | TASK-010 |
-| **Title** | Rewrite AbiDataRefinement/Lemmas.lean |
-| **Priority** | Critical |
-| **Estimated Effort** | 8 hours |
-| **Assignee Role** | Senior Lean Developer |
-| **Dependencies** | TASK-004 |
+| **Title** | Verify Lean Toolchain at v4.28.0-rc1 |
+| **Priority** | High (P1) |
+| **Estimated Effort** | 0.25 hours |
+| **Assignee Role** | DevOps Engineer |
+| **Dependencies** | TASK-003 |
+| **Related Requirements** | REQ-002 (FR-002.1) |
+| **Related Risks** | RISK-COMP-001 |
 
 #### Description
-Rewrite the completely empty [`Morph/Specs/AbiDataRefinement/Lemmas.lean`](../Morph/Specs/AbiDataRefinement/Lemmas.lean:1) file with complete lemma proofs for ABI data refinement.
+
+Ensure the Lean toolchain is correctly set to v4.28.0-rc1. The toolchain is already configured in [`lean-toolchain`](../lean-toolchain), but this task verifies it is correctly installed and available.
 
 #### Task Steps
-1. Review [`AbiDataRefinement/Spec.lean`](../Morph/Specs/AbiDataRefinement/Spec.lean:1) for theorem statements
-2. Review [`AbiDataRefinement/Examples.lean`](../Morph/Specs/AbiDataRefinement/Examples.lean:1) for usage patterns
-3. Identify required lemmas from specification
-4. Write complete proofs for all lemmas (no `sorry` placeholders)
-5. Ensure all proofs follow Lean 4 best practices
-6. Add docstrings to all lemmas
-7. Verify compilation succeeds
+
+1. Verify [`lean-toolchain`](../lean-toolchain) contains `leanprover/lean4:v4.28.0-rc1`
+2. Verify `lean --version` returns v4.28.0-rc1
+3. If toolchain is not available, install it using `elan`
+4. Document any toolchain installation issues
 
 #### Acceptance Criteria
-- [`Lemmas.lean`](../Morph/Specs/AbiDataRefinement/Lemmas.lean:1) is no longer empty
-- All lemmas have complete proofs (no `sorry` placeholders)
-- All lemmas have docstrings
-- Module compiles successfully
-- No commented-out code in file
+
+| Criterion | Verification Method |
+|-----------|---------------------|
+| Toolchain version is v4.28.0-rc1 | `cat lean-toolchain` returns `leanprover/lean4:v4.28.0-rc1` |
+| Toolchain is available | `lean --version` returns v4.28.0-rc1 |
 
 #### Related Documents
-- [REQ-006](./04_future_state/reqs/REQ-006-abi-domain.md)
-- [ADR-006](./02_adrs/ADR-006-complete-proof-requirement.md)
+
+- [`.specs/04_future_state/reqs/REQ-002-dependency-version-alignment.md`](./04_future_state/reqs/REQ-002-dependency-version-alignment.md) (Section 3.1)
+- [`.specs/04_future_state/test_plan.md`](./04_future_state/test_plan.md) (IT-DEP-001)
 
 ---
 
-### TASK-011: Complete GLOSSARY Module
+### TASK-011: Update Batteries to v4.28.0-Compatible Version
 
 | Attribute | Value |
 |-----------|-------|
 | **Task ID** | TASK-011 |
-| **Title** | Complete GLOSSARY Module |
-| **Priority** | Critical |
-| **Estimated Effort** | 12 hours |
-| **Assignee Role** | Senior Lean Developer |
+| **Title** | Update Batteries to v4.28.0-Compatible Version |
+| **Priority** | High (P1) |
+| **Estimated Effort** | 2 hours |
+| **Assignee Role** | DevOps Engineer |
 | **Dependencies** | TASK-010 |
+| **Related Requirements** | REQ-002 (FR-002.2) |
+| **Related Risks** | RISK-COMP-001, RISK-COMP-005 |
 
 #### Description
-Complete the GLOSSARY module by rewriting all three stub files ([`Spec.lean`](../Morph/Specs/GLOSSARY/Spec.lean:1), [`Lemmas.lean`](../Morph/Specs/GLOSSARY/Lemmas.lean:1), [`Examples.lean`](../Morph/Specs/GLOSSARY/Examples.lean:1)) with complete content.
+
+Update the batteries dependency from v4.10.0 to a version compatible with Lean 4.28.0-rc1. This task involves researching the available versions, selecting the most recent stable version, and updating the project configuration.
 
 #### Task Steps
-1. Review current stub content in all three files
-2. Define formal terminology in [`Spec.lean`](../Morph/Specs/GLOSSARY/Spec.lean:1)
-3. Write lemmas proving terminology relationships in [`Lemmas.lean`](../Morph/Specs/GLOSSARY/Lemmas.lean:1)
-4. Create examples demonstrating term usage in [`Examples.lean`](../Morph/Specs/GLOSSARY/Examples.lean:1)
-5. Add comprehensive docstrings
-6. Verify all files compile successfully
-7. Verify all examples execute
+
+1. Research the batteries repository for v4.28.0-compatible tags/branches
+2. Choose the most recent stable version compatible with Lean 4.28.0-rc1
+3. Prefer official releases over development branches
+4. Update [`lakefile.toml`](../lakefile.toml) with the new version
+5. Update [`lakefile.lean`](../lakefile.lean) with the new version if present
+6. Run `lake update` to regenerate [`lake-manifest.json`](../lake-manifest.json)
+7. Verify batteries compiles with v4.28.0-rc1
 
 #### Acceptance Criteria
-- [`Spec.lean`](../Morph/Specs/GLOSSARY/Spec.lean:1) is no longer a stub (contains formal definitions)
-- [`Lemmas.lean`](../Morph/Specs/GLOSSARY/Lemmas.lean:1) is no longer a stub (contains proved lemmas)
-- [`Examples.lean`](../Morph/Specs/GLOSSARY/Examples.lean:1) is no longer a stub (contains executable examples)
-- All files have docstrings
-- All files compile successfully
-- All examples execute successfully
+
+| Criterion | Verification Method |
+|-----------|---------------------|
+| Batteries version is v4.28.0-compatible | `grep batteries lakefile.toml` shows compatible version |
+| Batteries compiles with v4.28.0-rc1 | `lake build Batteries` succeeds |
+| No type errors from batteries | Build output contains no batteries-related type errors |
 
 #### Related Documents
-- [REQ-001](./04_future_state/reqs/REQ-001-core-foundation.md)
-- [ADR-006](./02_adrs/ADR-006-complete-proof-requirement.md)
+
+- [`.specs/04_future_state/reqs/REQ-002-dependency-version-alignment.md`](./04_future_state/reqs/REQ-002-dependency-version-alignment.md) (Section 3.2)
+- [`.specs/04_future_state/test_plan.md`](./04_future_state/test_plan.md) (IT-DEP-002, TS-003)
 
 ---
 
-### TASK-012: Complete CommonTypes Module
+### TASK-012: Update Aesop to v4.28.0-Compatible Version
 
 | Attribute | Value |
 |-----------|-------|
 | **Task ID** | TASK-012 |
-| **Title** | Complete CommonTypes Module |
-| **Priority** | Critical |
-| **Estimated Effort** | 6 hours |
-| **Assignee Role** | Senior Lean Developer |
+| **Title** | Update Aesop to v4.28.0-Compatible Version |
+| **Priority** | High (P1) |
+| **Estimated Effort** | 2 hours |
+| **Assignee Role** | DevOps Engineer |
 | **Dependencies** | TASK-011 |
+| **Related Requirements** | REQ-002 (FR-002.3) |
+| **Related Risks** | RISK-COMP-001, RISK-COMP-006 |
 
 #### Description
-Complete the [`CommonTypes.lean`](../Morph/Specs/CommonTypes.lean:1) module by ensuring all shared type definitions are fully documented and complete.
+
+Update the aesop dependency from v4.10.0 to a version compatible with Lean 4.28.0-rc1. This task involves researching the available versions, selecting the most recent stable version, and updating the project configuration.
 
 #### Task Steps
-1. Review current [`CommonTypes.lean`](../Morph/Specs/CommonTypes.lean:1) content
-2. Identify any incomplete type definitions
-3. Add docstrings to all types
-4. Add lemmas proving basic type properties
-5. Create examples demonstrating type usage
-6. Verify compilation succeeds
+
+1. Research the aesop repository for v4.28.0-compatible tags/branches
+2. Choose the most recent stable version compatible with Lean 4.28.0-rc1
+3. Prefer official releases over development branches
+4. Update [`lakefile.toml`](../lakefile.toml) with the new version
+5. Update [`lakefile.lean`](../lakefile.lean) with the new version if present
+6. Run `lake update` to regenerate [`lake-manifest.json`](../lake-manifest.json)
+7. Verify aesop compiles with v4.28.0-rc1
 
 #### Acceptance Criteria
-- All type definitions are complete
-- All types have docstrings
-- Basic type properties are proved as lemmas
-- Examples demonstrate type usage
-- Module compiles successfully
+
+| Criterion | Verification Method |
+|-----------|---------------------|
+| Aesop version is v4.28.0-compatible | `grep aesop lakefile.toml` shows compatible version |
+| Aesop compiles with v4.28.0-rc1 | `lake build Aesop` succeeds |
+| No tactic errors from aesop | Build output contains no aesop-related tactic errors |
 
 #### Related Documents
-- [REQ-001](./04_future_state/reqs/REQ-001-core-foundation.md)
-- [ADR-001](./02_adrs/ADR-001-three-file-module-pattern.md)
+
+- [`.specs/04_future_state/reqs/REQ-002-dependency-version-alignment.md`](./04_future_state/reqs/REQ-002-dependency-version-alignment.md) (Section 3.3)
+- [`.specs/04_future_state/test_plan.md`](./04_future_state/test_plan.md) (IT-DEP-003, TS-003)
 
 ---
 
-### TASK-013: Complete MorphLanguage Module
+### TASK-013: Update Mathlib4 to v4.28.0-Compatible Version
 
 | Attribute | Value |
 |-----------|-------|
 | **Task ID** | TASK-013 |
-| **Title** | Complete MorphLanguage Module |
-| **Priority** | Critical |
-| **Estimated Effort** | 16 hours |
-| **Assignee Role** | Senior Lean Developer |
+| **Title** | Update Mathlib4 to v4.28.0-Compatible Version |
+| **Priority** | High (P1) |
+| **Estimated Effort** | 4 hours |
+| **Assignee Role** | DevOps Engineer |
 | **Dependencies** | TASK-012 |
+| **Related Requirements** | REQ-002 (FR-002.4) |
+| **Related Risks** | RISK-COMP-001, RISK-COMP-004 |
 
 #### Description
-Complete the MorphLanguage module by ensuring all three files ([`Spec.lean`](../Morph/Specs/MorphLanguage/Spec.lean:1), [`Lemmas.lean`](../Morph/Specs/MorphLanguage/Lemmas.lean:1), [`Examples.lean`](../Morph/Specs/MorphLanguage/Examples.lean:1)) contain complete, production-grade content.
+
+Update the mathlib4 dependency from v4.10.0 to a version compatible with Lean 4.28.0-rc1. This is the most complex dependency update due to the extensive breaking changes in mathlib4 between v4.10.0 and v4.28.0-rc1.
 
 #### Task Steps
-1. Review current content in all three files
-2. Ensure syntax definition is complete in [`Spec.lean`](../Morph/Specs/MorphLanguage/Spec.lean:1)
-3. Ensure typing rules are complete in [`Spec.lean`](../Morph/Specs/MorphLanguage/Spec.lean:1)
-4. Ensure operational semantics are complete in [`Spec.lean`](../Morph/Specs/MorphLanguage/Spec.lean:1)
-5. Prove type soundness lemmas in [`Lemmas.lean`](../Morph/Specs/MorphLanguage/Lemmas.lean:1)
-6. Prove normalization lemmas in [`Lemmas.lean`](../Morph/Specs/MorphLanguage/Lemmas.lean:1)
-7. Create complete programs in [`Examples.lean`](../Morph/Specs/MorphLanguage/Examples.lean:1)
-8. Add comprehensive docstrings
-9. Verify all files compile and examples execute
+
+1. Research the mathlib4 repository for v4.28.0-compatible tags/branches
+2. Choose the most recent stable version compatible with Lean 4.28.0-rc1
+3. Prefer official releases over development branches
+4. Update [`lakefile.toml`](../lakefile.toml) with the new version
+5. Update [`lakefile.lean`](../lakefile.lean) with the new version if present
+6. Run `lake update` to regenerate [`lake-manifest.json`](../lake-manifest.json)
+7. Clean build artifacts: `lake clean && rm -rf .lake/packages`
+8. Verify mathlib4 compiles with v4.28.0-rc1
+
+#### Breaking Changes to Document
+
+- Module reorganization
+- Theorem renaming
+- Type class hierarchy updates
+- Proof automation strategy modifications
 
 #### Acceptance Criteria
-- Syntax definition is complete
-- Typing rules are complete
-- Operational semantics are complete
-- Type soundness is proved
-- Normalization is proved
-- Examples demonstrate all language features
-- All files have docstrings
-- All files compile successfully
-- All examples execute successfully
+
+| Criterion | Verification Method |
+|-----------|---------------------|
+| Mathlib4 version is v4.28.0-compatible | `grep mathlib lakefile.toml` shows compatible version |
+| Mathlib4 compiles with v4.28.0-rc1 | `lake build Mathlib` succeeds |
+| No import errors from mathlib4 | Build output contains no mathlib4-related import errors |
 
 #### Related Documents
-- [REQ-001](./04_future_state/reqs/REQ-001-core-foundation.md)
-- [REQ-007](./04_future_state/reqs/REQ-007-language-features-domain.md)
-- [ADR-006](./02_adrs/ADR-006-complete-proof-requirement.md)
+
+- [`.specs/04_future_state/reqs/REQ-002-dependency-version-alignment.md`](./04_future_state/reqs/REQ-002-dependency-version-alignment.md) (Section 3.4)
+- [`.specs/04_future_state/test_plan.md`](./04_future_state/test_plan.md) (IT-DEP-004, TS-003)
 
 ---
 
-### Batch 2: High Priority Modules (Priority 2)
+## Batch 3: Code Standards Compliance (P2)
 
-### TASK-020: Rewrite Memory Domain Modules
+### TASK-020: Verify Comment Syntax Across All Files
 
 | Attribute | Value |
 |-----------|-------|
 | **Task ID** | TASK-020 |
-| **Title** | Rewrite Memory Domain Modules |
-| **Priority** | High |
-| **Estimated Effort** | 24 hours |
-| **Assignee Role** | Senior Lean Developer |
+| **Title** | Verify Comment Syntax Across All Files |
+| **Priority** | Medium (P2) |
+| **Estimated Effort** | 2 hours |
+| **Assignee Role** | Lean Developer |
 | **Dependencies** | TASK-013 |
+| **Related Requirements** | REQ-003 (FR-003.2) |
+| **Related Risks** | RISK-COMP-007, RISK-COMP-008 |
 
 #### Description
-Rewrite all three Memory domain modules ([`MemoryModel`](../Morph/Specs/MemoryModel/), [`MemoryAcyclicity`](../Morph/Specs/MemoryAcyclicity/), [`MemoryAffineLogic`](../Morph/Specs/MemoryAffineLogic/)) to ensure complete, production-grade content.
+
+Ensure all comments in the codebase use correct Lean 4 comment syntax. This task scans all `.lean` files for deprecated comment patterns and verifies correct usage.
 
 #### Task Steps
-1. Review current content in all three modules
-2. Complete [`MemoryModel/Spec.lean`](../Morph/Specs/MemoryModel/Spec.lean:1) with memory state, allocation, deallocation
-3. Complete [`MemoryModel/Lemmas.lean`](../Morph/Specs/MemoryModel/Lemmas.lean:1) with memory safety proofs
-4. Complete [`MemoryModel/Examples.lean`](../Morph/Specs/MemoryModel/Examples.lean:1) with memory usage patterns
-5. Complete [`MemoryAcyclicity/Spec.lean`](../Morph/Specs/MemoryAcyclicity/Spec.lean:1) with cycle detection predicates
-6. Complete [`MemoryAcyclicity/Lemmas.lean`](../Morph/Specs/MemoryAcyclicity/Lemmas.lean:1) with acyclicity preservation proofs
-7. Complete [`MemoryAcyclicity/Examples.lean`](../Morph/Specs/MemoryAcyclicity/Examples.lean:1) with cycle-free structures
-8. Complete [`MemoryAffineLogic/Spec.lean`](../Morph/Specs/MemoryAffineLogic/Spec.lean:1) with affine type definitions
-9. Complete [`MemoryAffineLogic/Lemmas.lean`](../Morph/Specs/MemoryAffineLogic/Lemmas.lean:1) with affine logic soundness proofs
-10. Complete [`MemoryAffineLogic/Examples.lean`](../Morph/Specs/MemoryAffineLogic/Examples.lean:1) with affine type usage
-11. Add comprehensive docstrings to all files
-12. Verify all modules compile successfully
+
+1. Scan all `.lean` files for deprecated comment patterns
+2. Verify all line comments use `--`
+3. Verify all block comments use `/- ... -/`
+4. Verify all module docstrings use `/-! ... -/`
+5. Fix any incorrect comment syntax found
+6. Verify all files compile successfully
 
 #### Acceptance Criteria
-- All three Memory domain modules are complete
-- All lemmas have complete proofs (no `sorry` placeholders)
-- All examples execute successfully
-- All files have docstrings
-- All modules compile successfully
-- No commented-out code in any file
+
+| Criterion | Verification Method |
+|-----------|---------------------|
+| All line comments use `--` | No deprecated line comment syntax found |
+| All block comments use `/- ... -/` | No deprecated block comment syntax found |
+| Module docstrings use `/-! ... -/` | All module docstrings use correct syntax |
+| No unterminated comments | All files parse without syntax errors |
 
 #### Related Documents
-- [REQ-002](./04_future_state/reqs/REQ-002-memory-domain.md)
-- [ADR-006](./02_adrs/ADR-006-complete-proof-requirement.md)
+
+- [`.specs/04_future_state/reqs/REQ-003-syntax-standards-compliance.md`](./04_future_state/reqs/REQ-003-syntax-standards-compliance.md) (Section 3.2)
+- [`.specs/01_standards/coding_standards.md`](./01_standards/coding_standards.md)
+- [`.specs/04_future_state/test_plan.md`](./04_future_state/test_plan.md) (UT-SYN-001)
 
 ---
 
-### TASK-021: Rewrite Concurrency Domain Modules
+### TASK-021: Verify Indentation and Formatting
 
 | Attribute | Value |
 |-----------|-------|
 | **Task ID** | TASK-021 |
-| **Title** | Rewrite Concurrency Domain Modules |
-| **Priority** | High |
-| **Estimated Effort** | 32 hours |
-| **Assignee Role** | Senior Lean Developer |
+| **Title** | Verify Indentation and Formatting |
+| **Priority** | Medium (P2) |
+| **Estimated Effort** | 2 hours |
+| **Assignee Role** | Lean Developer |
 | **Dependencies** | TASK-020 |
+| **Related Requirements** | REQ-003 (FR-003.3, FR-003.5, FR-003.6) |
+| **Related Risks** | RISK-QUAL-001 |
 
 #### Description
-Rewrite all four Concurrency domain modules ([`LayeredConcurrency`](../Morph/Specs/LayeredConcurrency/), [`ConcurrencyProcessAlgebra`](../Morph/Specs/ConcurrencyProcessAlgebra/), [`SchedulingModes`](../Morph/Specs/SchedulingModes/), [`SchedulerRandomizedStealing`](../Morph/Specs/SchedulerRandomizedStealing/)) to ensure complete, production-grade content.
+
+Ensure all files use consistent formatting as specified in the coding standards: 2-space indentation, no tabs, no trailing whitespace, and lines not exceeding 100 characters.
 
 #### Task Steps
-1. Review current content in all four modules
-2. Complete [`LayeredConcurrency/Lemmas.lean`](../Morph/Specs/LayeredConcurrency/Lemmas.lean:1) (currently stub)
-3. Complete [`LayeredConcurrency/Examples.lean`](../Morph/Specs/LayeredConcurrency/Examples.lean:1)
-4. Complete [`ConcurrencyProcessAlgebra/Lemmas.lean`](../Morph/Specs/ConcurrencyProcessAlgebra/Lemmas.lean:1) with algebraic law proofs
-5. Complete [`ConcurrencyProcessAlgebra/Examples.lean`](../Morph/Specs/ConcurrencyProcessAlgebra/Examples.lean:1)
-6. Complete [`SchedulingModes/Lemmas.lean`](../Morph/Specs/SchedulingModes/Lemmas.lean:1) with scheduling correctness proofs
-7. Complete [`SchedulingModes/Examples.lean`](../Morph/Specs/SchedulingModes/Examples.lean:1)
-8. Complete [`SchedulerRandomizedStealing/Spec.lean`](../Morph/Specs/SchedulerRandomizedStealing/Spec.lean:1) (currently stub)
-9. Complete [`SchedulerRandomizedStealing/Lemmas.lean`](../Morph/Specs/SchedulerRandomizedStealing/Lemmas.lean:1) with fairness proofs
-10. Complete [`SchedulerRandomizedStealing/Examples.lean`](../Morph/Specs/SchedulerRandomizedStealing/Examples.lean:1)
-11. Add comprehensive docstrings to all files
-12. Verify all modules compile successfully
+
+1. Verify all `.lean` files use 2 spaces for indentation
+2. Replace any tabs with 2 spaces
+3. Remove trailing whitespace from all lines
+4. Ensure all files end with a single newline character
+5. Verify no lines exceed 100 characters
+6. Break long lines at logical points where needed
+7. Verify all files compile successfully
 
 #### Acceptance Criteria
-- All four Concurrency domain modules are complete
-- [`LayeredConcurrency/Lemmas.lean`](../Morph/Specs/LayeredConcurrency/Lemmas.lean:1) is no longer a stub
-- [`SchedulerRandomizedStealing/Spec.lean`](../Morph/Specs/SchedulerRandomizedStealing/Spec.lean:1) is no longer a stub
-- All lemmas have complete proofs (no `sorry` placeholders)
-- All examples execute successfully
-- All files have docstrings
-- All modules compile successfully
-- No commented-out code in any file
+
+| Criterion | Verification Method |
+|-----------|---------------------|
+| All indentation uses 2 spaces | No tabs found in `.lean` files |
+| Indentation is consistent | No mixed indentation (spaces and tabs) |
+| No trailing whitespace | No lines end with spaces or tabs |
+| Files end with newline | All files end with a single newline character |
+| No lines exceed 100 characters | All lines are 100 characters or less |
 
 #### Related Documents
-- [REQ-003](./04_future_state/reqs/REQ-003-concurrency-domain.md)
-- [ADR-006](./02_adrs/ADR-006-complete-proof-requirement.md)
+
+- [`.specs/04_future_state/reqs/REQ-003-syntax-standards-compliance.md`](./04_future_state/reqs/REQ-003-syntax-standards-compliance.md) (Sections 3.3, 3.5, 3.6)
+- [`.specs/01_standards/coding_standards.md`](./01_standards/coding_standards.md)
+- [`.specs/04_future_state/test_plan.md`](./04_future_state/test_plan.md) (UT-SYN-002, UT-SYN-003, UT-SYN-004)
 
 ---
 
-### TASK-022: Rewrite Security Domain Modules
+### TASK-022: Verify Naming Conventions
 
 | Attribute | Value |
 |-----------|-------|
 | **Task ID** | TASK-022 |
-| **Title** | Rewrite Security Domain Modules |
-| **Priority** | High |
-| **Estimated Effort** | 24 hours |
-| **Assignee Role** | Senior Lean Developer |
+| **Title** | Verify Naming Conventions |
+| **Priority** | Medium (P2) |
+| **Estimated Effort** | 3 hours |
+| **Assignee Role** | Lean Developer |
 | **Dependencies** | TASK-021 |
+| **Related Requirements** | REQ-003 (FR-003.4) |
+| **Related Risks** | RISK-QUAL-001 |
 
 #### Description
-Rewrite all three Security domain modules ([`SecurityFlow`](../Morph/Specs/SecurityFlow/), [`SecurityOCap`](../Morph/Specs/SecurityOCap/), [`LicenseDeonticLogic`](../Morph/Specs/LicenseDeonticLogic/)) to ensure complete, production-grade content.
+
+Ensure all identifiers follow Lean 4 naming conventions as specified in the coding standards. This task verifies that types, functions, and constants follow the appropriate naming patterns.
 
 #### Task Steps
-1. Review current content in all three modules
-2. Complete [`SecurityFlow/Lemmas.lean`](../Morph/Specs/SecurityFlow/Lemmas.lean:1) with non-interference proofs
-3. Complete [`SecurityFlow/Examples.lean`](../Morph/Specs/SecurityFlow/Examples.lean:1) with security examples
-4. Complete [`SecurityOCap/Lemmas.lean`](../Morph/Specs/SecurityOCap/Lemmas.lean:1) with capability safety proofs
-5. Complete [`SecurityOCap/Examples.lean`](../Morph/Specs/SecurityOCap/Examples.lean:1) with capability usage patterns
-6. Complete [`LicenseDeonticLogic/Lemmas.lean`](../Morph/Specs/LicenseDeonticLogic/Lemmas.lean:1) with compliance verification proofs
-7. Complete [`LicenseDeonticLogic/Examples.lean`](../Morph/Specs/LicenseDeonticLogic/Examples.lean:1) with license scenarios
-8. Add comprehensive docstrings to all files
-9. Verify all modules compile successfully
+
+1. Verify all inductive, structure, and class names use PascalCase
+2. Verify all function/definition names use camelCase
+3. Verify constants use lowerCamelCase or UPPER_CASE as appropriate
+4. Verify names are descriptive and convey meaning
+5. Fix any naming convention violations found
+6. Verify all files compile successfully
 
 #### Acceptance Criteria
-- All three Security domain modules are complete
-- All lemmas have complete proofs (no `sorry` placeholders)
-- All examples execute successfully
-- All files have docstrings
-- All modules compile successfully
-- No commented-out code in any file
+
+| Criterion | Verification Method |
+|-----------|---------------------|
+| Types use PascalCase | All inductive, structure, class names use PascalCase |
+| Functions use camelCase | All function/definition names use camelCase |
+| Constants follow conventions | Constants use lowerCamelCase or UPPER_CASE |
+| Names are descriptive | No single-letter or cryptic names (except in specific contexts) |
 
 #### Related Documents
-- [REQ-004](./04_future_state/reqs/REQ-004-security-domain.md)
-- [`.docs/considerations/security_threats_stride.md`](../docs/considerations/security_threats_stride.md)
-- [ADR-006](./02_adrs/ADR-006-complete-proof-requirement.md)
+
+- [`.specs/04_future_state/reqs/REQ-003-syntax-standards-compliance.md`](./04_future_state/reqs/REQ-003-syntax-standards-compliance.md) (Section 3.4)
+- [`.specs/01_standards/coding_standards.md`](./01_standards/coding_standards.md)
+- [`.specs/04_future_state/test_plan.md`](./04_future_state/test_plan.md) (UT-SYN-005)
 
 ---
 
-### TASK-023: Complete Remaining Stub Files
+## Batch 4: Deprecated API Remediation (P2)
 
-| Attribute | Value |
-|-----------|-------|
-| **Task ID** | TASK-023 |
-| **Title** | Complete Remaining Stub Files |
-| **Priority** | High |
-| **Estimated Effort** | 16 hours |
-| **Assignee Role** | Senior Lean Developer |
-| **Dependencies** | TASK-022 |
-
-#### Description
-Complete all remaining stub files across the codebase that have not yet been addressed in previous tasks.
-
-#### Task Steps
-1. Identify all remaining stub files:
-   - [`README/Lemmas.lean`](../Morph/Specs/README/Lemmas.lean:1)
-   - [`README/Examples.lean`](../Morph/Specs/README/Examples.lean:1)
-   - [`TerminologyStandardization/Lemmas.lean`](../Morph/Specs/TerminologyStandardization/Lemmas.lean:1)
-   - [`TerminologyStandardization/Examples.lean`](../Morph/Specs/TerminologyStandardization/Examples.lean:1)
-   - [`RegistryConsensus/Spec.lean`](../Morph/Specs/RegistryConsensus/Spec.lean:1)
-   - [`DependencySat/Spec.lean`](../Morph/Specs/DependencySat/Spec.lean:1)
-   - [`UnidirectionalDataFlow/Spec.lean`](../Morph/Specs/UnidirectionalDataFlow/Spec.lean:1)
-2. Complete each stub file with appropriate content
-3. Add comprehensive docstrings
-4. Verify all files compile successfully
-
-#### Acceptance Criteria
-- All stub files are complete with production-grade content
-- All files have docstrings
-- All files compile successfully
-- Zero stub files remain in the codebase
-
-#### Related Documents
-- [ADR-006](./02_adrs/ADR-006-complete-proof-requirement.md)
-
----
-
-### Batch 3: Medium Priority Modules (Priority 3)
-
-### TASK-030: Rewrite Build System Domain Modules
+### TASK-030: Replace Lake.Package.name with baseName/keyName/prettyName
 
 | Attribute | Value |
 |-----------|-------|
 | **Task ID** | TASK-030 |
-| **Title** | Rewrite Build System Domain Modules |
-| **Priority** | Medium |
-| **Estimated Effort** | 20 hours |
-| **Assignee Role** | Lean Developer |
-| **Dependencies** | TASK-023 |
+| **Title** | Replace Lake.Package.name with baseName/keyName/prettyName |
+| **Priority** | Medium (P2) |
+| **Estimated Effort** | 2 hours |
+| **Assignee Role** | DevOps Engineer |
+| **Dependencies** | TASK-022 |
+| **Related Requirements** | REQ-004 (FR-004.1) |
+| **Related Risks** | RISK-COMP-008 |
 
 #### Description
-Rewrite all four Build System domain modules ([`BuildLattice`](../Morph/Specs/BuildLattice/), [`DependencySat`](../Morph/Specs/DependencySat/), [`ModuleSystem`](../Morph/Specs/ModuleSystem/), [`ModuleExistential`](../Morph/Specs/ModuleExistential/)) to ensure complete, production-grade content.
+
+Replace all uses of the deprecated `Lake.Package.name` API with the appropriate replacement (`baseName`, `keyName`, or `prettyName`). The `Lake.Package.name` field has been deprecated in favor of more specific fields.
 
 #### Task Steps
-1. Review current content in all four modules
-2. Complete [`BuildLattice/Lemmas.lean`](../Morph/Specs/BuildLattice/Lemmas.lean:1) with lattice property proofs
-3. Complete [`BuildLattice/Examples.lean`](../Morph/Specs/BuildLattice/Examples.lean:1)
-4. Complete [`DependencySat/Spec.lean`](../Morph/Specs/DependencySat/Spec.lean:1) with dependency constraints
-5. Complete [`DependencySat/Lemmas.lean`](../Morph/Specs/DependencySat/Lemmas.lean:1) with satisfaction proofs
-6. Complete [`DependencySat/Examples.lean`](../Morph/Specs/DependencySat/Examples.lean:1)
-7. Complete [`ModuleSystem/Lemmas.lean`](../Morph/Specs/ModuleSystem/Lemmas.lean:1) with module coherence proofs
-8. Complete [`ModuleSystem/Examples.lean`](../Morph/Specs/ModuleSystem/Examples.lean:1)
-9. Complete [`ModuleExistential/Lemmas.lean`](../Morph/Specs/ModuleExistential/Lemmas.lean:1) with existential proofs
-10. Complete [`ModuleExistential/Examples.lean`](../Morph/Specs/ModuleExistential/Examples.lean:1)
-11. Add comprehensive docstrings to all files
-12. Verify all modules compile successfully
+
+1. Search for all uses of `Lake.Package.name` in the codebase
+2. For each use, determine the appropriate replacement:
+   - Use `baseName` when referring to the package's base identifier
+   - Use `keyName` when using the package as a map key
+   - Use `prettyName` when displaying the package name to users
+3. Replace each `Lake.Package.name` with the appropriate replacement
+4. Verify no `Lake.Package.name` usage remains
+5. Verify build output contains no deprecation warnings
+
+#### Replacement Reference
+
+| Replacement | Purpose |
+|-------------|---------|
+| `baseName` | The base name of the package (e.g., "mathlib") |
+| `keyName` | The key used to reference the package (e.g., "mathlib") |
+| `prettyName` | The human-readable name (e.g., "Mathlib") |
 
 #### Acceptance Criteria
-- All four Build System domain modules are complete
-- All lemmas have complete proofs (no `sorry` placeholders)
-- All examples execute successfully
-- All files have docstrings
-- All modules compile successfully
-- No commented-out code in any file
+
+| Criterion | Verification Method |
+|-----------|---------------------|
+| No `Lake.Package.name` usage | `grep -r "Lake.Package.name" .lake/packages/` returns empty |
+| Build output contains no deprecation warnings | `lake build` contains no "deprecated" warnings |
+| All package names are correctly referenced | Package names resolve correctly |
 
 #### Related Documents
-- [REQ-005](./04_future_state/reqs/REQ-005-build-system-domain.md)
-- [ADR-006](./02_adrs/ADR-006-complete-proof-requirement.md)
+
+- [`.specs/04_future_state/reqs/REQ-004-deprecated-api-remediation.md`](./04_future_state/reqs/REQ-004-deprecated-api-remediation.md) (Section 3.1)
+- [`.specs/04_future_state/test_plan.md`](./04_future_state/test_plan.md) (TS-005)
 
 ---
 
-### TASK-031: Rewrite ABI Domain Modules
+### TASK-031: Replace String.trim with String.trimAscii
 
 | Attribute | Value |
 |-----------|-------|
 | **Task ID** | TASK-031 |
-| **Title** | Rewrite ABI Domain Modules |
-| **Priority** | Medium |
-| **Estimated Effort** | 12 hours |
+| **Title** | Replace String.trim with String.trimAscii |
+| **Priority** | Medium (P2) |
+| **Estimated Effort** | 2 hours |
 | **Assignee Role** | Lean Developer |
 | **Dependencies** | TASK-030 |
+| **Related Requirements** | REQ-004 (FR-004.2) |
+| **Related Risks** | RISK-COMP-008 |
 
 #### Description
-Rewrite both ABI domain modules ([`AbiAlignmentAlgebra`](../Morph/Specs/AbiAlignmentAlgebra/), [`AbiDataRefinement`](../Morph/Specs/AbiDataRefinement/)) to ensure complete, production-grade content.
+
+Replace all uses of the deprecated `String.trim` API with `String.trimAscii`. The key difference is in the return type: `String.trimAscii` returns `String.Slice` instead of `String`.
 
 #### Task Steps
-1. Review current content in both modules
-2. Complete [`AbiAlignmentAlgebra/Lemmas.lean`](../Morph/Specs/AbiAlignmentAlgebra/Lemmas.lean:1) with algebraic property proofs
-3. Complete [`AbiAlignmentAlgebra/Examples.lean`](../Morph/Specs/AbiAlignmentAlgebra/Examples.lean:1)
-4. Verify [`AbiDataRefinement/Lemmas.lean`](../Morph/Specs/AbiDataRefinement/Lemmas.lean:1) is complete (from TASK-010)
-5. Complete [`AbiDataRefinement/Examples.lean`](../Morph/Specs/AbiDataRefinement/Examples.lean:1)
-6. Add comprehensive docstrings to all files
-7. Verify both modules compile successfully
+
+1. Search for all uses of `String.trim` in the codebase
+2. For each use, replace `String.trim` with `String.trimAscii`
+3. Update type signatures to handle the `String.Slice` return type
+4. If a `String` is needed instead of `String.Slice`, use `.toString` on the slice
+5. Verify no `String.trim` usage remains
+6. Verify build output contains no deprecation warnings
+
+#### Type Signature Change
+
+| Function | Return Type | Description |
+|----------|--------------|-------------|
+| `String.trim` (deprecated) | `String → String` | Returns a trimmed string |
+| `String.trimAscii` (current) | `String → String.Slice` | Returns a string slice |
 
 #### Acceptance Criteria
-- Both ABI domain modules are complete
-- All lemmas have complete proofs (no `sorry` placeholders)
-- All examples execute successfully
-- All files have docstrings
-- Both modules compile successfully
-- No commented-out code in any file
+
+| Criterion | Verification Method |
+|-----------|---------------------|
+| No `String.trim` usage | `grep -r "String.trim" .lake/packages/` returns empty |
+| Build output contains no deprecation warnings | `lake build` contains no "deprecated" warnings |
+| String trimming works correctly | All string trimming operations produce correct results |
 
 #### Related Documents
-- [REQ-006](./04_future_state/reqs/REQ-006-abi-domain.md)
-- [ADR-006](./02_adrs/ADR-006-complete-proof-requirement.md)
+
+- [`.specs/04_future_state/reqs/REQ-004-deprecated-api-remediation.md`](./04_future_state/reqs/REQ-004-deprecated-api-remediation.md) (Section 3.2)
+- [`.specs/04_future_state/test_plan.md`](./04_future_state/test_plan.md) (TS-005)
 
 ---
 
-### TASK-032: Rewrite Language Features Domain Modules
+## Batch 5: Verification (P0)
 
-| Attribute | Value |
-|-----------|-------|
-| **Task ID** | TASK-032 |
-| **Title** | Rewrite Language Features Domain Modules |
-| **Priority** | Medium |
-| **Estimated Effort** | 80 hours |
-| **Assignee Role** | Senior Lean Developer |
-| **Dependencies** | TASK-031 |
-
-#### Description
-Rewrite all 21 Language Features domain modules to ensure complete, production-grade content.
-
-#### Task Steps
-1. Review current content in all 21 modules
-2. For each module, complete all three files (Spec.lean, Lemmas.lean, Examples.lean)
-3. Modules to complete:
-   - [`ASTGraph`](../Morph/Specs/ASTGraph/)
-   - [`BackendTiling`](../Morph/Specs/BackendTiling/)
-   - [`DialectProjection`](../Morph/Specs/DialectProjection/)
-   - [`DualOptimization`](../Morph/Specs/DualOptimization/)
-   - [`ExecutionModel`](../Morph/Specs/ExecutionModel/)
-   - [`Financial`](../Morph/Specs/Financial/)
-   - [`InfrastructureSafetyContracts`](../Morph/Specs/InfrastructureSafetyContracts/)
-   - [`LexicalStructureSyntax`](../Morph/Specs/LexicalStructureSyntax/)
-   - [`Licensing`](../Morph/Specs/Licensing/)
-   - [`LinkerLogic`](../Morph/Specs/LinkerLogic/)
-   - [`Maths`](../Morph/Specs/Maths/)
-   - [`MonadicEffect`](../Morph/Specs/MonadicEffect/)
-   - [`OperatorNullCoalescing`](../Morph/Specs/OperatorNullCoalescing/)
-   - [`README`](../Morph/Specs/README/)
-   - [`RegistryConsensus`](../Morph/Specs/RegistryConsensus/)
-   - [`ScopingLambdaCalculus`](../Morph/Specs/ScopingLambdaCalculus/)
-   - [`StorageDAWG`](../Morph/Specs/StorageDAWG/)
-   - [`StrictStateUnidirectional`](../Morph/Specs/StrictStateUnidirectional/)
-   - [`SyntaxTranslation`](../Morph/Specs/SyntaxTranslation/)
-   - [`TerminologyStandardization`](../Morph/Specs/TerminologyStandardization/)
-   - [`TypeSystem`](../Morph/Specs/TypeSystem/)
-   - [`UnidirectionalDataFlow`](../Morph/Specs/UnidirectionalDataFlow/)
-   - [`UnitGroupTheory`](../Morph/Specs/UnitGroupTheory/)
-   - [`VersionCompatibility`](../Morph/Specs/VersionCompatibility/)
-4. Add comprehensive docstrings to all files
-5. Verify all modules compile successfully
-
-#### Acceptance Criteria
-- All 21 Language Features domain modules are complete
-- All lemmas have complete proofs (no `sorry` placeholders)
-- All examples execute successfully
-- All files have docstrings
-- All modules compile successfully
-- No commented-out code in any file
-
-#### Related Documents
-- [REQ-007](./04_future_state/reqs/REQ-007-language-features-domain.md)
-- [ADR-006](./02_adrs/ADR-006-complete-proof-requirement.md)
-
----
-
-### Batch 4: Cleanup & Verification (Priority 4)
-
-### TASK-040: Remove All Commented-Out Code
+### TASK-040: Run Full Test Suite
 
 | Attribute | Value |
 |-----------|-------|
 | **Task ID** | TASK-040 |
-| **Title** | Remove All Commented-Out Code |
-| **Priority** | Medium |
-| **Estimated Effort** | 8 hours |
-| **Assignee Role** | Senior Lean Developer |
-| **Dependencies** | TASK-032 |
+| **Title** | Run Full Test Suite |
+| **Priority** | Critical (P0) |
+| **Estimated Effort** | 2 hours |
+| **Assignee Role** | QA Lead |
+| **Dependencies** | TASK-031 |
+| **Related Requirements** | All requirements |
+| **Related Risks** | All risks |
 
 #### Description
-Remove all commented-out code blocks from the entire codebase in accordance with ADR-002 (Zero Tolerance for Commented-Out Code).
+
+Run the full test suite to verify that all migration work is successful and no regressions have been introduced. This task executes all test scenarios defined in the test plan.
 
 #### Task Steps
-1. Scan all Lean files for commented-out code blocks (3+ consecutive comment lines)
-2. Exclude documentation comments (`/-- ... -/`)
-3. Identify all commented-out code blocks
-4. For each block, decide to either:
-   - Remove the code entirely (if not needed)
-   - Uncomment and fix the code (if needed)
-   - Move to separate file with proper documentation (if worth keeping)
-5. Verify no commented-out code blocks remain
-6. Verify compilation still succeeds after changes
+
+1. Run `lake build` and record compilation time
+2. Run all unit tests and record results
+3. Run all integration tests and record results
+4. Run all regression tests and record results
+5. Run all smoke tests and record results
+6. Document test results in test report
+7. Verify zero critical failures
+
+#### Test Categories
+
+1. **Unit Tests:** Syntax validation, type checking, import resolution
+2. **Integration Tests:** Dependency configuration, Lake build, module compilation
+3. **Regression Tests:** No new errors, previously working code
+4. **Smoke Tests:** Critical functionality
 
 #### Acceptance Criteria
-- Zero commented-out code blocks in the codebase
-- All code is either active or properly removed
-- Compilation succeeds after cleanup
-- Compliance with ADR-002 verified
+
+| Criterion | Verification Method |
+|-----------|---------------------|
+| All unit tests pass | Unit test suite exits with code 0 |
+| All integration tests pass | Integration test suite exits with code 0 |
+| All regression tests pass | Regression test suite exits with code 0 |
+| All smoke tests pass | Smoke test suite exits with code 0 |
+| Zero critical failures | No critical test failures |
 
 #### Related Documents
-- [ADR-002](./02_adrs/ADR-002-zero-tolerance-commented-code.md)
+
+- [`.specs/04_future_state/test_plan.md`](./04_future_state/test_plan.md) (Full document)
+- [`.specs/05_migration/rollback_plan.md`](./05_migration/rollback_plan.md) (Rollback triggers)
 
 ---
 
-### TASK-041: Remove All `sorry` Placeholders
+### TASK-041: Verify All Modules Compile
 
 | Attribute | Value |
 |-----------|-------|
 | **Task ID** | TASK-041 |
-| **Title** | Remove All `sorry` Placeholders |
-| **Priority** | Critical |
-| **Estimated Effort** | 16 hours |
-| **Assignee Role** | Senior Lean Developer |
+| **Title** | Verify All Modules Compile |
+| **Priority** | Critical (P0) |
+| **Estimated Effort** | 1 hour |
+| **Assignee Role** | QA Lead |
 | **Dependencies** | TASK-040 |
+| **Related Requirements** | All requirements |
+| **Related Risks** | RISK-COMP-001, RISK-COMP-003 |
 
 #### Description
-Remove all `sorry` and `admit` placeholders from the entire codebase by completing all incomplete proofs.
+
+Verify that all modules in the Morph project compile successfully with zero errors. This task validates that the migration has not broken any module compilation.
 
 #### Task Steps
-1. Scan all Lemmas.lean files for `sorry` keywords
-2. Scan all Lemmas.lean files for `admit` keywords
-3. For each placeholder, complete the proof
-4. Verify all proofs are complete and valid
-5. Verify no `sorry` or `admit` placeholders remain
-6. Verify compilation succeeds after changes
+
+1. Run `lake build` and verify exit code is 0
+2. Verify all Core Foundation modules compile
+3. Verify all Memory domain modules compile
+4. Verify all Concurrency domain modules compile
+5. Verify all Security domain modules compile
+6. Verify all Build System domain modules compile
+7. Verify all ABI domain modules compile
+8. Verify all Language Features domain modules compile
+
+#### Module Domains
+
+| Domain | Modules | Priority |
+|--------|---------|----------|
+| Core Foundation | CommonTypes, GLOSSARY, MorphLanguage | Critical |
+| Memory | MemoryModel, MemoryAcyclicity, MemoryAffineLogic | High |
+| Concurrency | LayeredConcurrency, ConcurrencyProcessAlgebra, SchedulingModes, SchedulerRandomizedStealing | High |
+| Security | SecurityFlow, SecurityOCap, LicenseDeonticLogic | High |
+| Build System | BuildLattice, DependencySat, ModuleSystem, ModuleExistential | Medium |
+| ABI | AbiAlignmentAlgebra, AbiDataRefinement | Medium |
+| Language Features | 21 modules | Medium |
 
 #### Acceptance Criteria
-- Zero `sorry` placeholders in the codebase
-- Zero `admit` placeholders in the codebase
-- All proofs are complete and valid
-- Compilation succeeds after proof completion
-- Compliance with ADR-006 verified
+
+| Criterion | Verification Method |
+|-----------|---------------------|
+| All modules compile | `lake build` exits with code 0 |
+| Zero compilation errors | `lake build` error output contains 0 errors |
+| All domain modules compile | All domain modules verified |
 
 #### Related Documents
-- [ADR-006](./02_adrs/ADR-006-complete-proof-requirement.md)
+
+- [`.specs/04_future_state/test_plan.md`](./04_future_state/test_plan.md) (IT-MOD-001 through IT-MOD-007, TS-004)
+- [`.specs/04_future_state/reqs/index.md`](./04_future_state/reqs/index.md) (Module domains)
 
 ---
 
-### TASK-042: Complete All Docstrings
+### TASK-042: Verify Zero Errors and Zero Warnings
 
 | Attribute | Value |
 |-----------|-------|
 | **Task ID** | TASK-042 |
-| **Title** | Complete All Docstrings |
-| **Priority** | Medium |
-| **Estimated Effort** | 12 hours |
-| **Assignee Role** | Technical Writer |
-| **Dependencies** | TASK-041 |
-
-#### Description
-Ensure all public definitions, theorems, and lemmas have complete docstrings with proper documentation.
-
-#### Task Steps
-1. Scan all Lean files for undocumented public definitions
-2. For each undocumented definition, add a docstring including:
-   - Purpose/description
-   - Parameter descriptions (for functions)
-   - Return value description (for functions)
-   - Invariants (where applicable)
-3. Verify module-level documentation is present for all modules
-4. Verify docstrings follow project conventions
-5. Verify compilation succeeds
-
-#### Acceptance Criteria
-- 100% docstring coverage for public definitions
-- All modules have complete module documentation
-- All docstrings follow project conventions
-- No undocumented public APIs remain
-
-#### Related Documents
-- [`.specs/01_standards/coding_standards.md`](./01_standards/coding_standards.md)
-- [`.specs/04_future_state/design/DESIGN-005-documentation.md`](./04_future_state/design/DESIGN-005-documentation.md)
-
----
-
-### TASK-043: Verify All Examples Execute
-
-| Attribute | Value |
-|-----------|-------|
-| **Task ID** | TASK-043 |
-| **Title** | Verify All Examples Execute |
-| **Priority** | High |
-| **Estimated Effort** | 8 hours |
-| **Assignee Role** | QA Engineer |
-| **Dependencies** | TASK-042 |
-
-#### Description
-Verify that all examples in all Examples.lean files execute successfully and produce expected results.
-
-#### Task Steps
-1. For each module, locate the Examples.lean file
-2. Extract all `#eval` and `#example` declarations
-3. Execute each example using Lean
-4. Verify execution completes without errors
-5. Verify output matches expected results (if specified)
-6. Verify examples demonstrate the intended behavior
-7. Document any issues found
-
-#### Acceptance Criteria
-- 100% of examples execute without errors
-- All examples produce expected outputs where specified
-- Zero runtime errors in example execution
-- All examples demonstrate key specification features
-
-#### Related Documents
-- [`.specs/04_future_state/test_plan.md`](./04_future_state/test_plan.md)
-
----
-
-## Phase 12: Final Verification
-
-### TASK-050: Run Full Test Suite
-
-| Attribute | Value |
-|-----------|-------|
-| **Task ID** | TASK-050 |
-| **Title** | Run Full Test Suite |
-| **Priority** | Critical |
-| **Estimated Effort** | 4 hours |
+| **Title** | Verify Zero Errors and Zero Warnings |
+| **Priority** | Critical (P0) |
+| **Estimated Effort** | 1 hour |
 | **Assignee Role** | QA Lead |
-| **Dependencies** | TASK-043 |
+| **Dependencies** | TASK-041 |
+| **Related Requirements** | All requirements |
+| **Related Risks** | All risks |
 
 #### Description
-Run the complete test suite to verify all changes are working correctly and no regressions have been introduced.
+
+Verify that the build completes with zero errors and zero warnings. This is the final verification task that confirms the migration is complete and successful.
 
 #### Task Steps
-1. Run `lake build` and record compilation time
-2. Run all unit tests and record results
-3. Run all integration tests and record results
-4. Compare results with baseline from TASK-004
-5. Document any regressions or improvements
-6. Generate test report
+
+1. Run `lake build` and capture full output
+2. Count total errors: `lake build 2>&1 | grep -c "error:" || echo "0"`
+3. Count total warnings: `lake build 2>&1 | grep -c "warning:" || echo "0"`
+4. Verify no specific error types:
+   - No type errors
+   - No import errors
+   - No syntax errors
+   - No tactic errors
+5. Verify no specific warning types:
+   - No deprecated warnings
+   - No unused variable warnings
+   - No discarded term warnings
+6. Document final build metrics
+7. Create migration completion report
+
+#### Success Metrics
+
+| Metric | Target | Measurement Method |
+|--------|--------|-------------------|
+| Syntax Errors | 0 | `lake build` error output |
+| Type Errors | 0 | `lake build` error output |
+| Import Errors | 0 | `lake build` error output |
+| Tactic Errors | 0 | `lake build` error output |
+| Deprecated Warnings | 0 | `lake build` warning output |
+| Unused Variable Warnings | 0 | `lake build` warning output |
+| Compilation Success | 100% | `lake build` exit code |
 
 #### Acceptance Criteria
-- All tests pass
-- No regressions compared to baseline
-- Compilation time is acceptable
-- Test report generated
+
+| Criterion | Measurement | Pass Condition |
+|-----------|-------------|---------------|
+| Zero errors | Error count | 0 errors |
+| Zero warnings | Warning count | 0 warnings |
+| Build succeeds | Exit code | Exit code 0 |
+| All modules compile | Module compilation | All modules compile |
 
 #### Related Documents
-- [`.specs/04_future_state/test_plan.md`](./04_future_state/test_plan.md)
 
----
-
-### TASK-051: Verify Compilation of All Modules
-
-| Attribute | Value |
-|-----------|-------|
-| **Task ID** | TASK-051 |
-| **Title** | Verify Compilation of All Modules |
-| **Priority** | Critical |
-| **Estimated Effort** | 2 hours |
-| **Assignee Role** | QA Engineer |
-| **Dependencies** | TASK-050 |
-
-#### Description
-Verify that all 40+ specification modules compile successfully without errors or warnings.
-
-#### Task Steps
-1. Run `lake build` from clean state
-2. Monitor compilation output for errors
-3. Monitor compilation output for warnings
-4. Verify all modules compile without errors
-5. Verify compilation completes within acceptable time
-6. Document any warnings (should be zero or documented)
-
-#### Acceptance Criteria
-- 100% compilation success rate
-- Zero compilation errors
-- Zero warnings (or only documented warnings)
-- Build completes within acceptable time
-
-#### Related Documents
-- [ADR-004](./02_adrs/ADR-004-lake-build-system.md)
-
----
-
-### TASK-052: Code Review Against Standards
-
-| Attribute | Value |
-|-----------|-------|
-| **Task ID** | TASK-052 |
-| **Title** | Code Review Against Standards |
-| **Priority** | Critical |
-| **Estimated Effort** | 16 hours |
-| **Assignee Role** | Tech Lead |
-| **Dependencies** | TASK-051 |
-
-#### Description
-Perform a comprehensive code review to ensure all code meets project standards and follows all ADRs.
-
-#### Task Steps
-1. Review all code against coding standards ([`.specs/01_standards/coding_standards.md`](./01_standards/coding_standards.md))
-2. Verify compliance with all ADRs:
-   - ADR-001: Three-file module pattern
-   - ADR-002: Zero tolerance for commented-out code
-   - ADR-003: Lean 4 and mathlib4 usage
-   - ADR-004: Lake build system
-   - ADR-005: Domain-based module organization
-   - ADR-006: Complete proof requirement
-   - ADR-007: CI/CD integration
-3. Verify compliance with all requirements (REQ-001 through REQ-007)
-4. Verify compliance with all design documents (DESIGN-001 through DESIGN-006)
-5. Document any violations or issues found
-6. Create code review report
-
-#### Acceptance Criteria
-- 100% compliance with coding standards
-- 100% compliance with all ADRs
-- 100% compliance with all requirements
-- 100% compliance with all design documents
-- Code review report generated
-
-#### Related Documents
-- [`.specs/01_standards/coding_standards.md`](./01_standards/coding_standards.md)
-- All ADRs in [`.specs/02_adrs/`](./02_adrs/)
-- All requirements in [`.specs/04_future_state/reqs/`](./04_future_state/reqs/)
-- All design documents in [`.specs/04_future_state/design/`](./04_future_state/design/)
-
----
-
-### TASK-053: Update Documentation
-
-| Attribute | Value |
-|-----------|-------|
-| **Task ID** | TASK-053 |
-| **Title** | Update Documentation |
-| **Priority** | High |
-| **Estimated Effort** | 8 hours |
-| **Assignee Role** | Technical Writer |
-| **Dependencies** | TASK-052 |
-
-#### Description
-Update all project documentation to reflect the completed migration and current state of the codebase.
-
-#### Task Steps
-1. Update [`README.md`](../README.md) with current project status
-2. Update [`impl/overview.md`](../impl/overview.md) with implementation details
-3. Update [`impl/roadmap.md`](../impl/roadmap.md) with completed milestones
-4. Update architecture documentation as needed
-5. Update any other documentation that references the old state
-6. Verify all documentation is consistent with codebase
-
-#### Acceptance Criteria
-- All documentation updated to reflect current state
-- Documentation is consistent with codebase
-- No outdated information remains
-- All links in documentation are valid
-
-#### Related Documents
-- [`README.md`](../README.md)
-- [`impl/overview.md`](../impl/overview.md)
-- [`impl/roadmap.md`](../impl/roadmap.md)
-
----
-
-### TASK-054: Merge to Main Branch
-
-| Attribute | Value |
-|-----------|-------|
-| **Task ID** | TASK-054 |
-| **Title** | Merge to Main Branch |
-| **Priority** | Critical |
-| **Estimated Effort** | 2 hours |
-| **Assignee Role** | DevOps Lead |
-| **Dependencies** | TASK-053 |
-
-#### Description
-Merge the migration branch to the main branch after all verification is complete.
-
-#### Task Steps
-1. Ensure all previous tasks are complete
-2. Create final pull request from migration branch to main
-3. Perform final code review
-4. Obtain approval from Tech Lead
-5. Merge branch to main
-6. Delete migration branch
-7. Verify main branch builds successfully
-8. Tag release with appropriate version
-
-#### Acceptance Criteria
-- Migration branch merged to main successfully
-- Main branch builds successfully
-- Migration branch deleted
-- Release tag created
-- CI/CD pipeline passes on main branch
-
-#### Related Documents
-- [`.specs/05_migration/rollback_plan.md`](./05_migration/rollback_plan.md)
-- [ADR-007](./02_adrs/ADR-007-ci-cd-integration.md)
+- [`.specs/04_future_state/test_plan.md`](./04_future_state/test_plan.md) (TS-004, TS-005)
+- [`.specs/05_migration/rollback_plan.md`](./05_migration/rollback_plan.md) (Rollback triggers)
 
 ---
 
 ## Task Dependency Graph
 
-### Visual Dependency Graph
-
 ```
-TASK-001 (Create Branch)
-    ↓
-TASK-002 (Backup) ────────────────┐
-    ↓                            │
-TASK-003 (Verify Environment)    │
-    ↓                            │
-TASK-004 (Baseline Tests) ───────┤
-    ↓                            │
-TASK-010 (AbiDataRefinement)    │
-    ↓                            │
-TASK-011 (GLOSSARY)              │
-    ↓                            │
-TASK-012 (CommonTypes)          │
-    ↓                            │
-TASK-013 (MorphLanguage)        │
-    ↓                            │
-TASK-020 (Memory Domain)         │
-    ↓                            │
-TASK-021 (Concurrency Domain)    │
-    ↓                            │
-TASK-022 (Security Domain)       │
-    ↓                            │
-TASK-023 (Remaining Stubs)       │
-    ↓                            │
-TASK-030 (Build System Domain)   │
-    ↓                            │
-TASK-031 (ABI Domain)           │
-    ↓                            │
-TASK-032 (Language Features)     │
-    ↓                            │
-TASK-040 (Remove Comments)       │
-    ↓                            │
-TASK-041 (Remove sorry)          │
-    ↓                            │
-TASK-042 (Complete Docstrings)   │
-    ↓                            │
-TASK-043 (Verify Examples)       │
-    ↓                            │
-TASK-050 (Full Test Suite)       │
-    ↓                            │
-TASK-051 (Verify Compilation)    │
-    ↓                            │
-TASK-052 (Code Review)          │
-    ↓                            │
-TASK-053 (Update Documentation)  │
-    ↓                            │
-TASK-054 (Merge to Main) ───────┘
+Batch 1: Critical Error Resolution (P0)
+├─ TASK-001: Fix Unterminated Comment
+├─ TASK-002: Remove ProofWidgets Dependency (depends on TASK-001)
+└─ TASK-003: Clean Lake Cache (depends on TASK-002)
+
+Batch 2: Dependency Version Alignment (P1)
+├─ TASK-010: Verify Lean Toolchain (depends on TASK-003)
+├─ TASK-011: Update Batteries (depends on TASK-010)
+├─ TASK-012: Update Aesop (depends on TASK-011)
+└─ TASK-013: Update Mathlib4 (depends on TASK-012)
+
+Batch 3: Code Standards Compliance (P2)
+├─ TASK-020: Verify Comment Syntax (depends on TASK-013)
+├─ TASK-021: Verify Indentation (depends on TASK-020)
+└─ TASK-022: Verify Naming Conventions (depends on TASK-021)
+
+Batch 4: Deprecated API Remediation (P2)
+├─ TASK-030: Replace Lake.Package.name (depends on TASK-022)
+└─ TASK-031: Replace String.trim (depends on TASK-030)
+
+Batch 5: Verification (P0)
+├─ TASK-040: Run Full Test Suite (depends on TASK-031)
+├─ TASK-041: Verify All Modules Compile (depends on TASK-040)
+└─ TASK-042: Verify Zero Errors and Zero Warnings (depends on TASK-041)
 ```
 
-### Dependency Matrix
+---
 
-| Task | Depends On |
-|------|------------|
-| TASK-001 | None |
-| TASK-002 | TASK-001 |
-| TASK-003 | TASK-001 |
-| TASK-004 | TASK-003 |
-| TASK-010 | TASK-004 |
-| TASK-011 | TASK-010 |
-| TASK-012 | TASK-011 |
-| TASK-013 | TASK-012 |
-| TASK-020 | TASK-013 |
-| TASK-021 | TASK-020 |
-| TASK-022 | TASK-021 |
-| TASK-023 | TASK-022 |
-| TASK-030 | TASK-023 |
-| TASK-031 | TASK-030 |
-| TASK-032 | TASK-031 |
-| TASK-040 | TASK-032 |
-| TASK-041 | TASK-040 |
-| TASK-042 | TASK-041 |
-| TASK-043 | TASK-042 |
-| TASK-050 | TASK-043 |
-| TASK-051 | TASK-050 |
-| TASK-052 | TASK-051 |
-| TASK-053 | TASK-052 |
-| TASK-054 | TASK-053 |
+## Effort Estimation Summary
+
+| Batch | Total Effort | Critical Path |
+|-------|--------------|---------------|
+| Batch 1: Critical Error Resolution | 2 hours | 2 hours |
+| Batch 2: Dependency Version Alignment | 8.25 hours | 8.25 hours |
+| Batch 3: Code Standards Compliance | 7 hours | 7 hours |
+| Batch 4: Deprecated API Remediation | 4 hours | 4 hours |
+| Batch 5: Verification | 4 hours | 4 hours |
+| **Total** | **25.25 hours** | **25.25 hours** |
 
 ---
 
-## Task Execution Order
+## Risk Mitigation
 
-### Critical Path
+### Rollback Triggers
 
-The critical path for the project is:
+| Trigger Type | Condition | Severity | Rollback To |
+|--------------|-----------|----------|-------------|
+| Critical Build Failure | Lake workspace configuration fails | Critical | Batch 1 start |
+| Critical Build Failure | All modules fail to compile | Critical | Batch 1 start |
+| Dependency Incompatibility | Updated dependencies cause type errors | Critical | Batch 2 start |
+| Syntax Errors After Migration | New syntax errors introduced | High | Batch 3 start |
+| Test Failures | Critical tests fail | Medium | Batch 3 start |
 
-1. **TASK-001** → **TASK-002** → **TASK-003** → **TASK-004** → **TASK-010** → **TASK-011** → **TASK-012** → **TASK-013** → **TASK-020** → **TASK-021** → **TASK-022** → **TASK-023** → **TASK-030** → **TASK-031** → **TASK-032** → **TASK-040** → **TASK-041** → **TASK-042** → **TASK-043** → **TASK-050** → **TASK-051** → **TASK-052** → **TASK-053** → **TASK-054**
+### Rollback Procedures
 
-Total estimated effort on critical path: **~277.5 hours**
+Rollback procedures are defined in [`.specs/05_migration/rollback_plan.md`](./05_migration/rollback_plan.md) and include:
 
-### Parallel Execution Opportunities
-
-The following tasks can potentially be executed in parallel by different team members:
-
-| Parallel Group | Tasks | Notes |
-|----------------|-------|-------|
-| Group 1 | TASK-002, TASK-003 | Both depend on TASK-001 but not on each other |
-| Group 2 | TASK-020, TASK-021, TASK-022 | Can be worked on by different developers after TASK-013 |
-| Group 3 | TASK-040, TASK-041, TASK-042 | Can be worked on by different team members after TASK-032 |
-
-### Phase-by-Phase Execution
-
-#### Phase 10: Pre-Execution Setup (5.5 hours)
-1. TASK-001: Create Migration Branch (0.5h)
-2. TASK-002: Backup Current State (1h)
-3. TASK-003: Verify Build Environment (2h)
-4. TASK-004: Run Baseline Tests (2h)
-
-#### Phase 11: Execution - Module-by-Module Rewrite (248 hours)
-1. **Batch 1: Critical Foundation (42h)**
-   - TASK-010: Rewrite AbiDataRefinement/Lemmas.lean (8h)
-   - TASK-011: Complete GLOSSARY Module (12h)
-   - TASK-012: Complete CommonTypes Module (6h)
-   - TASK-013: Complete MorphLanguage Module (16h)
-
-2. **Batch 2: High Priority (96h)**
-   - TASK-020: Rewrite Memory Domain Modules (24h)
-   - TASK-021: Rewrite Concurrency Domain Modules (32h)
-   - TASK-022: Rewrite Security Domain Modules (24h)
-   - TASK-023: Complete Remaining Stub Files (16h)
-
-3. **Batch 3: Medium Priority (112h)**
-   - TASK-030: Rewrite Build System Domain Modules (20h)
-   - TASK-031: Rewrite ABI Domain Modules (12h)
-   - TASK-032: Rewrite Language Features Domain Modules (80h)
-
-4. **Batch 4: Cleanup & Verification (44h)**
-   - TASK-040: Remove All Commented-Out Code (8h)
-   - TASK-041: Remove All `sorry` Placeholders (16h)
-   - TASK-042: Complete All Docstrings (12h)
-   - TASK-043: Verify All Examples Execute (8h)
-
-#### Phase 12: Final Verification (32 hours)
-1. TASK-050: Run Full Test Suite (4h)
-2. TASK-051: Verify Compilation of All Modules (2h)
-3. TASK-052: Code Review Against Standards (16h)
-4. TASK-053: Update Documentation (8h)
-5. TASK-054: Merge to Main Branch (2h)
+1. **Pre-Migration Backup:** Complete backup of project state before migration
+2. **Phase-Specific Checkpoints:** Backup at each batch completion
+3. **Rollback Scenarios:** Detailed procedures for each rollback scenario
+4. **Verification:** Post-rollback verification procedures
 
 ---
 
-## Task Completion Criteria
+## Related Documents
 
-### Global Completion Criteria
-
-All tasks must meet the following global completion criteria:
-
-1. **Zero Tolerance for Commented-Out Code** (ADR-002)
-   - No commented-out code blocks in any file
-   - All code is either active or properly removed
-
-2. **Zero Tolerance for `sorry` Placeholders** (ADR-006)
-   - No `sorry` or `admit` placeholders in any proof
-   - All proofs are complete and mathematically sound
-
-3. **100% Compilation Success**
-   - All 40+ modules compile without errors
-   - Zero warnings (or only documented warnings)
-
-4. **100% Documentation Coverage**
-   - All public definitions have docstrings
-   - All modules have module-level documentation
-
-5. **100% Test Execution Success**
-   - All examples execute without errors
-   - All unit tests pass
-   - All integration tests pass
-
-### Phase-Specific Completion Criteria
-
-#### Phase 10 Completion Criteria
-- Migration branch created and pushed
-- Backup created and documented
-- Build environment verified
-- Baseline tests completed and documented
-
-#### Phase 11 Completion Criteria
-- All 40+ modules are complete
-- All stub files have been replaced with production-grade content
-- All empty files have been populated
-- All commented-out code has been removed
-- All `sorry` placeholders have been replaced with complete proofs
-- All docstrings are complete
-- All examples execute successfully
-
-#### Phase 12 Completion Criteria
-- Full test suite passes
-- All modules compile successfully
-- Code review approved
-- Documentation updated
-- Changes merged to main branch
-- CI/CD pipeline passes
-
-### Task-Specific Completion Criteria
-
-Each task has specific acceptance criteria documented in the task description above. In summary:
-
-| Task Type | Key Acceptance Criteria |
-|-----------|------------------------|
-| Setup Tasks | Branch created, backup documented, environment verified |
-| Rewrite Tasks | Complete content, no `sorry`, docstrings present, compiles |
-| Cleanup Tasks | Zero violations, code clean, compiles successfully |
-| Verification Tasks | All tests pass, no regressions, documentation updated |
-| Merge Task | Branch merged, main builds, release tagged |
+| Document | Type | Reference |
+|----------|------|-----------|
+| [`.specs/04_future_state/reqs/`](./04_future_state/reqs/) | Requirements | All requirements |
+| [`.specs/04_future_state/design/`](./04_future_state/design/) | Design | Design documents |
+| [`.specs/04_future_state/test_plan.md`](./04_future_state/test_plan.md) | Test Plan | Test scenarios |
+| [`.specs/05_migration/rollback_plan.md`](./05_migration/rollback_plan.md) | Rollback Plan | Rollback procedures |
+| [`.specs/01_standards/coding_standards.md`](./01_standards/coding_standards.md) | Standards | Coding standards |
+| [`.specs/03_threat_model/analysis.md`](./03_threat_model/analysis.md) | Threat Model | Risk analysis |
 
 ---
 
-## Effort Summary
+## Change Log
 
-### Total Estimated Effort
-
-| Phase | Tasks | Estimated Hours |
-|-------|-------|-----------------|
-| Phase 10 | 4 tasks | 5.5 hours |
-| Phase 11 | 14 tasks | 248 hours |
-| Phase 12 | 5 tasks | 32 hours |
-| **Total** | **23 tasks** | **285.5 hours** |
-
-### Effort by Priority
-
-| Priority | Tasks | Estimated Hours |
-|----------|-------|-----------------|
-| Critical | 10 tasks | 81.5 hours |
-| High | 6 tasks | 88 hours |
-| Medium | 7 tasks | 116 hours |
-
-### Effort by Role
-
-| Role | Estimated Hours |
-|------|-----------------|
-| Senior Lean Developer | 208 hours |
-| Lean Developer | 92 hours |
-| QA Lead | 6 hours |
-| QA Engineer | 10 hours |
-| Tech Lead | 16 hours |
-| Technical Writer | 20 hours |
-| DevOps Lead | 3.5 hours |
-| DevOps Engineer | 2 hours |
-| **Total** | **357.5 hours** (includes parallel work) |
-
----
-
-## Risk Assessment
-
-### High-Risk Tasks
-
-| Task | Risk | Mitigation |
-|------|------|------------|
-| TASK-010 | Complex ABI proofs may be difficult | Allocate additional time, involve domain expert |
-| TASK-032 | Large scope (21 modules) may overrun | Break into sub-tasks, monitor progress closely |
-| TASK-041 | Completing all proofs may be challenging | Prioritize critical proofs, document incomplete proofs |
-
-### Medium-Risk Tasks
-
-| Task | Risk | Mitigation |
-|------|------|------------|
-| TASK-021 | Concurrency proofs are complex | Involve concurrency expert, use automated tactics |
-| TASK-022 | Security proofs require expertise | Involve security expert, review threat model |
-| TASK-052 | Code review may find many issues | Start review early, address issues incrementally |
-
-### Low-Risk Tasks
-
-| Task | Risk | Mitigation |
-|------|------|------------|
-| TASK-001 | Branch creation is straightforward | Follow Git best practices |
-| TASK-002 | Backup is routine | Document backup location clearly |
-| TASK-053 | Documentation update is straightforward | Use documentation templates |
-
----
-
-## Success Metrics
-
-### Quantitative Metrics
-
-| Metric | Target | Current | Gap |
-|--------|--------|---------|-----|
-| Compilation Success Rate | 100% | ~85% | 15% |
-| Theorems Proved | 100% | ~70% | 30% |
-| Examples Executable | 100% | ~80% | 20% |
-| Stub Files | 0 | 12 | -12 |
-| Empty Files | 0 | 1 | -1 |
-| Commented Code Blocks | 0 | Multiple | -Multiple |
-| TODO/FIXME/WIP Markers | 0 | 80 | -80 |
-| Docstring Coverage | 100% | ~60% | 40% |
-
-### Qualitative Metrics
-
-- All code follows project coding standards
-- All ADRs are followed
-- All requirements are met
-- All design documents are implemented
-- Code is production-grade and maintainable
-- Documentation is comprehensive and accurate
-
----
-
-## Appendix: Related Documents
-
-### Planning Documents
-
-- [`.specs/00_current_state/manifest.md`](./00_current_state/manifest.md) - Current state analysis
-- [`.specs/04_future_state/manifest.md`](./04_future_state/manifest.md) - Future state vision
-- [`.specs/04_future_state/test_plan.md`](./04_future_state/test_plan.md) - Test plan
-
-### Standards
-
-- [`.specs/01_standards/coding_standards.md`](./01_standards/coding_standards.md) - Coding standards
-
-### ADRs
-
-- [ADR-001](./02_adrs/ADR-001-three-file-module-pattern.md) - Three-file module pattern
-- [ADR-002](./02_adrs/ADR-002-zero-tolerance-commented-code.md) - Zero tolerance for commented-out code
-- [ADR-003](./02_adrs/ADR-003-lean4-mathlib4.md) - Lean 4 and mathlib4 usage
-- [ADR-004](./02_adrs/ADR-004-lake-build-system.md) - Lake build system
-- [ADR-005](./02_adrs/ADR-005-domain-based-module-organization.md) - Domain-based module organization
-- [ADR-006](./02_adrs/ADR-006-complete-proof-requirement.md) - Complete proof requirement
-- [ADR-007](./02_adrs/ADR-007-ci-cd-integration.md) - CI/CD integration
-
-### Requirements
-
-- [REQ-001](./04_future_state/reqs/REQ-001-core-foundation.md) - Core foundation
-- [REQ-002](./04_future_state/reqs/REQ-002-memory-domain.md) - Memory domain
-- [REQ-003](./04_future_state/reqs/REQ-003-concurrency-domain.md) - Concurrency domain
-- [REQ-004](./04_future_state/reqs/REQ-004-security-domain.md) - Security domain
-- [REQ-005](./04_future_state/reqs/REQ-005-build-system-domain.md) - Build system domain
-- [REQ-006](./04_future_state/reqs/REQ-006-abi-domain.md) - ABI domain
-- [REQ-007](./04_future_state/reqs/REQ-007-language-features-domain.md) - Language features domain
-
-### Design Documents
-
-- [DESIGN-001](./04_future_state/design/DESIGN-001-module-structure.md) - Module structure
-- [DESIGN-002](./04_future_state/design/DESIGN-002-type-system.md) - Type system
-- [DESIGN-003](./04_future_state/design/DESIGN-003-proof-structure.md) - Proof structure
-- [DESIGN-004](./04_future_state/design/DESIGN-004-example-structure.md) - Example structure
-- [DESIGN-005](./04_future_state/design/DESIGN-005-documentation.md) - Documentation
-- [DESIGN-006](./04_future_state/design/DESIGN-006-build-system.md) - Build system
-
-### Migration Documents
-
-- [`.specs/05_migration/rollback_plan.md`](./05_migration/rollback_plan.md) - Rollback plan
-
----
-
-**Document Version:** 1.0
-**Last Updated:** 2026-01-30
-**Status:** Ready for Execution
+| Date | Version | Author | Description |
+|------|---------|--------|-------------|
+| 2026-01-31 | 1.0 | System | Initial task execution graph created |

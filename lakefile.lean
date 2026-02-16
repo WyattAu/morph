@@ -4,6 +4,7 @@ open Lake DSL
 package morph {
   -- Package configuration for Morph verification project
   -- Follows ADR-010: Lean 4 Version and Lake Package Management
+  moreLeanArgs := #["-DcheckBinderAnnotations=false"]
 }
 
 -- Main Morph library
@@ -51,7 +52,8 @@ lean_exe morph_test_ast {
   root := `Morph.Tests.AST
 }
 
--- Dependencies - using v4.10.0 to match installed Lean version
-require mathlib from git "https://github.com/leanprover-community/mathlib4" @ "v4.10.0"
-require aesop from git "https://github.com/JLimperg/aesop" @ "v4.10.0"
-require batteries from git "https://github.com/leanprover-community/batteries" @ "v4.10.0"
+-- Dependencies - using v4.10.0-compatible versions
+require mathlib from git "https://github.com/leanprover-community/mathlib4" @ "a719ba5c3115d47b68bf0497a9dd1bcbb21ea663"
+require batteries from git "https://github.com/leanprover-community/batteries" @ "0f3e143dffdc3a591662f3401ce1d7a3405227c0"
+require aesop from git "https://github.com/JLimperg/aesop" @ "209712c78b16c795453b6da7f7adbda4589a8f21"
+require importGraph from git "https://github.com/leanprover-community/import-graph" @ "543725b3bfed792097fc134adca628406f6145f5"

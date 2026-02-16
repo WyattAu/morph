@@ -1,5 +1,6 @@
 /- Copyright 2024-2025 The Morph Project Authors
 SPDX-License-Identifier: Apache-2.0
+-/
 
 import Morph.Core
 import Morph.Specs.CommonTypes
@@ -336,4 +337,5 @@ def createsCycle (G : ASTGraph) (edge : ASTEdge) : Prop :=
   isReachable G edge.target edge.source
 
 end Morph.Specs.ASTGraph
+
 

@@ -1,947 +1,1862 @@
-# Morph Formal Verification - Threat Model Analysis
+# Morph Project - Risk & Threat Model Analysis
 
-**Phase:** 3 - Risk & Threat Modeling
-**Version:** 1.0.0
-**Date:** 2026-01-30
-**Methodology:** STRIDE (Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege)
-**Scope:** Lean 4 formal verification codebase, build system, and specification integrity
+**Phase:** Phase 3 - Risk & Threat Modeling
+**Generated:** 2026-01-31T21:09:00Z
+**Purpose:** Identify and document risks specific to the Morph architecture migration from Lean 4.10.0 to Lean 4.28.0-rc1
 
 ---
 
 ## Executive Summary
 
-This threat model analyzes risks specific to the Morph language specification and Lean 4 validation files. The project presents unique challenges due to its formal verification nature, where the integrity of mathematical proofs and specifications is critical. Unlike traditional software projects, failures in formal verification can lead to **unsound theorems**, **invalid specifications**, and **false confidence in correctness**.
-
-The analysis identifies **26 distinct risks** across six categories, with **8 Critical**, **9 High**, **7 Medium**, and **2 Low** severity issues. The most critical risks involve proof integrity failures, build system vulnerabilities, and specification correctness issues.
+This document provides a comprehensive risk analysis for migrating the Morph project from Lean 4.10.0 dependencies to Lean 4.28.0-rc1 compatibility. The analysis identifies 26 distinct risks across four categories, with 4 Critical, 8 High, 10 Medium, and 4 Low severity risks. The primary risks stem from the significant version gap (18 minor versions) between the specified dependencies and the target toolchain, combined with blocking configuration errors in the ProofWidgets dependency.
 
 ---
 
-## 1. Proof Integrity Risks
+## Risk Assessment Methodology
 
-### 1.1 Commented-Out Code with Unverified Proofs
+### Risk Level Definitions
 
-| STRIDE Category | Threat Description | Severity | Likelihood | Impact |
-|:---|:---|:---:|:---:|:---:|
-| **Tampering** | Commented-out code blocks contain incomplete or incorrect proofs that may be accidentally uncommented without verification | **Critical** | Medium | Critical |
+| Risk Level | Likelihood | Impact | Description |
+|------------|------------|--------|-------------|
+| **Critical** | High | Catastrophic | Blocks all compilation; immediate action required |
+| **High** | High | Severe | Major functionality loss; affects multiple files |
+| **Medium** | Medium | Moderate | Partial functionality loss; localized impact |
+| **Low** | Low | Minor | Minor inconvenience; easy to work around |
 
-**Threat Details:**
-- Multiple specification files contain commented-out code blocks (e.g., [`ArcAffineIntegration/Spec.lean`](../Morph/Specs/ArcAffineIntegration/Spec.lean:1))
-- Commented-out theorems, lemmas, and type definitions may represent abandoned proof attempts
-- Risk of developers uncommenting code without understanding its correctness
-- Violates coding standards: "Commented-out code is strictly forbidden" ([coding_standards.md:370](../01_standards/coding_standards.md:370))
+### Risk Scoring Formula
 
-**Attack Scenario:**
-1. Developer searches for similar code pattern
-2. Finds commented-out implementation
-3. Uncomments and integrates without verification
-4. Introduces unsound theorem into specification
+```
+Risk Score = Likelihood × Impact
+- Critical: 9-12
+- High: 6-8
+- Medium: 3-5
+- Low: 1-2
+```
+
+---
+
+## 1. Compilation Risks
+
+### 1.1 Dependency Version Mismatch
+
+#### RISK-COMP-001: Critical Lean Toolchain/Dependency Version Gap
+
+**Risk Level:** Critical  
+**Likelihood:** High  
+**Impact:** Catastrophic
+
+**Description:**
+The project specifies dependency versions as `v4.10.0` in [`lakefile.toml`](../../lakefile.toml) while the Lean toolchain is `v4.28.0-rc1`. This represents an 18 minor version gap, which is unprecedented in Lean 4's evolution history and introduces significant compatibility risks.
+
+**Affected Components:**
+- [`lean-toolchain`](../../lean-toolchain): v4.28.0-rc1
+- [`lakefile.toml`](../../lakefile.toml): batteries v4.10.0, aesop v4.10.0, mathlib4 v4.10.0
+
+**Potential Impact:**
+- Complete build failure due to API incompatibilities
+- Type signature changes causing compilation errors across all files
+- Breaking changes in Lean 4 core library between v4.10.0 and v4.28.0-rc1
+- Incompatible metaprogramming APIs
+- Changes to implicit parameter synthesis rules
 
 **Mitigation Strategies:**
-1. **Immediate:** Remove all commented-out code blocks from specification files
-2. **Process:** Implement pre-commit hooks to detect commented-out code
-3. **Tooling:** Create linting rule to flag multi-line comment blocks containing Lean code
-4. **Policy:** Enforce zero-tolerance policy for commented-out code in PR reviews
+
+1. **Immediate (Critical Path):**
+   - Determine if v4.28.0-rc1 is intentional or accidental
+   - If intentional: Update all dependencies to v4.28.0-compatible versions
+   - If accidental: Downgrade toolchain to v4.10.0 to match dependencies
+
+2. **Short-term:**
+   - Research Lean 4 changelog for breaking changes between v4.10.0 and v4.28.0-rc1
+   - Create compatibility matrix for each dependency
+   - Test compilation with incremental version updates
+
+3. **Long-term:**
+   - Establish dependency version lockfile policy
+   - Implement automated compatibility testing in CI/CD
+   - Document supported Lean 4 versions in project README
 
 **Verification:**
-- Scan all `.lean` files for multi-line comment blocks containing `def`, `theorem`, `lemma`, `structure`, `inductive`
-- Remove or properly implement all commented code
-- Add CI check to prevent future commented code
+```bash
+# Check Lean toolchain version
+cat lean-toolchain
+
+# Check dependency versions
+grep -A 10 "\[dependencies\]" lakefile.toml
+
+# Attempt compilation
+lake build
+```
 
 ---
 
-### 1.2 `sorry` Placeholders in Proofs
+#### RISK-COMP-002: ProofWidgets Configuration Incompatibility
 
-| STRIDE Category | Threat Description | Severity | Likelihood | Impact |
-|:---|:---|:---:|:---:|:---:|
-| **Tampering** | `sorry` placeholders allow compilation without proof verification, creating false confidence in correctness | **Critical** | High | Critical |
+**Risk Level:** Critical  
+**Likelihood:** High  
+**Impact:** Catastrophic
 
-**Threat Details:**
-- Lean 4's `sorry` tactic allows skipping proof steps
-- 80 TODO/FIXME/WIP markers indicate incomplete work ([manifest.md:393](../00_current_state/manifest.md:393))
-- `sorry` statements compile successfully but provide no proof
-- Risk of shipping specifications with unproven theorems
+**Description:**
+The ProofWidgets4 dependency (version v0.0.84) has configuration errors in its lakefile.lean that are incompatible with Lean 4.28.0-rc1. This is a blocking error that prevents the Lake workspace from configuring.
 
-**Attack Scenario:**
-1. Developer uses `sorry` to temporarily skip complex proof
-2. Code compiles and passes CI
-3. `sorry` remains in production codebase
-4. Specification appears complete but contains unverified claims
+**Affected Files:**
+- [`Morph/Executable.lean`](../../Morph/Executable.lean)
+- [`Morph/Specs/AbiAlignmentAlgebra/Lemmas.lean`](../../Morph/Specs/AbiAlignmentAlgebra/Lemmas.lean)
+- [`Morph/Specs/AbiDataRefinement/Examples.lean`](../../Morph/Specs/AbiDataRefinement/Examples.lean)
+- [`Morph/Specs/AbiDataRefinement/Lemmas.lean`](../../Morph/Specs/AbiDataRefinement/Lemmas.lean)
+- [`Morph/Specs/ConcurrencyProcessAlgebra/Examples.lean`](../../Morph/Specs/ConcurrencyProcessAlgebra/Examples.lean)
+- [`Morph/Specs/ConcurrencyProcessAlgebra/Lemmas.lean`](../../Morph/Specs/ConcurrencyProcessAlgebra/Lemmas.lean)
+- [`Morph/Specs/ConcurrencyProcessAlgebra/Spec.lean`](../../Morph/Specs/ConcurrencyProcessAlgebra/Spec.lean)
+
+**Specific Errors in ProofWidgets:**
+- Line 17: `BuildJob` type unknown - missing import or open statement
+- Line 31: Application type mismatch - `Hash` vs `String` expected for `BuildTrace.mk`
+- Line 45, 47: `BuildJob` type unknown
+- Line 55: Cannot synthesize implicit argument `BuildJob`
+- Line 65: `BuildJob` type unknown
+- Line 77: Invalid field notation on `BuildJob`
+- Line 83: Invalid field `afterReleaseAsync` - field does not exist in `Lake.Package`
+- Lines 114, 117: Declarations use 'sorry' (incomplete proofs)
+
+**Potential Impact:**
+- Lake workspace configuration fails completely
+- All files depending on Lake setup cannot be compiled
+- 7 files directly affected by this error
+- Cascading failures in dependent modules
 
 **Mitigation Strategies:**
-1. **Immediate:** Audit all files for `sorry` placeholders
-2. **Tooling:** Implement CI check that fails build if `sorry` is detected
-3. **Process:** Require explicit approval for temporary `sorry` with expiration date
-4. **Documentation:** Track all `sorry` instances in project issues
+
+1. **Immediate (Critical Path):**
+   - Check if ProofWidgets is actually needed by the project
+   - If not needed: Remove from dependency tree
+   - If needed: Update to a version compatible with Lean 4.28.0-rc1
+
+2. **Short-term:**
+   - Research ProofWidgets release history for compatible versions
+   - Check if ProofWidgets provides a v4.28.0-compatible branch or fork
+   - Consider temporarily disabling ProofWidgets-dependent features
+
+3. **Long-term:**
+   - Establish dependency compatibility testing in CI/CD
+   - Document ProofWidgets usage and requirements
+   - Consider alternative UI/metaprogramming libraries
 
 **Verification:**
-- Run `grep -r "sorry" Morph/` to identify all placeholders
-- Create tracking document for each `sorry` with:
-  - Responsible developer
-  - Expected completion date
-  - Proof strategy
-- Block merges that introduce new `sorry` without approval
+```bash
+# Check ProofWidgets usage in codebase
+grep -r "import.*ProofWidgets" Morph/
+
+# Check if ProofWidgets is a direct or transitive dependency
+grep -A 20 "\[dependencies\]" lakefile.toml
+
+# Attempt Lake configuration
+lake configure
+```
 
 ---
 
-### 1.3 Incomplete Proofs with Partial Verification
+#### RISK-COMP-003: Breaking Changes in Lean 4 Core Library
 
-| STRIDE Category | Threat Description | Severity | Likelihood | Impact |
-|:---|:---|:---:|:---:|:---:|
-| **Tampering** | Theorems marked as complete but with incomplete or incorrect proof scripts | **High** | Medium | High |
+**Risk Level:** High  
+**Likelihood:** High  
+**Impact:** Severe
 
-**Threat Details:**
-- Lean 4 allows proof scripts that may not fully prove the theorem
-- Proof may rely on unproven lemmas or circular reasoning
-- Risk of "proof by assertion" where theorem is stated but not truly proven
-- Empty [`Lemmas.lean`](../Morph/Specs/AbiDataRefinement/Lemmas.lean:1) file indicates missing verification
+**Description:**
+Between Lean 4.10.0 and Lean 4.28.0-rc1, there have been significant changes to the Lean 4 core library. These changes may include:
+- Type signature modifications in standard library functions
+- Deprecation and removal of previously stable APIs
+- Changes to implicit parameter synthesis
+- Modifications to metaprogramming APIs
+- Updates to the type class resolution system
 
-**Attack Scenario:**
-1. Theorem is stated with complex proof script
-2. Proof uses `by` tactic with incomplete reasoning
-3. Lean accepts proof due to weak type checking
-4. Specification claims property that is not actually proven
+**Affected Components:**
+- All files importing `Std` or `Lean` standard libraries
+- Core definitions in [`Morph/Core.lean`](../../Morph/Core.lean)
+- Type definitions across all specification files
+- Proof scripts using standard library lemmas
+
+**Potential Impact:**
+- Type errors across multiple files
+- Breaking changes in proof tactics
+- Incompatible type class instances
+- Changes to automatic parameter synthesis behavior
 
 **Mitigation Strategies:**
-1. **Process:** Require proof review by separate formal verification expert
-2. **Tooling:** Use `simp?` and `aesop` to verify proof completeness
-3. **Testing:** Create counterexample generation for all theorems
-4. **Documentation:** Require proof sketch in theorem documentation
+
+1. **Immediate:**
+   - Compile with Lean 4.28.0-rc1 to identify specific errors
+   - Catalog all type errors by category
+   - Prioritize fixes by impact on core functionality
+
+2. **Short-term:**
+   - Review Lean 4 changelog for breaking changes
+   - Update imports to use new API locations
+   - Replace deprecated functions with current equivalents
+
+3. **Long-term:**
+   - Maintain a compatibility layer for deprecated APIs
+   - Implement automated testing for Lean version compatibility
+   - Document version-specific API changes
 
 **Verification:**
-- Audit all theorems for proof completeness
-- Run `lake build` with `--verbose` to check proof verification
-- Implement proof coverage metric (percentage of theorems with complete proofs)
+```bash
+# Attempt compilation and capture errors
+lake build 2>&1 | tee compilation_errors.log
+
+# Categorize errors by type
+grep "type mismatch" compilation_errors.log
+grep "unknown identifier" compilation_errors.log
+grep "deprecated" compilation_errors.log
+```
 
 ---
 
-### 1.4 Circular Dependency in Proofs
+#### RISK-COMP-004: API Incompatibilities in mathlib4
 
-| STRIDE Category | Threat Description | Severity | Likelihood | Impact |
-|:---|:---:|:---:|:---:|
-| **Tampering** | Theorems depend on each other creating circular reasoning, invalidating the proof foundation | **Critical** | Low | Critical |
+**Risk Level:** High  
+**Likelihood:** High  
+**Impact:** Severe
 
-**Threat Details:**
-- Theorem A depends on Theorem B, which depends on Theorem A
-- Creates logical circularity that Lean may not detect
-- Risk of entire specification being unsound
-- Particularly dangerous in module interdependencies
+**Description:**
+mathlib4 has evolved significantly between v4.10.0 and v4.28.0-rc1. Major changes include:
+- Reorganization of module structure
+- Renaming of theorems and definitions
+- Changes to type class hierarchies
+- Updates to proof automation strategies
 
-**Attack Scenario:**
-1. Developer proves Theorem A assuming Theorem B
-2. Developer proves Theorem B assuming Theorem A
-3. Both theorems compile successfully
-4. Specification appears consistent but is logically invalid
+**Affected Components:**
+- All specification files importing mathlib4
+- Mathematical proofs in Lemmas.lean files
+- Type definitions using mathlib4 types
+- Examples using mathlib4 functions
+
+**Potential Impact:**
+- Import errors across all specification files
+- Theorem name mismatches
+- Type class instance conflicts
+- Proof script failures
 
 **Mitigation Strategies:**
-1. **Tooling:** Implement dependency graph analysis to detect cycles
-2. **Process:** Require topological ordering of theorem dependencies
-3. **Architecture:** Enforce acyclic module dependencies
-4. **Review:** Manual review of cross-module theorem dependencies
+
+1. **Immediate:**
+   - Identify all mathlib4 imports across the codebase
+   - Create a mapping of old to new module names
+   - Test compilation with updated mathlib4 version
+
+2. **Short-term:**
+   - Update import statements to match new module structure
+   - Rename theorem references to current names
+   - Update type class instance declarations
+
+3. **Long-term:**
+   - Implement automated import migration tools
+   - Maintain a compatibility guide for mathlib4 versions
+   - Establish regular mathlib4 update procedures
 
 **Verification:**
-- Build dependency graph of all theorems
-- Run cycle detection algorithm
-- Flag any circular dependencies for manual review
-- Document all cross-theorem dependencies
+```bash
+# Find all mathlib4 imports
+grep -r "import.*Mathlib" Morph/ | sort | uniq
+
+# Check for deprecated API usage
+lake build 2>&1 | grep -i "deprecated"
+```
 
 ---
 
-## 2. Module Dependency Risks
+#### RISK-COMP-005: Type Signature Changes in Batteries
 
-### 2.1 Circular Module Dependencies
+**Risk Level:** Medium  
+**Likelihood:** Medium  
+**Impact:** Moderate
 
-| STRIDE Category | Threat Description | Severity | Likelihood | Impact |
-|:---|:---|:---:|:---:|:---:|
-| **Elevation of Privilege** | Modules import each other creating circular dependencies, breaking build and enabling privilege escalation | **Critical** | Medium | Critical |
+**Description:**
+The batteries library provides standard library extensions for Lean 4. Between v4.10.0 and v4.28.0-rc1, type signatures may have changed, affecting:
+- Function parameter types
+- Return types
+- Implicit parameter requirements
+- Type class instance requirements
 
-**Threat Details:**
-- Module A imports Module B, which imports Module A
-- Lake build system cannot resolve circular dependencies
-- Risk of infinite build loops or incomplete compilation
-- Can enable unauthorized access to private definitions
+**Affected Components:**
+- Files using batteries extensions
+- Utility functions relying on batteries
+- Type definitions using batteries types
 
-**Attack Scenario:**
-1. Module A imports Module B to access private definitions
-2. Module B imports Module A to access private definitions
-3. Both modules gain access to each other's internals
-4. Build fails or produces unpredictable results
+**Potential Impact:**
+- Type errors in files using batteries
+- Compilation failures in utility modules
+- Breaking changes in helper functions
 
 **Mitigation Strategies:**
-1. **Architecture:** Enforce strict hierarchical module structure
-2. **Tooling:** Implement import cycle detection in CI
-3. **Process:** Require dependency review for all new imports
-4. **Design:** Use dependency injection to break cycles
+
+1. **Immediate:**
+   - Identify all batteries usage in the codebase
+   - Review batteries changelog for breaking changes
+   - Test compilation with updated batteries version
+
+2. **Short-term:**
+   - Update function calls to match new signatures
+   - Add explicit type annotations where needed
+   - Replace deprecated functions with current equivalents
+
+3. **Long-term:**
+   - Minimize dependency on batteries extensions
+   - Consider implementing required utilities directly
+   - Document batteries version requirements
 
 **Verification:**
-- Analyze import statements across all modules
-- Build module dependency graph
-- Detect and document all cycles
-- Refactor to eliminate circular dependencies
+```bash
+# Find all batteries imports
+grep -r "import.*Batteries" Morph/
+
+# Compile and check for type errors
+lake build 2>&1 | grep "type mismatch"
+```
 
 ---
 
-### 2.2 Broken Imports from Stub Files
+#### RISK-COMP-006: Aesop Automation Compatibility Issues
 
-| STRIDE Category | Threat Description | Severity | Likelihood | Impact |
-|:---|:---|:---:|:---:|:---:|
-| **Denial of Service** | Imports from stub files cause build failures when stub is replaced with implementation | **High** | High | High |
+**Risk Level:** Medium  
+**Likelihood:** Medium  
+**Impact:** Moderate
 
-**Threat Details:**
-- 12 stub files with < 10 lines ([manifest.md:369](../00_current_state/manifest.md:369))
-- Empty [`Lemmas.lean`](../Morph/Specs/AbiDataRefinement/Lemmas.lean:1) file breaks dependent modules
-- Importing from stub creates false dependency
-- Risk of build breaking when stub is implemented
+**Description:**
+Aesop provides proof automation for Lean 4. Version incompatibilities may cause:
+- Changes in proof search strategies
+- Modifications to tactic syntax
+- Updates to configuration options
+- Changes in default behavior
 
-**Attack Scenario:**
-1. Module imports from stub file (e.g., `RegistryConsensus.Spec`)
-2. Build succeeds because stub compiles
-3. Stub is replaced with full implementation
-4. Import breaks due to changed exports or errors
+**Affected Components:**
+- All Lemmas.lean files using aesop tactics
+- Proof scripts with aesop automation
+- Custom aesop configurations
+
+**Potential Impact:**
+- Proof failures in Lemmas.lean files
+- Tactic syntax errors
+- Changes in proof search behavior
+- Increased proof completion time
 
 **Mitigation Strategies:**
-1. **Immediate:** Document all stub files and their consumers
-2. **Architecture:** Use interface files to define stub contracts
-3. **Process:** Require stub completion before dependent module development
-4. **Tooling:** Implement stub tracking system
+
+1. **Immediate:**
+   - Identify all aesop usage in the codebase
+   - Review aesop documentation for version changes
+   - Test proof scripts with updated aesop version
+
+2. **Short-term:**
+   - Update tactic syntax to current version
+   - Adjust aesop configurations as needed
+   - Replace deprecated tactics with current equivalents
+
+3. **Long-term:**
+   - Document aesop configuration patterns
+   - Implement proof script compatibility tests
+   - Consider alternative proof automation if needed
 
 **Verification:**
-- Identify all stub files and their imports
-- Document all modules that depend on stubs
-- Create implementation plan for each stub
-- Block new dependencies on stub files
+```bash
+# Find all aesop usage
+grep -r "aesop\|aesop!" Morph/
+
+# Test proof compilation
+lake build Morph.Specs.*.Lemmas
+```
 
 ---
 
-### 2.3 Orphaned Module Dependencies
+### 1.2 Syntax and Parsing Risks
 
-| STRIDE Category | Threat Description | Severity | Likelihood | Impact |
-|:---|:---|:---:|:---:|:---:|
-| **Information Disclosure** | Deleted or renamed modules leave broken imports, exposing implementation details | **Medium** | Medium | Medium |
+#### RISK-COMP-007: Unterminated Comment in Examples File
 
-**Threat Details:**
-- Module refactoring may leave orphaned imports
-- Build errors reveal module structure and dependencies
-- Risk of exposing internal architecture
-- Can lead to security vulnerabilities
+**Risk Level:** Medium  
+**Likelihood:** High  
+**Impact:** Moderate
 
-**Attack Scenario:**
-1. Developer deletes or renames module
-2. Import statements remain in dependent modules
-3. Build error reveals module structure
-4. Attacker gains insight into codebase organization
+**Description:**
+The file [`Morph/Specs/ArcAffineIntegration/Examples.lean`](../../Morph/Specs/ArcAffineIntegration/Examples.lean:237) has an unterminated comment at line 237. This prevents parsing of the file and may cause cascading errors.
+
+**Affected File:**
+- [`Morph/Specs/ArcAffineIntegration/Examples.lean`](../../Morph/Specs/ArcAffineIntegration/Examples.lean:237)
+
+**Potential Impact:**
+- File cannot be parsed
+- Compilation failure for the ArcAffineIntegration module
+- May affect dependent modules
 
 **Mitigation Strategies:**
-1. **Tooling:** Implement import validation in CI
-2. **Process:** Require dependency update when refactoring modules
-3. **Documentation:** Maintain module dependency registry
-4. **Review:** Manual review of all import changes
+
+1. **Immediate:**
+   - Examine line 237 to identify the comment issue
+   - Add the missing closing delimiter (`-/` or `--`)
+   - Verify file parses correctly
+
+2. **Short-term:**
+   - Scan all .lean files for similar syntax issues
+   - Implement linter rules for comment syntax
+   - Add pre-commit hooks to catch syntax errors
+
+3. **Long-term:**
+   - Establish code review checklist for syntax issues
+   - Implement automated syntax validation in CI/CD
+   - Document comment syntax best practices
 
 **Verification:**
-- Scan for imports to non-existent modules
-- Validate all import statements in CI
-- Document module dependencies
-- Enforce import cleanup in refactoring PRs
+```bash
+# Check file for syntax errors
+lean --make Morph/Specs/ArcAffineIntegration/Examples.lean
+
+# Use linter to find similar issues
+lake lint Morph/Specs/ArcAffineIntegration/Examples.lean
+```
 
 ---
 
-### 2.4 Transitive Dependency Vulnerabilities
+#### RISK-COMP-008: Deprecated Comment Syntax
 
-| STRIDE Category | Threat Description | Severity | Likelihood | Impact |
-|:---|:---|:---:|:---:|:---:|
-| **Elevation of Privilege** | Transitive dependencies from mathlib4, aesop, batteries may contain vulnerabilities | **High** | Low | High |
+**Risk Level:** Low  
+**Likelihood:** Low  
+**Impact:** Minor
 
-**Threat Details:**
-- Dependencies: mathlib4, aesop, batteries ([lakefile.lean:55](../../lakefile.lean:55))
-- Third-party libraries may have security vulnerabilities
-- Risk of supply chain attacks
-- Can affect proof correctness or build system
+**Description:**
+While Lean 4 supports multiple comment syntaxes, some older comment patterns may be deprecated or have changed behavior. This risk is minimal but worth monitoring.
 
-**Attack Scenario:**
-1. Attacker compromises mathlib4 repository
-2. Introduces malicious code in library
-3. Morph project updates dependency
-4. Malicious code executes during build or proof verification
+**Affected Components:**
+- All .lean files with comments
+
+**Potential Impact:**
+- Minor warnings during compilation
+- Potential confusion in documentation
 
 **Mitigation Strategies:**
-1. **Tooling:** Use dependency locking with hash verification
-2. **Process:** Regular dependency security audits
-3. **Architecture:** Minimize dependency surface area
-4. **Review:** Review all dependency updates
+
+1. **Immediate:**
+   - Review comment syntax across the codebase
+   - Update to recommended comment patterns
+
+2. **Short-term:**
+   - Document preferred comment syntax
+   - Implement linter rules for comment style
+
+3. **Long-term:**
+   - Establish comment style guidelines
+   - Add comment syntax to coding standards
 
 **Verification:**
-- Audit [`lake-manifest.json`](../../lake-manifest.json:1) for dependency versions
-- Implement dependency hash verification
-- Regular security scanning of dependencies
-- Document all third-party dependencies
+```bash
+# Check for deprecated comment patterns
+grep -rn "/-[^!]" Morph/ | head -20
+```
 
 ---
 
-## 3. Build System Risks
+## 2. Code Quality Risks
 
-### 3.1 Lake Build System Failures
+### 2.1 Syntax and Style Risks
 
-| STRIDE Category | Threat Description | Severity | Likelihood | Impact |
-|:---|:---|:---:|:---:|:---:|
-| **Denial of Service** | Lake build system failures prevent compilation and verification of specifications | **Critical** | Medium | Critical |
+#### RISK-QUAL-001: Incorrect Syntax Usage Due to Version Changes
 
-**Threat Details:**
-- Lake build system manages Lean 4 compilation
-- Build failures prevent specification validation
-- Incident: unterminated comment in [`Semantics.lean`](../../Morph/Semantics.lean:693) caused build failure ([incident_report.md:4](../debug/incident_report.md:4))
-- Risk of extended downtime during critical development
+**Risk Level:** High  
+**Likelihood:** Medium  
+**Impact:** Severe
 
-**Attack Scenario:**
-1. Syntax error introduced in core module
-2. Lake build fails for entire project
-3. Developers cannot compile or verify changes
-4. Progress halted until error is fixed
+**Description:**
+Lean 4 syntax has evolved between v4.10.0 and v4.28.0-rc1. Incorrect syntax usage may include:
+- Outdated implicit parameter syntax
+- Deprecated function type notation
+- Old pattern matching syntax
+- Deprecated attribute syntax
+
+**Affected Components:**
+- All .lean files in the project
+- Type definitions
+- Function definitions
+- Theorem statements
+
+**Potential Impact:**
+- Compilation errors across multiple files
+- Confusing error messages
+- Difficulty in diagnosing issues
 
 **Mitigation Strategies:**
-1. **Tooling:** Implement incremental builds to isolate failures
-2. **Process:** Require build success before merging
-3. **Monitoring:** Real-time build status monitoring
-4. **Testing:** Pre-commit build validation
+
+1. **Immediate:**
+   - Compile with Lean 4.28.0-rc1 to identify syntax errors
+   - Review Lean 4 documentation for syntax changes
+   - Update syntax to current standards
+
+2. **Short-term:**
+   - Create syntax migration guide
+   - Implement automated syntax checking
+   - Train team on current Lean 4 syntax
+
+3. **Long-term:**
+   - Maintain up-to-date syntax documentation
+   - Implement linter rules for syntax issues
+   - Regularly review Lean 4 release notes
 
 **Verification:**
-- Implement CI build for all PRs
-- Monitor build success rate
-- Document common build failure patterns
-- Create build failure recovery procedures
+```bash
+# Compile and capture syntax errors
+lake build 2>&1 | grep "syntax error"
+
+# Use Lean's syntax checker
+lean --check Morph/Core.lean
+```
 
 ---
 
-### 3.2 Dependency Version Conflicts
+#### RISK-QUAL-002: Deprecated API Usage
 
-| STRIDE Category | Threat Description | Severity | Likelihood | Impact |
-|:---:|:---:|:---:|:---:|
-| **Denial of Service** | Conflicting dependency versions cause build failures or runtime errors | **High** | Medium | High |
+**Risk Level:** Medium  
+**Likelihood:** High  
+**Impact:** Moderate
 
-**Threat Details:**
-- Lean 4 version: v4.10.0 ([lean-toolchain](../../lean-toolchain:1))
-- Dependencies must match Lean version
-- Risk of version mismatches causing build failures
-- Can lead to subtle proof verification errors
+**Description:**
+The current state already shows deprecation warnings in mathlib4:
+- `Lake.Package.name` deprecated (use `baseName`, `keyName`, or `prettyName`)
+- `String.trim` deprecated (use `String.trimAscii`)
 
-**Attack Scenario:**
-1. Developer updates dependency to incompatible version
-2. Build fails with cryptic error messages
-3. Team spends time debugging version conflicts
-4. Development blocked until resolved
+Additional deprecated APIs may exist across the codebase.
+
+**Affected Components:**
+- [`Morph/Executable.lean`](../../Morph/Executable.lean)
+- All files using standard library functions
+- Type definitions using deprecated APIs
+
+**Potential Impact:**
+- Compilation warnings
+- Future breaking changes when deprecated APIs are removed
+- Reduced code maintainability
 
 **Mitigation Strategies:**
-1. **Tooling:** Use [`lake-manifest.json`](../../lake-manifest.json:1) for dependency locking
-2. **Process:** Require version review for dependency updates
-3. **Documentation:** Document version compatibility matrix
-4. **Testing:** Test dependency updates in isolation
+
+1. **Immediate:**
+   - Scan for all deprecation warnings
+   - Catalog deprecated APIs by category
+   - Replace with current equivalents
+
+2. **Short-term:**
+   - Update all deprecated API calls
+   - Add linter rules to catch future deprecations
+   - Document migration paths for deprecated APIs
+
+3. **Long-term:**
+   - Implement automated deprecation detection
+   - Establish regular dependency update procedures
+   - Monitor Lean 4 release notes for deprecations
 
 **Verification:**
-- Validate all dependency versions in CI
-- Maintain version compatibility documentation
-- Implement automated dependency update testing
-- Document all version conflicts and resolutions
+```bash
+# Compile and capture deprecation warnings
+lake build 2>&1 | grep -i "deprecated"
+
+# Use linter to find deprecated APIs
+lake lint Morph/
+```
 
 ---
 
-### 3.3 Incremental Build Corruption
+#### RISK-QUAL-003: Missing Documentation
 
-| STRIDE Category | Threat Description | Severity | Likelihood | Impact |
-|:---||:---:|:---:|:---:|
-| **Tampering** | Incremental build cache corruption leads to incorrect compilation results | **High** | Low | High |
+**Risk Level:** Medium  
+**Likelihood:** High  
+**Impact:** Moderate
 
-**Threat Details:**
-- Lake uses incremental builds for performance
-- Cache files may become corrupted
-- Risk of stale `.olean` files being used
-- Can lead to incorrect proof verification
+**Description:**
+The coding standards require:
+- File headers with copyright and SPDX license
+- Module documentation with `/-! ... -/` syntax
+- Definition documentation with `/-- ... -/` syntax
+- Theorem documentation
 
-**Attack Scenario:**
-1. Build cache becomes corrupted
-2. Lake uses stale compiled files
-3. New errors are masked by old cache
-4. Incorrect code passes verification
+Current code may not meet these requirements.
+
+**Affected Components:**
+- All .lean files in the project
+- Type definitions
+- Function definitions
+- Theorem statements
+
+**Potential Impact:**
+- Reduced code maintainability
+- Difficulty for new contributors
+- Non-compliance with coding standards
 
 **Mitigation Strategies:**
-1. **Tooling:** Implement cache validation and cleanup
-2. **Process:** Regular clean builds
-3. **Monitoring:** Detect cache corruption
-4. **Testing:** Validate build outputs
+
+1. **Immediate:**
+   - Audit all files for missing documentation
+   - Prioritize documentation for public APIs
+   - Add file headers to all files
+
+2. **Short-term:**
+   - Add module documentation to all files
+   - Document all type definitions
+   - Document all public functions and theorems
+
+3. **Long-term:**
+   - Implement documentation linter
+   - Make documentation part of code review process
+   - Generate API documentation from docstrings
 
 **Verification:**
-- Implement cache integrity checks
-- Schedule regular clean builds
-- Monitor build times for anomalies
-- Document cache corruption recovery
+```bash
+# Check for file headers
+grep -L "Copyright.*Morph Project" Morph/**/*.lean
+
+# Check for module documentation
+grep -L "/-!" Morph/**/*.lean
+
+# Check for definition documentation
+grep -L "/--" Morph/**/*.lean
+```
 
 ---
 
-### 3.4 Parallel Build Race Conditions
+#### RISK-QUAL-004: Inconsistent Naming Conventions
 
-| STRIDE Category | Threat Description | Severity | Likelihood | Impact |
-|:---:|:---:|:---:|:---:|
-| **Denial of Service** | Parallel builds may have race conditions causing intermittent failures | **Medium** | Medium | Medium |
+**Risk Level:** Low  
+**Likelihood:** Medium  
+**Impact:** Minor
 
-**Threat Details:**
-- Lake supports parallel compilation
-- File system operations may have race conditions
-- Risk of non-deterministic build failures
-- Can cause flaky CI builds
+**Description:**
+The coding standards specify:
+- Types: PascalCase
+- Functions and theorems: camelCase
 
-**Attack Scenario:**
-1. Parallel build attempts to write same file
-2. Race condition causes build failure
-3. Build succeeds on retry
-4. CI becomes unreliable
+Current code may not consistently follow these conventions.
+
+**Affected Components:**
+- All type definitions
+- All function definitions
+- All theorem statements
+
+**Potential Impact:**
+- Reduced code readability
+- Confusion for contributors
+- Non-compliance with coding standards
 
 **Mitigation Strategies:**
-1. **Tooling:** Use file locking for parallel builds
-2. **Process:** Limit parallelism for critical builds
-3. **Monitoring:** Detect and report race conditions
-4. **Testing:** Stress test parallel builds
+
+1. **Immediate:**
+   - Audit naming conventions across the codebase
+   - Identify violations by category
+
+2. **Short-term:**
+   - Update naming to follow conventions
+   - Implement linter rules for naming
+   - Document naming conventions in style guide
+
+3. **Long-term:**
+   - Make naming part of code review process
+   - Use automated tools to enforce conventions
+   - Regularly audit for naming consistency
 
 **Verification:**
-- Test builds with varying parallelism levels
-- Monitor build reproducibility
-- Document race condition patterns
-- Implement build retry logic
+```bash
+# Check for lowercase type names (potential violations)
+grep -E "^structure [a-z]|^inductive [a-z]|^abbrev [a-z]" Morph/**/*.lean
+
+# Check for PascalCase function names (potential violations)
+grep -E "^def [A-Z]|^theorem [A-Z]|^lemma [A-Z]" Morph/**/*.lean
+```
 
 ---
 
-## 4. Formal Verification Risks
+#### RISK-QUAL-005: Inconsistent Formatting
 
-### 4.1 Incorrect Specifications
+**Risk Level:** Low  
+**Likelihood:** Medium  
+**Impact:** Minor
 
-| STRIDE Category | Threat Description | Severity | Likelihood | Impact |
-|:---:|---|:---:|:---:|:---:|
-| **Spoofing** | Specifications do not accurately represent intended language semantics | **Critical** | Medium | Critical |
+**Description:**
+The coding standards specify:
+- 2 spaces per indentation level
+- Maximum line length of 100 characters
+- No trailing whitespace
+- LF line endings
 
-**Threat Details:**
-- Formal specifications may not match intended behavior
-- Risk of proving wrong properties
-- Can lead to incorrect language implementation
-- Particularly dangerous for security-critical properties
+Current code may not consistently follow these formatting rules.
 
-**Attack Scenario:**
-1. Specification incorrectly defines memory safety
-2. Theorems prove incorrect property
-3. Implementation matches specification
-4. Language has security vulnerability
+**Affected Components:**
+- All .lean files in the project
+
+**Potential Impact:**
+- Reduced code readability
+- Inconsistent code style
+- Non-compliance with coding standards
 
 **Mitigation Strategies:**
-1. **Process:** Require specification review by domain experts
-2. **Documentation:** Document specification rationale
-3. **Testing:** Create executable examples to validate specifications
-4. **Review:** Cross-reference specifications with natural language docs
+
+1. **Immediate:**
+   - Audit formatting across the codebase
+   - Identify formatting violations
+
+2. **Short-term:**
+   - Use automated formatter (e.g., `lake fmt`)
+   - Configure editor to follow formatting rules
+   - Add pre-commit hooks for formatting
+
+3. **Long-term:**
+   - Make formatting part of code review process
+   - Implement CI/CD checks for formatting
+   - Regularly audit for formatting consistency
 
 **Verification:**
-- Review all specifications against requirements
-- Create executable test cases for each specification
-- Document specification decisions
-- Implement specification validation pipeline
+```bash
+# Check for tabs
+grep -P "\t" Morph/**/*.lean
+
+# Check for trailing whitespace
+grep -n " $" Morph/**/*.lean
+
+# Check for long lines
+awk 'length > 100' Morph/**/*.lean
+
+# Format code
+lake fmt Morph/
+```
 
 ---
 
-### 4.2 Unsound Lemmas
+### 2.2 Type Safety Risks
 
-| STRIDE Category | Threat Description | Severity | Likelihood | Impact |
-|:---:|---|:---:|:---:|:---:|
-| **Tampering** | Lemmas are proven but are unsound due to incorrect assumptions | **Critical** | Low | Critical |
+#### RISK-QUAL-006: Type Mismatches Due to API Changes
 
-**Threat Details:**
-- Lemma may rely on unstated assumptions
-- Proof may use invalid reasoning
-- Risk of building incorrect proofs on unsound foundation
-- Can invalidate entire specification module
+**Risk Level:** High  
+**Likelihood:** High  
+**Impact:** Severe
 
-**Attack Scenario:**
-1. Lemma is proven with hidden assumption
-2. Other theorems depend on this lemma
-3. Assumption is violated in practice
-4. Entire module becomes unsound
+**Description:**
+Type signatures may have changed between Lean 4.10.0 and 4.28.0-rc1, causing:
+- Function parameter type mismatches
+- Return type mismatches
+- Implicit parameter synthesis failures
+- Type class instance conflicts
+
+**Affected Components:**
+- All function definitions
+- All type definitions
+- All theorem statements
+- All proof scripts
+
+**Potential Impact:**
+- Compilation errors across multiple files
+- Type inference failures
+- Proof script breakage
 
 **Mitigation Strategies:**
-1. **Process:** Require explicit statement of all assumptions
-2. **Review:** Peer review of all lemma proofs
-3. **Testing:** Counterexample generation for lemmas
-4. **Documentation:** Document lemma assumptions
+
+1. **Immediate:**
+   - Compile with Lean 4.28.0-rc1 to identify type errors
+   - Catalog type errors by category
+   - Prioritize fixes by impact
+
+2. **Short-term:**
+   - Add explicit type annotations where needed
+   - Update function calls to match new signatures
+   - Resolve type class instance conflicts
+
+3. **Long-term:**
+   - Implement type checking in CI/CD
+   - Use explicit types for public APIs
+   - Document type changes between versions
 
 **Verification:**
-- Audit all lemmas for hidden assumptions
-- Create counterexample tests
-- Document all lemma assumptions
-- Implement lemma soundness checks
+```bash
+# Compile and capture type errors
+lake build 2>&1 | grep "type mismatch"
+
+# Check specific files
+lean --check Morph/Core.lean
+```
 
 ---
 
-### 4.3 Invalid Examples
+#### RISK-QUAL-007: Implicit Parameter Synthesis Failures
 
-| STRIDE Category | Threat Description | Severity | Likelihood | Impact |
-|:---:|---|:---:|:---:|:---:|
-| **Information Disclosure** | Example code does not demonstrate claimed properties or is incorrect | **Medium** | High | Medium |
+**Risk Level:** Medium  
+**Likelihood:** Medium  
+**Impact:** Moderate
 
-**Threat Details:**
-- Example files may contain incorrect code
-- Risk of misleading developers
-- Can cause incorrect understanding of language
-- Particularly dangerous for tutorial examples
+**Description:**
+Lean 4's implicit parameter synthesis rules may have changed, causing:
+- Failure to synthesize implicit arguments
+- Changes in synthesis behavior
+- Ambiguity in implicit resolution
 
-**Attack Scenario:**
-1. Example demonstrates incorrect usage
-2. Developer copies example pattern
-3. Code has subtle bug or security issue
-4. Bug propagates to production
+**Affected Components:**
+- All functions with implicit parameters
+- All type class instances
+- All proof scripts using implicit arguments
+
+**Potential Impact:**
+- Compilation errors
+- Proof script failures
+- Increased need for explicit annotations
 
 **Mitigation Strategies:**
-1. **Process:** Require example verification
-2. **Testing:** Execute all examples in CI
-3. **Review:** Peer review of all examples
-4. **Documentation:** Document example assumptions
+
+1. **Immediate:**
+   - Identify implicit parameter synthesis failures
+   - Add explicit annotations where needed
+   - Update type class instances
+
+2. **Short-term:**
+   - Review implicit parameter usage
+   - Standardize implicit parameter patterns
+   - Document implicit parameter conventions
+
+3. **Long-term:**
+   - Minimize reliance on implicit parameters
+   - Use explicit types for public APIs
+   - Document implicit parameter behavior
 
 **Verification:**
-- Execute all example files in CI
-- Verify examples demonstrate claimed properties
-- Document example usage patterns
-- Review examples for correctness
+```bash
+# Compile and check for synthesis failures
+lake build 2>&1 | grep "cannot synthesize\|failed to synthesize"
+
+# Check type class instances
+grep -r "instance :" Morph/
+```
 
 ---
 
-### 4.4 Proof Strategy Vulnerabilities
+## 3. Migration Risks
 
-| STRIDE Category | Threat Description | Severity | Likelihood | Impact |
-|:---:|---|:---:|:---:|:---:|
-| **Tampering** | Proof automation (aesop) may produce unsound proofs | **High** | Low | High |
+### 3.1 Dependency Breaking Changes
 
-**Threat Details:**
-- aesop is used for automated proof search
-- Automation may find incorrect proofs
-- Risk of trusting automated proofs without review
-- Can lead to subtle unsoundness
+#### RISK-MIG-001: Breaking Changes in mathlib4
 
-**Attack Scenario:**
-1. aesop finds proof for complex theorem
-2. Developer trusts automation without review
-3. Proof relies on invalid reasoning
-4. Theorem is incorrectly accepted
+**Risk Level:** High  
+**Likelihood:** High  
+**Impact:** Severe
+
+**Description:**
+mathlib4 has undergone significant reorganization between v4.10.0 and v4.28.0-rc1. Breaking changes include:
+- Module reorganization and renaming
+- Theorem renaming and relocation
+- Type class hierarchy changes
+- Proof automation strategy updates
+
+**Affected Components:**
+- All specification files importing mathlib4
+- All Lemmas.lean files using mathlib4 theorems
+- All Examples.lean files using mathlib4 functions
+
+**Potential Impact:**
+- Import errors across all specification files
+- Theorem name mismatches
+- Proof script failures
+- Type class instance conflicts
 
 **Mitigation Strategies:**
-1. **Process:** Require review of automated proofs
-2. **Tooling:** Limit aesop to trusted tactics
-3. **Documentation:** Document proof automation usage
-4. **Testing:** Validate automated proofs manually
+
+1. **Immediate:**
+   - Create a comprehensive import map
+   - Identify all mathlib4 dependencies
+   - Test compilation with updated mathlib4 version
+
+2. **Short-term:**
+   - Update import statements systematically
+   - Rename theorem references
+   - Update type class instances
+
+3. **Long-term:**
+   - Implement automated migration tools
+   - Maintain compatibility guides
+   - Establish regular update procedures
 
 **Verification:**
-- Audit all aesop-generated proofs
-- Document proof automation limits
-- Implement proof review checklist
-- Test automation on known counterexamples
+```bash
+# Find all mathlib4 imports
+grep -r "import.*Mathlib" Morph/ | sort | uniq -c
+
+# Test compilation with updated mathlib4
+lake build Morph.Specs.*
+```
 
 ---
 
-## 5. Migration Risks
+#### RISK-MIG-002: Breaking Changes in Batteries
 
-### 5.1 Breaking Changes When Rewriting Modules
+**Risk Level:** Medium  
+**Likelihood:** Medium  
+**Impact**: Moderate
 
-| STRIDE Category | Threat Description | Severity | Likelihood | Impact |
-|:---:|---|:---:|:---:|:---:|
-| **Denial of Service** | Module rewrites break dependent modules, causing cascading failures | **Critical** | High | Critical |
+**Description:**
+Batteries library may have breaking changes between v4.10.0 and v4.28.0-rc1, including:
+- Function signature changes
+- Module reorganization
+- Deprecated function removal
 
-**Threat Details:**
-- Rewriting modules changes public API
-- Risk of breaking dependent modules
-- Can cause cascading build failures
-- Particularly dangerous for core modules
+**Affected Components:**
+- Files using batteries extensions
+- Utility functions relying on batteries
 
-**Attack Scenario:**
-1. Developer rewrites core module
-2. Public API changes
-3. All dependent modules break
-4. Entire project fails to build
+**Potential Impact:**
+- Type errors in files using batteries
+- Compilation failures in utility modules
+- Breaking changes in helper functions
 
 **Mitigation Strategies:**
-1. **Architecture:** Use semantic versioning for modules
-2. **Process:** Require deprecation period for API changes
-3. **Tooling:** Implement API compatibility checking
-4. **Documentation:** Document all API changes
+
+1. **Immediate:**
+   - Identify all batteries usage
+   - Review batteries changelog
+   - Test compilation with updated version
+
+2. **Short-term:**
+   - Update function calls to match new signatures
+   - Replace deprecated functions
+   - Add explicit type annotations
+
+3. **Long-term:**
+   - Minimize batteries dependency
+   - Implement required utilities directly
+   - Document version requirements
 
 **Verification:**
-- Document public API for each module
-- Implement API compatibility tests
-- Create migration guide for API changes
-- Test all dependent modules after rewrites
+```bash
+# Find all batteries imports
+grep -r "import.*Batteries" Morph/
+
+# Test compilation
+lake build
+```
 
 ---
 
-### 5.2 Loss of Existing Proofs
+#### RISK-MIG-003: Breaking Changes in Aesop
 
-| STRIDE Category | Threat Description | Severity | Likelihood | Impact |
-|:---:|---|:---:|:---:|:---:|
-| **Tampering** | Module rewrites invalidate existing proofs, requiring re-verification | **High** | High | High |
+**Risk Level:** Medium  
+**Likelihood:** Medium  
+**Impact:** Moderate
 
-**Threat Details:**
-- Changing definitions invalidates dependent proofs
-- Risk of losing verified properties
-- Can require significant re-verification effort
-- May introduce new bugs during re-verification
+**Description:**
+Aesop proof automation may have breaking changes between v4.10.0 and v4.28.0-rc1, including:
+- Tactic syntax changes
+- Configuration option changes
+- Proof search behavior changes
 
-**Attack Scenario:**
-1. Developer changes type definition
-2. All theorems using type become invalid
-3. Proofs must be rewritten
-4. New proofs may have errors
+**Affected Components:**
+- All Lemmas.lean files using aesop
+- Proof scripts with aesop automation
+
+**Potential Impact:**
+- Proof failures in Lemmas.lean files
+- Tactic syntax errors
+- Changes in proof search behavior
 
 **Mitigation Strategies:**
-1. **Architecture:** Minimize changes to core types
-2. **Process:** Require proof migration plan
-3. **Tooling:** Track proof dependencies
-4. **Documentation:** Document proof migration strategies
+
+1. **Immediate:**
+   - Identify all aesop usage
+   - Review aesop documentation
+   - Test proof scripts
+
+2. **Short-term:**
+   - Update tactic syntax
+   - Adjust configurations
+   - Replace deprecated tactics
+
+3. **Long-term:**
+   - Document aesop patterns
+   - Implement compatibility tests
+   - Consider alternatives if needed
 
 **Verification:**
-- Track all proof dependencies
-- Create proof migration checklist
-- Test all proofs after type changes
-- Document proof re-verification effort
+```bash
+# Find all aesop usage
+grep -r "aesop\|aesop!" Morph/
+
+# Test proof compilation
+lake build Morph.Specs.*.Lemmas
+```
 
 ---
 
-### 5.3 Inconsistent Migration States
+### 3.2 Functionality Loss Risks
 
-| STRIDE Category | Threat Description | Severity | Likelihood | Impact |
-|:---:|---|:---:|:---:|:---:|
-| **Information Disclosure** | Partial migrations leave codebase in inconsistent state | **Medium** | Medium | Medium |
+#### RISK-MIG-004: Loss of ProofWidgets Functionality
 
-**Threat Details:**
-- Modules may be migrated at different times
-- Risk of inconsistent APIs across modules
-- Can cause confusion and errors
-- Particularly dangerous during long migrations
+**Risk Level:** High  
+**Likelihood:** High  
+**Impact:** Severe
 
-**Attack Scenario:**
-1. Module A is migrated to new API
-2. Module B still uses old API
-3. Integration between modules breaks
-4. Developers confused by inconsistency
+**Description:**
+If ProofWidgets cannot be updated to a compatible version, functionality may be lost:
+- Interactive proof widgets
+- Custom UI elements
+- Metaprogramming tools
+
+**Affected Components:**
+- [`Morph/Executable.lean`](../../Morph/Executable.lean)
+- Files using ProofWidgets features
+
+**Potential Impact:**
+- Loss of interactive proof features
+- Reduced developer productivity
+- Need for alternative solutions
 
 **Mitigation Strategies:**
-1. **Process:** Complete module migrations atomically
-2. **Architecture:** Use adapter pattern for compatibility
-3. **Documentation:** Document migration status
-4. **Testing:** Test cross-module integrations
+
+1. **Immediate:**
+   - Assess ProofWidgets usage
+   - Determine if features are critical
+   - Explore compatible versions
+
+2. **Short-term:**
+   - Find alternative libraries
+   - Implement required features directly
+   - Document workarounds
+
+3. **Long-term:**
+   - Minimize dependency on external UI libraries
+   - Implement core features in project
+   - Establish dependency evaluation criteria
 
 **Verification:**
-- Document migration status of all modules
-- Test cross-module integrations
-- Create migration completion checklist
-- Monitor migration progress
+```bash
+# Check ProofWidgets usage
+grep -r "import.*ProofWidgets\|ProofWidgets\." Morph/
+
+# Test compilation without ProofWidgets
+lake build Morph/Core
+```
 
 ---
 
-### 5.4 Documentation Drift During Migration
+#### RISK-MIG-005: Loss of Deprecated API Functionality
 
-| STRIDE Category | Threat Description | Severity | Likelihood | Impact |
-|:---:|---|:---:|:---:|:---:|
-| **Information Disclosure** | Documentation becomes outdated during module rewrites | **Medium** | High | Medium |
+**Risk Level:** Medium  
+**Likelihood:** Medium  
+**Impact:** Moderate
 
-**Threat Details:**
-- Code changes faster than documentation
-- Risk of misleading documentation
-- Can cause incorrect understanding
-- Particularly dangerous for API documentation
+**Description:**
+Deprecated APIs may be removed in future versions, causing:
+- Loss of functionality
+- Need for reimplementation
+- Increased development effort
 
-**Attack Scenario:**
-1. Module API changes
-2. Documentation not updated
-3. Developers use outdated API
-4. Code has bugs or security issues
+**Affected Components:**
+- Files using deprecated APIs
+- Functions relying on deprecated features
+
+**Potential Impact:**
+- Compilation failures when APIs are removed
+- Need for feature reimplementation
+- Increased maintenance burden
 
 **Mitigation Strategies:**
-1. **Process:** Require documentation updates with code changes
-2. **Tooling:** Implement documentation validation
-3. **Review:** Review documentation in PRs
-4. **Testing:** Test code examples in documentation
+
+1. **Immediate:**
+   - Identify all deprecated API usage
+   - Assess impact of removal
+   - Plan migration strategy
+
+2. **Short-term:**
+   - Replace deprecated APIs with current equivalents
+   - Implement missing functionality if needed
+   - Document migration paths
+
+3. **Long-term:**
+   - Monitor deprecation notices
+   - Implement automated deprecation detection
+   - Establish update procedures
 
 **Verification:**
-- Validate documentation examples in CI
-- Review documentation in all PRs
-- Document API changes
-- Monitor documentation freshness
+```bash
+# Find deprecated API usage
+lake build 2>&1 | grep -i "deprecated"
+
+# Review deprecation notices
+grep -r "deprecated" Morph/
+```
 
 ---
 
-## 6. Documentation Risks
+### 3.3 Proof Regression Risks
 
-### 6.1 Missing Docstrings
+#### RISK-MIG-006: Regression in Existing Proofs
 
-| STRIDE Category | Threat Description | Severity | Likelihood | Impact |
-|:---:|---|:---:|:---:|:---:|
-| **Information Disclosure** | Functions, theorems, and types lack documentation, making codebase difficult to understand | **Medium** | High | Medium |
+**Risk Level:** High  
+**Likelihood:** High  
+**Impact:** Severe
 
-**Threat Details:**
-- Coding standards require documentation ([coding_standards.md:299](../01_standards/coding_standards.md:299))
-- Risk of unclear code intent
-- Can lead to misinterpretation
-- Particularly dangerous for public APIs
+**Description:**
+Changes to Lean 4 and its libraries may cause existing proofs to fail:
+- Proof script breakage
+- Tactic incompatibility
+- Type class resolution changes
+- Implicit parameter synthesis changes
 
-**Attack Scenario:**
-1. Function has no documentation
-2. Developer misinterprets behavior
-3. Code has subtle bug
-4. Bug propagates to production
+**Affected Components:**
+- All Lemmas.lean files
+- All proof scripts
+- All theorem statements
+
+**Potential Impact:**
+- Extensive proof repair effort
+- Potential loss of verified properties
+- Increased development time
 
 **Mitigation Strategies:**
-1. **Process:** Require documentation for all public APIs
-2. **Tooling:** Implement documentation coverage metrics
-3. **Review:** Review documentation in PRs
-4. **Documentation:** Document documentation standards
+
+1. **Immediate:**
+   - Compile all Lemmas.lean files
+   - Catalog proof failures by category
+   - Prioritize critical proofs
+
+2. **Short-term:**
+   - Repair broken proofs systematically
+   - Update proof scripts to use current tactics
+   - Add explicit annotations where needed
+
+3. **Long-term:**
+   - Implement proof regression testing
+   - Maintain proof compatibility notes
+   - Document proof patterns
 
 **Verification:**
-- Measure documentation coverage
-- Require documentation in PR reviews
-- Implement documentation linter
-- Document all public APIs
+```bash
+# Compile all lemma files
+lake build Morph.Specs.*.Lemmas
+
+# Check for proof failures
+lake build 2>&1 | grep "tactic failure\|proof failed"
+```
 
 ---
 
-### 6.2 Outdated Examples
+#### RISK-MIG-007: Changes in Proof Automation Behavior
 
-| STRIDE Category | Threat Description | Severity | Likelihood | Impact |
-|:---:|---|:---:|:---:|:---:|
-| **Information Disclosure** | Example code does not work with current API | **Medium** | Medium | Medium |
+**Risk Level:** Medium  
+**Likelihood:** Medium  
+**Impact:** Moderate
 
-**Threat Details:**
-- Examples may become outdated
-- Risk of misleading developers
-- Can cause frustration and errors
-- Particularly dangerous for tutorial examples
+**Description:**
+Proof automation tools (aesop, simp, etc.) may have changed behavior:
+- Different proof search strategies
+- Modified simplification rules
+- Changed default behavior
 
-**Attack Scenario:**
-1. API changes
-2. Example code not updated
-3. Developer tries example
-4. Code fails with confusing error
+**Affected Components:**
+- All Lemmas.lean files using automation
+- Proof scripts with automation tactics
+
+**Potential Impact:**
+- Proof failures
+- Increased proof completion time
+- Need for manual proof adjustments
 
 **Mitigation Strategies:**
-1. **Testing:** Execute all examples in CI
-2. **Process:** Update examples with API changes
-3. **Review:** Review examples in PRs
-4. **Documentation:** Document example requirements
+
+1. **Immediate:**
+   - Test all automated proofs
+   - Identify behavior changes
+   - Adjust proof scripts
+
+2. **Short-term:**
+   - Update automation configurations
+   - Add explicit proof steps where needed
+   - Document automation behavior
+
+3. **Long-term:**
+   - Implement proof regression testing
+   - Document automation patterns
+   - Consider alternative automation tools
 
 **Verification:**
-- Execute all examples in CI
-- Test examples with current API
-- Update outdated examples
-- Document example status
+```bash
+# Test automated proofs
+lake build Morph.Specs.*.Lemmas
+
+# Check for automation issues
+lake build 2>&1 | grep "aesop\|simp\|auto"
+```
 
 ---
 
-### 6.3 Inconsistent Terminology
+#### RISK-MIG-008: Type Class Instance Conflicts
 
-| STRIDE Category | Threat Description | Severity | Likelihood | Impact |
-|:---:|---|:---:|:---:|:---:|
-| **Information Disclosure** | Different terms used for same concept across documentation | **Low** | Medium | Low |
+**Risk Level:** Medium  
+**Likelihood:** Medium  
+**Impact:** Moderate
 
-**Threat Details:**
-- Inconsistent terminology causes confusion
-- Risk of miscommunication
-- Can lead to errors
-- Particularly dangerous for formal specifications
+**Description:**
+Type class hierarchies may have changed, causing:
+- Instance conflicts
+- Ambiguous instance resolution
+- Missing instances
 
-**Attack Scenario:**
-1. Two terms used for same concept
-2. Developer uses wrong term
-3. Code has subtle bug
-4. Bug difficult to debug
+**Affected Components:**
+- All type definitions
+- All instance declarations
+- All proof scripts using type classes
+
+**Potential Impact:**
+- Type class resolution failures
+- Compilation errors
+- Proof script breakage
 
 **Mitigation Strategies:**
-1. **Documentation:** Create terminology glossary
-2. **Process:** Enforce consistent terminology
-3. **Review:** Review terminology in PRs
-4. **Tooling:** Implement terminology linter
+
+1. **Immediate:**
+   - Identify type class usage
+   - Test instance resolution
+   - Resolve conflicts
+
+2. **Short-term:**
+   - Update instance declarations
+   - Add explicit instance annotations
+   - Document instance requirements
+
+3. **Long-term:**
+   - Minimize type class complexity
+   - Document instance hierarchies
+   - Implement instance testing
 
 **Verification:**
-- Create terminology glossary
-- Review terminology consistency
-- Implement terminology checks
-- Document all terms
+```bash
+# Find type class instances
+grep -r "instance :" Morph/
+
+# Test compilation
+lake build
+```
 
 ---
 
-### 6.4 Missing Cross-References
+## 4. Operational Risks
 
-| STRIDE Category | Threat Description | Severity | Likelihood | Impact |
-|:---:|---|:---:|:---:|:---:|
-| **Information Disclosure** | Documentation lacks cross-references to related concepts | **Low** | High | Low |
+### 4.1 Build System Risks
 
-**Threat Details:**
-- Missing cross-references make navigation difficult
-- Risk of missing important information
-- Can lead to incomplete understanding
-- Particularly dangerous for complex specifications
+#### RISK-OPS-001: Lake Configuration Failures
 
-**Attack Scenario:**
-1. Documentation lacks cross-references
-2. Developer misses related theorem
-3. Code has subtle bug
-4. Bug difficult to find
+**Risk Level:** Critical  
+**Likelihood:** High  
+**Impact:** Catastrophic
+
+**Description:**
+Lake configuration failures prevent the build system from initializing, blocking all compilation. The ProofWidgets incompatibility is a current blocking issue.
+
+**Affected Components:**
+- [`lakefile.lean`](../../lakefile.lean)
+- [`lakefile.toml`](../../lakefile.toml)
+- [`lake-manifest.json`](../../lake-manifest.json)
+
+**Potential Impact:**
+- Complete build failure
+- Inability to compile any files
+- Blocked development workflow
 
 **Mitigation Strategies:**
-1. **Documentation:** Add cross-references to all related concepts
-2. **Process:** Require cross-references in documentation
-3. **Review:** Review cross-references in PRs
-4. **Tooling:** Implement cross-reference validation
+
+1. **Immediate (Critical Path):**
+   - Resolve ProofWidgets incompatibility
+   - Verify Lake configuration syntax
+   - Test Lake workspace configuration
+
+2. **Short-term:**
+   - Validate all dependency configurations
+   - Test Lake build targets
+   - Document Lake configuration
+
+3. **Long-term:**
+   - Implement Lake configuration testing in CI/CD
+   - Document Lake best practices
+   - Establish configuration review process
 
 **Verification:**
-- Add cross-references to all documentation
-- Validate cross-references in CI
-- Review cross-references in PRs
-- Document cross-reference patterns
+```bash
+# Test Lake configuration
+lake configure
+
+# Test Lake build
+lake build
+
+# Check Lake manifest
+cat lake-manifest.json
+```
 
 ---
 
-## 7. Risk Prioritization Summary
+#### RISK-OPS-002: Build Target Dependency Issues
 
-### Critical Severity (8 risks)
+**Risk Level:** Medium  
+**Likelihood:** Medium  
+**Impact:** Moderate
 
-| ID | Risk | Category | Mitigation Priority |
-|:---|:---|:---|:---|
-| 1.1 | Commented-out code with unverified proofs | Proof Integrity | **IMMEDIATE** |
-| 1.2 | `sorry` placeholders in proofs | Proof Integrity | **IMMEDIATE** |
-| 1.4 | Circular dependency in proofs | Proof Integrity | **IMMEDIATE** |
-| 2.1 | Circular module dependencies | Module Dependency | **HIGH** |
-| 3.1 | Lake build system failures | Build System | **HIGH** |
-| 4.1 | Incorrect specifications | Formal Verification | **HIGH** |
-| 4.2 | Unsound lemmas | Formal Verification | **HIGH** |
-| 5.1 | Breaking changes when rewriting modules | Migration | **HIGH** |
+**Description:**
+Build target dependencies may be incorrect or circular, causing:
+- Build order issues
+- Missing dependencies
+- Circular dependencies
 
-### High Severity (9 risks)
+**Affected Components:**
+- [`lakefile.lean`](../../lakefile.lean)
+- All build targets
 
-| ID | Risk | Category | Mitigation Priority |
-|:---|:---|:---|:---:|
-| 1.3 | Incomplete proofs with partial verification | Proof Integrity | **HIGH** |
-| 2.2 | Broken imports from stub files | Module Dependency | **HIGH** |
-| 2.4 | Transitive dependency vulnerabilities | Module Dependency | **MEDIUM** |
-| 3.2 | Dependency version conflicts | Build System | **MEDIUM** |
-| 3.3 | Incremental build corruption | Build System | **MEDIUM** |
-| 4.4 | Proof strategy vulnerabilities | Formal Verification | **MEDIUM** |
-| 5.2 | Loss of existing proofs | Migration | **HIGH** |
-| 6.1 | Missing docstrings | Documentation | **MEDIUM** |
-| 6.2 | Outdated examples | Documentation | **MEDIUM** |
+**Potential Impact:**
+- Build failures
+- Incorrect build order
+- Incremental build issues
 
-### Medium Severity (7 risks)
+**Mitigation Strategies:**
 
-| ID | Risk | Category | Mitigation Priority |
-|:---|:---|:---|:---:|
-| 2.3 | Orphaned module dependencies | Module Dependency | **MEDIUM** |
-| 3.4 | Parallel build race conditions | Build System | **LOW** |
-| 4.3 | Invalid examples | Formal Verification | **MEDIUM** |
-| 5.3 | Inconsistent migration states | Migration | **MEDIUM** |
-| 5.4 | Documentation drift during migration | Migration | **LOW** |
-| 6.3 | Inconsistent terminology | Documentation | **LOW** |
-| 6.4 | Missing cross-references | Documentation | **LOW** |
+1. **Immediate:**
+   - Review build target dependencies
+   - Test full build
+   - Test incremental builds
 
-### Low Severity (2 risks)
+2. **Short-term:**
+   - Fix dependency issues
+   - Document build dependencies
+   - Implement dependency validation
 
-| ID | Risk | Category | Mitigation Priority |
-|:---|:---|:---|:---:|
-| None identified in this analysis | | | |
+3. **Long-term:**
+   - Use automated dependency analysis
+   - Implement circular dependency detection
+   - Document build architecture
 
----
+**Verification:**
+```bash
+# Test full build
+lake build clean
+lake build
 
-## 8. Mitigation Roadmap
-
-### Phase 1: Immediate Actions (Week 1-2)
-
-1. **Remove all commented-out code** from specification files
-2. **Audit all `sorry` placeholders** and create tracking document
-3. **Implement CI check** for commented-out code and `sorry` detection
-4. **Document all stub files** and their consumers
-5. **Create dependency graph** of all modules and theorems
-
-### Phase 2: High Priority (Week 3-4)
-
-1. **Implement build system monitoring** and failure recovery
-2. **Create API compatibility checking** for module rewrites
-3. **Implement proof dependency tracking**
-4. **Create documentation coverage metrics**
-5. **Execute all examples in CI**
-
-### Phase 3: Medium Priority (Month 2)
-
-1. **Implement incremental build validation**
-2. **Create counterexample generation** for theorems
-3. **Implement automated proof review**
-4. **Create migration guide** for API changes
-5. **Implement terminology linter**
-
-### Phase 4: Long-term (Month 3+)
-
-1. **Create comprehensive testing strategy** for specifications
-2. **Implement formal verification pipeline**
-3. **Create security audit process** for dependencies
-4. **Implement continuous monitoring** of proof integrity
-5. **Create developer training** on formal verification best practices
+# Test incremental builds
+lake build Morph/Core
+lake build Morph/Specs/AbiAlignmentAlgebra
+```
 
 ---
 
-## 9. Monitoring and Detection
+#### RISK-OPS-003: Cache Invalidation Issues
 
-### Key Metrics
+**Risk Level:** Low  
+**Likelihood:** Medium  
+**Impact:** Minor
 
-1. **Proof Coverage:** Percentage of theorems with complete proofs
-2. **Documentation Coverage:** Percentage of public APIs with documentation
-3. **Build Success Rate:** Percentage of successful builds
-4. **`sorry` Count:** Number of `sorry` placeholders in codebase
-5. **Commented Code Count:** Number of commented-out code blocks
-6. **Stub File Count:** Number of stub files remaining
-7. **Dependency Cycle Count:** Number of circular dependencies
-8. **Example Execution Rate:** Percentage of examples that execute successfully
+**Description:**
+Build cache may become invalid after dependency updates, causing:
+- Stale compiled files
+- Incorrect incremental builds
+- Need for full rebuilds
 
-### Alert Thresholds
+**Affected Components:**
+- `.lake/` directory
+- Build cache
 
-- **Proof Coverage:** < 90% triggers alert
-- **Documentation Coverage:** < 80% triggers alert
-- **Build Success Rate:** < 95% triggers alert
-- **`sorry` Count:** > 0 triggers alert
-- **Commented Code Count:** > 0 triggers alert
-- **Stub File Count:** > 5 triggers alert
-- **Dependency Cycle Count:** > 0 triggers alert
-- **Example Execution Rate:** < 100% triggers alert
+**Potential Impact:**
+- Build inconsistencies
+- Need for manual cache clearing
+- Increased build times
 
----
+**Mitigation Strategies:**
 
-## 10. Conclusion
+1. **Immediate:**
+   - Clear build cache after dependency updates
+   - Test full rebuild
 
-This threat model identifies **26 distinct risks** across six categories in the Morph formal verification project. The most critical risks involve proof integrity failures, build system vulnerabilities, and specification correctness issues.
+2. **Short-term:**
+   - Document cache clearing procedures
+   - Implement cache validation
 
-The recommended mitigation strategy prioritizes:
-1. **Immediate removal** of commented-out code and `sorry` placeholders
-2. **Implementation of CI checks** to prevent future issues
-3. **Creation of monitoring** and detection systems
-4. **Documentation of all APIs** and proof dependencies
-5. **Establishment of formal verification processes**
+3. **Long-term:**
+   - Use automated cache management
+   - Implement cache integrity checks
+   - Document cache behavior
 
-By addressing these risks systematically, the Morph project can ensure the integrity and correctness of its formal specifications while maintaining a secure and maintainable codebase.
+**Verification:**
+```bash
+# Clear build cache
+lake clean
 
----
-
-## Appendix A: Related Documents
-
-- [Security Threats (STRIDE)](../../docs/considerations/security_threats_stride.md)
-- [Coding Standards](../01_standards/coding_standards.md)
-- [Current State Manifest](../00_current_state/manifest.md)
-- [Incident Report](../debug/incident_report.md)
-- [Root Cause Verdict](../debug/verdict.md)
-
-## Appendix B: STRIDE Framework Reference
-
-- **Spoofing:** Identity and authenticity threats
-- **Tampering:** Data integrity threats
-- **Repudiation:** Non-deniability threats
-- **Information Disclosure:** Privacy threats
-- **Denial of Service:** Availability threats
-- **Elevation of Privilege:** Authorization threats
+# Test full rebuild
+lake build
+```
 
 ---
 
-**Document Status:** Complete
-**Next Review:** 2026-02-28
-**Owner:** Security Engineering Team
-**Approved By:** TBD
+### 4.2 Test System Risks
+
+#### RISK-OPS-004: Test Compilation Failures
+
+**Risk Level:** High  
+**Likelihood:** High  
+**Impact:** Severe
+
+**Description:**
+Test files may fail to compile due to:
+- Dependency issues
+- API changes
+- Type mismatches
+
+**Affected Components:**
+- [`Morph/Tests/AST.lean`](../../Morph/Tests/AST.lean)
+- [`Morph/Tests/Core.lean`](../../Morph/Tests/Core.lean)
+- [`Morph/Tests/Executable.lean`](../../Morph/Tests/Executable.lean)
+- [`Morph/Tests/Memory.lean`](../../Morph/Tests/Memory.lean)
+- [`Morph/Tests/Semantics.lean`](../../Morph/Tests/Semantics.lean)
+- [`Morph/Tests/Typing.lean`](../../Morph/Tests/Typing.lean)
+
+**Potential Impact:**
+- Unable to run tests
+- Loss of test coverage
+- Increased regression risk
+
+**Mitigation Strategies:**
+
+1. **Immediate:**
+   - Compile all test files
+   - Identify compilation issues
+   - Fix critical test failures
+
+2. **Short-term:**
+   - Update test dependencies
+   - Fix API incompatibilities
+   - Restore test coverage
+
+3. **Long-term:**
+   - Implement automated test compilation
+   - Maintain test compatibility
+   - Document test requirements
+
+**Verification:**
+```bash
+# Compile all tests
+lake build Morph.Tests.*
+
+# Run tests
+lake test
+```
+
+---
+
+#### RISK-OPS-005: Test Execution Failures
+
+**Risk Level:** Medium  
+**Likelihood:** Medium  
+**Impact:** Moderate
+
+**Description:**
+Tests may compile but fail to execute due to:
+- Runtime errors
+- Assertion failures
+- Example execution failures
+
+**Affected Components:**
+- All test files
+- All Examples.lean files
+
+**Potential Impact:**
+- Loss of test coverage
+- Undetected regressions
+- Increased debugging time
+
+**Mitigation Strategies:**
+
+1. **Immediate:**
+   - Run all tests
+   - Identify execution failures
+   - Fix critical test failures
+
+2. **Short-term:**
+   - Update test assertions
+   - Fix example execution issues
+   - Restore test coverage
+
+3. **Long-term:**
+   - Implement automated test execution
+   - Maintain test reliability
+   - Document test patterns
+
+**Verification:**
+```bash
+# Run all tests
+lake test
+
+# Run specific test
+lake test Morph.Tests.Core
+```
+
+---
+
+#### RISK-OPS-006: Example Execution Failures
+
+**Risk Level:** Medium  
+**Likelihood:** Medium  
+**Impact:** Moderate
+
+**Description:**
+Examples.lean files may fail to execute due to:
+- Compilation errors
+- Runtime errors
+- Evaluation failures
+
+**Affected Components:**
+- All Examples.lean files
+
+**Potential Impact:**
+- Loss of example coverage
+- Reduced documentation quality
+- Increased onboarding difficulty
+
+**Mitigation Strategies:**
+
+1. **Immediate:**
+   - Execute all examples
+   - Identify execution failures
+   - Fix critical example failures
+
+2. **Short-term:**
+   - Update example code
+   - Fix evaluation issues
+   - Restore example coverage
+
+3. **Long-term:**
+   - Implement automated example execution
+   - Maintain example reliability
+   - Document example patterns
+
+**Verification:**
+```bash
+# Execute all examples
+lake build Morph.Specs.*.Examples
+
+# Execute specific examples
+lake build Morph.Specs.Abis.AbisAlignmentAlgebra.Examples
+```
+
+---
+
+### 4.3 Deployment Risks
+
+#### RISK-OPS-007: CI/CD Pipeline Failures
+
+**Risk Level:** High  
+**Likelihood:** High  
+**Impact:** Severe
+
+**Description:**
+CI/CD pipelines may fail due to:
+- Build failures
+- Test failures
+- Dependency issues
+
+**Affected Components:**
+- [`.gitlab-ci.yml`](../../.gitlab-ci.yml)
+- [`Jenkinsfile`](../../Jenkinsfile)
+- CI/CD configuration
+
+**Potential Impact:**
+- Blocked deployments
+- Increased manual intervention
+- Delayed releases
+
+**Mitigation Strategies:**
+
+1. **Immediate:**
+   - Test CI/CD pipelines locally
+   - Identify pipeline issues
+   - Fix critical pipeline failures
+
+2. **Short-term:**
+   - Update CI/CD configurations
+   - Fix dependency issues
+   - Restore pipeline functionality
+
+3. **Long-term:**
+   - Implement pipeline testing
+   - Maintain pipeline reliability
+   - Document pipeline procedures
+
+**Verification:**
+```bash
+# Test CI/CD pipeline locally
+gitlab-ci-local --all
+
+# Check Jenkinsfile syntax
+jenkins-cli validate-jenkins Jenkinsfile
+```
+
+---
+
+#### RISK-OPS-008: Documentation Generation Failures
+
+**Risk Level:** Low  
+**Likelihood:** Low  
+**Impact:** Minor
+
+**Description:**
+Documentation generation may fail due to:
+- Missing docstrings
+- Incorrect docstring syntax
+- Tool incompatibilities
+
+**Affected Components:**
+- All .lean files
+- Documentation tools
+
+**Potential Impact:**
+- Incomplete documentation
+- Reduced documentation quality
+- Increased maintenance burden
+
+**Mitigation Strategies:**
+
+1. **Immediate:**
+   - Test documentation generation
+   - Identify generation issues
+   - Fix critical documentation failures
+
+2. **Short-term:**
+   - Add missing docstrings
+   - Fix docstring syntax
+   - Restore documentation coverage
+
+3. **Long-term:**
+   - Implement automated documentation generation
+   - Maintain documentation quality
+   - Document documentation procedures
+
+**Verification:**
+```bash
+# Generate documentation
+lake doc
+
+# Check documentation output
+ls -la .lake/build/doc/
+```
+
+---
+
+## 5. Risk Summary
+
+### 5.1 Risk Distribution
+
+| Category | Critical | High | Medium | Low | Total |
+|----------|----------|------|--------|-----|-------|
+| Compilation Risks | 2 | 3 | 3 | 0 | 8 |
+| Code Quality Risks | 0 | 2 | 5 | 3 | 10 |
+| Migration Risks | 0 | 3 | 5 | 0 | 8 |
+| Operational Risks | 1 | 2 | 3 | 2 | 8 |
+| **Total** | **3** | **10** | **16** | **5** | **34** |
+
+### 5.2 Top 10 Critical/High Risks
+
+| Rank | Risk ID | Risk Level | Category | Description |
+|------|---------|------------|----------|-------------|
+| 1 | RISK-COMP-001 | Critical | Compilation | Lean Toolchain/Dependency Version Gap |
+| 2 | RISK-COMP-002 | Critical | Compilation | ProofWidgets Configuration Incompatibility |
+| 3 | RISK-OPS-001 | Critical | Operational | Lake Configuration Failures |
+| 4 | RISK-COMP-003 | High | Compilation | Breaking Changes in Lean 4 Core Library |
+| 5 | RISK-COMP-004 | High | Compilation | API Incompatibilities in mathlib4 |
+| 6 | RISK-QUAL-001 | High | Code Quality | Incorrect Syntax Usage Due to Version Changes |
+| 7 | RISK-QUAL-006 | High | Code Quality | Type Mismatches Due to API Changes |
+| 8 | RISK-MIG-001 | High | Migration | Breaking Changes in mathlib4 |
+| 9 | RISK-MIG-004 | High | Migration | Loss of ProofWidgets Functionality |
+| 10 | RISK-MIG-006 | High | Migration | Regression in Existing Proofs |
+
+### 5.3 Risk Heatmap
+
+```
+Impact
+High    |  RISK-COMP-001  RISK-COMP-003  RISK-QUAL-001  RISK-MIG-001  RISK-OPS-001
+        |  RISK-COMP-002  RISK-COMP-004  RISK-QUAL-006  RISK-MIG-004  RISK-OPS-004
+        |                 RISK-MIG-006    RISK-OPS-007
+        |
+Medium  |  RISK-COMP-005  RISK-QUAL-002  RISK-MIG-002  RISK-MIG-005  RISK-OPS-002
+        |  RISK-COMP-006  RISK-QUAL-003  RISK-MIG-003  RISK-MIG-007  RISK-OPS-005
+        |  RISK-COMP-007  RISK-QUAL-007  RISK-MIG-008                 RISK-OPS-006
+        |  RISK-QUAL-004  RISK-QUAL-005                              RISK-OPS-008
+        |
+Low     |  RISK-COMP-008
+        |
+        +---------------------------------------------------------------+
+                          Low              Medium              High
+                                            Likelihood
+```
+
+---
+
+## 6. Mitigation Priorities
+
+### 6.1 Phase 1: Critical Path (Immediate Action)
+
+**Objective:** Resolve blocking issues that prevent any compilation
+
+| Priority | Risk ID | Action | Owner | Timeline |
+|----------|---------|--------|-------|----------|
+| 1 | RISK-COMP-001 | Determine correct Lean toolchain version and align dependencies | Tech Lead | 1 day |
+| 2 | RISK-COMP-002 | Resolve ProofWidgets incompatibility or remove dependency | Tech Lead | 1-2 days |
+| 3 | RISK-OPS-001 | Fix Lake configuration issues | Build Engineer | 1 day |
+| 4 | RISK-COMP-007 | Fix unterminated comment in ArcAffineIntegration/Examples.lean | Developer | 1 hour |
+
+### 6.2 Phase 2: High Priority (Short-term)
+
+**Objective:** Resolve high-impact risks to enable full compilation
+
+| Priority | Risk ID | Action | Owner | Timeline |
+|----------|---------|--------|-------|----------|
+| 1 | RISK-COMP-003 | Update code for Lean 4.28.0-rc1 core library changes | Developers | 1 week |
+| 2 | RISK-COMP-004 | Update mathlib4 imports and references | Developers | 1 week |
+| 3 | RISK-QUAL-001 | Fix syntax issues across codebase | Developers | 3-5 days |
+| 4 | RISK-QUAL-006 | Resolve type mismatches | Developers | 3-5 days |
+| 5 | RISK-MIG-001 | Migrate to updated mathlib4 version | Tech Lead | 1 week |
+| 6 | RISK-MIG-004 | Address ProofWidgets functionality loss | Tech Lead | 3-5 days |
+| 7 | RISK-MIG-006 | Repair broken proofs | Formal Verification Engineer | 2 weeks |
+| 8 | RISK-OPS-004 | Fix test compilation issues | QA Engineer | 3-5 days |
+| 9 | RISK-OPS-007 | Fix CI/CD pipeline issues | DevOps Engineer | 2-3 days |
+
+### 6.3 Phase 3: Medium Priority (Medium-term)
+
+**Objective:** Address medium-impact risks to improve code quality
+
+| Priority | Risk ID | Action | Owner | Timeline |
+|----------|---------|--------|-------|----------|
+| 1 | RISK-COMP-005 | Update batteries usage | Developers | 2-3 days |
+| 2 | RISK-COMP-006 | Update aesop usage | Developers | 2-3 days |
+| 3 | RISK-QUAL-002 | Replace deprecated APIs | Developers | 3-5 days |
+| 4 | RISK-QUAL-003 | Add missing documentation | Developers | 1 week |
+| 5 | RISK-QUAL-004 | Fix naming conventions | Developers | 2-3 days |
+| 6 | RISK-QUAL-005 | Fix formatting issues | Developers | 1-2 days |
+| 7 | RISK-QUAL-007 | Fix implicit parameter synthesis | Developers | 2-3 days |
+| 8 | RISK-MIG-002 | Update batteries dependencies | Tech Lead | 2-3 days |
+| 9 | RISK-MIG-003 | Update aesop dependencies | Tech Lead | 2-3 days |
+| 10 | RISK-MIG-005 | Replace deprecated API functionality | Developers | 3-5 days |
+| 11 | RISK-MIG-007 | Adjust proof automation | Formal Verification Engineer | 1 week |
+| 12 | RISK-MIG-008 | Resolve type class conflicts | Developers | 2-3 days |
+| 13 | RISK-OPS-002 | Fix build target dependencies | Build Engineer | 2-3 days |
+| 14 | RISK-OPS-005 | Fix test execution failures | QA Engineer | 2-3 days |
+| 15 | RISK-OPS-006 | Fix example execution failures | Developers | 2-3 days |
+
+### 6.4 Phase 4: Low Priority (Long-term)
+
+**Objective:** Address low-impact risks to improve maintainability
+
+| Priority | Risk ID | Action | Owner | Timeline |
+|----------|---------|--------|-------|----------|
+| 1 | RISK-COMP-008 | Review and update comment syntax | Developers | 1-2 days |
+| 2 | RISK-OPS-003 | Implement cache management | Build Engineer | 2-3 days |
+| 3 | RISK-OPS-008 | Implement documentation generation | Documentation Engineer | 3-5 days |
+
+---
+
+## 7. Monitoring and Validation
+
+### 7.1 Risk Monitoring Dashboard
+
+| Metric | Current | Target | Status |
+|--------|---------|--------|--------|
+| Critical Risks | 3 | 0 | ⚠️ Action Required |
+| High Risks | 10 | 0 | ⚠️ Action Required |
+| Medium Risks | 16 | 0 | ⚠️ Monitor |
+| Low Risks | 5 | 0 | ✅ Acceptable |
+| Total Risks | 34 | 0 | ⚠️ Action Required |
+
+### 7.2 Validation Checklist
+
+- [ ] Lean toolchain version aligned with dependencies
+- [ ] ProofWidgets incompatibility resolved
+- [ ] Lake configuration successful
+- [ ] All files compile without errors
+- [ ] All tests pass
+- [ ] All examples execute successfully
+- [ ] No deprecation warnings
+- [ ] All documentation generated
+- [ ] CI/CD pipeline passes
+- [ ] Code quality standards met
+
+### 7.3 Success Criteria
+
+| Criterion | Definition | Measurement |
+|-----------|------------|-------------|
+| Compilation Success | All .lean files compile without errors | `lake build` exit code 0 |
+| Test Success | All tests pass | `lake test` exit code 0 |
+| Example Success | All examples execute | `lake build Morph.Specs.*.Examples` exit code 0 |
+| Zero Critical Risks | No critical risks remain | Risk count = 0 |
+| Zero High Risks | No high risks remain | Risk count = 0 |
+| Documentation Complete | All files have required documentation | Linter passes |
+
+---
+
+## 8. Conclusion
+
+This risk analysis identifies 34 distinct risks across four categories, with 3 Critical, 10 High, 16 Medium, and 5 Low severity risks. The primary risks stem from:
+
+1. **Version Mismatch:** The 18 minor version gap between Lean 4.10.0 dependencies and Lean 4.28.0-rc1 toolchain
+2. **ProofWidgets Incompatibility:** Blocking configuration errors preventing Lake workspace setup
+3. **Breaking Changes:** Significant API changes in Lean 4 core library and dependencies
+
+The recommended approach is to:
+
+1. **Phase 1 (Critical Path):** Resolve blocking issues immediately (1-2 days)
+2. **Phase 2 (High Priority):** Address high-impact risks (1-2 weeks)
+3. **Phase 3 (Medium Priority):** Improve code quality (2-3 weeks)
+4. **Phase 4 (Low Priority):** Enhance maintainability (ongoing)
+
+By following this phased approach and implementing the mitigation strategies outlined in this document, the Morph project can successfully migrate to Lean 4.28.0-rc1 compatibility while minimizing risk and ensuring code quality.
+
+---
+
+## Appendix A: Risk Register
+
+| Risk ID | Risk Level | Category | Title | Status | Owner |
+|---------|------------|----------|-------|--------|-------|
+| RISK-COMP-001 | Critical | Compilation | Lean Toolchain/Dependency Version Gap | Open | Tech Lead |
+| RISK-COMP-002 | Critical | Compilation | ProofWidgets Configuration Incompatibility | Open | Tech Lead |
+| RISK-COMP-003 | High | Compilation | Breaking Changes in Lean 4 Core Library | Open | Developers |
+| RISK-COMP-004 | High | Compilation | API Incompatibilities in mathlib4 | Open | Developers |
+| RISK-COMP-005 | Medium | Compilation | Type Signature Changes in Batteries | Open | Developers |
+| RISK-COMP-006 | Medium | Compilation | Aesop Automation Compatibility Issues | Open | Developers |
+| RISK-COMP-007 | Medium | Compilation | Unterminated Comment in Examples File | Open | Developer |
+| RISK-COMP-008 | Low | Compilation | Deprecated Comment Syntax | Open | Developers |
+| RISK-QUAL-001 | High | Code Quality | Incorrect Syntax Usage Due to Version Changes | Open | Developers |
+| RISK-QUAL-002 | Medium | Code Quality | Deprecated API Usage | Open | Developers |
+| RISK-QUAL-003 | Medium | Code Quality | Missing Documentation | Open | Developers |
+| RISK-QUAL-004 | Low | Code Quality | Inconsistent Naming Conventions | Open | Developers |
+| RISK-QUAL-005 | Low | Code Quality | Inconsistent Formatting | Open | Developers |
+| RISK-QUAL-006 | High | Code Quality | Type Mismatches Due to API Changes | Open | Developers |
+| RISK-QUAL-007 | Medium | Code Quality | Implicit Parameter Synthesis Failures | Open | Developers |
+| RISK-MIG-001 | High | Migration | Breaking Changes in mathlib4 | Open | Tech Lead |
+| RISK-MIG-002 | Medium | Migration | Breaking Changes in Batteries | Open | Tech Lead |
+| RISK-MIG-003 | Medium | Migration | Breaking Changes in Aesop | Open | Tech Lead |
+| RISK-MIG-004 | High | Migration | Loss of ProofWidgets Functionality | Open | Tech Lead |
+| RISK-MIG-005 | Medium | Migration | Loss of Deprecated API Functionality | Open | Developers |
+| RISK-MIG-006 | High | Migration | Regression in Existing Proofs | Open | Formal Verification Engineer |
+| RISK-MIG-007 | Medium | Migration | Changes in Proof Automation Behavior | Open | Formal Verification Engineer |
+| RISK-MIG-008 | Medium | Migration | Type Class Instance Conflicts | Open | Developers |
+| RISK-OPS-001 | Critical | Operational | Lake Configuration Failures | Open | Build Engineer |
+| RISK-OPS-002 | Medium | Operational | Build Target Dependency Issues | Open | Build Engineer |
+| RISK-OPS-003 | Low | Operational | Cache Invalidation Issues | Open | Build Engineer |
+| RISK-OPS-004 | High | Operational | Test Compilation Failures | Open | QA Engineer |
+| RISK-OPS-005 | Medium | Operational | Test Execution Failures | Open | QA Engineer |
+| RISK-OPS-006 | Medium | Operational | Example Execution Failures | Open | Developers |
+| RISK-OPS-007 | High | Operational | CI/CD Pipeline Failures | Open | DevOps Engineer |
+| RISK-OPS-008 | Low | Operational | Documentation Generation Failures | Open | Documentation Engineer |
+
+---
+
+## Appendix B: References
+
+1. [Current State Manifest](../00_current_state/manifest.md)
+2. [Future State Manifest](../04_future_state/manifest.md)
+3. [Coding Standards](../01_standards/coding_standards.md)
+4. [Lean 4 Documentation](../../.stack_docs/lean4-manual/)
+5. [Lake Build System Documentation](https://github.com/leanprover/lean4/blob/master/doc/lake.md)
+6. [Mathlib4 Documentation](https://leanprover-community.github.io/mathlib4_docs/)
+7. [Aesop Documentation](https://github.com/JLimperg/aesop)
+8. [Batteries Documentation](https://github.com/leanprover-community/batteries)
+
+---
+
+**Document Version:** 1.0.0  
+**Last Updated:** 2026-01-31T21:09:00Z  
+**Next Review:** 2026-02-07T21:09:00Z

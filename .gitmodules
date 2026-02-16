@@ -1,0 +1,3 @@
+[submodule ".stack_docs/lean4-manual"]
+	path = .stack_docs/lean4-manual
+	url = https://github.com/leanprover/reference-manual.git
