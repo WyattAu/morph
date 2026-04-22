@@ -2,6 +2,7 @@
 SPDX-License-Identifier: Apache-2.0
 -/
 import Morph.Core
+open Morph.Core
 
 namespace Morph.Syntax
 
@@ -22,8 +23,8 @@ any transformations or optimizations.
 - `Morph/Core.lean` - Core type definitions
 - `Morph/HIR.lean` - High-level IR
 - `Morph/MIR.lean` - Mid-level IR
--/
 
+-/
 /-!
 ## Id
 
@@ -55,7 +56,7 @@ Expressions represent computable values:
 - `lit v`: Literal value
 - `unop op e`: Unary operation
 - `binop op e1 e2`: Binary operation
-- `app fn args`: Function application
+- `app fn args`: Function application (fn is an expression, typically a variable or lambda)
 - `lam params body`: Lambda abstraction with multiple parameters
 - `let id init body`: Let binding (bind id to init in body)
 - `ifThenElse cond then else`: Conditional expression
@@ -69,7 +70,7 @@ inductive Expr : Type where
   | lit : Morph.Core.Value -> Expr
   | unop : Operator -> Expr -> Expr
   | binop : Operator -> Expr -> Expr -> Expr
-  | app : Id -> List Expr -> Expr
+  | app : Expr -> List Expr -> Expr
   | lam : List Id -> Expr -> Expr
   | let : Id -> Expr -> Expr -> Expr
   | ifThenElse : Expr -> Expr -> Expr -> Expr

@@ -1,5 +1,6 @@
 /- Copyright 2024-2025 The Morph Project Authors
 SPDX-License-Identifier: Apache-2.0
+-/
 
 import Morph.Core
 import Morph.Syntax
@@ -14,6 +15,7 @@ This module contains concrete examples and test cases for
 UDF (Unidirectional Data Flow) pattern.
 
 
+-/
 /-!
 ## Example 1: Source and Sink
 
@@ -21,12 +23,13 @@ Demonstrates source and sink dualism.
 
 
 -- Source expression 
+-/
 def example_source : Morph.Syntax.Expr :=
   Morph.Syntax.Expr.lit (Morph.Core.Value.int 42)
 
 -- Sink expression 
 def example_sink : Morph.Syntax.Expr :=
-  Morph.Syntax.Expr.app { name := "println" }
+  Morph.Syntax.Expr.app (Morph.Syntax.Expr.var { name := "println" })
     [example_source]
 
 /-!
@@ -36,6 +39,7 @@ Demonstrates polarity types for sources and sinks.
 
 
 -- Source type (polarity <) 
+-/
 def example_source_type : Morph.Core.Typ :=
   Morph.Core.Typ.intType
 
@@ -50,9 +54,9 @@ Demonstrates backpressure in data flow.
 
 
 -- Backpressure predicate (abstract) 
+-/
 def backpressure : Prop :=
   -- Abstract backpressure
   True
 
 end Morph.Specs.UnidirectionalDataFlow
--/

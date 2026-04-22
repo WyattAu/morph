@@ -52,8 +52,8 @@ lean_exe morph_test_ast {
   root := `Morph.Tests.AST
 }
 
--- Dependencies - using v4.10.0-compatible versions
-require mathlib from git "https://github.com/leanprover-community/mathlib4" @ "a719ba5c3115d47b68bf0497a9dd1bcbb21ea663"
-require batteries from git "https://github.com/leanprover-community/batteries" @ "0f3e143dffdc3a591662f3401ce1d7a3405227c0"
-require aesop from git "https://github.com/JLimperg/aesop" @ "209712c78b16c795453b6da7f7adbda4589a8f21"
-require importGraph from git "https://github.com/leanprover-community/import-graph" @ "543725b3bfed792097fc134adca628406f6145f5"
+-- Dependencies - using v4.27.0-compatible versions
+require mathlib from git "https://github.com/leanprover-community/mathlib4" @ "a3a10db0e9d66acbebf76c5e6a135066525ac900"
+require batteries from git "https://github.com/leanprover-community/batteries" @ "b25b36a7caf8e237e7d1e6121543078a06777c8a"
+require aesop from git "https://github.com/JLimperg/aesop" @ "cb837cc26236ada03c81837bebe0acd9c70ced7d"
+require importGraph from git "https://github.com/leanprover-community/import-graph" @ "8f497d55985a189cea8020d9dc51260af1e41ad2"
