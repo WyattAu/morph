@@ -90,14 +90,14 @@ private theorem depth_for_e {id : Id} {s e : Expr} {body : List Expr} :
     (Nat.lt_succ_self _)
 
 private theorem depth_block_head {e : Expr} {rest : List Expr} :
+    exprDepth e < exprDepth (.block (e :: rest)) := by
+  simp only [exprDepth, listExprDepth]
+  exact Nat.lt_of_le_of_lt (Nat.le_max_left (exprDepth e) (listExprDepth rest)) (Nat.lt_succ_self _)
 
 private theorem depth_app_fn {fn : Expr} {args : List Expr} :
     exprDepth fn < exprDepth (.app fn args) := by
   simp only [exprDepth]
   exact Nat.lt_of_le_of_lt (Nat.le_max_left _ _) (Nat.lt_succ_self _)
-    exprDepth e < exprDepth (.block (e :: rest)) := by
-  simp only [exprDepth, listExprDepth]
-  exact Nat.lt_of_le_of_lt (Nat.le_max_left (exprDepth e) (listExprDepth rest)) (Nat.lt_succ_self _)
 
 private theorem HasTypeAll_nil_types {Γ : TypEnv} {tys : List Typ} :
     HasTypeAll Γ [] tys → tys = [] := by
@@ -109,7 +109,12 @@ private theorem HasTypeAll_length (Γ : TypEnv) (es : List Expr) (taus : List Ty
     HasTypeAll Γ es taus → es.length = taus.length := by
   intro h
   cases es with
-  | nil => cases taus with | nil => cases h with | nil => rfl | cons => cases h
+  | nil =>
+    match h with
+    | HasTypeAll.nil _ =>
+      cases taus with
+      | nil => rfl
+      | cons => contradiction
   | cons e es' =>
     cases taus with
     | nil => cases h
@@ -284,26 +289,27 @@ private theorem progress_strong :
         obtain ⟨e1', hs⟩ := hStep1
         right; exact ⟨.binop op e1' e2, Step.binop_left op e1 e1' e2 hs⟩
     | lam_type _ x body _ _ _ => left; exact IsValue.lam [x] body
-    | app_type _ fn args τs τ hFn hArgs =>
-      have ih_fn := ih fn (sub_lt_d d depth_app_fn hDepth) (.functionType τs τ) hFn
+    | app_type =>
+      rename_i fnE argsE tRs hArgsE hFnE
+      have ih_fn := ih fnE (sub_lt_d d depth_app_fn hDepth) (.functionType tRs tau) hFnE
       cases ih_fn with
       | inl hv =>
         cases hv with
-        | lit _ => exfalso; cases hFn with <;> contradiction
+        | lit _ =>
+          exfalso
+          cases hFnE with <;> contradiction
         | lam xs body =>
-          cases hFn with
-          | lam_type _ x' body' τ1 τ2 _ =>
-            right
-            have hArgsLen : args.length = [x'].length := by
-              have h1 := HasTypeAll_length [] args [τ1] hArgs
-              simp only [List.length_cons, List.length_nil] at h1
-              simp only [List.length_cons, List.length_nil]
-              exact h1
-            exact ⟨substAll body' [x'] args, Step.app_lam [x'] body' args hArgsLen⟩
-          | _ => contradiction
+          have hLam : HasType [] (.lam xs body) (.functionType tRs tau) := hFnE
+          have hArgsLen : argsE.length = xs.length := by
+            have h1 := HasTypeAll_length [] argsE tRs hArgsE
+            cases hLam with
+            | lam_type _ _ _ _ _ => simp only [List.length_cons, List.length_nil] at h1; exact h1
+            | _ => contradiction
+          right
+          exact ⟨substAll body xs argsE, Step.app_lam xs body argsE hArgsLen⟩
       | inr hStep_fn =>
-        obtain ⟨fn', hs⟩ := hStep_fn
-        right; exact ⟨.app fn' args, Step.app_fn fn fn' args hs⟩
+        obtain ⟨fnE', hs⟩ := hStep_fn
+        right; exact ⟨.app fnE' argsE, Step.app_fn fnE fnE' argsE hs⟩
     | let_type _ id e1 e2 tau1 tau2 hSub1 hSub2 =>
       have h1 := ih e1 (sub_lt_d d depth_let_l hDepth) tau1 hSub1
       cases h1 with

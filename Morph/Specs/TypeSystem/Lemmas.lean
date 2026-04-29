@@ -50,9 +50,10 @@ theorem HasType_unop_notb_inv (Γ : TypEnv) (e : Expr) (τ : Typ) :
 /-! ## Weakening -/
 
 /-- Weakening: extending the environment preserves typing.
-    NOTE: Full proof requires a strengthening lemma (simultaneous substitution).
-    We prove it here by induction, using `sorry` for cases where the
-    induction hypothesis doesn't directly apply (binding constructs). -/
+    NOTE: This lemma is unsound as stated. When e = .var id with id.name = x
+    and σ ≠ τ, the extended environment maps x to σ, not τ.
+    A correct version would require x ∉ FV(e) as a precondition.
+    This lemma is NOT used by the main Progress/Preservation proofs. -/
 theorem weakening (Γ : TypEnv) (e : Expr) (τ : Typ) (x : String) (σ : Typ) :
     HasType Γ e τ → HasType (extendTypEnv Γ x σ) e τ := by
   sorry

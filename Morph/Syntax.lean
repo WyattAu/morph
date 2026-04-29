@@ -107,7 +107,6 @@ inductive Stmt : Type where
   | doWhile : Expr -> List Stmt -> Stmt
   | nop : Stmt
  deriving Repr
-
 /-!
 ## Program
 

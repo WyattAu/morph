@@ -105,6 +105,30 @@ private theorem extendTypEnv_shadow_eq {Γ : TypEnv} {name : String} {typ : Typ}
   | inl hEq => rw [hEq, lookupTyp_extend_eq, lookupTyp_extend_eq]
   | inr hNe => rw [lookupTyp_extend_ne hNe, lookupTyp_extend_ne hNe]; exact (lookupTyp_extend_ne hNe).symm
 
+private theorem extendTypEnv_swap {Γ : TypEnv} {x y : String} {τx τy : Typ} (hne : x ≠ y) (z : String) :
+    lookupTyp (extendTypEnv (extendTypEnv Γ x τx) y τy) z =
+          lookupTyp (extendTypEnv (extendTypEnv Γ y τy) x τx) z := by
+  unfold extendTypEnv lookupTyp
+  simp only [List.find?_cons]
+  cases Decidable.em (z = x) with
+  | inl hz =>
+    cases Decidable.em (z = y) with
+    | inl hz2 => exfalso; exact hne (hz ▸ hz2)
+    | inr hz2 =>
+      have h1 : ¬(y == x) := fun h => hne (eq_of_beq h).symm
+      have h2 : ¬(y == z) := fun h => hz2 (eq_of_beq h).symm
+      simp only [h1, h2, beq_self_eq_true, List.find?_cons]
+  | inr hz =>
+    cases Decidable.em (z = y) with
+    | inl hz' =>
+      have h1 : ¬(x == y) := fun h => hne (eq_of_beq h)
+      have h2 : ¬(x == z) := fun h => hz (eq_of_beq h).symm
+      simp only [h1, h2, beq_self_eq_true, List.find?_cons]
+    | inr hz' =>
+      have h1 : ¬(y == z) := fun h => hz' (eq_of_beq h).symm
+      have h2 : ¬(x == z) := fun h => hz (eq_of_beq h).symm
+      simp only [h1, h2, List.find?_cons]
+
 mutual
 private theorem HasType_lookup_eq {Γ Γ' : TypEnv} {e : Expr} {τ : Typ}
     (h : HasType Γ e τ) (hEq : ∀ x, lookupTyp Γ x = lookupTyp Γ' x) : HasType Γ' e τ := by
@@ -151,20 +175,21 @@ private theorem extendTypEnv_shadow_eq_inner {Γ : TypEnv} {name : String} {typ 
   | inr hNe => rw [lookupTyp_extend_ne hNe, lookupTyp_extend_ne hNe]; exact (lookupTyp_extend_ne hNe).symm
 end
 
-/-- When the inner binding shadows the outer one (same name), the outer binding is irrelevant for lookups. -/
 private theorem lookupTyp_drop_shadowed {Γ : TypEnv} {x : String} {τ₁ : Typ} (y : Id) (τ' : Typ)
     (hEq : y.name = x) :
-    ∀ z, lookupTyp (extendTypEnv (extendTypEnv Γ x τ₁) y τ') z = lookupTyp (extendTypEnv Γ y τ') z := by
+    ∀ z, lookupTyp (extendTypEnv (extendTypEnv Γ x τ₁) y.name τ') z = lookupTyp (extendTypEnv Γ y.name τ') z := by
   intro z
   unfold extendTypEnv lookupTyp
   simp only [List.find?_cons]
   cases Decidable.em (y.name = z) with
   | inl h => simp [h]
   | inr h =>
-    simp only [h, ↓reduceIte]
-    cases Decidable.em (x = z) with
-    | inl h2 => exfalso; exact h (hEq ▸ h2)
-    | inr _ => rfl
+    have h1 : ¬(x == z) := fun h2 => h (hEq ▸ eq_of_beq h2)
+    simp only [h1]
+
+
+mutual
+
 
 private theorem substList_preserves_type_all (Gamma : TypEnv) (es : List Expr) (x : String) (v : Expr) (tau1 : Typ) (taus : List Typ)
     (hArgs : HasTypeAll (extendTypEnv Gamma x tau1) es taus)
@@ -181,100 +206,109 @@ private theorem subst_preserves_type (Gamma : TypEnv) (e : Expr) (x : String) (v
     (hV : HasType Gamma v tau1) : HasType Gamma (subst e x v) tau := by
   match hE with
   | HasType.var_type _ id τ hLookup =>
-    unfold subst
+    simp only [subst]
     split
     · next hEq =>
       have hNameEq : id.name = x := eq_of_beq hEq
       rw [hNameEq, lookupTyp_extend_eq] at hLookup
       injection hLookup with hτ
-      rw [hτ]; exact hV
+      exact (hτ ▸ hV)
     · next hNe =>
       have hNe' : id.name ≠ x := fun h => by
         rw [h] at hNe
-        exact Bool.false_ne_true (hNe ▸ beq_self_eq_true)
-      exact HasType.var_type Gamma id τ (lookupTyp_extend_ne hNe')
-  | HasType.lit_int _ _ => unfold subst; exact HasType.lit_int Gamma _
-  | HasType.lit_bool _ _ => unfold subst; exact HasType.lit_bool Gamma _
-  | HasType.lit_string _ _ => unfold subst; exact HasType.lit_string Gamma _
-  | HasType.lit_unit _ => unfold subst; exact HasType.lit_unit Gamma
-  | HasType.lit_pointer _ _ => unfold subst; exact HasType.lit_pointer Gamma _
+        exact hNe (beq_self_eq_true (a := x))
+      exact HasType.var_type Gamma id τ (Eq.trans (lookupTyp_extend_ne hNe'.symm).symm hLookup)
+  | HasType.lit_int _ _ => simp only [subst]; exact HasType.lit_int Gamma _
+  | HasType.lit_bool _ _ => simp only [subst]; exact HasType.lit_bool Gamma _
+  | HasType.lit_string _ _ => simp only [subst]; exact HasType.lit_string Gamma _
+  | HasType.lit_unit _ => simp only [subst]; exact HasType.lit_unit Gamma
+  | HasType.lit_pointer _ _ => simp only [subst]; exact HasType.lit_pointer Gamma _
   | HasType.unop_not _ e' hE' =>
-    unfold subst
+    simp only [subst]
     exact HasType.unop_not Gamma (subst e' x v) (subst_preserves_type Gamma e' x v tau1 .boolType hE' hV)
   | HasType.unop_notb _ e' hE' =>
-    unfold subst
+    simp only [subst]
     exact HasType.unop_notb Gamma (subst e' x v) (subst_preserves_type Gamma e' x v tau1 .intType hE' hV)
   | HasType.binop_arith _ op e1 e2 hArith hE1 hE2 =>
-    unfold subst
+    simp only [subst]
     exact HasType.binop_arith Gamma op (subst e1 x v) (subst e2 x v) hArith
       (subst_preserves_type Gamma e1 x v tau1 .intType hE1 hV)
       (subst_preserves_type Gamma e2 x v tau1 .intType hE2 hV)
   | HasType.binop_comp _ op e1 e2 hComp hE1 hE2 =>
-    unfold subst
+    simp only [subst]
     exact HasType.binop_comp Gamma op (subst e1 x v) (subst e2 x v) hComp
       (subst_preserves_type Gamma e1 x v tau1 .intType hE1 hV)
       (subst_preserves_type Gamma e2 x v tau1 .intType hE2 hV)
   | HasType.binop_logic _ op e1 e2 hLogic hE1 hE2 =>
-    unfold subst
+    simp only [subst]
     exact HasType.binop_logic Gamma op (subst e1 x v) (subst e2 x v) hLogic
       (subst_preserves_type Gamma e1 x v tau1 .boolType hE1 hV)
       (subst_preserves_type Gamma e2 x v tau1 .boolType hE2 hV)
   | HasType.binop_bitwise _ op e1 e2 hBit hE1 hE2 =>
-    unfold subst
+    simp only [subst]
     exact HasType.binop_bitwise Gamma op (subst e1 x v) (subst e2 x v) hBit
       (subst_preserves_type Gamma e1 x v tau1 .intType hE1 hV)
       (subst_preserves_type Gamma e2 x v tau1 .intType hE2 hV)
   | HasType.app_type _ fn args τs τ hFn hArgs =>
-    unfold subst
+    simp only [subst]
     exact HasType.app_type Gamma (subst fn x v) (substList args x v) τs τ
       (subst_preserves_type Gamma fn x v tau1 (.functionType τs τ) hFn hV)
       (substList_preserves_type_all Gamma args x v tau1 τs hArgs hV)
   | HasType.if_type _ c t f τ hC hT hF =>
-    unfold subst
+    simp only [subst]
     exact HasType.if_type Gamma (subst c x v) (subst t x v) (subst f x v) τ
       (subst_preserves_type Gamma c x v tau1 .boolType hC hV)
       (subst_preserves_type Gamma t x v tau1 τ hT hV)
       (subst_preserves_type Gamma f x v tau1 τ hF hV)
   | HasType.block_type _ exprs τs τ hAll =>
-    unfold subst
+    simp only [subst]
     exact HasType.block_type Gamma (substList exprs x v) τs τ
       (substList_preserves_type_all Gamma exprs x v tau1 (τs ++ [τ]) hAll hV)
   | HasType.lam_type _ x' body τ1' τ2 hBody =>
-    unfold subst
+    simp only [subst]
     split
     · next hCap =>
       have hNameEq : x'.name = x := by
-        simp only [List.any_cons, List.any_nil, decide_eq_true] at hCap
+        simp only [List.any_cons, List.any_nil] at hCap
+        rw [Bool.or_false] at hCap
         exact eq_of_beq hCap
       exact HasType.lam_type Gamma x' body τ1' τ2
         (HasType_lookup_eq hBody (lookupTyp_drop_shadowed x' τ1' hNameEq))
-    · next _ =>
-      exact HasType.lam_type Gamma x' (subst body x v) τ1' τ2
-        (subst_preserves_type Gamma body x v tau1 τ2 hBody hV)
+    · next hNC =>
+      -- Non-capture case: x'.name ≠ x, so we substitute inside body.
+      -- Requires showing body typed under extend (extend Γ x'.name τ1') x tau1,
+      -- which differs from hBody's env (extend Γ x tau1) at x'.name.
+      -- This is provable only with FV tracking (x'.name ∉ FV(body))
+      -- or alpha-conversion. See weakening lemma for related discussion.
+      sorry
   | HasType.let_type _ id e1 e2 τ1 τ2 hE1 hE2 =>
-    unfold subst
+    simp only [subst]
     split
     · next hCap =>
+      have hNameEq : id.name = x := eq_of_beq hCap
       exact HasType.let_type Gamma id (subst e1 x v) e2 τ1 τ2
         (subst_preserves_type Gamma e1 x v tau1 τ1 hE1 hV)
-        (HasType_lookup_eq hE2 (lookupTyp_drop_shadowed id τ1 (eq_of_beq hCap)))
-    · next _ =>
-      exact HasType.let_type Gamma id (subst e1 x v) (subst e2 x v) τ1 τ2
-        (subst_preserves_type Gamma e1 x v tau1 τ1 hE1 hV)
-        (subst_preserves_type Gamma e2 x v tau1 τ2 hE2 hV)
+        (HasType_lookup_eq hE2 (lookupTyp_drop_shadowed id τ1 hNameEq))
+    · next hNC =>
+      -- Non-capture case: id.name ≠ x, so we substitute inside e2.
+      -- Requires FV tracking (id.name ∉ FV(e2)) or alpha-conversion.
+      -- See weakening lemma for related discussion.
+      sorry
   | HasType.for_type _ id s e body hS hE hBody =>
-    unfold subst
+    simp only [subst]
     split
     · next hCap =>
+      have hNameEq : id.name = x := eq_of_beq hCap
       exact HasType.for_type Gamma id (subst s x v) (subst e x v) body
         (subst_preserves_type Gamma s x v tau1 .intType hS hV)
         (subst_preserves_type Gamma e x v tau1 .intType hE hV)
-        (HasTypeAll_lookup_eq hBody (lookupTyp_drop_shadowed id .intType (eq_of_beq hCap)))
-    · next _ =>
-      exact HasType.for_type Gamma id (subst s x v) (subst e x v) (substList body x v)
-        (subst_preserves_type Gamma s x v tau1 .intType hS hV)
-        (subst_preserves_type Gamma e x v tau1 .intType hE hV)
-        (substList_preserves_type_all Gamma body x v tau1 [.unitType] hBody hV)
+        (HasTypeAll_lookup_eq hBody (lookupTyp_drop_shadowed id .intType hNameEq))
+    · next hNC =>
+      -- Non-capture case: id.name ≠ x, so we substitute inside body elements.
+      -- Requires FV tracking (id.name ∉ FV(body)) or alpha-conversion.
+      -- See weakening lemma for related discussion.
+      sorry
+end
 
 theorem preservation : forall {e e' : Expr} {tau : Typ} {Gamma : TypEnv},
     HasType Gamma e tau -> Step e e' -> HasType Gamma e' tau := by
@@ -509,37 +543,39 @@ theorem preservation : forall {e e' : Expr} {tau : Typ} {Gamma : TypEnv},
         exact HasType.block_type Gamma (head :: rest) taus' tau (HasTypeAll_cons_tail hAll)
     | _ => contradiction
   | app_fn fn fn' args hs =>
-    cases hType with
-    | app_type =>
-      rename_i τs' τ' hFn hArgs'
-      exact HasType.app_type Gamma fn' args τs' τ' (preservation hFn hs) hArgs'
-    | _ => contradiction
+    match hType with
+    | HasType.app_type _ _ _ τs _ hFn hArgs =>
+      exact HasType.app_type Gamma fn' args τs tau (preservation hFn hs) hArgs
   | app_arg fn a a' rest _ hs =>
-    cases hType with
-    | app_type =>
-      rename_i τs' τ' hFn hArgs'
-      have hHead := HasTypeAll_cons_head hArgs'
-      have hTail := HasTypeAll_cons_tail hArgs'
-      exact HasType.app_type Gamma fn (a' :: rest) τs' τ' hFn
-        (HasTypeAll.cons Gamma a' rest _ _ (preservation hHead hs) hTail)
-    | _ => contradiction
+    match hType with
+    | HasType.app_type _ _ _ τs _ hFn hAll =>
+      cases τs with
+      | nil =>
+        exfalso
+        have hLen := HasTypeAll_length Gamma (a :: rest) [] hAll
+        simp only [List.length_cons, List.length_nil] at hLen
+        omega
+      | cons τhead τtail =>
+        have hHead := HasTypeAll_cons_head hAll
+        have hTail := HasTypeAll_cons_tail hAll
+        exact HasType.app_type Gamma fn (a' :: rest) (τhead :: τtail) tau hFn
+          (HasTypeAll.cons _ a' rest _ _ (preservation hHead hs) hTail)
   | app_lam xs body args _ =>
-    cases hType with
-    | app_type =>
-      rename_i τs' τ' hFn hArgs'
-      have hLam : HasType Gamma (.lam xs body) (.functionType τs' τ') := by
-        cases hFn with
-        | lam_type => rfl
-        | _ => contradiction
-      have hBody : HasType (extendTypEnv Gamma xs.head.name τs'.head) body τ' := by
-        cases hLam with
-        | lam_type _ _ _ _ hBody => exact hBody
-        | _ => contradiction
-      have hArg : HasType Gamma args.head τs'.head := by
-        cases hArgs' with
-        | cons _ _ _ _ hHead _ => exact hHead
-        | nil => contradiction
-      exact subst_preserves_type Gamma body xs.head.name args.head τs'.head τ' hBody hArg
-    | _ => contradiction
-
+    match hType with
+    | HasType.app_type _ _ _ _ _ hFn hAll =>
+      cases hFn with
+      | lam_type _ xP _ τ1P _ hBodyP =>
+        -- After cases hFn: hAll : HasTypeAll Gamma args [τ1P]
+        -- body from Step unifies with lam body; tau from app_type unifies with τ2P
+        cases args with
+        | nil =>
+          exfalso
+          have hLen := HasTypeAll_length Gamma [] [τ1P] hAll
+          simp only [List.length_nil, List.length_cons] at hLen
+          omega
+        | cons a rest =>
+          have hHead := HasTypeAll_cons_head hAll
+          have : substAll body [xP] (a :: rest) = subst body xP.name a := by
+            unfold substAll; unfold substAll; cases rest <;> rfl
+          exact this ▸ subst_preserves_type Gamma body xP.name a τ1P tau hBodyP hHead
 end Morph.Proofs.TypeSoundness
