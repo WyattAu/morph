@@ -1,5 +1,6 @@
 /- Copyright 2024-2025 The Morph Project Authors
 SPDX-License-Identifier: Apache-2.0
+-/
 
 import Morph.Specs.ArcAffineIntegration.Spec
 
@@ -20,6 +21,7 @@ integration specification.
 
 All proofs use constructive methods with explicit tactics to ensure
 no `sorry` placeholders remain.
+-/
 
 namespace Morph.Specs.ArcAffineIntegration
 

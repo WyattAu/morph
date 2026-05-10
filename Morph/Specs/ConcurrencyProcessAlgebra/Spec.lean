@@ -3,10 +3,9 @@ SPDX-License-Identifier: Apache-2.0
 -/
 
 import Std
-import Lean
-import Morph.Core.Syntax
-import Morph.Core.Types
-import Morph.Semantics.SmallStep
+import Morph.Core
+import Morph.Syntax
+import Morph.Semantics
 import Morph.Memory
 
 /-!

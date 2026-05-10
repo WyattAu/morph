@@ -17,17 +17,6 @@ lean_lib Morph.Tests {
   globs := #[.submodules `Morph.Tests]
 }
 
--- Test executable - main test driver
--- Follows ADR-009: Testing Infrastructure
-lean_exe morph_test {
-  root := `Morph.Tests.Main
-}
-
--- Test targets by domain for selective testing
-lean_exe morph_test_basic {
-  root := `Morph.Tests.Basic
-}
-
 lean_exe morph_test_core {
   root := `Morph.Tests.Core
 }

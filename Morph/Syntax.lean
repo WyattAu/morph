@@ -125,4 +125,42 @@ def empty : Program := ⟨[]⟩
 
 end Program
 
+/-!
+## Free Variables
+
+Computes all variable names mentioned in an expression, INCLUDING binder names.
+This is used as a freshness predicate: `x ∉ freeVars e` means `x` is not
+mentioned anywhere in `e` (neither as a free variable nor as a binder).
+-/
+
+def freeVars : Expr → List String
+  | .var id => [id.name]
+  | .lit _ => []
+  | .unop _ e => freeVars e
+  | .binop _ e1 e2 => freeVars e1 ++ freeVars e2
+  | .app fn args => freeVars fn ++ args.flatMap freeVars
+  | .lam params body => (params.map Id.name) ++ freeVars body
+  | .let id e1 e2 => freeVars e1 ++ [id.name] ++ freeVars e2
+  | .ifThenElse c t f => freeVars c ++ freeVars t ++ freeVars f
+  | .forLoop id s e body => freeVars s ++ freeVars e ++ [id.name] ++ body.flatMap freeVars
+  | .block exprs => exprs.flatMap freeVars
+
+/-- Compute the truly free variables of an expression (excluding binder names).
+    Used for capture-avoidance in substitution. -/
+def trulyFreeVars : Expr → List String
+  | .var id => [id.name]
+  | .lit _ => []
+  | .unop _ e => trulyFreeVars e
+  | .binop _ e1 e2 => trulyFreeVars e1 ++ trulyFreeVars e2
+  | .app fn args => trulyFreeVars fn ++ args.flatMap trulyFreeVars
+  | .lam params body =>
+    (trulyFreeVars body).filter (fun n => ¬params.any (fun id => id.name == n))
+  | .let id e1 e2 =>
+    trulyFreeVars e1 ++ (trulyFreeVars e2).filter (fun n => n ≠ id.name)
+  | .ifThenElse c t f => trulyFreeVars c ++ trulyFreeVars t ++ trulyFreeVars f
+  | .forLoop id s e body =>
+    trulyFreeVars s ++ trulyFreeVars e ++
+    (body.flatMap trulyFreeVars).filter (fun n => n ≠ id.name)
+  | .block exprs => exprs.flatMap trulyFreeVars
+
 end Morph.Syntax

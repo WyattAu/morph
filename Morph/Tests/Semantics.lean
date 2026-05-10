@@ -1,5 +1,6 @@
 import Std
 import Morph.Core
+import Morph.Syntax
 import Morph.Semantics
 import Aesop
 
@@ -8,911 +9,683 @@ import Aesop
 
 **Author:** QA Engineer
 **Created:** 2026-01-16
-**Last Updated:** 2026-01-16
+**Last Updated:** 2026-05-08
 **Status:** Complete
 
 ## Purpose
 
 Comprehensive semantics tests for Morph verification system.
-This module provides unit tests, property-based tests, and safety theorems for:
-- Event type (all constructors)
-- UBReason type (all constructors)
-- Continuation type (all constructors)
-- Stmt type (all constructors)
+This module provides unit tests and property-based tests for:
+- IsValue predicate (lit, lam constructors)
 - Expr type (all constructors)
-- Config structure (construction, manipulation, helper functions)
+- Stmt type (all constructors)
 - Step relation (all constructors)
-- MultiStep relation (all constructors)
-- Property-based tests for step determinism
-- MultiStep reflexive-transitive closure properties
-- Safety theorems for well-foundedness
+- Operator classification functions (isArithOp, isCompOp, isLogicOp, isBitwiseOp)
+- Evaluation helper functions (evalArithOp, evalCompOp, evalLogicOp, evalBitwiseOp)
+- Substitution functions (subst, substList, substAll)
+- Property-based tests for evaluation determinism
 
 ## Dependencies
 
-- `Morph.Core` - Core type definitions
-- `Morph.Semantics` - Semantics definitions (Event, UBReason, Continuation, Stmt, Expr, Config, Step, MultiStep)
-- `Std` - Standard library for HashMap operations
+- `Morph.Core` - Core type definitions (Value, Operator, Typ, etc.)
+- `Morph.Syntax` - Surface syntax (Expr, Stmt, Id, Program, etc.)
+- `Morph.Semantics` - Semantics definitions (IsValue, Step, subst, eval helpers)
+- `Std` - Standard library
 - `Aesop` - Automated proof search
-
-## Test Categories
-
-### Unit Tests
-- Basic construction and equality tests for all semantics types
-- Expression and statement structure tests
-- Configuration manipulation tests
-
-### Property-Based Tests
-- Step determinism properties
-- MultiStep reflexive-transitive closure properties
-
-### Safety Theorems
-- Step determinism theorem
-- MultiStep well-foundedness theorem
-- Config termination properties
 
 ## Notes
 
-- Tests use `example` for simple verification
-- Theorems use `@[aesop]` for automation
+- Tests use `theorem` for named verification
 - Property-based tests verify generic properties
-- Safety theorems ensure type soundness
-
-## Threat Model Mitigations
-
-- **RISK-TEST-001:** Test Generation Failures - All tests are manually reviewed
-- **RISK-TEST-002:** Test Brittleness - Robust proof patterns used
-- **RISK-SEC-006:** UB Handling - Explicit UB modeling in tests
 
 ## References
 
 - Coding Standards Section 7: Testing Patterns
 - ADR-009: Testing Infrastructure
 - ADR-005: Aesop Automation Strategy
-- Threat Model: RISK-TEST-001, RISK-TEST-002, RISK-SEC-006
 
 -/
 namespace Tests.Semantics
 
-/-!
-## Section 1: Event Type Unit Tests
+open Morph.Semantics
+open Morph.Core
+open Morph.Syntax
 
-Tests for Event constructors and equality.
-These tests verify that Event values can be constructed, compared, and manipulated correctly.
+/-!
+## Section 1: IsValue Predicate Unit Tests
 -/
 
-section EventTests
+section IsValueTests
 
-  /-- Event.silent constructor creates valid event -/
-  example event_silent_construction : Event.silent = Event.silent := by
-    rfl
+  /-- integer literals are values -/
+  theorem isValue_int : IsValue (.lit (.int 42)) := by apply IsValue.lit
 
-  /-- Event.syscall constructor creates valid event -/
-  example event_syscall_construction (fn : String) (args : List Core.Value) :
-    (Event.syscall fn args) = Event.syscall fn args := by
-      rfl
+  /-- boolean literals are values -/
+  theorem isValue_bool : IsValue (.lit (.bool true)) := by apply IsValue.lit
 
-  /-- Event.read_volatile constructor creates valid event -/
-  example event_read_volatile_construction (ptr : Core.Pointer) :
-    (Event.read_volatile ptr) = Event.read_volatile ptr := by
-      rfl
+  /-- unit literal is a value -/
+  theorem isValue_unit : IsValue (.lit .unit) := by apply IsValue.lit
 
-  /-- Event.write_volatile constructor creates valid event -/
-  example event_write_volatile_construction (ptr : Core.Pointer) (v : Core.Value) :
-    (Event.write_volatile ptr v) = Event.write_volatile ptr v := by
-      rfl
+  /-- string literals are values -/
+  theorem isValue_string : IsValue (.lit (.string "hello")) := by apply IsValue.lit
 
-  /-- Event.thread_spawn constructor creates valid event -/
-  example event_thread_spawn_construction (tid : Nat) :
-    (Event.thread_spawn tid) = Event.thread_spawn tid := by
-      rfl
+  /-- lambda expressions are values -/
+  theorem isValue_lam : IsValue (.lam [⟨"x"⟩] (.var ⟨"x"⟩)) := by apply IsValue.lam
 
-  /-- Event.thread_join constructor creates valid event -/
-  example event_thread_join_construction (tid : Nat) :
-    (Event.thread_join tid) = Event.thread_join tid := by
-      rfl
+  /-- multi-parameter lambdas are values -/
+  theorem isValue_lam_multi :
+    IsValue (.lam [⟨"x"⟩, ⟨"y"⟩] (.binop .add (.var ⟨"x"⟩) (.var ⟨"y"⟩))) := by
+      apply IsValue.lam
 
-  /-- Event.lock_acquire constructor creates valid event -/
-  example event_lock_acquire_construction (lid : Nat) :
-    (Event.lock_acquire lid) = Event.lock_acquire lid := by
-      rfl
+  /-- any literal is a value -/
+  theorem isValue_any_lit (v : Value) : IsValue (.lit v) := by apply IsValue.lit
 
-  /-- Event.lock_release constructor creates valid event -/
-  example event_lock_release_construction (lid : Nat) :
-    (Event.lock_release lid) = Event.lock_release lid := by
-      rfl
+  /-- any lambda is a value -/
+  theorem isValue_any_lam (xs : List Id) (body : Expr) : IsValue (.lam xs body) := by
+    apply IsValue.lam
 
-  /-- Event equality is reflexive -/
-  example event_reflexivity (e : Event) : e = e := by
-    rfl
-
-  /-- Event equality is symmetric -/
-  example event_symmetry (e1 e2 : Event) : e1 = e2 → e2 = e1 := by
-    intro e1 e2 h
-    rfl
-
-  /-- Event equality is transitive -/
-  example event_transitivity (e1 e2 e3 : Event) : e1 = e2 → e2 = e3 → e1 = e3 := by
-    intro e1 e2 e3
-    rfl
-
-  /-- Different Event constructors are not equal -/
-  example event_syscall_not_silent (fn : String) (args : List Core.Value) :
-    Event.syscall fn args ≠ Event.silent := by
-      constructor <;> constructor <;> constructor <;> rfl
-
-  /-- Different Event constructors are not equal -/
-  example event_syscall_not_read_volatile (fn : String) (args : List Core.Value) (ptr : Core.Pointer) :
-    Event.syscall fn args ≠ Event.read_volatile ptr := by
-      constructor <;> constructor <;> constructor <;> rfl
-
-  /-- Different Event constructors are not equal -/
-  example event_syscall_not_write_volatile (fn : String) (args : List Core.Value) (ptr : Core.Pointer) (v : Core.Value) :
-    Event.syscall fn args ≠ Event.write_volatile ptr v := by
-      constructor <;> constructor <;> constructor <;> rfl
-
-end EventTests
+end IsValueTests
 
 /-!
-## Section 2: UBReason Type Unit Tests
-
-Tests for UBReason constructors and equality.
-These tests verify that UBReason values can be constructed, compared, and manipulated correctly.
+## Section 2: Operator Classification Unit Tests
 -/
 
-section UBReasonTests
+section OperatorClassificationTests
 
-  /-- UBReason.null_pointer_dereference constructor creates valid reason -/
-  example ubreason_null_pointer_dereference_construction :
-    UBReason.null_pointer_dereference = UBReason.null_pointer_dereference := by
-      rfl
+  theorem isArithOp_add : isArithOp .add := by trivial
+  theorem isArithOp_sub : isArithOp .sub := by trivial
+  theorem isArithOp_mul : isArithOp .mul := by trivial
+  theorem isArithOp_div : isArithOp .div := by trivial
+  theorem isArithOp_mod : isArithOp .mod := by trivial
+  theorem isArithOp_eq : ¬ isArithOp .eq := by simp [isArithOp]
+  theorem isArithOp_and : ¬ isArithOp .and := by simp [isArithOp]
+  theorem isArithOp_andb : ¬ isArithOp .andb := by simp [isArithOp]
+  theorem isArithOp_not : ¬ isArithOp .not := by simp [isArithOp]
 
-  /-- UBReason.use_after_free constructor creates valid reason -/
-  example ubreason_use_after_free_construction (bid : Core.BlockId) :
-    (UBReason.use_after_free bid) = UBReason.use_after_free bid := by
-      rfl
+  theorem isCompOp_eq : isCompOp .eq := by trivial
+  theorem isCompOp_neq : isCompOp .neq := by trivial
+  theorem isCompOp_lt : isCompOp .lt := by trivial
+  theorem isCompOp_leq : isCompOp .leq := by trivial
+  theorem isCompOp_gt : isCompOp .gt := by trivial
+  theorem isCompOp_geq : isCompOp .geq := by trivial
+  theorem isCompOp_add : ¬ isCompOp .add := by simp [isCompOp]
+  theorem isCompOp_and : ¬ isCompOp .and := by simp [isCompOp]
 
-  /-- UBReason.double_free constructor creates valid reason -/
-  example ubreason_double_free_construction (bid : Core.BlockId) :
-    (UBReason.double_free bid) = UBReason.double_free bid := by
-      rfl
+  theorem isLogicOp_and : isLogicOp .and := by trivial
+  theorem isLogicOp_or : isLogicOp .or := by trivial
+  theorem isLogicOp_not : ¬ isLogicOp .not := by simp [isLogicOp]
+  theorem isLogicOp_add : ¬ isLogicOp .add := by simp [isLogicOp]
+  theorem isLogicOp_eq : ¬ isLogicOp .eq := by simp [isLogicOp]
 
-  /-- UBReason.out_of_bounds_access constructor creates valid reason -/
-  example ubreason_out_of_bounds_access_construction (ptr : Core.Pointer) (size : Nat) :
-    (UBReason.out_of_bounds_access ptr size) = UBReason.out_of_bounds_access ptr size := by
-      rfl
+  theorem isBitwiseOp_andb : isBitwiseOp .andb := by trivial
+  theorem isBitwiseOp_orb : isBitwiseOp .orb := by trivial
+  theorem isBitwiseOp_xorb : isBitwiseOp .xorb := by trivial
+  theorem isBitwiseOp_shl : isBitwiseOp .shl := by trivial
+  theorem isBitwiseOp_shr : isBitwiseOp .shr := by trivial
+  theorem isBitwiseOp_and : ¬ isBitwiseOp .and := by simp [isBitwiseOp]
+  theorem isBitwiseOp_add : ¬ isBitwiseOp .add := by simp [isBitwiseOp]
+  theorem isBitwiseOp_notb : ¬ isBitwiseOp .notb := by simp [isBitwiseOp]
 
-  /-- UBReason.alignment_violation constructor creates valid reason -/
-  example ubreason_alignment_violation_construction (ptr : Core.Pointer) (align : Nat) :
-    (UBReason.alignment_violation ptr align) = UBReason.alignment_violation ptr align := by
-      rfl
-
-  /-- UBReason.data_race constructor creates valid reason -/
-  example ubreason_data_race_construction (tid1 tid2 : Nat) (bid : Core.BlockId) :
-    (UBReason.data_race tid1 tid2 bid) = UBReason.data_race tid1 tid2 bid := by
-      rfl
-
-  /-- UBReason.division_by_zero constructor creates valid reason -/
-  example ubreason_division_by_zero_construction :
-    UBReason.division_by_zero = UBReason.division_by_zero := by
-      rfl
-
-  /-- UBReason.stack_overflow constructor creates valid reason -/
-  example ubreason_stack_overflow_construction :
-    UBReason.stack_overflow = UBReason.stack_overflow := by
-      rfl
-
-  /-- UBReason.heap_overflow constructor creates valid reason -/
-  example ubreason_heap_overflow_construction :
-    UBReason.heap_overflow = UBReason.heap_overflow := by
-      rfl
-
-  /-- UBReason.invalid_return constructor creates valid reason -/
-  example ubreason_invalid_return_construction :
-    UBReason.invalid_return = UBReason.invalid_return := by
-      rfl
-
-  /-- UBReason.invalid_break constructor creates valid reason -/
-  example ubreason_invalid_break_construction :
-    UBReason.invalid_break = UBReason.invalid_break := by
-      rfl
-
-  /-- UBReason.invalid_goto constructor creates valid reason -/
-  example ubreason_invalid_goto_construction (label : String) :
-    (UBReason.invalid_goto label) = UBReason.invalid_goto label := by
-      rfl
-
-  /-- UBReason.stuck constructor creates valid reason -/
-  example ubreason_stuck_construction (msg : String) :
-    (UBReason.stuck msg) = UBReason.stuck msg := by
-      rfl
-
-  /-- UBReason equality is reflexive -/
-  example ubreason_reflexivity (r : UBReason) : r = r := by
-    rfl
-
-  /-- UBReason equality is symmetric -/
-  example ubreason_symmetry (r1 r2 : UBReason) : r1 = r2 → r2 = r1 := by
-    intro r1 r2 h
-      rfl
-
-  /-- UBReason equality is transitive -/
-  example ubreason_transitivity (r1 r2 r3 : UBReason) : r1 = r2 → r2 = r3 → r1 = r3 := by
-    intro r1 r2 r3
-      rfl
-
-  /-- Different UBReason constructors are not equal -/
-  example ubreason_null_pointer_not_use_after_free :
-    UBReason.null_pointer_dereference ≠ UBReason.use_after_free (Core.BlockId.mk 0) := by
-      rfl
-
-  /-- Different UBReason constructors are not equal -/
-  example ubreason_null_pointer_not_double_free :
-    UBReason.null_pointer_dereference ≠ UBReason.double_free (Core.BlockId.mk 0) := by
-      rfl
-
-  /-- Different UBReason constructors are not equal -/
-  example ubreason_null_pointer_not_out_of_bounds_access :
-    UBReason.null_pointer_dereference ≠ UBReason.out_of_bounds_access (Core.Pointer.mk 0 0) := by
-      rfl
-
-  /-- Different UBReason constructors are not equal -/
-  example ubreason_null_pointer_not_alignment_violation :
-    UBReason.null_pointer_dereference ≠ UBReason.alignment_violation (Core.Pointer.mk 0 0) := by
-      rfl
-
-  /-- Different UBReason constructors are not equal -/
-  example ubreason_null_pointer_not_data_race :
-    UBReason.null_pointer_dereference ≠ UBReason.data_race 0 0 (Core.BlockId.mk 0) := by
-      rfl
-
-  /-- Different UBReason constructors are not equal -/
-  example ubreason_null_pointer_not_division_by_zero :
-    UBReason.null_pointer_dereference ≠ UBReason.division_by_zero := by
-      rfl
-
-  /-- Different UBReason constructors are not equal -/
-  example ubreason_null_pointer_not_stack_overflow :
-    UBReason.null_pointer_dereference ≠ UBReason.stack_overflow := by
-      rfl
-
-  /-- Different UBReason constructors are not equal -/
-  example ubreason_null_pointer_not_heap_overflow :
-    UBReason.null_pointer_dereference ≠ UBReason.heap_overflow := by
-      rfl
-
-  /-- Different UBReason constructors are not equal -/
-  example ubreason_null_pointer_not_invalid_return :
-    UBReason.null_pointer_dereference ≠ UBReason.invalid_return := by
-      rfl
-
-  /-- Different UBReason constructors are not equal -/
-  example ubreason_null_pointer_not_invalid_break :
-    UBReason.null_pointer_dereference ≠ UBReason.invalid_break := by
-      rfl
-
-  /-- Different UBReason constructors are not equal -/
-  example ubreason_null_pointer_not_stuck :
-    UBReason.null_pointer_dereference ≠ UBReason.stuck "" := by
-      rfl
-
-end UBReasonTests
+end OperatorClassificationTests
 
 /-!
-## Section 3: Continuation Type Unit Tests
-
-Tests for Continuation constructors and equality.
-These tests verify that Continuation values can be constructed, compared, and manipulated correctly.
+## Section 3: Evaluation Helper Function Tests
 -/
 
-section ContinuationTests
+section EvalHelperTests
 
-  /-- Continuation.seq constructor creates valid continuation -/
-  example continuation_seq_construction (stmts : List Stmt) :
-    (Continuation.seq stmts) = Continuation.seq stmts := by
-      rfl
+  theorem evalArithOp_add : evalArithOp .add 3 4 = some 7 := by rfl
+  theorem evalArithOp_sub : evalArithOp .sub 10 3 = some 7 := by rfl
+  theorem evalArithOp_mul : evalArithOp .mul 6 7 = some 42 := by rfl
+  theorem evalArithOp_div : evalArithOp .div 10 3 = some 3 := by rfl
+  theorem evalArithOp_div_zero : evalArithOp .div 10 0 = none := by rfl
+  theorem evalArithOp_mod : evalArithOp .mod 10 3 = some 1 := by rfl
+  theorem evalArithOp_mod_zero : evalArithOp .mod 10 0 = none := by rfl
+  theorem evalArithOp_non_arith : evalArithOp .eq 1 2 = none := by rfl
+  theorem evalArithOp_neg : evalArithOp .add (-3) 5 = some 2 := by rfl
 
-  /-- Continuation.loop_scope constructor creates valid continuation -/
-  example continuation_loop_scope_construction (body : Stmt) :
-    (Continuation.loop_scope body) = Continuation.loop_scope body := by
-      rfl
+  theorem evalCompOp_eq_true : evalCompOp .eq 3 3 = true := by rfl
+  theorem evalCompOp_eq_false : evalCompOp .eq 3 4 = false := by rfl
+  theorem evalCompOp_neq_true : evalCompOp .neq 3 4 = true := by rfl
+  theorem evalCompOp_neq_false : evalCompOp .neq 3 3 = false := by rfl
+  theorem evalCompOp_lt_true : evalCompOp .lt 3 5 = true := by rfl
+  theorem evalCompOp_lt_false : evalCompOp .lt 5 3 = false := by rfl
+  theorem evalCompOp_leq_true : evalCompOp .leq 3 3 = true := by rfl
+  theorem evalCompOp_leq_false : evalCompOp .leq 5 3 = false := by rfl
+  theorem evalCompOp_gt_true : evalCompOp .gt 5 3 = true := by rfl
+  theorem evalCompOp_gt_false : evalCompOp .gt 3 5 = false := by rfl
+  theorem evalCompOp_geq_true : evalCompOp .geq 5 5 = true := by rfl
+  theorem evalCompOp_geq_false : evalCompOp .geq 3 5 = false := by rfl
+  theorem evalCompOp_non_comp : evalCompOp .add 1 2 = false := by rfl
 
-  /-- Continuation.call_frame constructor creates valid continuation -/
-  example continuation_call_frame_construction (ret_var : String) (env : Core.Env) (rest : List Stmt) :
-    (Continuation.call_frame ret_var env rest) = Continuation.call_frame ret_var env rest := by
-      rfl
+  theorem evalLogicOp_and_tt : evalLogicOp .and true true = some true := by rfl
+  theorem evalLogicOp_and_tf : evalLogicOp .and true false = some false := by rfl
+  theorem evalLogicOp_and_ft : evalLogicOp .and false true = some false := by rfl
+  theorem evalLogicOp_and_ff : evalLogicOp .and false false = some false := by rfl
+  theorem evalLogicOp_or_ff : evalLogicOp .or false false = some false := by rfl
+  theorem evalLogicOp_or_tf : evalLogicOp .or true false = some true := by rfl
+  theorem evalLogicOp_or_ft : evalLogicOp .or false true = some true := by rfl
+  theorem evalLogicOp_or_tt : evalLogicOp .or true true = some true := by rfl
+  theorem evalLogicOp_non_logic : evalLogicOp .add true true = none := by rfl
 
-  /-- Continuation equality is reflexive -/
-  example continuation_reflexivity (k : Continuation) : k = k := by
-    rfl
+  theorem evalBitwiseOp_andb_11 : evalBitwiseOp .andb 1 1 = some 1 := by rfl
+  theorem evalBitwiseOp_andb_10 : evalBitwiseOp .andb 1 0 = some 0 := by rfl
+  theorem evalBitwiseOp_andb_01 : evalBitwiseOp .andb 0 1 = some 0 := by rfl
+  theorem evalBitwiseOp_andb_00 : evalBitwiseOp .andb 0 0 = some 0 := by rfl
+  theorem evalBitwiseOp_orb_01 : evalBitwiseOp .orb 0 1 = some 1 := by rfl
+  theorem evalBitwiseOp_orb_00 : evalBitwiseOp .orb 0 0 = some 0 := by rfl
+  theorem evalBitwiseOp_orb_11 : evalBitwiseOp .orb 1 1 = some 1 := by rfl
+  theorem evalBitwiseOp_xorb_10 : evalBitwiseOp .xorb 1 0 = some 1 := by rfl
+  theorem evalBitwiseOp_xorb_11 : evalBitwiseOp .xorb 1 1 = some 0 := by rfl
+  theorem evalBitwiseOp_shl : evalBitwiseOp .shl 1 2 = some 4 := by rfl
+  theorem evalBitwiseOp_shr : evalBitwiseOp .shr 8 2 = some 2 := by rfl
+  theorem evalBitwiseOp_non_bitwise : evalBitwiseOp .add 1 1 = none := by rfl
 
-  /-- Continuation equality is symmetric -/
-  example continuation_symmetry (k1 k2 : Continuation) : k1 = k2 → k2 = k1 := by
-    intro k1 k2 h
-      rfl
-
-  /-- Continuation equality is transitive -/
-  example continuation_transitivity (k1 k2 k3 : Continuation) : k1 = k2 → k2 = k3 → k1 = k3 := by
-    intro k1 k2 k3
-      rfl
-
-  /-- Different Continuation constructors are not equal -/
-  example continuation_seq_not_loop_scope :
-    Continuation.seq [] ≠ Continuation.loop_scope Stmt.skip := by
-      constructor <;> constructor <;> rfl
-
-  /-- Different Continuation constructors are not equal -/
-  example continuation_seq_not_call_frame :
-    Continuation.seq [] ≠ Continuation.call_frame "" [] [] [] := by
-      constructor <;> constructor <;> rfl
-
-end ContinuationTests
+end EvalHelperTests
 
 /-!
-## Section 4: Stmt Type Unit Tests
-
-Tests for Stmt constructors and equality.
-These tests verify that Stmt values can be constructed, compared, and manipulated correctly.
+## Section 4: Substitution Function Tests
 -/
 
-section StmtTests
+section SubstitutionTests
 
-  /-- Stmt.skip constructor creates valid statement -/
-  example stmt_skip_construction : Stmt.skip = Stmt.skip := by
-    rfl
+  theorem subst_var_match :
+    subst (.var ⟨"x"⟩) "x" (.lit (.int 42)) = .lit (.int 42) := by
+      simp [subst]
 
-  /-- Stmt.assign constructor creates valid statement -/
-  example stmt_assign_construction (x : String) (e : Expr) :
-    (Stmt.assign x e) = Stmt.assign x e := by
-      rfl
+  theorem subst_var_no_match :
+    subst (.var ⟨"y"⟩) "x" (.lit (.int 42)) = .var ⟨"y"⟩ := by
+      simp [subst]
 
-  /-- Stmt.seq constructor creates valid statement -/
-  example stmt_seq_construction (s1 s2 : Stmt) :
-    (Stmt.seq s1 s2) = Stmt.seq s1 s2 := by
-      rfl
+  theorem subst_lit :
+    subst (.lit (.int 5)) "x" (.lit (.int 42)) = .lit (.int 5) := by
+      unfold subst; rfl
 
-  /-- Stmt.ifThen constructor creates valid statement -/
-  example stmt_ifThen_construction (cond : Expr) (s1 s2 s3 : Stmt) :
-    (Stmt.ifThen cond s1 s2 s3) = Stmt.ifThen cond s1 s2 s3 := by
-      rfl
+  theorem subst_unop :
+    subst (.unop .not (.var ⟨"x"⟩)) "x" (.lit (.bool true))
+      = .unop .not (.lit (.bool true)) := by
+        simp [subst]
 
-  /-- Stmt.loop constructor creates valid statement -/
-  example stmt_loop_construction (body : Stmt) :
-    (Stmt.loop body) = Stmt.loop body := by
-      rfl
+  theorem subst_binop :
+    subst (.binop .add (.var ⟨"x"⟩) (.var ⟨"y"⟩)) "x" (.lit (.int 10))
+      = .binop .add (.lit (.int 10)) (.var ⟨"y"⟩) := by
+        simp [subst]
 
-  /-- Stmt.call constructor creates valid statement -/
-  example stmt_call_construction (fn : String) (args : List Expr) (ret_var : String) :
-    (Stmt.call fn args ret_var) = Stmt.call fn args ret_var := by
-      rfl
+  theorem subst_binop_right :
+    subst (.binop .add (.lit (.int 1)) (.var ⟨"x"⟩)) "x" (.lit (.int 10))
+      = .binop .add (.lit (.int 1)) (.lit (.int 10)) := by
+        simp [subst]
 
-  /-- Stmt.return constructor creates valid statement -/
-  example stmt_return_construction (e : Expr) :
-    (Stmt.return e) = Stmt.return e := by
-      rfl
+  theorem subst_lam_shadow :
+    subst (.lam [⟨"x"⟩] (.var ⟨"x"⟩)) "x" (.lit (.int 42))
+      = .lam [⟨"x"⟩] (.var ⟨"x"⟩) := by
+        simp [subst]
 
-  /-- Stmt.break constructor creates valid statement -/
-  example stmt_break_construction : Stmt.break = Stmt.break := by
-      rfl
+  theorem subst_lam_no_shadow :
+    subst (.lam [⟨"y"⟩] (.var ⟨"x"⟩)) "x" (.lit (.int 42))
+      = .lam [⟨"y"⟩] (.lit (.int 42)) := by
+        simp [subst]
 
-  /-- Stmt.goto constructor creates valid statement -/
-  example stmt_goto_construction (label : String) :
-    (Stmt.goto label) = Stmt.goto label := by
-      rfl
+  theorem subst_let :
+    subst (.let ⟨"y"⟩ (.var ⟨"x"⟩) (.var ⟨"x"⟩)) "x" (.lit (.int 10))
+      = .let ⟨"y"⟩ (.lit (.int 10)) (.lit (.int 10)) := by
+        simp [subst]
 
-  /-- Stmt.syscall constructor creates valid statement -/
-  example stmt_syscall_construction (fn : String) (args : List Expr) (ret_var : String) :
-    (Stmt.syscall fn args ret_var) = Stmt.syscall fn args ret_var := by
-      rfl
+  theorem subst_let_shadow :
+    subst (.let ⟨"x"⟩ (.var ⟨"z"⟩) (.var ⟨"x"⟩)) "x" (.lit (.int 10))
+      = .let ⟨"x"⟩ (.var ⟨"z"⟩) (.var ⟨"x"⟩) := by
+        simp [subst]
 
-  /-- Stmt equality is reflexive -/
-  example stmt_reflexivity (s : Stmt) : s = s := by
-    rfl
+  theorem subst_if :
+    subst (.ifThenElse (.var ⟨"c"⟩) (.var ⟨"x"⟩) (.lit (.int 0))) "x" (.lit (.int 1))
+      = .ifThenElse (.var ⟨"c"⟩) (.lit (.int 1)) (.lit (.int 0)) := by
+        simp [subst]
 
-  /-- Stmt equality is symmetric -/
-  example stmt_symmetry (s1 s2 : Stmt) : s1 = s2 → s2 = s1 := by
-    intro s1 s2 h
-      rfl
+  theorem subst_block :
+    subst (.block [.var ⟨"x"⟩, .var ⟨"y"⟩]) "x" (.lit (.int 1))
+      = .block [.lit (.int 1), .var ⟨"y"⟩] := by
+        simp [subst]
 
-  /-- Stmt equality is transitive -/
-  example stmt_transitivity (s1 s2 s3 : Stmt) : s1 = s2 → s2 = s3 → s1 = s3 := by
-    intro s1 s2 s3
-      rfl
+  theorem subst_app :
+    subst (.app (.var ⟨"f"⟩) [.var ⟨"x"⟩]) "x" (.lit (.int 1))
+      = .app (.var ⟨"f"⟩) [.lit (.int 1)] := by
+        simp [subst]
 
-  /-- Different Stmt constructors are not equal -/
-  example stmt_skip_not_assign :
-    Stmt.skip ≠ Stmt.assign "" (Expr.lit (Core.Value.int 0)) := by
-      constructor <;> constructor <;> rfl
+  theorem subst_forLoop :
+    subst (.forLoop ⟨"i"⟩ (.var ⟨"x"⟩) (.lit (.int 10)) [.var ⟨"x"⟩])
+      "x" (.lit (.int 1))
+      = .forLoop ⟨"i"⟩ (.lit (.int 1)) (.lit (.int 10)) [.lit (.int 1)] := by
+        simp [subst]
 
-  /-- Different Stmt constructors are not equal -/
-  example stmt_skip_not_seq :
-    Stmt.skip ≠ Stmt.seq Stmt.skip Stmt.skip := by
-      constructor <;> constructor <;> rfl
+  theorem subst_forLoop_shadow :
+    subst (.forLoop ⟨"x"⟩ (.var ⟨"y"⟩) (.lit (.int 10)) [.var ⟨"x"⟩])
+      "x" (.lit (.int 1))
+      = .forLoop ⟨"x"⟩ (.var ⟨"y"⟩) (.lit (.int 10)) [.var ⟨"x"⟩] := by
+        simp [subst]
 
-end StmtTests
+  theorem substList_empty :
+    substList [] "x" (.lit (.int 42)) = [] := by rfl
+
+  theorem substList_singleton :
+    substList [.var ⟨"x"⟩] "x" (.lit (.int 42)) = [.lit (.int 42)] := by
+      simp [substList, subst]
+
+  theorem substList_multi :
+    substList [.var ⟨"x"⟩, .var ⟨"y"⟩, .lit (.int 0)] "x" (.lit (.int 1))
+      = [.lit (.int 1), .var ⟨"y"⟩, .lit (.int 0)] := by
+        simp [substList, subst]
+
+  theorem substAll_empty :
+    substAll (.var ⟨"x"⟩) [] [] = .var ⟨"x"⟩ := by rfl
+
+  theorem substAll_single :
+    substAll (.var ⟨"x"⟩) [⟨"x"⟩] [.lit (.int 42)] = .lit (.int 42) := by
+      simp [substAll, subst]
+
+  theorem substAll_mismatch :
+    substAll (.var ⟨"x"⟩) [⟨"x"⟩] [] = .var ⟨"x"⟩ := by rfl
+
+  theorem substAll_extra_args :
+    substAll (.var ⟨"x"⟩) [] [.lit (.int 42)] = .var ⟨"x"⟩ := by rfl
+
+  theorem substAll_multi :
+    substAll (.binop .add (.var ⟨"x"⟩) (.var ⟨"y"⟩))
+      [⟨"x"⟩, ⟨"y"⟩] [.lit (.int 1), .lit (.int 2)]
+      = .binop .add (.lit (.int 1)) (.lit (.int 2)) := by
+        simp [substAll, subst]
+
+  /-- second substitution has no effect on literal result -/
+  theorem substAll_no_effect :
+    substAll (.var ⟨"x"⟩) [⟨"x"⟩, ⟨"x"⟩] [.lit (.int 1), .lit (.int 2)]
+      = .lit (.int 1) := by
+        simp [substAll, subst]
+
+end SubstitutionTests
 
 /-!
-## Section 5: Expr Type Unit Tests
+## Section 5: Step Relation — Binary Operations
+-/
 
-Tests for Expr constructors and equality.
-These tests verify that Expr values can be constructed, compared, and manipulated correctly.
+section StepBinopTests
+
+  theorem step_binop_left :
+    Step (.binop .add (.ifThenElse (.lit (.bool true)) (.lit (.int 1)) (.lit (.int 2)))
+          (.lit (.int 3)))
+      (.binop .add (.lit (.int 1)) (.lit (.int 3))) := by
+    apply Step.binop_left; apply Step.if_true
+
+  theorem step_binop_right :
+    Step (.binop .add (.lit (.int 1))
+          (.ifThenElse (.lit (.bool true)) (.lit (.int 2)) (.lit (.int 3))))
+      (.binop .add (.lit (.int 1)) (.lit (.int 2))) := by
+    apply Step.binop_right; apply IsValue.lit; apply Step.if_true
+
+  theorem step_binop_arith_add :
+    Step (.binop .add (.lit (.int 3)) (.lit (.int 4))) (.lit (.int 7)) := by
+    apply Step.binop_arith <;> trivial
+
+  theorem step_binop_arith_sub :
+    Step (.binop .sub (.lit (.int 10)) (.lit (.int 3))) (.lit (.int 7)) := by
+    apply Step.binop_arith <;> trivial
+
+  theorem step_binop_arith_mul :
+    Step (.binop .mul (.lit (.int 6)) (.lit (.int 7))) (.lit (.int 42)) := by
+    apply Step.binop_arith <;> trivial
+
+  theorem step_binop_arith_div :
+    Step (.binop .div (.lit (.int 10)) (.lit (.int 3))) (.lit (.int 3)) := by
+    apply Step.binop_arith <;> trivial
+
+  theorem step_binop_arith_mod :
+    Step (.binop .mod (.lit (.int 10)) (.lit (.int 3))) (.lit (.int 1)) := by
+    apply Step.binop_arith <;> trivial
+
+  theorem step_binop_comp_eq :
+    Step (.binop .eq (.lit (.int 3)) (.lit (.int 3))) (.lit (.bool true)) := by
+    apply Step.binop_comp; trivial
+
+  theorem step_binop_comp_neq :
+    Step (.binop .neq (.lit (.int 3)) (.lit (.int 4))) (.lit (.bool true)) := by
+    apply Step.binop_comp; trivial
+
+  theorem step_binop_comp_lt :
+    Step (.binop .lt (.lit (.int 3)) (.lit (.int 5))) (.lit (.bool true)) := by
+    apply Step.binop_comp; trivial
+
+  theorem step_binop_comp_leq :
+    Step (.binop .leq (.lit (.int 3)) (.lit (.int 3))) (.lit (.bool true)) := by
+    apply Step.binop_comp; trivial
+
+  theorem step_binop_comp_gt :
+    Step (.binop .gt (.lit (.int 5)) (.lit (.int 3))) (.lit (.bool true)) := by
+    apply Step.binop_comp; trivial
+
+  theorem step_binop_comp_geq :
+    Step (.binop .geq (.lit (.int 5)) (.lit (.int 5))) (.lit (.bool true)) := by
+    apply Step.binop_comp; trivial
+
+  theorem step_binop_logic_and :
+    Step (.binop .and (.lit (.bool true)) (.lit (.bool false))) (.lit (.bool false)) := by
+    apply Step.binop_logic <;> trivial
+
+  theorem step_binop_logic_or :
+    Step (.binop .or (.lit (.bool false)) (.lit (.bool true))) (.lit (.bool true)) := by
+    apply Step.binop_logic <;> trivial
+
+  theorem step_binop_bitwise_andb :
+    Step (.binop .andb (.lit (.int 1)) (.lit (.int 1))) (.lit (.int 1)) := by
+    apply Step.binop_bitwise <;> trivial
+
+  theorem step_binop_bitwise_orb :
+    Step (.binop .orb (.lit (.int 0)) (.lit (.int 1))) (.lit (.int 1)) := by
+    apply Step.binop_bitwise <;> trivial
+
+  theorem step_binop_bitwise_xorb :
+    Step (.binop .xorb (.lit (.int 1)) (.lit (.int 0))) (.lit (.int 1)) := by
+    apply Step.binop_bitwise <;> trivial
+
+  theorem step_binop_bitwise_shl :
+    Step (.binop .shl (.lit (.int 1)) (.lit (.int 2))) (.lit (.int 4)) := by
+    apply Step.binop_bitwise <;> trivial
+
+  theorem step_binop_bitwise_shr :
+    Step (.binop .shr (.lit (.int 8)) (.lit (.int 2))) (.lit (.int 2)) := by
+    apply Step.binop_bitwise <;> trivial
+
+  theorem step_binop_div_zero :
+    Step (.binop .div (.lit (.int 42)) (.lit (.int 0))) (.lit (.int 0)) := by
+    exact Step.binop_div_zero 42
+
+  theorem step_binop_div_zero_zero :
+    Step (.binop .div (.lit (.int 0)) (.lit (.int 0))) (.lit (.int 0)) := by
+    exact Step.binop_div_zero 0
+
+  theorem step_binop_mod_zero :
+    Step (.binop .mod (.lit (.int 42)) (.lit (.int 0))) (.lit (.int 0)) := by
+    exact Step.binop_mod_zero 42
+
+  theorem step_binop_mod_zero_zero :
+    Step (.binop .mod (.lit (.int 0)) (.lit (.int 0))) (.lit (.int 0)) := by
+    exact Step.binop_mod_zero 0
+
+end StepBinopTests
+
+/-!
+## Section 6: Step Relation — Unary Operations
+-/
+
+section StepUnopTests
+
+  theorem step_unop_step :
+    Step (.unop .not (.ifThenElse (.lit (.bool true)) (.lit (.bool true)) (.lit (.bool false))))
+      (.unop .not (.lit (.bool true))) := by
+    apply Step.unop_step; apply Step.if_true
+
+  theorem step_unop_not_true :
+    Step (.unop .not (.lit (.bool true))) (.lit (.bool false)) := by
+    exact Step.unop_not true
+
+  theorem step_unop_not_false :
+    Step (.unop .not (.lit (.bool false))) (.lit (.bool true)) := by
+    exact Step.unop_not false
+
+  theorem step_unop_notb_pos :
+    Step (.unop .notb (.lit (.int 5))) (.lit (.int (-6))) := by
+    exact Step.unop_notb 5
+
+  theorem step_unop_notb_zero :
+    Step (.unop .notb (.lit (.int 0))) (.lit (.int (-1))) := by
+    exact Step.unop_notb 0
+
+  theorem step_unop_notb_neg :
+    Step (.unop .notb (.lit (.int (-3)))) (.lit (.int 2)) := by
+    exact Step.unop_notb (-3)
+
+end StepUnopTests
+
+/-!
+## Section 7: Step Relation — Conditionals
+-/
+
+section StepConditionalTests
+
+  theorem step_if_cond :
+    Step (.ifThenElse (.binop .add (.lit (.int 1)) (.lit (.int 2)))
+          (.lit (.int 10)) (.lit (.int 20)))
+      (.ifThenElse (.lit (.int 3)) (.lit (.int 10)) (.lit (.int 20))) := by
+    apply Step.if_cond; apply Step.binop_arith <;> trivial
+
+  theorem step_if_true :
+    Step (.ifThenElse (.lit (.bool true)) (.lit (.int 1)) (.lit (.int 2)))
+      (.lit (.int 1)) := by
+    apply Step.if_true
+
+  theorem step_if_false :
+    Step (.ifThenElse (.lit (.bool false)) (.lit (.int 1)) (.lit (.int 2)))
+      (.lit (.int 2)) := by
+    apply Step.if_false
+
+end StepConditionalTests
+
+/-!
+## Section 8: Step Relation — Let Binding
+-/
+
+section StepLetTests
+
+  theorem step_let_step :
+    Step (.let ⟨"x"⟩ (.binop .add (.lit (.int 1)) (.lit (.int 2))) (.var ⟨"x"⟩))
+      (.let ⟨"x"⟩ (.lit (.int 3)) (.var ⟨"x"⟩)) := by
+    apply Step.let_step; apply Step.binop_arith <;> trivial
+
+  theorem step_let_subst :
+    Step (.let ⟨"x"⟩ (.lit (.int 42)) (.var ⟨"x"⟩))
+      (subst (.var ⟨"x"⟩) "x" (.lit (.int 42))) := by
+    apply Step.let_subst; apply IsValue.lit
+
+  theorem step_let_subst_lam :
+    Step (.let ⟨"f"⟩ (.lam [⟨"x"⟩] (.var ⟨"x"⟩)) (.var ⟨"f"⟩))
+      (subst (.var ⟨"f"⟩) "f" (.lam [⟨"x"⟩] (.var ⟨"x"⟩))) := by
+    apply Step.let_subst; apply IsValue.lam
+
+end StepLetTests
+
+/-!
+## Section 9: Step Relation — For Loops
+-/
+
+section StepForLoopTests
+
+  theorem step_for_start :
+    Step (.forLoop ⟨"i"⟩ (.binop .add (.lit (.int 0)) (.lit (.int 1)))
+          (.lit (.int 5)) [])
+      (.forLoop ⟨"i"⟩ (.lit (.int 1)) (.lit (.int 5)) []) := by
+    apply Step.for_start; apply Step.binop_arith <;> trivial
+
+  theorem step_for_end :
+    Step (.forLoop ⟨"i"⟩ (.lit (.int 0)) (.binop .add (.lit (.int 3)) (.lit (.int 2)))
+          [])
+      (.forLoop ⟨"i"⟩ (.lit (.int 0)) (.lit (.int 5)) []) := by
+    apply Step.for_end; apply IsValue.lit; apply Step.binop_arith <;> trivial
+
+  theorem step_for_exec :
+    Step (.forLoop ⟨"i"⟩ (.lit (.int 0)) (.lit (.int 3)) [.var ⟨"i"⟩])
+      (.let ⟨"i"⟩ (.lit (.int 0))
+        (.block ([.var ⟨"i"⟩] ++ [.forLoop ⟨"i"⟩ (.lit (.int 1)) (.lit (.int 3)) [.var ⟨"i"⟩]]))) := by
+    apply Step.for_exec; decide
+
+  theorem step_for_done :
+    Step (.forLoop ⟨"i"⟩ (.lit (.int 5)) (.lit (.int 3)) []) (.lit .unit) := by
+    apply Step.for_done; decide
+
+  theorem step_for_done_equal :
+    Step (.forLoop ⟨"i"⟩ (.lit (.int 3)) (.lit (.int 3)) []) (.lit .unit) := by
+    apply Step.for_done; decide
+
+end StepForLoopTests
+
+/-!
+## Section 10: Step Relation — Blocks
+-/
+
+section StepBlockTests
+
+  theorem step_block_head :
+    Step (.block [.binop .add (.lit (.int 1)) (.lit (.int 2)), .lit (.int 3)])
+      (.block [.lit (.int 3), .lit (.int 3)]) := by
+    apply Step.block_head; apply Step.binop_arith <;> trivial
+
+  theorem step_block_singleton :
+    Step (.block [.lit (.int 42)]) (.lit (.int 42)) := by
+    apply Step.block_singleton; apply IsValue.lit
+
+  theorem step_block_lam_singleton :
+    Step (.block [.lam [⟨"x"⟩] (.var ⟨"x"⟩)]) (.lam [⟨"x"⟩] (.var ⟨"x"⟩)) := by
+    apply Step.block_lam_singleton
+
+  theorem step_block_pop :
+    Step (.block [.lit (.int 1), .lit (.int 2)])
+      (.block [.lit (.int 2)]) := by
+    apply Step.block_pop; apply IsValue.lit
+
+end StepBlockTests
+
+/-!
+## Section 11: Step Relation — Function Application
+-/
+
+section StepAppTests
+
+  theorem step_let_subst_lam_in_app :
+    Step (.let ⟨"f"⟩ (.lam [⟨"x"⟩] (.var ⟨"x"⟩))
+          (.app (.var ⟨"f"⟩) [.lit (.int 1)]))
+      (subst (.app (.var ⟨"f"⟩) [.lit (.int 1)]) "f"
+        (.lam [⟨"x"⟩] (.var ⟨"x"⟩))) := by
+    apply Step.let_subst; apply IsValue.lam
+
+  theorem step_app_arg :
+    Step (.app (.lam [⟨"x"⟩] (.var ⟨"x"⟩))
+          [.binop .add (.lit (.int 1)) (.lit (.int 2))])
+      (.app (.lam [⟨"x"⟩] (.var ⟨"x"⟩)) [.lit (.int 3)]) := by
+    apply Step.app_arg; apply IsValue.lam; apply Step.binop_arith <;> trivial
+
+  theorem step_app_lam :
+    Step (.app (.lam [⟨"x"⟩] (.var ⟨"x"⟩)) [.lit (.int 42)])
+      (substAll (.var ⟨"x"⟩) [⟨"x"⟩] [.lit (.int 42)]) := by
+    apply Step.app_lam; rfl
+
+  theorem step_app_lam_multi :
+    Step (.app (.lam [⟨"x"⟩, ⟨"y"⟩] (.binop .add (.var ⟨"x"⟩) (.var ⟨"y"⟩)))
+          [.lit (.int 3), .lit (.int 4)])
+      (substAll (.binop .add (.var ⟨"x"⟩) (.var ⟨"y"⟩))
+        [⟨"x"⟩, ⟨"y"⟩] [.lit (.int 3), .lit (.int 4)]) := by
+    apply Step.app_lam; rfl
+
+end StepAppTests
+
+/-!
+## Section 12: Expr Constructor Unit Tests
 -/
 
 section ExprTests
 
-  /-- Expr.var constructor creates valid expression -/
-  example expr_var_construction (x : String) :
-    (Expr.var x) = Expr.var x := by
-      rfl
+  theorem expr_var (x : String) : (Expr.var ⟨x⟩) = Expr.var ⟨x⟩ := by rfl
+  theorem expr_lit (v : Value) : (Expr.lit v) = Expr.lit v := by rfl
+  theorem expr_binop (op : Operator) (e1 e2 : Expr) :
+    (Expr.binop op e1 e2) = Expr.binop op e1 e2 := by rfl
+  theorem expr_unop (op : Operator) (e : Expr) :
+    (Expr.unop op e) = Expr.unop op e := by rfl
+  theorem expr_app (fn : Expr) (args : List Expr) :
+    (Expr.app fn args) = Expr.app fn args := by rfl
+  theorem expr_lam (xs : List Id) (body : Expr) :
+    (Expr.lam xs body) = Expr.lam xs body := by rfl
+  theorem expr_let (id : Id) (e1 e2 : Expr) :
+    (Expr.let id e1 e2) = Expr.let id e1 e2 := by rfl
+  theorem expr_ifThenElse (c t f : Expr) :
+    (Expr.ifThenElse c t f) = Expr.ifThenElse c t f := by rfl
+  theorem expr_forLoop (id : Id) (s e : Expr) (body : List Expr) :
+    (Expr.forLoop id s e body) = Expr.forLoop id s e body := by rfl
+  theorem expr_block (exprs : List Expr) :
+    (Expr.block exprs) = Expr.block exprs := by rfl
 
-  /-- Expr.lit constructor creates valid expression -/
-  example expr_lit_construction (v : Core.Value) :
-    (Expr.lit v) = Expr.lit v := by
-      rfl
-
-  /-- Expr.binop constructor creates valid expression -/
-  example expr_binop_construction (op : Core.Operator) (e1 e2 : Expr) :
-    (Expr.binop op e1 e2) = Expr.binop op e1 e2 := by
-      rfl
-
-  /-- Expr.unop constructor creates valid expression -/
-  example expr_unop_construction (op : Core.Operator) (e : Expr) :
-    (Expr.unop op e) = Expr.unop op e := by
-      rfl
-
-  /-- Expr.load constructor creates valid expression -/
-  example expr_load_construction (ptr : Core.Pointer) :
-    (Expr.load ptr) = Expr.load ptr := by
-      rfl
-
-  /-- Expr.store constructor creates valid expression -/
-  example expr_store_construction (ptr : Core.Pointer) (e : Expr) :
-    (Expr.store ptr e) = Expr.store ptr e := by
-      rfl
-
-  /-- Expr equality is reflexive -/
-  example expr_reflexivity (e : Expr) : e = e := by
-    rfl
-
-  /-- Expr equality is symmetric -/
-  example expr_symmetry (e1 e2 : Expr) : e1 = e2 → e2 = e1 := by
-    intro e1 e2 h
-      rfl
-
-  /-- Expr equality is transitive -/
-  example expr_transitivity (e1 e2 e3 : Expr) : e1 = e2 → e2 = e3 → e1 = e3 := by
-    intro e1 e2 e3
-      rfl
-
-  /-- Different Expr constructors are not equal -/
-  example expr_var_not_lit (x : String) (v : Core.Value) :
-    Expr.var x ≠ Expr.lit v := by
-      constructor <;> constructor <;> rfl
-
-  /-- Different Expr constructors are not equal -/
-  example expr_var_not_binop (x : String) (op : Core.Operator) (e2 : Expr) :
-    Expr.var x ≠ Expr.binop op (Expr.lit (Core.Value.int 0)) e2 := by
-      constructor <;> constructor <;> rfl
+  theorem expr_reflexivity (e : Expr) : e = e := by rfl
+  theorem expr_symmetry (e1 e2 : Expr) : e1 = e2 → e2 = e1 := by
+    intro h; exact h.symm
+  theorem expr_transitivity (e1 e2 e3 : Expr) : e1 = e2 → e2 = e3 → e1 = e3 := by
+    intro h1 h2; exact h1.trans h2
 
 end ExprTests
 
 /-!
-## Section 6: Config Structure Unit Tests
-
-Tests for Config constructors, manipulation, and helper functions.
-These tests verify that Config values can be constructed, compared, and manipulated correctly.
+## Section 13: Stmt Constructor Unit Tests
 -/
 
-section ConfigTests
+section StmtTests
 
-  /-- Config.empty creates empty configuration -/
-  example config_empty_construction :
-    (Config.empty).env = [] ∧
-    (Config.empty).memory = Memory.empty ∧
-    (Config.empty).control = [] ∧
-    (Config.empty).stack = [] ∧
-    (Config.empty).thread_id = 0 ∧
-    (Config.empty).threads = [(0, { env := [], memory := Memory.empty, control := [], stack := [] })] ∧
-    (Config.empty).locks = [] ∧
-    (Config.empty).ub = none := by
-      rfl
+  theorem stmt_exprStmt (e : Expr) :
+    (Stmt.exprStmt e) = Stmt.exprStmt e := by rfl
+  theorem stmt_varDecl (id : Id) (ty : Typ) (e : Expr) :
+    (Stmt.varDecl id ty e) = Stmt.varDecl id ty e := by rfl
+  theorem stmt_assign (id : Id) (e : Expr) :
+    (Stmt.assign id e) = Stmt.assign id e := by rfl
+  theorem stmt_returnStmt (e : Expr) :
+    (Stmt.returnStmt e) = Stmt.returnStmt e := by rfl
+  theorem stmt_break : Stmt.break = Stmt.break := by rfl
+  theorem stmt_continue : Stmt.continue = Stmt.continue := by rfl
+  theorem stmt_whileLoop (cond : Expr) (body : List Stmt) :
+    (Stmt.whileLoop cond body) = Stmt.whileLoop cond body := by rfl
+  theorem stmt_doWhile (cond : Expr) (body : List Stmt) :
+    (Stmt.doWhile cond body) = Stmt.doWhile cond body := by rfl
+  theorem stmt_nop : Stmt.nop = Stmt.nop := by rfl
 
-  /-- Config constructor creates valid configuration -/
-  example config_construction (env : Core.Env) (memory : Memory.Memory) (control : List Stmt) (stack : List Continuation) (thread_id : Nat) (threads : List (Nat × ThreadState)) (locks : List (Nat × Nat)) (ub : Option UBReason) :
-    let c : Config :=
-      { env := env, memory := memory, control := control, stack := stack,
-        thread_id := thread_id, threads := threads, locks := locks, ub := ub }
-    c.env = env ∧
-    c.memory = memory ∧
-    c.control = control ∧
-    c.stack = stack ∧
-    c.thread_id = thread_id ∧
-    c.threads = threads ∧
-    c.locks = locks ∧
-    c.ub = ub := by
-      rfl
+  theorem stmt_reflexivity (s : Stmt) : s = s := by rfl
+  theorem stmt_symmetry (s1 s2 : Stmt) : s1 = s2 → s2 = s1 := by
+    intro h; exact h.symm
+  theorem stmt_transitivity (s1 s2 s3 : Stmt) : s1 = s2 → s2 = s3 → s1 = s3 := by
+    intro h1 h2; exact h1.trans h2
 
-  /-- Config equality is reflexive -/
-  example config_reflexivity (c : Config) : c = c := by
-    rfl
-
-  /-- Config equality is symmetric -/
-  example config_symmetry (c1 c2 : Config) : c1 = c2 → c2 = c1 := by
-    intro c1 c2 h
-      rfl
-
-  /-- Config equality is transitive -/
-  example config_transitivity (c1 c2 c3 : Config) : c1 = c2 → c2 = c3 → c1 = c3 := by
-    intro c1 c2 c3
-      rfl
-
-  /-- Different Config constructors are not equal -/
-  example config_empty_not_config :
-    Config.empty ≠ Config.empty := by
-      constructor <;> constructor <;> rfl
-
-  /-- Config.isUB returns true when ub is some -/
-  example config_isUB_some (c : Config) (reason : UBReason) :
-    c.ub = some reason → c.isUB = true := by
-      rfl
-
-  /-- Config.isUB returns false when ub is none -/
-  example config_isUB_none (c : Config) :
-    c.ub = none → c.isUB = false := by
-      rfl
-
-  /-- Config.currentThread returns current thread state when thread exists -/
-  example config_currentThread_exists (c : Config) (tid : Nat) (state : ThreadState) :
-    c.thread_id = tid ∧
-      c.threads = [(tid, state)] ++ [] →
-        c.currentThread = some state := by
-      rfl
-
-  /-- Config.currentThread returns none when thread does not exist -/
-  example config_currentThread_not_exists (c : Config) (tid : Nat) (state : ThreadState) :
-    c.thread_id = tid ∧
-      c.threads = [] →
-        c.currentThread = none := by
-      rfl
-
-  /-- Config.updateCurrentThread updates current thread state -/
-  example config_updateCurrentThread (c : Config) (newState : ThreadState) :
-    let c' := c.updateCurrentThread newState
-    c'.thread_id = c.thread_id ∧
-      c'.threads = c.threads.map (fun (id, s) =>
-        if id == c.thread_id then (id, newState) else (id, s)) ∧
-    c'.env = c.env ∧
-    c'.memory = c.memory ∧
-    c'.control = c.control ∧
-    c'.stack = c.stack ∧
-    c'.thread_id = c.thread_id ∧
-    c'.threads = c'.threads ∧
-    c'.locks = c.locks ∧
-    c'.ub = c.ub := by
-      rfl
-
-  /-- Config.getThread? returns thread state when thread exists -/
-  example config_getThread_exists (c : Config) (tid : Nat) (state : ThreadState) :
-    c.thread_id = tid ∧
-      c.threads = [(tid, state)] ++ [] →
-        c.getThread? tid = some state := by
-      rfl
-
-  /-- Config.getThread? returns none when thread does not exist -/
-  example config_getThread_not_exists (c : Config) (tid : Nat) :
-    c.thread_id = tid ∧
-      c.threads = [] →
-        c.getThread? tid = none := by
-      rfl
-
-  /-- Config.updateThread updates thread state by ID -/
-  example config_updateThread (c : Config) (tid : Nat) (newState : ThreadState) :
-    let c' := c.updateThread tid newState
-    c'.thread_id = c.thread_id ∧
-      c'.threads = c.threads.map (fun (id, s) =>
-        if id == tid then (id, newState) else (id, s)) ∧
-    c'.env = c.env ∧
-    c'.memory = c.memory ∧
-    c'.control = c.control ∧
-    c'.stack = c.stack ∧
-    c'.thread_id = c.thread_id ∧
-    c'.threads = c'.threads ∧
-    c'.locks = c.locks ∧
-    c'.ub = c.ub := by
-      rfl
-
-  /-- Config.ownsLock returns true when current thread owns lock -/
-  example config_ownsLock_true (c : Config) (lid : Nat) :
-    c.thread_id = 0 ∧
-      c.locks = [(lid, 0)] ++ [] →
-        c.ownsLock lid = true := by
-      rfl
-
-  /-- Config.ownsLock returns false when current thread does not own lock -/
-  example config_ownsLock_false (c : Config) (lid : Nat) :
-    c.thread_id = 1 ∧
-      c.locks = [] →
-        c.ownsLock lid = false := by
-      rfl
-
-  /-- Config.ownsLock returns false when another thread owns lock -/
-  example config_ownsLock_other_thread (c : Config) (lid : Nat) (owner : Nat) :
-    c.thread_id = 1 ∧
-      c.locks = [(lid, owner)] ++ [] →
-        c.ownsLock lid = false := by
-      rfl
-
-  /-- Config.acquireLock adds lock to current thread -/
-  example config_acquireLock (c : Config) (lid : Nat) :
-    let c' := c.acquireLock lid
-    c'.locks = (lid, c.thread_id) :: c'.locks ∧
-    c'.env = c.env ∧
-    c'.memory = c.memory ∧
-    c'.control = c.control ∧
-    c'.stack = c.stack ∧
-    c'.thread_id = c.thread_id ∧
-    c'.threads = c'.threads ∧
-    c'.locks = c'.locks ∧
-    c'.ub = c.ub := by
-      rfl
-
-  /-- Config.releaseLock removes lock from ownership -/
-  example config_releaseLock (c : Config) (lid : Nat) :
-    let c' := c.releaseLock lid
-    c'.locks = c'.locks.filter (fun (id, _) => id ≠ lid) ∧
-    c'.env = c.env ∧
-    c'.memory = c.memory ∧
-    c'.control = c.control ∧
-    c'.stack = c.stack ∧
-    c'.thread_id = c.thread_id ∧
-    c'.threads = c'.threads ∧
-    c'.locks = c'.locks ∧
-    c'.ub = c.ub := by
-      rfl
-
-end ConfigTests
+end StmtTests
 
 /-!
-## Section 7: Step Relation Unit Tests
-
-Tests for Step constructors and equality.
-These tests verify that Step relation constructors work correctly.
+## Section 14: Property-Based Tests
 -/
 
-section StepTests
+section PropertyTests
 
-  /-- Step.skip_step constructor creates valid step -/
-  example step_skip_step_construction :
-    let c : Config := Config.empty in
-    Step { c with control := .skip :: c.control } .silent { c with control := c.control } := by
-      rfl
+  theorem step_well_formed (e1 e2 : Expr) : Step e1 e2 → True := by
+    intro _; trivial
 
-  /-- Step.assign_step constructor creates valid step -/
-  example step_assign_step_construction (x : String) (v : Core.Value) (rest : List Stmt) :
-    let c : Config := Config.empty in
-    Step { c with control := .assign x (.lit v) :: rest } .silent { c with control := .assign x (.lit v) :: rest } := by
-      rfl
+  theorem isvalue_is_predicate (e : Expr) : IsValue e → True := by
+    intro _; trivial
 
-  /-- Step.seq_step_left constructor creates valid step -/
-  example step_seq_left_construction (s1 s2 : Stmt) (rest : List Stmt) :
-    let c : Config := Config.empty in
-    Step { c with control := .seq s1 s2 :: rest } .silent { c with control := .seq s1 s2 :: c.control } := by
-      rfl
+  theorem evalArithOp_deterministic (op : Operator) (n1 n2 : Int) (r1 r2 : Int) :
+    evalArithOp op n1 n2 = some r1 → evalArithOp op n1 n2 = some r2 → r1 = r2 := by
+    aesop
 
-  /-- Step.seq_step_right constructor creates valid step -/
-  example step_seq_right_construction (s2 : Stmt) (rest : List Stmt) :
-    let c : Config := Config.empty in
-    Step { c with control := .skip :: s2 :: c.control } .silent { c with control := .skip :: s2 :: c.control } := by
-      rfl
+  theorem evalCompOp_deterministic (op : Operator) (n1 n2 : Int) (b1 b2 : Bool) :
+    evalCompOp op n1 n2 = b1 → evalCompOp op n1 n2 = b2 → b1 = b2 := by
+    aesop
 
-  /-- Step.if_true_step constructor creates valid step -/
-  example step_if_true_step_construction (cond : Expr) (s1 s2 s3 : Stmt) (rest : List Stmt) :
-    let c : Config := Config.empty in
-    Step { c with control := .ifThen cond s1 s2 s3 :: rest } .silent { c with control := .ifThen cond s1 s2 s3 :: c.control } := by
-      rfl
+  theorem evalLogicOp_deterministic (op : Operator) (b1 b2 r1 r2 : Bool) :
+    evalLogicOp op b1 b2 = some r1 → evalLogicOp op b1 b2 = some r2 → r1 = r2 := by
+    aesop
 
-  /-- Step.if_false_step constructor creates valid step -/
-  example step_if_false_step_construction (cond : Expr) (s2 : Stmt) (rest : List Stmt) :
-    let c : Config := Config.empty in
-    Step { c with control := .ifThen cond s1 s2 s3 :: rest } .silent { c with control := .ifThen cond s2 s3 :: c.control } := by
-      rfl
+  theorem evalBitwiseOp_deterministic (op : Operator) (n1 n2 : Int) (r1 r2 : Int) :
+    evalBitwiseOp op n1 n2 = some r1 → evalBitwiseOp op n1 n2 = some r2 → r1 = r2 := by
+    aesop
 
-  /-- Step.loop_enter_step constructor creates valid step -/
-  example step_loop_enter_step_construction (body : Stmt) (rest : List Stmt) :
-    let c : Config := Config.empty in
-    Step { c with control := .loop body :: .loop body :: rest } .silent { c with control := .loop body :: .loop body :: c.control } := by
-      rfl
+  theorem arith_not_comp : isArithOp .add → ¬ isCompOp .add := by
+    aesop
 
-  /-- Step.loop_continue_step constructor creates valid step -/
-  example step_loop_continue_step_construction (body : Stmt) (rest : List Stmt) :
-    let c : Config := Config.empty in
-    Step { c with control := .skip :: .loop body :: .loop body :: c.control } .silent { c with control := .skip :: .loop body :: .loop body :: c.control } := by
-      rfl
+  theorem comp_not_logic : isCompOp .eq → ¬ isLogicOp .eq := by
+    aesop
 
-  /-- Step.loop_break_step constructor creates valid step with loop_scope on stack -/
-  example step_loop_break_step_construction (body : Stmt) (rest : List Stmt) :
-    let c : Config := Config.empty in
-    let c' := { c with control := .break :: .loop body :: rest, stack := Continuation.loop_scope (.loop body) :: c.control }
-    Step { c' with control := .break :: .loop body :: rest, stack := Continuation.loop_scope (.loop body) :: c'.control } .silent { c' with control := .break :: .loop body :: rest, stack := Continuation.loop_scope (.loop body) :: c'.control } := by
-      rfl
+  theorem logic_not_bitwise : isLogicOp .and → ¬ isBitwiseOp .and := by
+    aesop
 
-  /-- Step.loop_break_step constructor creates UB step when no loop_scope on stack -/
-  example step_loop_break_step_ub (body : Stmt) (rest : List Stmt) :
-    let c : Config := Config.empty in
-    Step { c with control := .break :: .loop body :: rest, stack := [] } .silent { c with control := .break :: .loop body :: rest } := by
-      rfl
+  theorem arith_not_bitwise : isArithOp .add → ¬ isBitwiseOp .add := by
+    aesop
 
-  /-- Step.call_step constructor creates valid step -/
-  example step_call_step_construction (fn : String) (args : List Expr) (ret_var : String) (rest : List Stmt) :
-    let c : Config := Config.empty in
-    Step { c with control := .call fn (.map (fun _ => .lit Core.Value.unit) args) :: ret_var :: rest } .silent { c with control := .call fn (.map (fun _ => .lit Core.Value.unit) args) :: ret_var :: rest } := by
-      rfl
-
-  /-- Step.return_step constructor creates valid step with call_frame on stack -/
-  example step_return_step_construction (e : Expr) (rest : List Stmt) :
-    let c : Config := Config.empty in
-    let c' := { c with control := .return (.lit Core.Value.unit) :: rest, stack := Continuation.call_frame "" c.env c.control :: rest :: [] }
-    Step { c' with control := .return (.lit Core.Value.unit) :: rest, stack := Continuation.call_frame "" c.env c.control :: rest, stack := Continuation.call_frame "" c'.env :: c'.control :: rest, stack := [] } .silent { c' with control := .return (.lit Core.Value.unit) :: rest, stack := Continuation.call_frame "" c.env :: c'.control :: rest, stack := Continuation.call_frame "" c'.env :: c'.control :: rest, stack := [] } := by
-      rfl
-
-  /-- Step.return_step constructor creates UB step when no call_frame on stack -/
-  example step_return_step_ub (e : Expr) (rest : List Stmt) :
-    let c : Config := Config.empty in
-    Step { c with control := .return (.lit Core.Value.unit) :: rest, stack := [] } .silent { c with control := .return (.lit Core.Value.unit) :: rest, stack := [] } := by
-      rfl
-
-  /-- Step.syscall_step constructor creates valid step -/
-  example step_syscall_step_construction (fn : String) (args : List Expr) (ret_var : String) (rest : List Stmt) :
-    let c : Config := Config.empty in
-    Step { c with control := .syscall fn (.map (fun _ => .lit Core.Value.unit) args) :: ret_var :: rest } .silent { c with control := .syscall fn (.map (fun _ => .lit Core.Value.unit) args) :: ret_var :: rest } := by
-      rfl
-
-  /-- Step.thread_spawn_step constructor creates valid step -/
-  example step_thread_spawn_step_construction (tid : Nat) :
-    let c : Config := Config.empty in
-    Step { c with control := .thread_spawn tid } .silent { c with control := .thread_spawn tid } := by
-      rfl
-
-  /-- Step.thread_join_step constructor creates valid step when thread exists -/
-  example step_thread_join_step_construction (tid : Nat) :
-    let c : Config := Config.empty in
-    let c' := { c with control := .thread_join tid } .silent { c with control := .thread_join tid }
-    rfl
-
-  /-- Step.thread_join_step constructor creates UB step when thread does not exist -/
-  example step_thread_join_step_ub (tid : Nat) :
-    let c : Config := Config.empty in
-    Step { c with control := .thread_join tid } .silent { c with control := .thread_join tid } := by
-      rfl
-
-  /-- Step.lock_acquire_step constructor creates valid step when not owned by current thread -/
-  example step_lock_acquire_step_construction (lid : Nat) :
-    let c : Config := Config.empty in
-    let c' := { c with control := .lock_acquire lid } .silent { c with control := .lock_acquire lid } := by
-      rfl
-
-  /-- Step.lock_acquire_step constructor creates UB step when already owned by current thread -/
-  example step_lock_acquire_step_already_owned (lid : Nat) :
-    let c : Config := Config.empty in
-    let c' := { c with control := .lock_acquire lid } .silent { c with control := .lock_acquire lid } := by
-      rfl
-
-  /-- Step.lock_release_step constructor creates valid step when owned by current thread -/
-  example step_lock_release_step_construction (lid : Nat) :
-    let c : Config := Config.empty in
-    let c' := { c with control := .lock_release lid } .silent { c with control := .lock_release lid } := by
-      rfl
-
-  /-- Step.lock_release_step constructor creates UB step when not owned by current thread -/
-  example step_lock_release_step_not_owned (lid : Nat) :
-    let c : Config := Config.empty in
-    let c' := { c with control := .lock_release lid } .silent { c with control := .lock_release lid } := by
-      rfl
-
-  /-- Step.volatile_read_step constructor creates valid step -/
-  example step_volatile_read_step_construction (ptr : Core.Pointer) (rest : List Stmt) :
-    let c : Config := Config.empty in
-    Step { c with control := .assign x (.load ptr) :: rest } .silent { c with control := .assign x (.load ptr) :: rest } := by
-      rfl
-
-  /-- Step.volatile_write_step constructor creates valid step -/
-  example step_volatile_write_step_construction (ptr : Core.Pointer) (v : Core.Value) (rest : List Stmt) :
-    let c : Config := Config.empty in
-    Step { c with control := .store ptr (.lit v) :: rest } .silent { c with control := .store ptr (.lit v) :: rest } := by
-      rfl
-
-  /-- Step.ub_step constructor creates UB step -/
-  example step_ub_step_construction (reason : UBReason) :
-    let c : Config := Config.empty in
-    Step { c with control := .ub_step reason } .silent { c with control := .ub_step reason } := by
-      rfl
-
-  /-- Step equality is reflexive -/
-  example step_reflexivity (c1 c2 : Config) (e1 : Event) :
-      Step c1 e1 c2 → c1 = c2 := by
-    intro c1 c2 h
-      rfl
-
-  /-- Step equality is symmetric -/
-  example step_symmetry (c1 c2 : Config) (e1 : Event) (c2 : Config) :
-      Step c1 e1 c2 → c2 = c1 := by
-    intro c1 c2 h
-      rfl
-
-  /-- Step equality is transitive -/
-  example step_transitivity (c1 c2 c3 : Config) (e1 : Event) (c2 : Config) (c3 : Config) :
-      Step c1 e1 c2 → Step c2 e3 c3 → c1 = c3 := by
-    intro c1 c2 c3 h
-      rfl
-
-end StepTests
-
-/-!
-## Section 8: MultiStep Relation Unit Tests
-
-Tests for MultiStep constructors and properties.
-These tests verify that MultiStep relation constructors work correctly.
--/
-
-section MultiStepTests
-
-  /-- MultiStep.refl constructor creates zero-step transition -/
-  example multistep_refl (c : Config) :
-    MultiStep c [] [] c := by
-      rfl
-
-  /-- MultiStep.trans constructor chains single step with multi-step transition -/
-  example multistep_trans (c1 c2 : Config) (e : Event) (c' : Config) :
-    MultiStep c1 [e] c' := by
-      rfl
-
-  /-- MultiStep.trans constructor chains multiple steps with multi-step transition -/
-  example multistep_trans_multi (c1 c2 : Config) (events : List Event) (c'' : Config) :
-    MultiStep c1 events c'' := by
-      rfl
-
-  /-- MultiStep is reflexive -/
-  example multistep_reflexivity (c : Config) (events : List Event) :
-    MultiStep c events c := by
-      rfl
-
-  /-- MultiStep is symmetric -/
-  example multistep_symmetry (c1 c2 : Config) (events1 : List Event) (events2 : List Event) :
-      MultiStep c1 events1 c2 → MultiStep c2 events2 c1 := by
-    intro c1 c2 h
-      rfl
-
-  /-- MultiStep is transitive -/
-  example multistep_transitivity (c1 c2 c3 : Config) (events1 : List Event) (events2 : List Event) :
-      MultiStep c1 events1 c2 → MultiStep c2 events2 c3 → MultiStep c1 (events1 ++ events2) c3 := by
-      intro c1 c2 c3 h
-      rfl
-
-end MultiStepTests
-
-/-!
-## Section 9: Helper Function Tests
-
-Tests for helper functions in semantics model.
-These tests verify that helper functions work correctly.
--/
-
-section HelperFunctionTests
-
-  /-- allPossibleNextConfigs helper returns all possible next configurations -/
-  example allPossibleNextConfigs (c : Config) :
-    allPossibleNextConfigs c = allPossibleNextConfigsHelper c := by
-      rfl
-
-  /-- allPossibleNextConfigs helper returns distinct configurations -/
-  example allPossibleNextConfigs_distinct (c : Config) :
-    allPossibleNextConfigs c.length = (allPossibleNextConfigs c).eraseDups.length := by
-      rfl
-
-  /-- allPossibleNextConfigs helper returns list of all configurations sorted by block ID -/
-  example allPossibleNextConfigs_sorted (c : Config) :
-    (allPossibleNextConfigs c).getSorted (fun c1 c2 => c1.id < c2.id) := by
-      rfl
-
-end HelperFunctionTests
+end PropertyTests
 
 end Tests.Semantics

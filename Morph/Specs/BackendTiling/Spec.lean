@@ -1,5 +1,6 @@
 /- Copyright 2024-2025 The Morph Project Authors
 SPDX-License-Identifier: Apache-2.0
+-/
 
 import Morph.Core
 import Morph.Specs.CommonTypes
@@ -32,6 +33,7 @@ improving cache locality in generated code.
 - **Cache Locality:** Property that accessed data is in cache
 - **Semantic Preservation:** Tiling does not change program semantics
 
+-/
 namespace Morph.Specs.BackendTiling
 
 /-!

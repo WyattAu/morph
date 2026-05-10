@@ -83,36 +83,37 @@ These tests verify that Id values can be constructed, compared, and hashed corre
 section SyntaxIdTests
 
   /-- Syntax.Id constructor creates valid structure -/
-  example syntaxid_construction (n : String) : (Syntax.Id.mk n).name = n := by
+  example (n : String) : (Morph.Syntax.Id.mk n).name = n := by
     rfl
 
   /-- Syntax.Id getName returns the name -/
-  example syntaxid_getname (n : String) : (Syntax.Id.mk n).getName = n := by
+  example (n : String) : (Morph.Syntax.Id.mk n).getName = n := by
     rfl
 
   /-- Syntax.Id equality is reflexive -/
-  example syntaxid_reflexivity (id : Syntax.Id) : id = id := by
-    cases id <;> rfl
+  example (id : Morph.Syntax.Id) : id = id := by
+    rfl
 
   /-- Syntax.Id equality is symmetric -/
-  example syntaxid_symmetry (id1 id2 : Syntax.Id) : id1 = id2 → id2 = id1 := by
+  example (id1 id2 : Morph.Syntax.Id) : id1 = id2 → id2 = id1 := by
     intro h
-    cases id1 <;> cases id2 <;> rfl
+    exact h.symm
 
   /-- Syntax.Id equality is transitive -/
-  example syntaxid_transitivity (id1 id2 id3 : Syntax.Id) :
+  example (id1 id2 id3 : Morph.Syntax.Id) :
     id1 = id2 → id2 = id3 → id1 = id3 := by
     intro h1 h2
-    cases id1 <;> cases id2 <;> cases id3 <;> rfl
+    exact h1.trans h2
 
   /-- Syntax.Id can be hashed -/
-  example syntaxid_hashable (id : Syntax.Id) : (hash id) = (hash id) := by
+  example (id : Morph.Syntax.Id) : (hash id) = (hash id) := by
     rfl
 
   /-- Different Syntax.Ids are not equal -/
-  example syntaxid_inequality (n1 n2 : String) : n1 ≠ n2 → Syntax.Id.mk n1 ≠ Syntax.Id.mk n2 := by
+  example (n1 n2 : String) : n1 ≠ n2 → Morph.Syntax.Id.mk n1 ≠ Morph.Syntax.Id.mk n2 := by
     intro h
-    cases h
+    intro hneq
+    exact h (congrArg Morph.Syntax.Id.name hneq)
 
 end SyntaxIdTests
 
@@ -126,69 +127,69 @@ These tests verify that Expression constructors work correctly and expressions c
 section SyntaxExprTests
 
   /-- Syntax.Expr.var constructor creates valid expression -/
-  example syntaxexpr_var_construction (id : Syntax.Id) :
-    (Syntax.Expr.var id) = Syntax.Expr.var id := by
+  example (id : Morph.Syntax.Id) :
+    (Morph.Syntax.Expr.var id) = Morph.Syntax.Expr.var id := by
     rfl
 
   /-- Syntax.Expr.lit constructor creates valid expression -/
-  example syntaxexpr_lit_construction (v : Morph.Core.Value) :
-    (Syntax.Expr.lit v) = Syntax.Expr.lit v := by
+  example (v : Morph.Core.Value) :
+    (Morph.Syntax.Expr.lit v) = Morph.Syntax.Expr.lit v := by
     rfl
 
   /-- Syntax.Expr.unop constructor creates valid expression -/
-  example syntaxexpr_unop_construction (op : Morph.Core.Operator) (e : Syntax.Expr) :
-    (Syntax.Expr.unop op e) = Syntax.Expr.unop op e := by
+  example (op : Morph.Core.Operator) (e : Morph.Syntax.Expr) :
+    (Morph.Syntax.Expr.unop op e) = Morph.Syntax.Expr.unop op e := by
     rfl
 
   /-- Syntax.Expr.binop constructor creates valid expression -/
-  example syntaxexpr_binop_construction (op : Morph.Core.Operator) (e1 e2 : Syntax.Expr) :
-    (Syntax.Expr.binop op e1 e2) = Syntax.Expr.binop op e1 e2 := by
+  example (op : Morph.Core.Operator) (e1 e2 : Morph.Syntax.Expr) :
+    (Morph.Syntax.Expr.binop op e1 e2) = Morph.Syntax.Expr.binop op e1 e2 := by
     rfl
 
-  /-- Syntax.Expr.app constructor creates valid expression -/
-  example syntaxexpr_app_construction (id : Syntax.Id) (args : List Syntax.Expr) :
-    (Syntax.Expr.app id args) = Syntax.Expr.app id args := by
+  /-- Syntax.Expr.app constructor creates valid expression (fn is Expr, not Id) -/
+  example (fn : Morph.Syntax.Expr) (args : List Morph.Syntax.Expr) :
+    (Morph.Syntax.Expr.app fn args) = Morph.Syntax.Expr.app fn args := by
     rfl
 
   /-- Syntax.Expr.lam constructor creates valid expression -/
-  example syntaxexpr_lam_construction (params : List Syntax.Id) (body : Syntax.Expr) :
-    (Syntax.Expr.lam params body) = Syntax.Expr.lam params body := by
+  example (params : List Morph.Syntax.Id) (body : Morph.Syntax.Expr) :
+    (Morph.Syntax.Expr.lam params body) = Morph.Syntax.Expr.lam params body := by
     rfl
 
   /-- Syntax.Expr.let constructor creates valid expression -/
-  example syntaxexpr_let_construction (id : Syntax.Id) (e1 e2 : Syntax.Expr) :
-    (Syntax.Expr.let id e1 e2) = Syntax.Expr.let id e1 e2 := by
+  example (id : Morph.Syntax.Id) (e1 e2 : Morph.Syntax.Expr) :
+    (Morph.Syntax.Expr.let id e1 e2) = Morph.Syntax.Expr.let id e1 e2 := by
     rfl
 
   /-- Syntax.Expr.ifThenElse constructor creates valid expression -/
-  example syntaxexpr_ifthenelse_construction (cond e1 e2 : Syntax.Expr) :
-    (Syntax.Expr.ifThenElse cond e1 e2) = Syntax.Expr.ifThenElse cond e1 e2 := by
+  example (cond e1 e2 : Morph.Syntax.Expr) :
+    (Morph.Syntax.Expr.ifThenElse cond e1 e2) = Morph.Syntax.Expr.ifThenElse cond e1 e2 := by
     rfl
 
-  /-- Syntax.Expr.forLoop constructor creates valid expression -/
-  example syntaxexpr_forloop_construction (id : Syntax.Id) (e : Syntax.Expr) (body : List Syntax.Expr) :
-    (Syntax.Expr.forLoop id e body) = Syntax.Expr.forLoop id e body := by
+  /-- Syntax.Expr.forLoop constructor creates valid expression (4 args) -/
+  example (id : Morph.Syntax.Id) (start end_ : Morph.Syntax.Expr) (body : List Morph.Syntax.Expr) :
+    (Morph.Syntax.Expr.forLoop id start end_ body) = Morph.Syntax.Expr.forLoop id start end_ body := by
     rfl
 
   /-- Syntax.Expr.block constructor creates valid expression -/
-  example syntaxexpr_block_construction (body : List Syntax.Expr) :
-    (Syntax.Expr.block body) = Syntax.Expr.block body := by
+  example (body : List Morph.Syntax.Expr) :
+    (Morph.Syntax.Expr.block body) = Morph.Syntax.Expr.block body := by
     rfl
 
   /-- Syntax.Expr equality is reflexive -/
-  example syntaxexpr_reflexivity (e : Syntax.Expr) : e = e := by
-    cases e <;> rfl
+  example (e : Morph.Syntax.Expr) : e = e := by
+    rfl
 
   /-- Syntax.Expr equality is symmetric -/
-  example syntaxexpr_symmetry (e1 e2 : Syntax.Expr) : e1 = e2 → e2 = e1 := by
+  example (e1 e2 : Morph.Syntax.Expr) : e1 = e2 → e2 = e1 := by
     intro h
-    cases e1 <;> cases e2 <;> rfl
+    exact h.symm
 
   /-- Syntax.Expr equality is transitive -/
-  example syntaxexpr_transitivity (e1 e2 e3 : Syntax.Expr) :
+  example (e1 e2 e3 : Morph.Syntax.Expr) :
     e1 = e2 → e2 = e3 → e1 = e3 := by
     intro h1 h2
-    cases e1 <;> cases e2 <;> cases e3 <;> rfl
+    exact h1.trans h2
 
 end SyntaxExprTests
 
@@ -202,61 +203,61 @@ These tests verify that Statement constructors work correctly and statements can
 section SyntaxStmtTests
 
   /-- Syntax.Stmt.exprStmt constructor creates valid statement -/
-  example syntaxstmt_exprstmt_construction (e : Syntax.Expr) :
-    (Syntax.Stmt.exprStmt e) = Syntax.Stmt.exprStmt e := by
+  example (e : Morph.Syntax.Expr) :
+    (Morph.Syntax.Stmt.exprStmt e) = Morph.Syntax.Stmt.exprStmt e := by
     rfl
 
   /-- Syntax.Stmt.varDecl constructor creates valid statement -/
-  example syntaxstmt_vardecl_construction (id : Syntax.Id) (ty : Morph.Core.Typ) (e : Syntax.Expr) :
-    (Syntax.Stmt.varDecl id ty e) = Syntax.Stmt.varDecl id ty e := by
+  example (id : Morph.Syntax.Id) (ty : Morph.Core.Typ) (e : Morph.Syntax.Expr) :
+    (Morph.Syntax.Stmt.varDecl id ty e) = Morph.Syntax.Stmt.varDecl id ty e := by
     rfl
 
   /-- Syntax.Stmt.assign constructor creates valid statement -/
-  example syntaxstmt_assign_construction (id : Syntax.Id) (e : Syntax.Expr) :
-    (Syntax.Stmt.assign id e) = Syntax.Stmt.assign id e := by
+  example (id : Morph.Syntax.Id) (e : Morph.Syntax.Expr) :
+    (Morph.Syntax.Stmt.assign id e) = Morph.Syntax.Stmt.assign id e := by
     rfl
 
   /-- Syntax.Stmt.returnStmt constructor creates valid statement -/
-  example syntaxstmt_returnstmt_construction (e : Syntax.Expr) :
-    (Syntax.Stmt.returnStmt e) = Syntax.Stmt.returnStmt e := by
+  example (e : Morph.Syntax.Expr) :
+    (Morph.Syntax.Stmt.returnStmt e) = Morph.Syntax.Stmt.returnStmt e := by
     rfl
 
   /-- Syntax.Stmt.break constructor creates valid statement -/
-  example syntaxstmt_break_construction : Syntax.Stmt.break = Syntax.Stmt.break := by
+  example : Morph.Syntax.Stmt.break = Morph.Syntax.Stmt.break := by
     rfl
 
   /-- Syntax.Stmt.continue constructor creates valid statement -/
-  example syntaxstmt_continue_construction : Syntax.Stmt.continue = Syntax.Stmt.continue := by
+  example : Morph.Syntax.Stmt.continue = Morph.Syntax.Stmt.continue := by
     rfl
 
   /-- Syntax.Stmt.whileLoop constructor creates valid statement -/
-  example syntaxstmt_whileloop_construction (e : Syntax.Expr) (body : List Syntax.Stmt) :
-    (Syntax.Stmt.whileLoop e body) = Syntax.Stmt.whileLoop e body := by
+  example (e : Morph.Syntax.Expr) (body : List Morph.Syntax.Stmt) :
+    (Morph.Syntax.Stmt.whileLoop e body) = Morph.Syntax.Stmt.whileLoop e body := by
     rfl
 
   /-- Syntax.Stmt.doWhile constructor creates valid statement -/
-  example syntaxstmt_dowhile_construction (e : Syntax.Expr) (body : List Syntax.Stmt) :
-    (Syntax.Stmt.doWhile e body) = Syntax.Stmt.doWhile e body := by
+  example (e : Morph.Syntax.Expr) (body : List Morph.Syntax.Stmt) :
+    (Morph.Syntax.Stmt.doWhile e body) = Morph.Syntax.Stmt.doWhile e body := by
     rfl
 
   /-- Syntax.Stmt.nop constructor creates valid statement -/
-  example syntaxstmt_nop_construction : Syntax.Stmt.nop = Syntax.Stmt.nop := by
+  example : Morph.Syntax.Stmt.nop = Morph.Syntax.Stmt.nop := by
     rfl
 
   /-- Syntax.Stmt equality is reflexive -/
-  example syntaxstmt_reflexivity (s : Syntax.Stmt) : s = s := by
-    cases s <;> rfl
+  example (s : Morph.Syntax.Stmt) : s = s := by
+    rfl
 
   /-- Syntax.Stmt equality is symmetric -/
-  example syntaxstmt_symmetry (s1 s2 : Syntax.Stmt) : s1 = s2 → s2 = s1 := by
+  example (s1 s2 : Morph.Syntax.Stmt) : s1 = s2 → s2 = s1 := by
     intro h
-    cases s1 <;> cases s2 <;> rfl
+    exact h.symm
 
   /-- Syntax.Stmt equality is transitive -/
-  example syntaxstmt_transitivity (s1 s2 s3 : Syntax.Stmt) :
+  example (s1 s2 s3 : Morph.Syntax.Stmt) :
     s1 = s2 → s2 = s3 → s1 = s3 := by
     intro h1 h2
-    cases s1 <;> cases s2 <;> cases s3 <;> rfl
+    exact h1.trans h2
 
 end SyntaxStmtTests
 
@@ -270,28 +271,28 @@ These tests verify that Program structures work correctly.
 section SyntaxProgramTests
 
   /-- Syntax.Program constructor creates valid program -/
-  example syntaxprogram_construction (stmts : List Syntax.Stmt) :
-    (Syntax.Program.mk stmts).stmts = stmts := by
+  example (stmts : List Morph.Syntax.Stmt) :
+    (Morph.Syntax.Program.mk stmts).stmts = stmts := by
     rfl
 
   /-- Syntax.Program.empty returns empty program -/
-  example syntaxprogram_empty : Syntax.Program.empty.stmts = [] := by
+  example : Morph.Syntax.Program.empty.stmts = [] := by
     rfl
 
   /-- Syntax.Program equality is reflexive -/
-  example syntaxprogram_reflexivity (p : Syntax.Program) : p = p := by
-    cases p <;> rfl
+  example (p : Morph.Syntax.Program) : p = p := by
+    rfl
 
   /-- Syntax.Program equality is symmetric -/
-  example syntaxprogram_symmetry (p1 p2 : Syntax.Program) : p1 = p2 → p2 = p1 := by
+  example (p1 p2 : Morph.Syntax.Program) : p1 = p2 → p2 = p1 := by
     intro h
-    cases p1 <;> cases p2 <;> rfl
+    exact h.symm
 
   /-- Syntax.Program equality is transitive -/
-  example syntaxprogram_transitivity (p1 p2 p3 : Syntax.Program) :
+  example (p1 p2 p3 : Morph.Syntax.Program) :
     p1 = p2 → p2 = p3 → p1 = p3 := by
     intro h1 h2
-    cases p1 <;> cases p2 <;> cases p3 <;> rfl
+    exact h1.trans h2
 
 end SyntaxProgramTests
 
@@ -305,48 +306,50 @@ These tests verify that HIR.Id values can be constructed, compared, and hashed c
 section HIRIdTests
 
   /-- HIR.Id constructor creates valid structure -/
-  example hirid_construction (i : Nat) (n : String) :
-    (HIR.Id.mk i n).index = i ∧ (HIR.Id.mk i n).name = n := by
-    constructor <;> rfl <;> rfl
+  example (i : Nat) (n : String) :
+    (Morph.HIR.Id.mk i n).index = i ∧ (Morph.HIR.Id.mk i n).name = n := by
+    constructor <;> rfl
 
   /-- HIR.Id getIndex returns the index -/
-  example hirid_getindex (i : Nat) (n : String) : (HIR.Id.mk i n).getIndex = i := by
+  example (i : Nat) (n : String) : (Morph.HIR.Id.mk i n).getIndex = i := by
     rfl
 
   /-- HIR.Id getName returns the name -/
-  example hirid_getname (i : Nat) (n : String) : (HIR.Id.mk i n).getName = n := by
+  example (i : Nat) (n : String) : (Morph.HIR.Id.mk i n).getName = n := by
     rfl
 
   /-- HIR.Id equality is reflexive -/
-  example hirid_reflexivity (id : HIR.Id) : id = id := by
-    cases id <;> rfl
+  example (id : Morph.HIR.Id) : id = id := by
+    rfl
 
   /-- HIR.Id equality is symmetric -/
-  example hirid_symmetry (id1 id2 : HIR.Id) : id1 = id2 → id2 = id1 := by
+  example (id1 id2 : Morph.HIR.Id) : id1 = id2 → id2 = id1 := by
     intro h
-    cases id1 <;> cases id2 <;> rfl
+    exact h.symm
 
   /-- HIR.Id equality is transitive -/
-  example hirid_transitivity (id1 id2 id3 : HIR.Id) :
+  example (id1 id2 id3 : Morph.HIR.Id) :
     id1 = id2 → id2 = id3 → id1 = id3 := by
     intro h1 h2
-    cases id1 <;> cases id2 <;> cases id3 <;> rfl
+    exact h1.trans h2
 
   /-- HIR.Id can be hashed -/
-  example hirid_hashable (id : HIR.Id) : (hash id) = (hash id) := by
+  example (id : Morph.HIR.Id) : (hash id) = (hash id) := by
     rfl
 
   /-- Different HIR.Ids are not equal -/
-  example hirid_inequality (i1 i2 : Nat) (n : String) :
-    i1 ≠ i2 → HIR.Id.mk i1 n ≠ HIR.Id.mk i2 n := by
+  example (i1 i2 : Nat) (n : String) :
+    i1 ≠ i2 → Morph.HIR.Id.mk i1 n ≠ Morph.HIR.Id.mk i2 n := by
     intro h
-    cases h
+    intro hneq
+    exact h (congrArg Morph.HIR.Id.index hneq)
 
   /-- HIR.Ids with different names are not equal -/
-  example hirid_name_inequality (i : Nat) (n1 n2 : String) :
-    n1 ≠ n2 → HIR.Id.mk i n1 ≠ HIR.Id.mk i n2 := by
+  example (i : Nat) (n1 n2 : String) :
+    n1 ≠ n2 → Morph.HIR.Id.mk i n1 ≠ Morph.HIR.Id.mk i n2 := by
     intro h
-    cases h
+    intro hneq
+    exact h (congrArg Morph.HIR.Id.name hneq)
 
 end HIRIdTests
 
@@ -360,39 +363,40 @@ These tests verify that Pattern constructors work correctly and patterns can be 
 section HIRPatternTests
 
   /-- HIR.Pattern.lit constructor creates valid pattern -/
-  example hirpattern_lit_construction (v : Morph.Core.Value) :
-    (HIR.Pattern.lit v) = HIR.Pattern.lit v := by
+  example (v : Morph.Core.Value) :
+    (Morph.HIR.Pattern.lit v) = Morph.HIR.Pattern.lit v := by
     rfl
 
   /-- HIR.Pattern.wildcard constructor creates valid pattern -/
-  example hirpattern_wildcard_construction :
-    HIR.Pattern.wildcard = HIR.Pattern.wildcard := by
+  example :
+    Morph.HIR.Pattern.wildcard = Morph.HIR.Pattern.wildcard := by
     rfl
 
   /-- HIR.Pattern.var constructor creates valid pattern -/
-  example hirpattern_var_construction (id : HIR.Id) :
-    (HIR.Pattern.var id) = HIR.Pattern.var id := by
+  example (id : Morph.HIR.Id) :
+    (Morph.HIR.Pattern.var id) = Morph.HIR.Pattern.var id := by
     rfl
 
   /-- HIR.Pattern equality is reflexive -/
-  example hirpattern_reflexivity (p : HIR.Pattern) : p = p := by
-    cases p <;> rfl
+  example (p : Morph.HIR.Pattern) : p = p := by
+    rfl
 
   /-- HIR.Pattern equality is symmetric -/
-  example hirpattern_symmetry (p1 p2 : HIR.Pattern) : p1 = p2 → p2 = p1 := by
+  example (p1 p2 : Morph.HIR.Pattern) : p1 = p2 → p2 = p1 := by
     intro h
-    cases p1 <;> cases p2 <;> rfl
+    exact h.symm
 
   /-- HIR.Pattern equality is transitive -/
-  example hirpattern_transitivity (p1 p2 p3 : HIR.Pattern) :
+  example (p1 p2 p3 : Morph.HIR.Pattern) :
     p1 = p2 → p2 = p3 → p1 = p3 := by
     intro h1 h2
-    cases p1 <;> cases p2 <;> cases p3 <;> rfl
+    exact h1.trans h2
 
   /-- Different pattern constructors are not equal -/
-  example hirpattern_distinct :
-    HIR.Pattern.wildcard ≠ HIR.Pattern.lit (Morph.Core.Value.int 0) := by
-    cases
+  example :
+    Morph.HIR.Pattern.wildcard ≠ Morph.HIR.Pattern.lit (Morph.Core.Value.int 0) := by
+    intro h
+    exact Morph.HIR.Pattern.noConfusion h
 
 end HIRPatternTests
 
@@ -406,78 +410,78 @@ These tests verify that Expression constructors work correctly and expressions c
 section HIRExprTests
 
   /-- HIR.Expr.var constructor creates valid expression -/
-  example hirexpr_var_construction (id : HIR.Id) :
-    (HIR.Expr.var id) = HIR.Expr.var id := by
+  example (id : Morph.HIR.Id) :
+    (Morph.HIR.Expr.var id) = Morph.HIR.Expr.var id := by
     rfl
 
   /-- HIR.Expr.lit constructor creates valid expression -/
-  example hirexpr_lit_construction (v : Morph.Core.Value) :
-    (HIR.Expr.lit v) = HIR.Expr.lit v := by
+  example (v : Morph.Core.Value) :
+    (Morph.HIR.Expr.lit v) = Morph.HIR.Expr.lit v := by
     rfl
 
   /-- HIR.Expr.unop constructor creates valid expression -/
-  example hirexpr_unop_construction (op : Morph.Core.Operator) (e : HIR.Expr) :
-    (HIR.Expr.unop op e) = HIR.Expr.unop op e := by
+  example (op : Morph.Core.Operator) (e : Morph.HIR.Expr) :
+    (Morph.HIR.Expr.unop op e) = Morph.HIR.Expr.unop op e := by
     rfl
 
   /-- HIR.Expr.binop constructor creates valid expression -/
-  example hirexpr_binop_construction (op : Morph.Core.Operator) (e1 e2 : HIR.Expr) :
-    (HIR.Expr.binop op e1 e2) = HIR.Expr.binop op e1 e2 := by
+  example (op : Morph.Core.Operator) (e1 e2 : Morph.HIR.Expr) :
+    (Morph.HIR.Expr.binop op e1 e2) = Morph.HIR.Expr.binop op e1 e2 := by
     rfl
 
-  /-- HIR.Expr.app constructor creates valid expression -/
-  example hirexpr_app_construction (id : HIR.Id) (args : List HIR.Expr) :
-    (HIR.Expr.app id args) = HIR.Expr.app id args := by
+  /-- HIR.Expr.app constructor creates valid expression (fn is Id) -/
+  example (id : Morph.HIR.Id) (args : List Morph.HIR.Expr) :
+    (Morph.HIR.Expr.app id args) = Morph.HIR.Expr.app id args := by
     rfl
 
   /-- HIR.Expr.lam constructor creates valid expression -/
-  example hirexpr_lam_construction (params : List HIR.Id) (body : HIR.Expr) :
-    (HIR.Expr.lam params body) = HIR.Expr.lam params body := by
+  example (params : List Morph.HIR.Id) (body : Morph.HIR.Expr) :
+    (Morph.HIR.Expr.lam params body) = Morph.HIR.Expr.lam params body := by
     rfl
 
   /-- HIR.Expr.let constructor creates valid expression -/
-  example hirexpr_let_construction (id : HIR.Id) (e1 e2 : HIR.Expr) :
-    (HIR.Expr.let id e1 e2) = HIR.Expr.let id e1 e2 := by
+  example (id : Morph.HIR.Id) (e1 e2 : Morph.HIR.Expr) :
+    (Morph.HIR.Expr.let id e1 e2) = Morph.HIR.Expr.let id e1 e2 := by
     rfl
 
   /-- HIR.Expr.ifThenElse constructor creates valid expression -/
-  example hirexpr_ifthenelse_construction (cond e1 e2 : HIR.Expr) :
-    (HIR.Expr.ifThenElse cond e1 e2) = HIR.Expr.ifThenElse cond e1 e2 := by
+  example (cond e1 e2 : Morph.HIR.Expr) :
+    (Morph.HIR.Expr.ifThenElse cond e1 e2) = Morph.HIR.Expr.ifThenElse cond e1 e2 := by
     rfl
 
   /-- HIR.Expr.whileLoop constructor creates valid expression -/
-  example hirexpr_whileloop_construction (cond : HIR.Expr) (body : List HIR.Expr) :
-    (HIR.Expr.whileLoop cond body) = HIR.Expr.whileLoop cond body := by
+  example (cond : Morph.HIR.Expr) (body : List Morph.HIR.Expr) :
+    (Morph.HIR.Expr.whileLoop cond body) = Morph.HIR.Expr.whileLoop cond body := by
     rfl
 
   /-- HIR.Expr.match constructor creates valid expression -/
-  example hirexpr_match_construction (e : HIR.Expr) (cases : List (HIR.Pattern × HIR.Expr)) :
-    (HIR.Expr.match e cases) = HIR.Expr.match e cases := by
+  example (e : Morph.HIR.Expr) (cases : List (Morph.HIR.Pattern × Morph.HIR.Expr)) :
+    (Morph.HIR.Expr.match e cases) = Morph.HIR.Expr.match e cases := by
     rfl
 
   /-- HIR.Expr.block constructor creates valid expression -/
-  example hirexpr_block_construction (body : List HIR.Expr) :
-    (HIR.Expr.block body) = HIR.Expr.block body := by
+  example (body : List Morph.HIR.Expr) :
+    (Morph.HIR.Expr.block body) = Morph.HIR.Expr.block body := by
     rfl
 
   /-- HIR.Expr.infer constructor creates valid expression -/
-  example hirexpr_infer_construction : HIR.Expr.infer = HIR.Expr.infer := by
+  example : Morph.HIR.Expr.infer = Morph.HIR.Expr.infer := by
     rfl
 
   /-- HIR.Expr equality is reflexive -/
-  example hirexpr_reflexivity (e : HIR.Expr) : e = e := by
-    cases e <;> rfl
+  example (e : Morph.HIR.Expr) : e = e := by
+    rfl
 
   /-- HIR.Expr equality is symmetric -/
-  example hirexpr_symmetry (e1 e2 : HIR.Expr) : e1 = e2 → e2 = e1 := by
+  example (e1 e2 : Morph.HIR.Expr) : e1 = e2 → e2 = e1 := by
     intro h
-    cases e1 <;> cases e2 <;> rfl
+    exact h.symm
 
   /-- HIR.Expr equality is transitive -/
-  example hirexpr_transitivity (e1 e2 e3 : HIR.Expr) :
+  example (e1 e2 e3 : Morph.HIR.Expr) :
     e1 = e2 → e2 = e3 → e1 = e3 := by
     intro h1 h2
-    cases e1 <;> cases e2 <;> cases e3 <;> rfl
+    exact h1.trans h2
 
 end HIRExprTests
 
@@ -491,56 +495,56 @@ These tests verify that Statement constructors work correctly and statements can
 section HIRStmtTests
 
   /-- HIR.Stmt.exprStmt constructor creates valid statement -/
-  example hirstmt_exprstmt_construction (e : HIR.Expr) :
-    (HIR.Stmt.exprStmt e) = HIR.Stmt.exprStmt e := by
+  example (e : Morph.HIR.Expr) :
+    (Morph.HIR.Stmt.exprStmt e) = Morph.HIR.Stmt.exprStmt e := by
     rfl
 
   /-- HIR.Stmt.varDecl constructor creates valid statement -/
-  example hirstmt_vardecl_construction (id : HIR.Id) (ty : Morph.Core.Typ) (e : HIR.Expr) :
-    (HIR.Stmt.varDecl id ty e) = HIR.Stmt.varDecl id ty e := by
+  example (id : Morph.HIR.Id) (ty : Morph.Core.Typ) (e : Morph.HIR.Expr) :
+    (Morph.HIR.Stmt.varDecl id ty e) = Morph.HIR.Stmt.varDecl id ty e := by
     rfl
 
   /-- HIR.Stmt.assign constructor creates valid statement -/
-  example hirstmt_assign_construction (id : HIR.Id) (e : HIR.Expr) :
-    (HIR.Stmt.assign id e) = HIR.Stmt.assign id e := by
+  example (id : Morph.HIR.Id) (e : Morph.HIR.Expr) :
+    (Morph.HIR.Stmt.assign id e) = Morph.HIR.Stmt.assign id e := by
     rfl
 
   /-- HIR.Stmt.returnStmt constructor creates valid statement -/
-  example hirstmt_returnstmt_construction (e : HIR.Expr) :
-    (HIR.Stmt.returnStmt e) = HIR.Stmt.returnStmt e := by
+  example (e : Morph.HIR.Expr) :
+    (Morph.HIR.Stmt.returnStmt e) = Morph.HIR.Stmt.returnStmt e := by
     rfl
 
   /-- HIR.Stmt.break constructor creates valid statement -/
-  example hirstmt_break_construction : HIR.Stmt.break = HIR.Stmt.break := by
+  example : Morph.HIR.Stmt.break = Morph.HIR.Stmt.break := by
     rfl
 
   /-- HIR.Stmt.continue constructor creates valid statement -/
-  example hirstmt_continue_construction : HIR.Stmt.continue = HIR.Stmt.continue := by
+  example : Morph.HIR.Stmt.continue = Morph.HIR.Stmt.continue := by
     rfl
 
   /-- HIR.Stmt.whileLoop constructor creates valid statement -/
-  example hirstmt_whileloop_construction (e : HIR.Expr) (body : List HIR.Stmt) :
-    (HIR.Stmt.whileLoop e body) = HIR.Stmt.whileLoop e body := by
+  example (e : Morph.HIR.Expr) (body : List Morph.HIR.Stmt) :
+    (Morph.HIR.Stmt.whileLoop e body) = Morph.HIR.Stmt.whileLoop e body := by
     rfl
 
   /-- HIR.Stmt.nop constructor creates valid statement -/
-  example hirstmt_nop_construction : HIR.Stmt.nop = HIR.Stmt.nop := by
+  example : Morph.HIR.Stmt.nop = Morph.HIR.Stmt.nop := by
     rfl
 
   /-- HIR.Stmt equality is reflexive -/
-  example hirstmt_reflexivity (s : HIR.Stmt) : s = s := by
-    cases s <;> rfl
+  example (s : Morph.HIR.Stmt) : s = s := by
+    rfl
 
   /-- HIR.Stmt equality is symmetric -/
-  example hirstmt_symmetry (s1 s2 : HIR.Stmt) : s1 = s2 → s2 = s1 := by
+  example (s1 s2 : Morph.HIR.Stmt) : s1 = s2 → s2 = s1 := by
     intro h
-    cases s1 <;> cases s2 <;> rfl
+    exact h.symm
 
   /-- HIR.Stmt equality is transitive -/
-  example hirstmt_transitivity (s1 s2 s3 : HIR.Stmt) :
+  example (s1 s2 s3 : Morph.HIR.Stmt) :
     s1 = s2 → s2 = s3 → s1 = s3 := by
     intro h1 h2
-    cases s1 <;> cases s2 <;> cases s3 <;> rfl
+    exact h1.trans h2
 
 end HIRStmtTests
 
@@ -554,28 +558,28 @@ These tests verify that Program structures work correctly.
 section HIRProgramTests
 
   /-- HIR.Program constructor creates valid program -/
-  example hirprogram_construction (stmts : List HIR.Stmt) :
-    (HIR.Program.mk stmts).stmts = stmts := by
+  example (stmts : List Morph.HIR.Stmt) :
+    (Morph.HIR.Program.mk stmts).stmts = stmts := by
     rfl
 
   /-- HIR.Program.empty returns empty program -/
-  example hirprogram_empty : HIR.Program.empty.stmts = [] := by
+  example : Morph.HIR.Program.empty.stmts = [] := by
     rfl
 
   /-- HIR.Program equality is reflexive -/
-  example hirprogram_reflexivity (p : HIR.Program) : p = p := by
-    cases p <;> rfl
+  example (p : Morph.HIR.Program) : p = p := by
+    rfl
 
   /-- HIR.Program equality is symmetric -/
-  example hirprogram_symmetry (p1 p2 : HIR.Program) : p1 = p2 → p2 = p1 := by
+  example (p1 p2 : Morph.HIR.Program) : p1 = p2 → p2 = p1 := by
     intro h
-    cases p1 <;> cases p2 <;> rfl
+    exact h.symm
 
   /-- HIR.Program equality is transitive -/
-  example hirprogram_transitivity (p1 p2 p3 : HIR.Program) :
+  example (p1 p2 p3 : Morph.HIR.Program) :
     p1 = p2 → p2 = p3 → p1 = p3 := by
     intro h1 h2
-    cases p1 <;> cases p2 <;> cases p3 <;> rfl
+    exact h1.trans h2
 
 end HIRProgramTests
 
@@ -589,34 +593,34 @@ These tests verify that AST structures maintain important invariants.
 section ASTWellFormednessTests
 
   /-- Syntax.Id with non-empty name is well-formed -/
-  example syntaxid_wellformed_nonempty (n : String) :
-    n ≠ "" → (Syntax.Id.mk n).name ≠ "" := by
+  example (n : String) :
+    n ≠ "" → (Morph.Syntax.Id.mk n).name ≠ "" := by
     intro h
     exact h
 
   /-- HIR.Id with valid index is well-formed -/
-  example hirid_wellformed_index (i : Nat) (n : String) :
-    (HIR.Id.mk i n).index = i := by
+  example (i : Nat) (n : String) :
+    (Morph.HIR.Id.mk i n).index = i := by
     rfl
 
   /-- Syntax.Expr.block with empty body is valid -/
-  example syntaxexpr_block_empty :
-    Syntax.Expr.block [] = Syntax.Expr.block [] := by
+  example :
+    Morph.Syntax.Expr.block [] = Morph.Syntax.Expr.block [] := by
     rfl
 
   /-- HIR.Expr.block with empty body is valid -/
-  example hirexpr_block_empty :
-    HIR.Expr.block [] = HIR.Expr.block [] := by
+  example :
+    Morph.HIR.Expr.block [] = Morph.HIR.Expr.block [] := by
     rfl
 
   /-- Syntax.Program with empty statements is valid -/
-  example syntaxprogram_empty_stmts :
-    Syntax.Program.mk [] = Syntax.Program.mk [] := by
+  example :
+    Morph.Syntax.Program.mk [] = Morph.Syntax.Program.mk [] := by
     rfl
 
   /-- HIR.Program with empty statements is valid -/
-  example hirprogram_empty_stmts :
-    HIR.Program.mk [] = HIR.Program.mk [] := by
+  example :
+    Morph.HIR.Program.mk [] = Morph.HIR.Program.mk [] := by
     rfl
 
 end ASTWellFormednessTests

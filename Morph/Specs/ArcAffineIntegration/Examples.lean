@@ -1,5 +1,6 @@
 /- Copyright 2024-2025 The Morph Project Authors
 SPDX-License-Identifier: Apache-2.0
+-/
 
 import Morph.Specs.ArcAffineIntegration.Spec
 import Morph.Specs.ArcAffineIntegration.Lemmas
@@ -20,6 +21,7 @@ types integration specification.
 ## Examples
 
 All examples are executable and demonstrate the key concepts.
+-/
 
 namespace Morph.Specs.ArcAffineIntegration
 

@@ -1,5 +1,5 @@
 /- Copyright 2024-2025 The Morph Project Authors
-SPDX-License-Identifier: Apache-2.0
+SPDX-License-Identifier: Apache-2.0 -/
 
 import Morph.Core
 import Morph.Memory
@@ -35,6 +35,7 @@ of reference counting and linear type constraints.
 - **Memory Safety:** Guarantee that no memory errors occur in well-typed programs
 - **Acyclicity:** Reference graph forms a DAG (no cycles)
 
+-/
 namespace Morph.Specs.ArcAffineIntegration
 
 inductive Capability where
@@ -138,4 +139,6 @@ def canDeallocate (o : ObjectId) : Prop :=
 
 def typeChecks (e : Expr) : Prop :=
   True
+
+end Morph.Specs.ArcAffineIntegration
 

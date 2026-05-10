@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 import Morph.Core
 import Morph.Syntax
 import Morph.Semantics
-import Morph.Specs.TypeSystem
+import Morph.Specs.TypeSystem.Spec
 import Morph.Specs.TypeSystem.Lemmas
 import Morph.Proofs.TypeSoundness.ExprDepth
 

@@ -2,6 +2,7 @@
 SPDX-License-Identifier: Apache-2.0
 -/
 import Morph.Core
+open Morph.Core
 
 namespace Morph.HIR
 

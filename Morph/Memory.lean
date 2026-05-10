@@ -107,7 +107,7 @@ namespace Block
 
 /-- Create a new uninitialized block -/
 def make (id : Core.BlockId) (size alignment : Nat) : Block :=
-  { id, size, bytes := Array.mkArray size MemByte.undef, state := BlockState.allocated, alignment }
+  { id, size, bytes := Array.replicate size MemByte.undef, state := BlockState.allocated, alignment }
 
 /-- Check if block is allocated -/
 def isAllocated (b : Block) : Bool :=
@@ -128,7 +128,7 @@ def rangeInBounds (b : Block) (offset size : Nat) : Bool :=
 /-- Read a byte at given offset -/
 def read (b : Block) (offset : Nat) : MemByte :=
   if offset < b.size then
-    b.bytes.get! offset
+    b.bytes[offset]!
   else
     MemByte.poison
 

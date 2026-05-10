@@ -4,7 +4,8 @@ SPDX-License-Identifier: Apache-2.0 -/
 import Morph.Core
 import Morph.Syntax
 import Morph.Semantics
-import Morph.Specs.TypeSystem
+import Morph.Specs.TypeSystem.Spec
+import Morph.Specs.TypeSystem.Lemmas
 
 namespace Morph.Proofs.TypeSoundness
 
@@ -117,17 +118,17 @@ private theorem extendTypEnv_swap {Γ : TypEnv} {x y : String} {τx τy : Typ} (
     | inr hz2 =>
       have h1 : ¬(y == x) := fun h => hne (eq_of_beq h).symm
       have h2 : ¬(y == z) := fun h => hz2 (eq_of_beq h).symm
-      simp only [h1, h2, beq_self_eq_true, List.find?_cons]
+      simp only [h1, h2]
   | inr hz =>
     cases Decidable.em (z = y) with
     | inl hz' =>
       have h1 : ¬(x == y) := fun h => hne (eq_of_beq h)
       have h2 : ¬(x == z) := fun h => hz (eq_of_beq h).symm
-      simp only [h1, h2, beq_self_eq_true, List.find?_cons]
+      simp only [h1, h2]
     | inr hz' =>
       have h1 : ¬(y == z) := fun h => hz' (eq_of_beq h).symm
       have h2 : ¬(x == z) := fun h => hz (eq_of_beq h).symm
-      simp only [h1, h2, List.find?_cons]
+      simp only [h1, h2]
 
 mutual
 private theorem HasType_lookup_eq {Γ Γ' : TypEnv} {e : Expr} {τ : Typ}
@@ -186,6 +187,7 @@ private theorem lookupTyp_drop_shadowed {Γ : TypEnv} {x : String} {τ₁ : Typ}
   | inr h =>
     have h1 : ¬(x == z) := fun h2 => h (hEq ▸ eq_of_beq h2)
     simp only [h1]
+
 
 
 mutual
@@ -276,10 +278,8 @@ private theorem subst_preserves_type (Gamma : TypEnv) (e : Expr) (x : String) (v
         (HasType_lookup_eq hBody (lookupTyp_drop_shadowed x' τ1' hNameEq))
     · next hNC =>
       -- Non-capture case: x'.name ≠ x, so we substitute inside body.
-      -- Requires showing body typed under extend (extend Γ x'.name τ1') x tau1,
-      -- which differs from hBody's env (extend Γ x tau1) at x'.name.
-      -- This is provable only with FV tracking (x'.name ∉ FV(body))
-      -- or alpha-conversion. See weakening lemma for related discussion.
+      -- Requires FV tracking (x ∉ freeVars v) or alpha-conversion to handle
+      -- the case where v mentions binder names. See weakening lemma for discussion.
       sorry
   | HasType.let_type _ id e1 e2 τ1 τ2 hE1 hE2 =>
     simp only [subst]
@@ -291,8 +291,8 @@ private theorem subst_preserves_type (Gamma : TypEnv) (e : Expr) (x : String) (v
         (HasType_lookup_eq hE2 (lookupTyp_drop_shadowed id τ1 hNameEq))
     · next hNC =>
       -- Non-capture case: id.name ≠ x, so we substitute inside e2.
-      -- Requires FV tracking (id.name ∉ FV(e2)) or alpha-conversion.
-      -- See weakening lemma for related discussion.
+      -- Requires FV tracking (x ∉ freeVars v) or alpha-conversion to handle
+      -- the case where v mentions binder names. See weakening lemma for discussion.
       sorry
   | HasType.for_type _ id s e body hS hE hBody =>
     simp only [subst]
@@ -305,8 +305,8 @@ private theorem subst_preserves_type (Gamma : TypEnv) (e : Expr) (x : String) (v
         (HasTypeAll_lookup_eq hBody (lookupTyp_drop_shadowed id .intType hNameEq))
     · next hNC =>
       -- Non-capture case: id.name ≠ x, so we substitute inside body elements.
-      -- Requires FV tracking (id.name ∉ FV(body)) or alpha-conversion.
-      -- See weakening lemma for related discussion.
+      -- Requires FV tracking (x ∉ freeVars v) or alpha-conversion to handle
+      -- the case where v mentions binder names. See weakening lemma for discussion.
       sorry
 end
 
@@ -576,6 +576,6 @@ theorem preservation : forall {e e' : Expr} {tau : Typ} {Gamma : TypEnv},
         | cons a rest =>
           have hHead := HasTypeAll_cons_head hAll
           have : substAll body [xP] (a :: rest) = subst body xP.name a := by
-            unfold substAll; unfold substAll; cases rest <;> rfl
+            unfold substAll; cases rest <;> rfl
           exact this ▸ subst_preserves_type Gamma body xP.name a τ1P tau hBodyP hHead
 end Morph.Proofs.TypeSoundness
