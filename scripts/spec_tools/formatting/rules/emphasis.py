@@ -25,6 +25,9 @@ class EmphasisNormalizationRule(FormattingRule):
     method reports violations without modifying the content.
     """
 
+    _PLACEHOLDER_PREFIX = "\x00MATH_BLOCK_"
+    _PLACEHOLDER_SUFFIX = "\x00"
+
     def __init__(self, enabled: bool = True):
         """Initialize the emphasis normalization rule.
 
@@ -32,12 +35,9 @@ class EmphasisNormalizationRule(FormattingRule):
             enabled: Whether this rule is enabled (default: True)
         """
         self.enabled = enabled
-        # Pattern to find LaTeX math blocks ($...$ and $$...$$)
         self._math_pattern = re.compile(r"\$\$[^$]+\$\$|\$[^$]+\$")
-        # Pattern for italic with underscores (outside math)
-        self._italic_underscore_pattern = re.compile(r"(?<!\$)_(?!\$)([^_]+)(?<!\$)_(?!\$)")
-        # Pattern for bold with double underscores (outside math)
-        self._bold_underscore_pattern = re.compile(r"(?<!\$)__(?!\$)([^_]+)(?<!\$)__(?!\$)")
+        self._bold_underscore_pattern = re.compile(r"__([^_\n]+?)__")
+        self._italic_underscore_pattern = re.compile(r"(?<!\w)_([^_\n]+?)_(?!\w)")
 
     def apply(self, content: str) -> str:
         """Apply emphasis normalization to content.
@@ -54,17 +54,13 @@ class EmphasisNormalizationRule(FormattingRule):
         if not self.enabled:
             return content
 
-        # Find and protect LaTeX math blocks
         math_blocks = []
         protected_content = self._protect_math_blocks(content, math_blocks)
 
-        # Normalize emphasis outside math blocks
-        protected_content = self._italic_underscore_pattern.sub(r"*\1*", protected_content)
         protected_content = self._bold_underscore_pattern.sub(r"**\1**", protected_content)
+        protected_content = self._italic_underscore_pattern.sub(r"*\1*", protected_content)
 
-        # Restore LaTeX math blocks
         result = self._restore_math_blocks(protected_content, math_blocks)
-
         return result
 
     def check(self, content: str, filepath: Path) -> List[LintError]:
@@ -87,12 +83,14 @@ class EmphasisNormalizationRule(FormattingRule):
         lines = content.split("\n")
 
         for line_num, line in enumerate(lines, start=1):
-            # Find and protect LaTeX math blocks
             math_blocks = []
             protected_line = self._protect_math_blocks(line, math_blocks)
 
-            # Check for italic with underscores
-            italic_matches = list(self._italic_underscore_pattern.finditer(protected_line))
+            # Apply bold normalization first to avoid false italic matches
+            bold_subbed = self._bold_underscore_pattern.sub(r"**\1**", protected_line)
+
+            # Check remaining underscores for italic violations
+            italic_matches = list(self._italic_underscore_pattern.finditer(bold_subbed))
             for match in italic_matches:
                 errors.append(
                     LintError(
@@ -107,7 +105,7 @@ class EmphasisNormalizationRule(FormattingRule):
                     )
                 )
 
-            # Check for bold with double underscores
+            # Check for bold with double underscores (on original protected line)
             bold_matches = list(self._bold_underscore_pattern.finditer(protected_line))
             for match in bold_matches:
                 errors.append(
@@ -137,7 +135,7 @@ class EmphasisNormalizationRule(FormattingRule):
         """
         def replace_math(match):
             math_blocks.append(match.group(0))
-            return f"__MATH_BLOCK_{len(math_blocks) - 1}__"
+            return f"{self._PLACEHOLDER_PREFIX}{len(math_blocks) - 1}{self._PLACEHOLDER_SUFFIX}"
 
         return self._math_pattern.sub(replace_math, content)
 
@@ -152,5 +150,5 @@ class EmphasisNormalizationRule(FormattingRule):
             Content with math blocks restored
         """
         for i, math_block in enumerate(math_blocks):
-            content = content.replace(f"__MATH_BLOCK_{i}__", math_block)
+            content = content.replace(f"{self._PLACEHOLDER_PREFIX}{i}{self._PLACEHOLDER_SUFFIX}", math_block)
         return content

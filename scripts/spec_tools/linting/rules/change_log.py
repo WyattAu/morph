@@ -101,7 +101,7 @@ class ChangeLogRule(LintingRule):
         table_start = None
         for i in range(start_line, len(lines)):
             if self._table_pattern.match(lines[i]):
-                table_start = i + 1
+                table_start = i
                 break
 
         if table_start is None:

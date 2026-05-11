@@ -19,8 +19,8 @@ def extract_section(content: str, section_name: str) -> Optional[str]:
     Returns:
         The section content if found, None otherwise
     """
-    # Pattern to match section headers (## Section Name)
-    pattern = rf"^##\s+{re.escape(section_name)}\s*$"
+    # Pattern to match section headers (## through #### Section Name)
+    pattern = f"^#{{2,4}}\\s+{re.escape(section_name)}\\s*$"
     lines = content.split('\n')
 
     section_start = None
@@ -28,12 +28,17 @@ def extract_section(content: str, section_name: str) -> Optional[str]:
 
     for i, line in enumerate(lines):
         if re.match(pattern, line, re.IGNORECASE):
+            # Determine the heading level of the matched section
+            heading_level = len(line) - len(line.lstrip('#'))
             section_start = i
             # Find the next section at the same or higher level
             for j in range(i + 1, len(lines)):
-                if lines[j].startswith('##'):
-                    section_end = j
-                    break
+                stripped = lines[j].lstrip()
+                if stripped.startswith('#'):
+                    next_level = len(stripped) - len(stripped.lstrip('#'))
+                    if next_level <= heading_level:
+                        section_end = j
+                        break
             break
 
     if section_start is None:
@@ -57,7 +62,7 @@ def find_section_line(content: str, section_name: str) -> Optional[int]:
     Returns:
         The line number (1-indexed) if found, None otherwise
     """
-    pattern = rf"^##\s+{re.escape(section_name)}\s*$"
+    pattern = f"^#{{2,4}}\\s+{re.escape(section_name)}\\s*$"
     lines = content.split('\n')
 
     for i, line in enumerate(lines):

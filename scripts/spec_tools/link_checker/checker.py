@@ -13,7 +13,7 @@ from spec_tools.link_checker.parsers.file_ref import FileReferenceParser
 from spec_tools.link_checker.parsers.markdown_link import MarkdownLinkParser
 from spec_tools.link_checker.validators.file_exists import FileExistsValidator
 from spec_tools.link_checker.validators.section_exists import SectionExistsValidator
-from spec_tools.models import LinkCheckingConfig, LinkInfo, LinkReport
+from spec_tools.models import LinkCheckingConfig, LinkInfo, LinkReport, LinkType
 
 
 class SpecLinkChecker:

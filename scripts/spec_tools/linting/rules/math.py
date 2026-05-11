@@ -160,6 +160,7 @@ class MathNotationRule(LintingRule):
                                 suggestion="Add opening brace or remove closing brace",
                                 context=expr,
                             )
+                        )
                     else:
                         brace_stack.pop()
 

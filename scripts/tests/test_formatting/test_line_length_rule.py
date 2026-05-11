@@ -202,7 +202,7 @@ Another short line."""
         """Test _wrap_line() with multiple words."""
         rule = LineLengthRule(max_length=20)
         result = rule._wrap_line("one two three four five")
-        assert len(result) == 1
+        assert len(result) == 2
         assert " ".join(result) == "one two three four five"
 
     def test_wrap_line_long_word(self):

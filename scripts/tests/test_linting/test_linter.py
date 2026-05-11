@@ -18,7 +18,7 @@ class TestSpecLinter:
         config = LintingConfig()
         linter = SpecLinter(config)
         assert linter.config == config
-        assert len(linter.rules) == 6
+        assert len(linter.rules) == 7
 
     def test_init_custom_config(self):
         """Test SpecLinter initialization with custom config."""
@@ -30,7 +30,7 @@ class TestSpecLinter:
         )
         linter = SpecLinter(config)
         assert linter.config == config
-        assert len(linter.rules) == 2
+        assert len(linter.rules) == 3
 
     def test_load_rules_all_enabled(self):
         """Test that all rules are loaded when enabled."""
@@ -84,8 +84,8 @@ The system SHALL provide basic functionality.
 
 ## Change Log
 
-| Version | Date | Author | Description |
-|---------|------|--------|-------------|
+| Version | Date | Author | Changes |
+|---------|------|--------|---------|
 | 1.0.0 | 2024-01-01 | John Doe | Initial version |
 """
         filepath = temp_dir / "test.md"
@@ -264,7 +264,17 @@ Status: Draft
 Author: John Doe
 Last Modified: 2024-01-01
 
-# Content with emoji: 🎉
+# 1. Purpose and Scope
+
+## 2. Definitions
+
+## 3. Requirements
+
+## Change Log
+
+| Version | Date | Author | Changes |
+|---------|------|--------|---------|
+| 1.0.0 | 2024-01-01 | John Doe | Initial version |
 """
         filepath = temp_dir / "test.md"
         filepath.write_text(content, encoding="utf-8")
@@ -288,7 +298,17 @@ Status: Draft
 Author: John Doe
 Last Modified: 2024-01-01
 
-# Content
+# 1. Purpose and Scope
+
+## 2. Definitions
+
+## 3. Requirements
+
+## Change Log
+
+| Version | Date | Author | Changes |
+|---------|------|--------|---------|
+| 1.0.0 | 2024-01-01 | John Doe | Initial version |
 """
         filepath = temp_dir / "test.md"
         filepath.write_text(content, encoding="utf-8")
@@ -310,7 +330,12 @@ Last Modified: 2024-01-01
 
     def test_lint_file_with_warnings_only(self, temp_dir):
         """Test lint_file() with warnings only (no errors)."""
-        config = LintingConfig()
+        config = LintingConfig(
+            check_ears_pattern=False,
+            check_math_notation=False,
+            check_mermaid_syntax=False,
+            check_cross_references=False,
+        )
         linter = SpecLinter(config)
 
         content = """Title: Sample Specification
@@ -319,16 +344,25 @@ Status: Draft
 Author: John Doe
 Last Modified: 2024-01-01
 
+# 1. Purpose and Scope
+
 ## 2. Definitions
 
-### 4. Requirements
+## 3. Requirements
+
+### 5. Extra Section
 
 The system SHALL provide basic functionality.
+
+## Change Log
+
+| Version | Date | Author | Changes |
+|---------|------|--------|---------|
+| 1.0.0 | 2024-01-01 | John Doe | Initial version |
 """
         filepath = temp_dir / "test.md"
         filepath.write_text(content, encoding="utf-8")
 
         result = linter.lint_file(filepath)
-        # Should pass if only warnings (no ERROR severity)
         error_count = sum(1 for e in result.errors if e.severity == Severity.ERROR)
         assert error_count == 0

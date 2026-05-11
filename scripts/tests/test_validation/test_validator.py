@@ -38,13 +38,13 @@ class TestSpecValidator:
         """Test that all checks are loaded when enabled."""
         config = ValidationConfig()
         validator = SpecValidator(config)
-        check_names = list(validator.checks.keys())
-        assert "traceability" in check_names
-        assert "verification_plan" in check_names
-        assert "risk_assessment" in check_names
-        assert "security_specs" in check_names
-        assert "performance_specs" in check_names
-        assert "maintainability_specs" in check_names
+        check_types = [type(c).__name__ for c in validator.checks]
+        assert "TraceabilityCheck" in check_types
+        assert "VerificationPlanCheck" in check_types
+        assert "RiskAssessmentCheck" in check_types
+        assert "SecuritySpecCheck" in check_types
+        assert "PerformanceSpecCheck" in check_types
+        assert "MaintainabilitySpecCheck" in check_types
 
     def test_load_checks_some_disabled(self):
         """Test that only enabled checks are loaded."""
@@ -53,13 +53,13 @@ class TestSpecValidator:
             check_verification_plan=False,
         )
         validator = SpecValidator(config)
-        check_names = list(validator.checks.keys())
-        assert "traceability" not in check_names
-        assert "verification_plan" not in check_names
-        assert "risk_assessment" in check_names
-        assert "security_specs" in check_names
-        assert "performance_specs" in check_names
-        assert "maintainability_specs" in check_names
+        check_types = [type(c).__name__ for c in validator.checks]
+        assert "TraceabilityCheck" not in check_types
+        assert "VerificationPlanCheck" not in check_types
+        assert "RiskAssessmentCheck" in check_types
+        assert "SecuritySpecCheck" in check_types
+        assert "PerformanceSpecCheck" in check_types
+        assert "MaintainabilitySpecCheck" in check_types
 
     def test_validate_file_no_errors(self, temp_dir):
         """Test validate_file() with file that has no errors."""
@@ -74,34 +74,102 @@ class TestSpecValidator:
 
 The system SHALL provide basic functionality.
 
-**Traceability:**
-- Design: DESIGN-001
-- Implementation: IMPL-001
-- Test: TEST-001
+## Traceability Matrix
+
+| Requirement | Design | Test |
+|-------------|--------|------|
+| REQ-001 | Design-001 | Test-001 |
 
 ## Verification Plan
 
-1. Unit tests
-2. Integration tests
-3. Acceptance tests
+### Verification Methods
+
+- Inspection
+- Analysis
+- Demonstration
+
+### Verification Criteria
+
+- All requirements SHALL be verified
+- Traceability SHALL be complete
+
+### Acceptance Criteria
+
+- All acceptance tests SHALL pass
 
 ## Risk Assessment
 
+### Identified Risks
+
 | Risk | Probability | Impact | Mitigation |
-|-------|-------------|--------|------------|
+|------|-------------|--------|------------|
 | Database failure | Medium | High | Replication |
+
+### Mitigation Strategies
+
+- Implement database replication
+- Regular backups
 
 ## Security Specifications
 
-The system SHALL implement authentication.
+### STRIDE Threat Modeling
+
+| Threat | Category | Control |
+|--------|----------|---------|
+| Spoofing | Spoofing | MFA |
+
+### Security Controls
+
+#### Preventive Controls
+
+- Input validation
+- Authentication
+
+#### Detective Controls
+
+- Logging
+- Monitoring
+
+#### Corrective Controls
+
+- Incident response
+- Backup restoration
 
 ## Performance Specifications
 
-The system SHALL respond within 200ms.
+### Performance Metrics
+
+| Metric | Target |
+|--------|--------|
+| Response Time | < 200ms |
+
+### Performance Targets
+
+- Response time under 200ms
+- Throughput above 10000 RPS
+
+### Measurement Methods
+
+- Load testing
+- Benchmarking
 
 ## Maintainability Specifications
 
-The system SHALL maintain 80% code coverage.
+### Code Quality Metrics
+
+| Metric | Target |
+|--------|--------|
+| Code Coverage | > 80% |
+
+### Documentation Standards
+
+- All public APIs SHALL have docstrings
+- Architecture documentation SHALL be maintained
+
+### Evolution Strategy
+
+- Semantic versioning
+- Deprecation policy
 """
         filepath = temp_dir / "test.md"
         filepath.write_text(content, encoding="utf-8")
@@ -154,32 +222,87 @@ The system SHALL provide basic functionality.
 
 The system SHALL provide basic functionality.
 
-**Traceability:**
-- Design: DESIGN-001
-- Implementation: IMPL-001
-- Test: TEST-001
+## Traceability Matrix
+
+| Requirement | Design | Test |
+|-------------|--------|------|
+| REQ-001 | DESIGN-001 | TEST-001 |
 
 ## Verification Plan
 
-1. Unit tests
+### Verification Methods
+
+- Inspection
+
+### Verification Criteria
+
+- All requirements SHALL be verified
+
+### Acceptance Criteria
+
+- All acceptance tests SHALL pass
 
 ## Risk Assessment
 
+### Identified Risks
+
 | Risk | Probability | Impact | Mitigation |
-|-------|-------------|--------|------------|
+|------|-------------|--------|------------|
 | Database failure | Medium | High | Replication |
+
+### Mitigation Strategies
+
+- Implement replication
 
 ## Security Specifications
 
-The system SHALL implement authentication.
+### STRIDE Threat Modeling
+
+| Threat | Category | Control |
+|--------|----------|---------|
+| Spoofing | Spoofing | MFA |
+
+### Security Controls
+
+#### Preventive Controls
+
+- Input validation
+
+#### Detective Controls
+
+- Logging
+
+#### Corrective Controls
+
+- Incident response
 
 ## Performance Specifications
 
-The system SHALL respond within 200ms.
+### Performance Metrics
+
+| Metric | Target |
+|--------|--------|
+| Response Time | < 200ms |
+
+### Measurement Methods
+
+- Load testing
 
 ## Maintainability Specifications
 
-The system SHALL maintain 80% code coverage.
+### Code Quality Metrics
+
+| Metric | Target |
+|--------|--------|
+| Code Coverage | > 80% |
+
+### Documentation Standards
+
+- Docstrings required
+
+### Evolution Strategy
+
+- Semantic versioning
 """
         (temp_dir / "test.md").write_text(content, encoding="utf-8")
 
@@ -199,32 +322,87 @@ The system SHALL maintain 80% code coverage.
 
 The system SHALL provide basic functionality.
 
-**Traceability:**
-- Design: DESIGN-001
-- Implementation: IMPL-001
-- Test: TEST-001
+## Traceability Matrix
+
+| Requirement | Design | Test |
+|-------------|--------|------|
+| REQ-001 | DESIGN-001 | TEST-001 |
 
 ## Verification Plan
 
-1. Unit tests
+### Verification Methods
+
+- Inspection
+
+### Verification Criteria
+
+- All requirements SHALL be verified
+
+### Acceptance Criteria
+
+- All acceptance tests SHALL pass
 
 ## Risk Assessment
 
+### Identified Risks
+
 | Risk | Probability | Impact | Mitigation |
-|-------|-------------|--------|------------|
+|------|-------------|--------|------------|
 | Database failure | Medium | High | Replication |
+
+### Mitigation Strategies
+
+- Implement replication
 
 ## Security Specifications
 
-The system SHALL implement authentication.
+### STRIDE Threat Modeling
+
+| Threat | Category | Control |
+|--------|----------|---------|
+| Spoofing | Spoofing | MFA |
+
+### Security Controls
+
+#### Preventive Controls
+
+- Input validation
+
+#### Detective Controls
+
+- Logging
+
+#### Corrective Controls
+
+- Incident response
 
 ## Performance Specifications
 
-The system SHALL respond within 200ms.
+### Performance Metrics
+
+| Metric | Target |
+|--------|--------|
+| Response Time | < 200ms |
+
+### Measurement Methods
+
+- Load testing
 
 ## Maintainability Specifications
 
-The system SHALL maintain 80% code coverage.
+### Code Quality Metrics
+
+| Metric | Target |
+|--------|--------|
+| Code Coverage | > 80% |
+
+### Documentation Standards
+
+- Docstrings required
+
+### Evolution Strategy
+
+- Semantic versioning
 """
         (temp_dir / "test1.md").write_text(content, encoding="utf-8")
         (temp_dir / "test2.md").write_text(content, encoding="utf-8")
@@ -246,32 +424,87 @@ The system SHALL maintain 80% code coverage.
 
 The system SHALL provide basic functionality.
 
-**Traceability:**
-- Design: DESIGN-001
-- Implementation: IMPL-001
-- Test: TEST-001
+## Traceability Matrix
+
+| Requirement | Design | Test |
+|-------------|--------|------|
+| REQ-001 | DESIGN-001 | TEST-001 |
 
 ## Verification Plan
 
-1. Unit tests
+### Verification Methods
+
+- Inspection
+
+### Verification Criteria
+
+- All requirements SHALL be verified
+
+### Acceptance Criteria
+
+- All acceptance tests SHALL pass
 
 ## Risk Assessment
 
+### Identified Risks
+
 | Risk | Probability | Impact | Mitigation |
-|-------|-------------|--------|------------|
+|------|-------------|--------|------------|
 | Database failure | Medium | High | Replication |
+
+### Mitigation Strategies
+
+- Implement replication
 
 ## Security Specifications
 
-The system SHALL implement authentication.
+### STRIDE Threat Modeling
+
+| Threat | Category | Control |
+|--------|----------|---------|
+| Spoofing | Spoofing | MFA |
+
+### Security Controls
+
+#### Preventive Controls
+
+- Input validation
+
+#### Detective Controls
+
+- Logging
+
+#### Corrective Controls
+
+- Incident response
 
 ## Performance Specifications
 
-The system SHALL respond within 200ms.
+### Performance Metrics
+
+| Metric | Target |
+|--------|--------|
+| Response Time | < 200ms |
+
+### Measurement Methods
+
+- Load testing
 
 ## Maintainability Specifications
 
-The system SHALL maintain 80% code coverage.
+### Code Quality Metrics
+
+| Metric | Target |
+|--------|--------|
+| Code Coverage | > 80% |
+
+### Documentation Standards
+
+- Docstrings required
+
+### Evolution Strategy
+
+- Semantic versioning
 """
         (temp_dir / "test1.md").write_text(content, encoding="utf-8")
         subdir = temp_dir / "subdir"
@@ -355,32 +588,87 @@ The system SHALL provide basic functionality.
 
 The system SHALL provide basic functionality with emoji: 🎉
 
-**Traceability:**
-- Design: DESIGN-001
-- Implementation: IMPL-001
-- Test: TEST-001
+## Traceability Matrix
+
+| Requirement | Design | Test |
+|-------------|--------|------|
+| REQ-001 | DESIGN-001 | TEST-001 |
 
 ## Verification Plan
 
-1. Unit tests
+### Verification Methods
+
+- Inspection
+
+### Verification Criteria
+
+- All requirements SHALL be verified
+
+### Acceptance Criteria
+
+- All acceptance tests SHALL pass
 
 ## Risk Assessment
 
+### Identified Risks
+
 | Risk | Probability | Impact | Mitigation |
-|-------|-------------|--------|------------|
+|------|-------------|--------|------------|
 | Database failure | Medium | High | Replication |
+
+### Mitigation Strategies
+
+- Implement replication
 
 ## Security Specifications
 
-The system SHALL implement authentication.
+### STRIDE Threat Modeling
+
+| Threat | Category | Control |
+|--------|----------|---------|
+| Spoofing | Spoofing | MFA |
+
+### Security Controls
+
+#### Preventive Controls
+
+- Input validation
+
+#### Detective Controls
+
+- Logging
+
+#### Corrective Controls
+
+- Incident response
 
 ## Performance Specifications
 
-The system SHALL respond within 200ms.
+### Performance Metrics
+
+| Metric | Target |
+|--------|--------|
+| Response Time | < 200ms |
+
+### Measurement Methods
+
+- Load testing
 
 ## Maintainability Specifications
 
-The system SHALL maintain 80% code coverage.
+### Code Quality Metrics
+
+| Metric | Target |
+|--------|--------|
+| Code Coverage | > 80% |
+
+### Documentation Standards
+
+- Docstrings required
+
+### Evolution Strategy
+
+- Semantic versioning
 """
         filepath = temp_dir / "test.md"
         filepath.write_text(content, encoding="utf-8")

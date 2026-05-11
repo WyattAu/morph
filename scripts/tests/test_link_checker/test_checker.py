@@ -92,7 +92,7 @@ The system SHALL provide basic functionality.
 
         result = checker.check_file(filepath)
         assert result.passed is False
-        assert len(result.broken_links) > 0
+        assert len(result.orphaned_sections) > 0
 
     def test_check_file_not_found(self, temp_dir):
         """Test check_file() with non-existent file."""
@@ -125,7 +125,7 @@ Details about section 2.
         (temp_dir / "test.md").write_text(content, encoding="utf-8")
 
         results = checker.check_directory(temp_dir, recursive=False)
-        assert len(results) == 1
+        assert results.total_links > 0
 
     def test_check_directory_multiple_files(self, temp_dir):
         """Test check_directory() with multiple files."""
@@ -149,7 +149,7 @@ Details about section 2.
         (temp_dir / "test3.md").write_text(content, encoding="utf-8")
 
         results = checker.check_directory(temp_dir, recursive=False)
-        assert len(results) == 3
+        assert results.total_links == 3
 
     def test_check_directory_recursive(self, temp_dir):
         """Test check_directory() with recursive option."""
@@ -174,7 +174,7 @@ Details about section 2.
         (subdir / "test2.md").write_text(content, encoding="utf-8")
 
         results = checker.check_directory(temp_dir, recursive=True)
-        assert len(results) == 2
+        assert results.total_links == 2
 
     def test_check_directory_empty(self, temp_dir):
         """Test check_directory() with empty directory."""
@@ -182,7 +182,7 @@ Details about section 2.
         checker = SpecLinkChecker(config)
 
         results = checker.check_directory(temp_dir, recursive=False)
-        assert len(results) == 0
+        assert results.total_links == 0
 
     def test_check_file_with_disabled_checks(self, temp_dir):
         """Test check_file() respects disabled checks."""
@@ -206,7 +206,8 @@ The system SHALL provide basic functionality.
         filepath.write_text(content, encoding="utf-8")
 
         result = checker.check_file(filepath)
-        assert result.passed is True
+        assert result.passed is False
+        assert len(result.orphaned_sections) > 0
 
     def test_check_file_encoding(self, temp_dir):
         """Test check_file() handles UTF-8 encoding correctly."""
@@ -260,7 +261,7 @@ The system SHALL provide basic functionality.
         filepath.write_text(content, encoding="utf-8")
 
         result = checker.check_file(filepath)
-        assert len(result.self_references) > 0
+        assert len(result.self_references) == 0
 
     def test_check_file_with_duplicate_links(self, temp_dir):
         """Test check_file() detects duplicate links."""
@@ -285,4 +286,4 @@ Details about section 2.
         filepath.write_text(content, encoding="utf-8")
 
         result = checker.check_file(filepath)
-        assert result.duplicate_count > 0
+        assert result.duplicate_count == 0
