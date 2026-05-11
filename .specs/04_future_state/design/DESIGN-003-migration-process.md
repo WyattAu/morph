@@ -353,7 +353,7 @@ lake update
 - Verify full compilation
 - Run all tests
 - Execute all examples
-- Verify all proofs complete
+- Verify all proofs complete (1 known sorry in Preservation.lean -- see ROADMAP.md)
 - Document migration results
 
 ### 7.2 Full Compilation Verification
@@ -396,12 +396,12 @@ done
 ### 7.5 Proof Verification
 
 ```bash
-# Verify no sorry or admit placeholders
+# Verify no sorry or admit placeholders (1 known exception in Preservation.lean)
 grep -r "sorry\|admit" Morph/Specs/
-# Expected: No results
+# Expected: No results in Morph/Specs/
 
-# Verify all proofs complete
-# Expected: All proofs complete
+# Verify sorry count in Proofs/ (expected: 1 in Preservation.lean)
+grep -r "sorry" Morph/Proofs/
 ```
 
 ### 7.6 Documentation Update

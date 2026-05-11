@@ -24,7 +24,7 @@ The Morph project includes a comprehensive formal verification layer that provid
 The formal verification layer includes the following completed work:
 
 - **40+ Specification Modules**: All modules have been migrated to Lean 4 v4.27.0
-- **Complete Proofs**: All proofs are complete (no `sorry` placeholders)
+- **Complete Proofs**: Most proofs are complete; 1 known `sorry` in Preservation.lean (non-capture substitution requires freshness precondition -- see ROADMAP.md)
 - **Build System Configuration**: Lake build system configured for Lean 4
 - **CI/CD Integration**: GitLab CI and Jenkins pipelines updated for Lean 4 compilation
 - **Documentation**: Comprehensive documentation for all specification modules

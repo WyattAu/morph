@@ -9,25 +9,19 @@ Lean 4 formal verification layer -- immediate next steps after build fix (commit
 
 ## 1. Warning Elimination
 
-### 1.1 Fix 1 `sorry` in Preservation.lean
-- **File:** `Morph/Proofs/TypeSoundness/Preservation.lean` line 196
-- **Problem:** Complex proof case -- non-capture substitution or alpha-conversion requirement
-- **Approach:** Analyze surrounding proof context, identify missing lemma (likely `freeVars` disjointness), implement capture-avoiding substitution or add weakening lemma
-- **Priority:** P0 | **Effort:** 2-4 days | **Deps:** none
-- **Blocks:** sorry-free CI gate, documentation accuracy fix
-- **Caution:** Previous attempt to fix this warning accidentally deleted critical theorems. Edit surgically only.
+### 1.1 Fix 3 `sorry` in Preservation.lean (requires theorem restructure)
+- **File:** `Morph/Proofs/TypeSoundness/Preservation.lean` lines 281, 294, 308
+- **Problem:** Non-capture substitution cases for `lam_type`, `let_type`, and `for_type`. The `subst_preserves_type` theorem lacks a freshness precondition (`x not in freeVars v`), which is needed to weaken `hV : HasType Gamma v tau1` into the extended typing environment after swapping bindings via `extendTypEnv_swap`.
+- **Root cause:** `subst_preserves_type` signature is `(Gamma) (e) (x) (v) (tau1) (tau) ...` with no freshness precondition. Adding one requires restructuring the entire mutual block (subst_preserves_type + substList_preserves_type_all) and updating all call sites in the `preservation` theorem.
+- **Approach:** Add `hFresh : x not in freeVars v` parameter to both `subst_preserves_type` and `substList_preserves_type_all`. Update all recursive calls. In the `preservation` theorem, derive freshness from the evaluation context (beta-reduction guarantees the argument is closed with respect to the binder).
+- **Priority:** P0 | **Effort:** 3-5 days | **Deps:** none
+- **Blocks:** sorry-free CI gate
 
-### 1.2 Fix 2 unused `simp` arguments
-- **File:** `Morph/Proofs/TypeSoundness/Preservation.lean` lines 121, 127
-- **Problem:** `simp` calls pass arguments that the simplifier does not use
-- **Fix:** Remove unused arguments from `simp` calls or replace with `simp only`
-- **Priority:** P1 | **Effort:** 30 min | **Deps:** none
-- **Caution:** These are in the same file as the sorry -- edit carefully
+### 1.2 Fix 2 unused `simp` arguments [DONE]
+- Removed unused `h1` hypotheses from `simp only` calls at former lines 121, 127.
 
-### 1.3 Fix 8 unused variable warnings
-- **Location:** Modified spec files (Lemmas/Examples stubs)
-- **Fix:** Prefix with `_` (e.g., `_x`) or remove unused binders
-- **Priority:** P1 | **Effort:** 1 hour | **Deps:** none
+### 1.3 Fix 8 unused variable warnings [DONE]
+- Prefixed unused parameters with `_` in CommonTypes.lean.
 
 ### 1.4 Zero-warning CI gate
 - **Target:** `lake build Morph` with 0 errors, 0 warnings
@@ -144,7 +138,8 @@ For each module:
 
 ## 4. Documentation Accuracy
 
-### 4.1 Fix false claims
+### 4.1 Fix false claims [DONE]
+- Updated README.md, impl/roadmap.md, impl/overview.md, ADR-007, DESIGN-001, DESIGN-003, design/index.md
 - **Files needing updates:**
   - `README.md:154` -- claims "all proofs are complete (no sorry)"
   - `.specs/04_future_state/design/index.md:236` -- same claim

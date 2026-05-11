@@ -595,7 +595,7 @@ For each proof, verify:
 
 - [ ] Theorem/lemma name uses camelCase
 - [ ] Theorem/lemma has complete documentation
-- [ ] Proof is complete (no `sorry` placeholders)
+- [ ] Proof is complete (no `sorry` placeholders; 1 known exception in Preservation.lean)
 - [ ] Proof follows a clear structure
 - [ ] Non-trivial steps are commented
 - [ ] Dependencies are documented

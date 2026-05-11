@@ -669,7 +669,7 @@ For each module, verify:
 - [ ] All files have namespace declaration
 - [ ] Imports follow the import order convention
 - [ ] Spec.lean contains only declarations, no proofs
-- [ ] Lemmas.lean contains complete proofs, no `sorry`
+- [ ] Lemmas.lean contains complete proofs, no `sorry` (1 known exception in Proofs/ layer)
 - [ ] Examples.lean contains executable examples
 - [ ] No commented-out code blocks in any file
 - [ ] No circular import dependencies

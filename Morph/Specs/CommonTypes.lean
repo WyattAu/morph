@@ -262,7 +262,7 @@ def getRefCount (o : ObjectId) : Nat :=
   | n => n
 
 /-- Get the weak reference count of an object -/
-def getWeakCount (o : ObjectId) : Nat :=
+def getWeakCount (_o : ObjectId) : Nat :=
   0
 
 /-- Check if an object is immutable -/
@@ -303,27 +303,27 @@ def t (o : ObjectId) : Nat :=
   o.id
 
 /-- Check if a typing context and expression have complete affine typing -/
-def completeAffineTyping (Γ : TypingContext) (e : Expr) : Prop :=
+def completeAffineTyping (_Γ : TypingContext) (_e : Expr) : Prop :=
   True
 
 /-- Check if an expression type checks -/
-def typeChecks (e : Expr) : Prop :=
+def typeChecks (_e : Expr) : Prop :=
   True
 
 /-- Check if an expression is memory safe -/
-def memorySafe (e : Expr) : Prop :=
+def memorySafe (_e : Expr) : Prop :=
   True
 
 /-- Check if a type is affine -/
-def isAffine (T : MorphType) : Prop :=
+def isAffine (_T : MorphType) : Prop :=
   True
 
 /-- Check if an expression has an affine type -/
-def isAffineType (e : Expr) : Prop :=
+def isAffineType (_e : Expr) : Prop :=
   True
 
 /-- Create a new weak reference -/
-def Weak.new (T : MorphType) (o : ObjectId) : WeakType :=
+def Weak.new (T : MorphType) (_o : ObjectId) : WeakType :=
   { target := T }
 
 end Morph.Specs.CommonTypes

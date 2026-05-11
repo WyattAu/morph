@@ -116,15 +116,13 @@ private theorem extendTypEnv_swap {Γ : TypEnv} {x y : String} {τx τy : Typ} (
     cases Decidable.em (z = y) with
     | inl hz2 => exfalso; exact hne (hz ▸ hz2)
     | inr hz2 =>
-      have h1 : ¬(y == x) := fun h => hne (eq_of_beq h).symm
       have h2 : ¬(y == z) := fun h => hz2 (eq_of_beq h).symm
-      simp only [h1, h2]
+      simp only [h2]
   | inr hz =>
     cases Decidable.em (z = y) with
     | inl hz' =>
-      have h1 : ¬(x == y) := fun h => hne (eq_of_beq h)
       have h2 : ¬(x == z) := fun h => hz (eq_of_beq h).symm
-      simp only [h1, h2]
+      simp only [h2]
     | inr hz' =>
       have h1 : ¬(y == z) := fun h => hz' (eq_of_beq h).symm
       have h2 : ¬(x == z) := fun h => hz (eq_of_beq h).symm
@@ -277,9 +275,12 @@ private theorem subst_preserves_type (Gamma : TypEnv) (e : Expr) (x : String) (v
       exact HasType.lam_type Gamma x' body τ1' τ2
         (HasType_lookup_eq hBody (lookupTyp_drop_shadowed x' τ1' hNameEq))
     · next hNC =>
-      -- Non-capture case: x'.name ≠ x, so we substitute inside body.
-      -- Requires FV tracking (x ∉ freeVars v) or alpha-conversion to handle
-      -- the case where v mentions binder names. See weakening lemma for discussion.
+      -- Non-capture: x'.name ≠ x, so subst goes into body.
+      -- To complete this proof, we need weakening:
+      --   hV : HasType Gamma v tau1  →  HasType (extendTypEnv Gamma x'.name τ1') v tau1
+      -- This requires x'.name ∉ freeVars v, which is not a precondition of
+      -- subst_preserves_type. Adding it would require restructuring the entire
+      -- mutual block. See ROADMAP.md item 1.1 for the planned fix.
       sorry
   | HasType.let_type _ id e1 e2 τ1 τ2 hE1 hE2 =>
     simp only [subst]
@@ -290,9 +291,8 @@ private theorem subst_preserves_type (Gamma : TypEnv) (e : Expr) (x : String) (v
         (subst_preserves_type Gamma e1 x v tau1 τ1 hE1 hV)
         (HasType_lookup_eq hE2 (lookupTyp_drop_shadowed id τ1 hNameEq))
     · next hNC =>
-      -- Non-capture case: id.name ≠ x, so we substitute inside e2.
-      -- Requires FV tracking (x ∉ freeVars v) or alpha-conversion to handle
-      -- the case where v mentions binder names. See weakening lemma for discussion.
+      -- Non-capture: id.name ≠ x, so subst goes into e2.
+      -- Requires weakening of hV into extended env (see lam_type case above).
       sorry
   | HasType.for_type _ id s e body hS hE hBody =>
     simp only [subst]
@@ -304,9 +304,8 @@ private theorem subst_preserves_type (Gamma : TypEnv) (e : Expr) (x : String) (v
         (subst_preserves_type Gamma e x v tau1 .intType hE hV)
         (HasTypeAll_lookup_eq hBody (lookupTyp_drop_shadowed id .intType hNameEq))
     · next hNC =>
-      -- Non-capture case: id.name ≠ x, so we substitute inside body elements.
-      -- Requires FV tracking (x ∉ freeVars v) or alpha-conversion to handle
-      -- the case where v mentions binder names. See weakening lemma for discussion.
+      -- Non-capture: id.name ≠ x, so subst goes into body.
+      -- Requires weakening of hV into extended env (see lam_type case above).
       sorry
 end
 

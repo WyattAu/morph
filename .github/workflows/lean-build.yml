@@ -1,0 +1,84 @@
+name: Lean Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Morph/**'
+      - 'lakefile.lean'
+      - 'lakefile.toml'
+      - 'lean-toolchain'
+      - '.github/workflows/lean-build.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Morph/**'
+      - 'lakefile.lean'
+      - 'lakefile.toml'
+      - 'lean-toolchain'
+      - '.github/workflows/lean-build.yml'
+
+jobs:
+  build:
+    name: Build Morph
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install elan
+      run: |
+        curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
+        echo "$HOME/.elan/bin" >> $GITHUB_PATH
+
+    - name: Verify Lean toolchain
+      run: lean --version
+
+    - name: Cache Lake build
+      uses: actions/cache@v4
+      with:
+        path: |
+          .lake/build
+          .lake/packages
+        key: lake-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lakefile.lean', 'lake-manifest.json') }}
+        restore-keys: |
+          lake-${{ runner.os }}-
+
+    - name: Build Morph
+      run: lake build Morph 2>&1 | tee build.log
+
+    - name: Check for errors
+      run: |
+        if grep -q "error:" build.log; then
+          echo "::error::Build contains errors"
+          grep "error:" build.log
+          exit 1
+        fi
+
+    - name: Check for warnings in Morph source
+      run: |
+        MORPH_WARNINGS=$(grep "warning: Morph/" build.log | grep -v "warning: declaration uses 'sorry'" || true)
+        if [ -n "$MORPH_WARNINGS" ]; then
+          echo "::warning::Build contains warnings in Morph source"
+          echo "$MORPH_WARNINGS"
+        fi
+
+    - name: Check for sorry declarations
+      run: |
+        SORRY_COUNT=$(grep -r "sorry" Morph/ --include="*.lean" | grep -v "no \`sorry\`" | grep -v "sorry placeholders" | grep -v "requires.*sorry" | wc -l)
+        echo "Sorry count: $SORRY_COUNT"
+        if [ "$SORRY_COUNT" -gt 0 ]; then
+          echo "::warning::$SORRY_COUNT sorry declaration(s) found in Morph/"
+          grep -rn "sorry" Morph/ --include="*.lean" | grep -v "no \`sorry\`" | grep -v "sorry placeholders" | grep -v "requires.*sorry" | while read -r line; do
+            echo "::warning::$line"
+          done
+        fi
+
+    - name: Upload build log
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: build-log
+        path: build.log
+        retention-days: 7
