@@ -8,7 +8,7 @@
 The Morph language Lean validation project is a large-scale formal verification effort with 40+ specification modules. The project requires:
 
 1. **Automated Quality Assurance**: Continuous validation of code quality and correctness
-2. **Proof Verification**: Automated checking that proofs are complete (no `sorry` placeholders; 1 known exception in Preservation.lean)
+2. **Proof Verification**: Automated checking that proofs are complete (no `sorry` placeholders; 3 known exceptions in Preservation.lean)
 3. **Code Style Enforcement**: Consistent coding standards across all modules
 4. **Build Validation**: Ensuring all Lean files compile successfully
 5. **Pre-commit Validation**: Early detection of issues before commits
@@ -21,7 +21,7 @@ The project already uses GitLab CI (`.gitlab-ci.yml`) and Jenkins (`Jenkinsfile`
 ## Decision Drivers
 
 1. **Quality Assurance**: Automated validation of code quality and correctness
-2. **Proof Completeness**: Ensuring no `sorry` placeholders or incomplete proofs (1 known exception)
+2. **Proof Completeness**: Ensuring no `sorry` placeholders or incomplete proofs (3 known exceptions in Preservation.lean)
 3. **Code Style**: Enforcing consistent coding standards
 4. **Build Reliability**: Ensuring all code compiles successfully
 5. **Early Detection**: Catching issues as early as possible (pre-commit > CI > merge)

@@ -233,7 +233,7 @@ These design documents support the following requirements:
 2. Read [`DESIGN-005: Documentation Design`](DESIGN-005-documentation.md) to understand proof documentation
 3. Implement lemmas following naming conventions and structure patterns
 4. Use proof automation strategies (aesop, batteries) where appropriate
-5. Ensure proofs are complete with no `sorry` placeholders (1 known exception in Preservation.lean -- see ROADMAP.md)
+5. Ensure proofs are complete with no `sorry` placeholders (3 known exceptions in Preservation.lean -- see ROADMAP.md)
 
 ### For Example Implementation
 

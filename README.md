@@ -151,7 +151,7 @@ Contributions are welcome! Please follow these guidelines:
 
 1. Read the [coding standards](.specs/01_standards/coding_standards.md)
 2. Follow the [three-file module pattern](.specs/02_adrs/ADR-001-three-file-module-pattern.md)
-3. Ensure proofs have no `sorry` placeholders where possible (1 known sorry in Preservation.lean requires theorem restructure)
+3. Ensure proofs have no `sorry` placeholders where possible (3 known sorries in Preservation.lean require weakening lemma)
 4. Run the CI pipeline locally before submitting
 5. Update documentation for any changes
 
