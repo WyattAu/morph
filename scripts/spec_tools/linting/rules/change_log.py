@@ -64,6 +64,7 @@ class ChangeLogRule(LintingRule):
                     message="Missing change log section",
                     suggestion="Add a '## Change Log' section with a table of changes",
                 )
+            )
             return errors
 
         # Validate table format
@@ -113,6 +114,7 @@ class ChangeLogRule(LintingRule):
                     message="Change log section does not contain a table",
                     suggestion="Add a table with columns: Version, Date, Author, Changes",
                 )
+            )
             return
 
         # Extract header row

@@ -33,7 +33,7 @@ This document defines the coding standards for Lean 4 files in the Morph project
 
 ### Project Context
 
-- **Lean Version:** 4.28.0-rc1 (as specified in [`lean-toolchain`](../../lean-toolchain:1))
+- **Lean Version:** v4.27.0 (as specified in [`lean-toolchain`](../../lean-toolchain:1))
 - **Build System:** Lake (as configured in [`lakefile.lean`](../../lakefile.lean:1) and [`lakefile.toml`](../../lakefile.toml:1))
 - **Dependencies:** mathlib4, aesop, batteries (as specified in [`lakefile.lean`](../../lakefile.lean:55-57))
 - **Reference Documentation:** [`.stack_docs/lean4-manual/`](../../.stack_docs/lean4-manual/)
@@ -92,8 +92,8 @@ Each file must include a module-level documentation block using the `/-! ... -/`
 
 | Spec Section | Lean 4 Proposition | Status |
 |--------------|-------------------|--------|
-| SPEC-001 | `spec_proposition_name` | ✓ |
-| SPEC-002 | `spec_proposition_name` | ✓ |
+| SPEC-001 | `spec_proposition_name` | Done |
+| SPEC-002 | `spec_proposition_name` | Done |
 
 ## Known Issues
 
@@ -1090,9 +1090,9 @@ def unsafeDiv (num den : Nat) : Nat :=
 
 ### Lean Version Compatibility
 
-The Morph project targets **Lean 4.28.0-rc1**. All code must be compatible with this version.
+The Morph project targets **Lean v4.27.0**. All code must be compatible with this version.
 
-### Breaking Changes from v4.10.0 to v4.28.0-rc1
+### Breaking Changes from v4.10.0 to v4.27.0
 
 #### Char.csize → Char.utf8Size
 
@@ -1812,8 +1812,8 @@ theorem operation_preserves_invariant
 
 | Spec Section | Lean 4 Proposition | Status |
 |--------------|-------------------|--------|
-| SPEC-001 | `spec_proposition_name` | ✓ |
-| SPEC-002 | `spec_proposition_name` | ✓ |
+| SPEC-001 | `spec_proposition_name` | Done |
+| SPEC-002 | `spec_proposition_name` | Done |
 -!/
 ```
 
@@ -1833,9 +1833,9 @@ theorem operation_preserves_invariant
 
 ### Version 2.0.0 (2026-01-31)
 
-- Updated Lean version to 4.28.0-rc1
+- Updated Lean version to v4.27.0
 - Added comprehensive Lean 4 syntax standards
-- Added breaking changes from v4.10.0 to v4.28.0-rc1
+- Added breaking changes from v4.10.0 to v4.27.0
 - Added module system guidelines
 - Added Lean 4 specific error handling patterns
 - Added performance guidelines

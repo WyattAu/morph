@@ -17,29 +17,8 @@ lean_lib Morph.Tests {
   globs := #[.submodules `Morph.Tests]
 }
 
-lean_exe morph_test_core {
-  root := `Morph.Tests.Core
-}
-
-lean_exe morph_test_executable {
-  root := `Morph.Tests.Executable
-}
-
-lean_exe morph_test_memory {
-  root := `Morph.Tests.Memory
-}
-
-lean_exe morph_test_semantics {
-  root := `Morph.Tests.Semantics
-}
-
-lean_exe morph_test_typing {
-  root := `Morph.Tests.Typing
-}
-
-lean_exe morph_test_ast {
-  root := `Morph.Tests.AST
-}
+-- Test executables are verified at compile time via lean_lib.
+-- The Morph.Tests library already includes all test modules.
 
 -- Dependencies - using v4.27.0-compatible versions
 require mathlib from git "https://github.com/leanprover-community/mathlib4" @ "a3a10db0e9d66acbebf76c5e6a135066525ac900"

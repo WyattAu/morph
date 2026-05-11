@@ -14,21 +14,21 @@ This module formalizes bidirectional syntax translation
 between min and hum dialects of Morph language.
 
 See spec/language/syntax_translation_spec.md for complete specification.
-
+-/
 
 /-!
 ## Translation Functions
 
 Bidirectional translation functions between min and hum dialects.
-
+-/
 
 -- min to hum translation 
-def minToHum (code : String) : String :=
+def minToHum (_code : String) : String :=
   -- Abstract translation; defined in DialectProjection module
   ""
 
 -- hum to min translation 
-def humToMin (code : String) : String :=
+def humToMin (_code : String) : String :=
   -- Abstract translation; defined in DialectProjection module
   ""
 
@@ -36,7 +36,7 @@ def humToMin (code : String) : String :=
 ## Translation Rules
 
 Translation rules for converting between dialects.
-
+-/
 
 -- Translation rule type 
 structure TranslationRule where
@@ -80,7 +80,7 @@ def translationRules : List TranslationRule :=
 
 The round-trip property ensures that translating and
 translating back yields the original code.
-
+-/
 
 -- Round-trip property 
 def roundTripProperty (code : String) : Bool :=
@@ -90,12 +90,11 @@ def roundTripProperty (code : String) : Bool :=
 ## Semantic Equivalence
 
 Translation preserves semantics between dialects.
-
+-/
 
 -- Semantic equivalence predicate 
-def semanticEquivalence (minCode humCode : String) : Bool :=
+def semanticEquivalence (_minCode _humCode : String) : Bool :=
   -- Abstract semantic equivalence check
   true
 
 end Morph.Specs.SyntaxTranslation
--/

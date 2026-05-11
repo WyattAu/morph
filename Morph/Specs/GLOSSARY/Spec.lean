@@ -245,8 +245,11 @@ theorem allDefinitionsConsistent (g : Glossary) :
 
 /-- GLOSS-003: Empty glossary is well-formed -/
 theorem emptyGlossaryWellFormed : glossaryWellFormed { terms := [], definitions := [], categories := [] } := by
-  intro t h_in
-  cases h_in
+  constructor
+  · intro t h_in
+    cases h_in
+  · intro d h_in
+    cases h_in
 
 /-- GLOSS-004: Adding a well-formed term preserves well-formedness -/
 theorem addWellFormedTermPreservesWellFormed
@@ -254,17 +257,18 @@ theorem addWellFormedTermPreservesWellFormed
   termWellFormed t ∧
     glossaryWellFormed g →
       glossaryWellFormed { g with terms := g.terms ++ [t] } := by
-  intro h_wf h_gwf
+  intro h
   constructor
-  intro t2 h_in
-  cases List.mem_append.1 h_in with
-  | inl h_mem =>
-    exact h_gwf.1 t2 h_mem
-  | inr h_mem =>
-    cases h_mem
-    exact h_wf.1
-  intro d h_in
-  exact h_gwf.2 d h_in
+  · intro t2 h_in
+    simp [List.mem_append, List.mem_cons] at h_in
+    rcases h_in with h_in | h_eq
+    · exact h.2.1 t2 h_in
+    · subst h_eq; exact h.1
+  · intro d h_in
+    have h_def := h.2.2 d h_in
+    unfold definitionConsistent at h_def ⊢
+    simp [List.any_append] at h_def ⊢
+    exact Or.inl h_def
 
 /-- GLOSS-005: Adding a consistent definition preserves well-formedness -/
 theorem addConsistentDefinitionPreservesWellFormed
@@ -272,16 +276,14 @@ theorem addConsistentDefinitionPreservesWellFormed
   definitionConsistent g d ∧
     glossaryWellFormed g →
       glossaryWellFormed { g with definitions := g.definitions ++ [d] } := by
-  intro h_cons h_gwf
+  intro h
   constructor
-  intro t h_in
-  exact h_gwf.1 t h_in
-  intro d2 h_in
-  cases List.mem_append.1 h_in with
-  | inl h_mem =>
-    exact h_gwf.2 d2 h_mem
-  | inr h_mem =>
-    cases h_mem
-    exact h_cons
+  · intro t h_in
+    exact h.2.1 t h_in
+  · intro d2 h_in
+    simp [List.mem_append, List.mem_cons] at h_in
+    rcases h_in with h_in | h_eq
+    · exact h.2.2 d2 h_in
+    · subst h_eq; exact h.1
 
 end Morph.Specs.GLOSSARY

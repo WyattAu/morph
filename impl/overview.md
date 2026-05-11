@@ -8,13 +8,13 @@
 
 ## 0. Formal Verification Layer (COMPLETED)
 
-**Status: Lean 4 Migration COMPLETED** ✓
+**Status: Lean 4 Migration COMPLETED**
 
-The Morph project includes a comprehensive formal verification layer that provides mathematical guarantees about the language's semantics, type system, and execution model. This layer has been successfully migrated to Lean 4 v4.10.0.
+The Morph project includes a comprehensive formal verification layer that provides mathematical guarantees about the language's semantics, type system, and execution model. This layer has been successfully migrated to Lean 4 v4.27.0.
 
 ### 0.1 Technology Stack
 
-- **Formal Verification Framework**: Lean 4 v4.10.0
+- **Formal Verification Framework**: Lean 4 v4.27.0
 - **Standard Library**: mathlib4 (comprehensive mathematical library)
 - **Proof Automation**: aesop (automated proof search), batteries (collection of useful tactics)
 - **Build System**: Lake (Lean's package manager and build tool)
@@ -41,7 +41,7 @@ Key specification areas include:
 
 The migration to Lean 4 was completed with the following outcomes:
 
-- All specification modules have been migrated to Lean 4 v4.10.0
+- All specification modules have been migrated to Lean 4 v4.27.0
 - All proofs are complete (no `sorry` placeholders)
 - Build system configured for Lean 4 using Lake
 - CI/CD pipelines updated for Lean 4 compilation

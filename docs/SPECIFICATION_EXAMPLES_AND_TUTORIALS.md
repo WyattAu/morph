@@ -89,10 +89,10 @@ let result = add(5, 3);  // result = 8
 - No I/O, mutation, or external state access
 
 **Properties:**
-- ✅ Referential transparency: Same inputs always produce same outputs
-- ✅ No side effects: Doesn't modify external state
-- ✅ Deterministic: Always produces same result for same inputs
-- ✅ Optimizable: Can be memoized, common subexpression eliminated
+- Referential transparency: Same inputs always produce same outputs
+- No side effects: Doesn't modify external state
+- Deterministic: Always produces same result for same inputs
+- Optimizable: Can be memoized, common subexpression eliminated
 
 #### Example 2.1.2: Pure Higher-Order Function
 
@@ -1561,11 +1561,11 @@ python scripts/spec_linter.py spec/type/pure_type_spec.md
 
 ```
 Errors:
-  ❌ spec/type/pure_type_spec.md: Missing version header
-  ❌ spec/type/effect_system_spec.md: Broken reference to spec/missing_spec.md
+   FAIL spec/type/pure_type_spec.md: Missing version header
+   FAIL spec/type/effect_system_spec.md: Broken reference to spec/missing_spec.md
 
 Warnings:
-  ⚠️  spec/language/morph_language_spec.md: Uses both 'Signal' and 'Stream' terminology
+   WARN spec/language/morph_language_spec.md: Uses both 'Signal' and 'Stream' terminology
 ```
 
 **Step 3: Fix Issues**
@@ -1592,12 +1592,12 @@ python scripts/spec_link_checker.py spec/ --verbose
 
 ```
 Checking links in spec/type/pure_type_spec.md...
-  ✅ spec/type/type_system_spec.md exists
-  ✅ spec/type/effect_system_spec.md exists
-  ❌ spec/type/missing_spec.md does not exist
+   OK spec/type/type_system_spec.md exists
+   OK spec/type/effect_system_spec.md exists
+   FAIL spec/type/missing_spec.md does not exist
 
 Checking links in spec/language/morph_language_spec.md...
-  ✅ All links are valid
+   OK All links are valid
 
 Summary:
   Total links: 150
@@ -1629,12 +1629,12 @@ python scripts/spec_version_validator.py spec/ --check-compatibility
 
 ```
 Checking version compatibility...
-  ✅ morph_language_spec.md v0.3.0 compatible with type_system_spec.md v0.2.1+
-  ✅ type_system_spec.md v0.2.1 compatible with effect_system_spec.md v1.0.0+
-  ❌ build_lattice_spec.md v0.4.0-rc1 requires type_system_spec.md v0.3.0+ (found v0.2.1)
+   OK morph_language_spec.md v0.3.0 compatible with type_system_spec.md v0.2.1+
+   OK type_system_spec.md v0.2.1 compatible with effect_system_spec.md v1.0.0+
+   FAIL build_lattice_spec.md v0.4.0-rc1 requires type_system_spec.md v0.3.0+ (found v0.2.1)
 
 Compatibility Issues:
-  ❌ build_lattice_spec.md requires type_system_spec.md v0.3.0+ (found v0.2.1)
+   FAIL build_lattice_spec.md requires type_system_spec.md v0.3.0+ (found v0.2.1)
 ```
 
 **Step 3: Fix Compatibility Issues**

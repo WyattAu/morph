@@ -22,7 +22,7 @@ section TypeSystemTests
 
   example : inferType [("x", .intType)] (.var { name := "x" }) = some .intType := by
     unfold inferType lookupTyp
-    simp [List.find?_cons, beq_self_eq_true, Option.map]
+    simp [Option.map]
 
   example : lookupTyp [] "x" = none := by
     rfl

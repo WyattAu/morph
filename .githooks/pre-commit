@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Pre-commit hook for Morph monorepo
+# Ensures the Lean 4 project builds successfully before allowing commits.
+#
+# Install: cp .githooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+
+set -euo pipefail
+
+echo "========================================="
+echo " Morph Pre-Commit Check"
+echo "========================================="
+echo ""
+
+# Step 1: Lake build (compile all Lean 4 sources)
+echo "[1/2] Running lake build Morph..."
+BUILD_START=$(date +%s)
+
+if lake build Morph 2>&1 | tee /tmp/morph_precommit_build.log; then
+    BUILD_END=$(date +%s)
+    BUILD_SECS=$((BUILD_END - BUILD_START))
+    echo ""
+    echo "[1/2] Lake build PASSED (${BUILD_SECS}s)"
+else
+    # Count errors
+    ERR_COUNT=$(grep -c "^error:" /tmp/morph_precommit_build.log 2>/dev/null || echo "unknown")
+    echo ""
+    echo "[1/2] Lake build FAILED (${ERR_COUNT} errors)"
+    echo ""
+    echo "First 10 errors:"
+    grep "^error:" /tmp/morph_precommit_build.log | head -10
+    echo ""
+    echo "Commit blocked. Fix the errors above before committing."
+    exit 1
+fi
+
+# Step 2: Check for sorry declarations (formal verification gaps)
+echo ""
+echo "[2/2] Checking for 'sorry' declarations..."
+
+SORRY_COUNT=$(grep -r "sorry" Morph/ --include="*.lean" 2>/dev/null | grep -v "\.olean" | grep -v "/--" | wc -l || true)
+SORRY_FILES=$(grep -rl "sorry" Morph/ --include="*.lean" 2>/dev/null | grep -v "\.olean" | wc -l || true)
+
+if [ "$SORRY_COUNT" -gt 0 ]; then
+    echo "[2/2] WARNING: Found ${SORRY_COUNT} 'sorry' declarations in ${SORRY_FILES} files."
+    echo "       These represent gaps in formal verification."
+    echo "       Listing affected files:"
+    grep -rn "sorry" Morph/ --include="*.lean" 2>/dev/null | grep -v "\.olean" | grep -v "/--" | head -20
+    echo ""
+    echo "Commit allowed (warnings only). Consider fixing 'sorry' declarations."
+else
+    echo "[2/2] No 'sorry' declarations found."
+fi
+
+echo ""
+echo "========================================="
+echo " Pre-commit checks PASSED"
+echo "========================================="
+echo ""
+exit 0

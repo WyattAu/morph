@@ -40,7 +40,7 @@ structure AbiType where
   name : String
   size : Nat
   align : Nat
-  deriving Repr, BEq, Hashable
+  deriving Repr, BEq
 
 /-- Represents a memory layout with ABI type, size, alignment, and offsets.
     This structure captures the complete layout information for a type.
@@ -65,6 +65,17 @@ def spec_type_refinement : Prop :=
       L.size = T.size ∧
       L.align = T.align
 
+/-- Validates that a memory layout is well-formed.
+    A layout is valid if it has at least one offset and the last offset
+    matches the type size.
+-/
+def validateLayout (L : MemoryLayout) : Bool :=
+  if L.offsets.length > 0 then
+    match L.offsets.getLast? with
+    | some lastOffset => lastOffset = L.abiType.size
+    | none => false
+  else false
+
 /-!
 ## Data Validation Specification
 -/
@@ -76,19 +87,19 @@ def spec_data_validation : Prop :=
   ∀ (T : AbiType) (L : MemoryLayout),
     L.abiType = T → validateLayout L = true
 
-/-- Validates that a memory layout is well-formed.
-    A layout is valid if it has at least one offset and the last offset
-    matches the type size.
--/
-def validateLayout (L : MemoryLayout) : Bool :=
-  L.offsets.length > 0 ∧
-    match L.offsets.getLast? with
-    | some lastOffset => lastOffset = L.abiType.size
-    | none => false
-
 /-!
 ## Layout Compatibility Specification
 -/
+
+/-- Checks if two memory layouts are compatible.
+    Two layouts are compatible when they have identical ABI types, sizes,
+    alignments, and offset lists.
+-/
+def compatibleLayouts (L1 L2 : MemoryLayout) : Bool :=
+  L1.abiType == L2.abiType &&
+    L1.size == L2.size &&
+    L1.align == L2.align &&
+    L1.offsets == L2.offsets
 
 /-- Specification: Layout Compatibility
     This proposition states that two layouts are compatible when all properties match.
@@ -96,15 +107,5 @@ def validateLayout (L : MemoryLayout) : Bool :=
 def spec_layout_compatibility : Prop :=
   ∀ (L1 L2 : MemoryLayout),
     compatibleLayouts L1 L2 = true
-
-/-- Checks if two memory layouts are compatible.
-    Two layouts are compatible when they have identical ABI types, sizes,
-    alignments, and offset lists.
--/
-def compatibleLayouts (L1 L2 : MemoryLayout) : Bool :=
-  L1.abiType = L2.abiType ∧
-    L1.size = L2.size ∧
-    L1.align = L2.align ∧
-    L1.offsets = L2.offsets
 
 end Morph.Specs.AbiDataRefinement

@@ -8,13 +8,13 @@ Morph is a research project that combines formal verification, advanced type sys
 
 ## Status
 
-**Lean 4 Migration: COMPLETED** ✓
+**Lean 4 Migration: COMPLETED**
 
-The project has successfully migrated to Lean 4 v4.10.0 with mathlib4. All formal verification code now uses the latest Lean 4 toolchain, providing improved performance, better automation, and a more robust foundation for the specification.
+The project has successfully migrated to Lean 4 v4.27.0 with mathlib4. All formal verification code now uses the latest Lean 4 toolchain, providing improved performance, better automation, and a more robust foundation for the specification.
 
 ### Technology Stack
 
-- **Formal Verification**: Lean 4 v4.10.0
+- **Formal Verification**: Lean 4 v4.27.0
 - **Standard Library**: mathlib4
 - **Proof Automation**: aesop, batteries
 - **Build System**: Lake (Lean's package manager)
@@ -109,7 +109,7 @@ morph/
 
 ### Prerequisites
 
-- Lean 4 v4.10.0 (automatically managed by `elan`)
+- Lean 4 v4.27.0 (automatically managed by `elan`)
 - Lake build system
 - VS Code with Lean 4 extension (recommended)
 

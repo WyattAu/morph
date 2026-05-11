@@ -13,18 +13,18 @@ namespace Morph.Specs.UnidirectionalDataFlow
 
 This module contains mathematical lemmas and theorems for
 UDF (Unidirectional Data Flow) pattern.
-
+-/
 
 /-!
 ## Data Flow Theorems
 
+UDF pattern produces semantically correct results.
+-/
 
 -- Theorem 1: Data Flow is Sound
 
-UDF pattern produces semantically correct results.
-
 theorem data_flow_sound
-  (source sink : Morph.Syntax.Expr) :
+  (_source _sink : Morph.Syntax.Expr) :
   -- Data flow is sound by construction
   True := by
   -- Source produces values
@@ -33,4 +33,3 @@ theorem data_flow_sound
   trivial
 
 end Morph.Specs.UnidirectionalDataFlow
--/

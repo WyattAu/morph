@@ -1,24 +1,24 @@
-# Morph Language Lean 4.28.0-rc1 Migration - Execution Graph
+# Morph Language Lean 4.27.0 Migration - Execution Graph
 
 **Phase 9 - Tasking**
 **Generated:** 2026-01-31
-**Purpose:** Comprehensive task breakdown for executing the Morph project migration to Lean 4.28.0-rc1
+**Purpose:** Comprehensive task breakdown for executing the Morph project migration to Lean 4.27.0
 
 ---
 
 ## Executive Summary
 
-This document defines the complete execution graph of tasks for the Morph project migration from Lean 4.10.0 to Lean 4.28.0-rc1. The tasks are organized into batches matching the migration process, with clear priorities, dependencies, and acceptance criteria.
+This document defines the complete execution graph of tasks for the Morph project migration from Lean 4.10.0 to Lean 4.27.0. The tasks are organized into batches matching the migration process, with clear priorities, dependencies, and acceptance criteria.
 
 ### Task Overview
 
 | Batch | Description | Task Count | Priority | Status |
 |-------|-------------|------------|----------|--------|
-| Batch 1 | Critical Error Resolution | 3 | P0 (Critical) | ⏳ Pending |
-| Batch 2 | Dependency Version Alignment | 4 | P1 (High) | ⏳ Pending |
-| Batch 3 | Code Standards Compliance | 3 | P2 (Medium) | ⏳ Pending |
-| Batch 4 | Deprecated API Remediation | 2 | P2 (Medium) | ⏳ Pending |
-| Batch 5 | Verification | 3 | P0 (Critical) | ⏳ Pending |
+| Batch 1 | Critical Error Resolution | 3 | P0 (Critical) | Pending |
+| Batch 2 | Dependency Version Alignment | 4 | P1 (High) | Pending |
+| Batch 3 | Code Standards Compliance | 3 | P2 (Medium) | Pending |
+| Batch 4 | Deprecated API Remediation | 2 | P2 (Medium) | Pending |
+| Batch 5 | Verification | 3 | P0 (Critical) | Pending |
 
 **Total Tasks:** 15
 
@@ -82,7 +82,7 @@ The file [`Morph/Specs/ArcAffineIntegration/Examples.lean`](../Morph/Specs/ArcAf
 
 #### Description
 
-The ProofWidgets4 dependency (version v0.0.84) has configuration errors in its lakefile.lean that are incompatible with Lean 4.28.0-rc1. This dependency must be removed from the project's dependency tree. ProofWidgets is a transitive dependency inherited from `leanprover-community` and is not directly used by Morph code.
+The ProofWidgets4 dependency (version v0.0.84) has configuration errors in its lakefile.lean that are incompatible with Lean 4.27.0. This dependency must be removed from the project's dependency tree. ProofWidgets is a transitive dependency inherited from `leanprover-community` and is not directly used by Morph code.
 
 #### Task Steps
 
@@ -144,7 +144,7 @@ After removing ProofWidgets, ensure the Lake workspace configures successfully a
 3. Run `lake configure` and verify successful completion
 4. Run `lake update` to regenerate [`lake-manifest.json`](../lake-manifest.json)
 5. Check for any remaining dependency configuration issues
-6. Verify all remaining dependencies are compatible with Lean 4.28.0-rc1
+6. Verify all remaining dependencies are compatible with Lean 4.27.0
 
 #### Acceptance Criteria
 
@@ -164,12 +164,12 @@ After removing ProofWidgets, ensure the Lake workspace configures successfully a
 
 ## Batch 2: Dependency Version Alignment (P1)
 
-### TASK-010: Verify Lean Toolchain at v4.28.0-rc1
+### TASK-010: Verify Lean Toolchain at v4.27.0
 
 | Attribute | Value |
 |-----------|-------|
 | **Task ID** | TASK-010 |
-| **Title** | Verify Lean Toolchain at v4.28.0-rc1 |
+| **Title** | Verify Lean Toolchain at v4.27.0 |
 | **Priority** | High (P1) |
 | **Estimated Effort** | 0.25 hours |
 | **Assignee Role** | DevOps Engineer |
@@ -179,12 +179,12 @@ After removing ProofWidgets, ensure the Lake workspace configures successfully a
 
 #### Description
 
-Ensure the Lean toolchain is correctly set to v4.28.0-rc1. The toolchain is already configured in [`lean-toolchain`](../lean-toolchain), but this task verifies it is correctly installed and available.
+Ensure the Lean toolchain is correctly set to v4.27.0. The toolchain is already configured in [`lean-toolchain`](../lean-toolchain), but this task verifies it is correctly installed and available.
 
 #### Task Steps
 
-1. Verify [`lean-toolchain`](../lean-toolchain) contains `leanprover/lean4:v4.28.0-rc1`
-2. Verify `lean --version` returns v4.28.0-rc1
+1. Verify [`lean-toolchain`](../lean-toolchain) contains `leanprover/lean4:v4.27.0`
+2. Verify `lean --version` returns v4.27.0
 3. If toolchain is not available, install it using `elan`
 4. Document any toolchain installation issues
 
@@ -192,8 +192,8 @@ Ensure the Lean toolchain is correctly set to v4.28.0-rc1. The toolchain is alre
 
 | Criterion | Verification Method |
 |-----------|---------------------|
-| Toolchain version is v4.28.0-rc1 | `cat lean-toolchain` returns `leanprover/lean4:v4.28.0-rc1` |
-| Toolchain is available | `lean --version` returns v4.28.0-rc1 |
+| Toolchain version is v4.27.0 | `cat lean-toolchain` returns `leanprover/lean4:v4.27.0` |
+| Toolchain is available | `lean --version` returns v4.27.0 |
 
 #### Related Documents
 
@@ -202,12 +202,12 @@ Ensure the Lean toolchain is correctly set to v4.28.0-rc1. The toolchain is alre
 
 ---
 
-### TASK-011: Update Batteries to v4.28.0-Compatible Version
+### TASK-011: Update Batteries to v4.27.0-Compatible Version
 
 | Attribute | Value |
 |-----------|-------|
 | **Task ID** | TASK-011 |
-| **Title** | Update Batteries to v4.28.0-Compatible Version |
+| **Title** | Update Batteries to v4.27.0-Compatible Version |
 | **Priority** | High (P1) |
 | **Estimated Effort** | 2 hours |
 | **Assignee Role** | DevOps Engineer |
@@ -217,24 +217,24 @@ Ensure the Lean toolchain is correctly set to v4.28.0-rc1. The toolchain is alre
 
 #### Description
 
-Update the batteries dependency from v4.10.0 to a version compatible with Lean 4.28.0-rc1. This task involves researching the available versions, selecting the most recent stable version, and updating the project configuration.
+Update the batteries dependency from v4.10.0 to a version compatible with Lean 4.27.0. This task involves researching the available versions, selecting the most recent stable version, and updating the project configuration.
 
 #### Task Steps
 
-1. Research the batteries repository for v4.28.0-compatible tags/branches
-2. Choose the most recent stable version compatible with Lean 4.28.0-rc1
+1. Research the batteries repository for v4.27.0-compatible tags/branches
+2. Choose the most recent stable version compatible with Lean 4.27.0
 3. Prefer official releases over development branches
 4. Update [`lakefile.toml`](../lakefile.toml) with the new version
 5. Update [`lakefile.lean`](../lakefile.lean) with the new version if present
 6. Run `lake update` to regenerate [`lake-manifest.json`](../lake-manifest.json)
-7. Verify batteries compiles with v4.28.0-rc1
+7. Verify batteries compiles with v4.27.0
 
 #### Acceptance Criteria
 
 | Criterion | Verification Method |
 |-----------|---------------------|
-| Batteries version is v4.28.0-compatible | `grep batteries lakefile.toml` shows compatible version |
-| Batteries compiles with v4.28.0-rc1 | `lake build Batteries` succeeds |
+| Batteries version is v4.27.0-compatible | `grep batteries lakefile.toml` shows compatible version |
+| Batteries compiles with v4.27.0 | `lake build Batteries` succeeds |
 | No type errors from batteries | Build output contains no batteries-related type errors |
 
 #### Related Documents
@@ -244,12 +244,12 @@ Update the batteries dependency from v4.10.0 to a version compatible with Lean 4
 
 ---
 
-### TASK-012: Update Aesop to v4.28.0-Compatible Version
+### TASK-012: Update Aesop to v4.27.0-Compatible Version
 
 | Attribute | Value |
 |-----------|-------|
 | **Task ID** | TASK-012 |
-| **Title** | Update Aesop to v4.28.0-Compatible Version |
+| **Title** | Update Aesop to v4.27.0-Compatible Version |
 | **Priority** | High (P1) |
 | **Estimated Effort** | 2 hours |
 | **Assignee Role** | DevOps Engineer |
@@ -259,24 +259,24 @@ Update the batteries dependency from v4.10.0 to a version compatible with Lean 4
 
 #### Description
 
-Update the aesop dependency from v4.10.0 to a version compatible with Lean 4.28.0-rc1. This task involves researching the available versions, selecting the most recent stable version, and updating the project configuration.
+Update the aesop dependency from v4.10.0 to a version compatible with Lean 4.27.0. This task involves researching the available versions, selecting the most recent stable version, and updating the project configuration.
 
 #### Task Steps
 
-1. Research the aesop repository for v4.28.0-compatible tags/branches
-2. Choose the most recent stable version compatible with Lean 4.28.0-rc1
+1. Research the aesop repository for v4.27.0-compatible tags/branches
+2. Choose the most recent stable version compatible with Lean 4.27.0
 3. Prefer official releases over development branches
 4. Update [`lakefile.toml`](../lakefile.toml) with the new version
 5. Update [`lakefile.lean`](../lakefile.lean) with the new version if present
 6. Run `lake update` to regenerate [`lake-manifest.json`](../lake-manifest.json)
-7. Verify aesop compiles with v4.28.0-rc1
+7. Verify aesop compiles with v4.27.0
 
 #### Acceptance Criteria
 
 | Criterion | Verification Method |
 |-----------|---------------------|
-| Aesop version is v4.28.0-compatible | `grep aesop lakefile.toml` shows compatible version |
-| Aesop compiles with v4.28.0-rc1 | `lake build Aesop` succeeds |
+| Aesop version is v4.27.0-compatible | `grep aesop lakefile.toml` shows compatible version |
+| Aesop compiles with v4.27.0 | `lake build Aesop` succeeds |
 | No tactic errors from aesop | Build output contains no aesop-related tactic errors |
 
 #### Related Documents
@@ -286,12 +286,12 @@ Update the aesop dependency from v4.10.0 to a version compatible with Lean 4.28.
 
 ---
 
-### TASK-013: Update Mathlib4 to v4.28.0-Compatible Version
+### TASK-013: Update Mathlib4 to v4.27.0-Compatible Version
 
 | Attribute | Value |
 |-----------|-------|
 | **Task ID** | TASK-013 |
-| **Title** | Update Mathlib4 to v4.28.0-Compatible Version |
+| **Title** | Update Mathlib4 to v4.27.0-Compatible Version |
 | **Priority** | High (P1) |
 | **Estimated Effort** | 4 hours |
 | **Assignee Role** | DevOps Engineer |
@@ -301,18 +301,18 @@ Update the aesop dependency from v4.10.0 to a version compatible with Lean 4.28.
 
 #### Description
 
-Update the mathlib4 dependency from v4.10.0 to a version compatible with Lean 4.28.0-rc1. This is the most complex dependency update due to the extensive breaking changes in mathlib4 between v4.10.0 and v4.28.0-rc1.
+Update the mathlib4 dependency from v4.10.0 to a version compatible with Lean 4.27.0. This is the most complex dependency update due to the extensive breaking changes in mathlib4 between v4.10.0 and v4.27.0.
 
 #### Task Steps
 
-1. Research the mathlib4 repository for v4.28.0-compatible tags/branches
-2. Choose the most recent stable version compatible with Lean 4.28.0-rc1
+1. Research the mathlib4 repository for v4.27.0-compatible tags/branches
+2. Choose the most recent stable version compatible with Lean 4.27.0
 3. Prefer official releases over development branches
 4. Update [`lakefile.toml`](../lakefile.toml) with the new version
 5. Update [`lakefile.lean`](../lakefile.lean) with the new version if present
 6. Run `lake update` to regenerate [`lake-manifest.json`](../lake-manifest.json)
 7. Clean build artifacts: `lake clean && rm -rf .lake/packages`
-8. Verify mathlib4 compiles with v4.28.0-rc1
+8. Verify mathlib4 compiles with v4.27.0
 
 #### Breaking Changes to Document
 
@@ -325,8 +325,8 @@ Update the mathlib4 dependency from v4.10.0 to a version compatible with Lean 4.
 
 | Criterion | Verification Method |
 |-----------|---------------------|
-| Mathlib4 version is v4.28.0-compatible | `grep mathlib lakefile.toml` shows compatible version |
-| Mathlib4 compiles with v4.28.0-rc1 | `lake build Mathlib` succeeds |
+| Mathlib4 version is v4.27.0-compatible | `grep mathlib lakefile.toml` shows compatible version |
+| Mathlib4 compiles with v4.27.0 | `lake build Mathlib` succeeds |
 | No import errors from mathlib4 | Build output contains no mathlib4-related import errors |
 
 #### Related Documents
