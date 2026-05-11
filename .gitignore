@@ -210,3 +210,6 @@ __marimo__/
 
 # Lean build artifacts
 .lake/
+
+# spec-tools generated config
+.spec-tools.yaml
