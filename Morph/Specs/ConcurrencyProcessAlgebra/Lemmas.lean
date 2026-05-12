@@ -76,4 +76,54 @@ theorem isFutureWait_def (a b : ActorId) (future : Future)
 theorem isBackpressureWait_always_true (a b : ActorId) (config : ProcessConfig) :
     isBackpressureWait a b config := trivial
 
+/- Non-trivial lemmas about the actual data types -/
+
+/-- An empty mailbox has zero messages. -/
+theorem empty_mailbox_no_messages :
+    ({ owner := (0 : ActorId), isFull := false, messages := [] : Mailbox }).messages.length = 0 := rfl
+
+/-- A mailbox with one message has message count one. -/
+theorem single_message_mailbox_count :
+    ({ owner := (0 : ActorId), isFull := false,
+       messages := [{ value := { data := "ping" } }] : Mailbox }).messages.length = 1 := rfl
+
+/-- A mailbox's owner field equals the actor id it was constructed with. -/
+theorem mailbox_owner_matches (mb : Mailbox) :
+    ({ id := mb.owner, mailbox := mb : Actor }).id = mb.owner := rfl
+
+/-- hasMailbox is definitionally equivalent to list membership. -/
+theorem hasMailbox_iff_mem (actor : ActorId) (config : ProcessConfig) :
+    hasMailbox actor config ↔ actor ∈ config.actors := Iff.rfl
+
+/-- An actor not listed in the config does not have a mailbox. -/
+theorem no_mailbox_for_absent_actor :
+    ¬hasMailbox 99 { actors := [0, 1, 2], channels := [] } := by
+  unfold hasMailbox; decide
+
+/-- The first actor in a concrete three-actor config has a mailbox. -/
+theorem first_actor_has_mailbox :
+    hasMailbox 0 { actors := [0, 1, 2], channels := [] } := by
+  unfold hasMailbox; decide
+
+/-- Action.send and Action.receive are distinct constructors. -/
+theorem send_ne_receive (target : ActorId) (msg : Message) :
+    Action.send target msg ≠ Action.receive := by
+  intro h; cases h
+
+/-- Action.receive and Action.internal are distinct constructors. -/
+theorem receive_ne_internal : Action.receive ≠ Action.internal := by
+  intro h; cases h
+
+/-- WaitForEdge.futureWait and WaitForEdge.backpressureWait are distinct constructors. -/
+theorem future_wait_ne_backpressure_wait (a b : ActorId) :
+    WaitForEdge.futureWait a b ≠ WaitForEdge.backpressureWait a b := by
+  intro h; cases h
+
+/-- The spec for supporting millions of actors is satisfiable:
+    construct a config with 1,000,000 actors, each having a mailbox. -/
+theorem specMillionsOfActors_holds : specMillionsOfActors := by
+  unfold specMillionsOfActors
+  refine ⟨{ actors := List.range 1000000, channels := [] : ProcessConfig }, by
+    simp [List.length_range], fun _ h => h⟩
+
 end Morph.Specs.ConcurrencyProcessAlgebra

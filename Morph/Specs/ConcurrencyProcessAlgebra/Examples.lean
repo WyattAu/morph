@@ -11,7 +11,39 @@ namespace Morph.Specs.ConcurrencyProcessAlgebra
 Concrete examples demonstrating the ConcurrencyProcessAlgebra specification.
 -/
 
-example : True := trivial
+/-- Scenario: Actor 0 creates an empty mailbox, ready to receive messages. -/
+def actor0 : Actor := {
+  id := 0,
+  mailbox := { owner := 0, isFull := false, messages := [] }
+}
+
+/-- Scenario: After Actor 0 sends "task-result" to Actor 1, Actor 1's mailbox has one message. -/
+def actor1AfterReceive : Actor := {
+  id := 1,
+  mailbox := { owner := 1, isFull := false, messages := [{ value := { data := "task-result" } }] }
+}
+
+/-- After receiving, Actor 1's mailbox is no longer empty. -/
+example : actor1AfterReceive.mailbox.messages.length = 1 := rfl
+
+/-- Actor 0 starts with an empty mailbox. -/
+example : actor0.mailbox.messages.length = 0 := rfl
+
+/-- Scenario: A two-actor system communicating over a request channel. -/
+def twoActorConfig : ProcessConfig := {
+  actors := [0, 1],
+  channels := ["request-channel"]
+}
+
+/-- Both actors have mailboxes in the two-actor config. -/
+example : hasMailbox 0 twoActorConfig ∧ hasMailbox 1 twoActorConfig := by
+  constructor <;> unfold hasMailbox <;> decide
+
+/-- Scenario: Channel operation — actor 0 sends a greeting to actor 1. -/
+def sendAction : Action := Action.send 1 { value := { data := "hello" } }
+
+/-- The send action targets actor 1 with the greeting payload. -/
+example : sendAction = Action.send 1 { value := { data := "hello" } } := rfl
 
 def exampleActor : Actor := {
   id := 0,

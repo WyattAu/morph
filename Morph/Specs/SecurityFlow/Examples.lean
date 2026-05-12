@@ -11,8 +11,36 @@ namespace Morph.Specs.SecurityFlow
 Concrete examples demonstrating the SecurityFlow specification.
 -/
 
-/-- True is true. -/
-example : True := trivial
+/-- A concrete two-level security lattice: false (Low) ⊑ true (High).
+    Order: false ≤ false, false ≤ true, true ≤ true. -/
+def twoLevelLattice : SecurityLattice := {
+  elements := Bool
+  le := fun x y => x = false ∨ y = true
+  lub := fun x y => x || y
+  glb := fun x y => x && y
+}
+
+/-- In the two-level lattice, Low ⊑ High holds. -/
+example : twoLevelLattice.le false true := Or.inr rfl
+
+/-- In the two-level lattice, High ⊑ Low does not hold. -/
+example : ¬(twoLevelLattice.le true false) := by
+  unfold twoLevelLattice; decide
+
+/-- In the two-level lattice, the order is reflexive. -/
+example : twoLevelLattice.le false false := Or.inl rfl
+
+example : twoLevelLattice.le true true := Or.inr rfl
+
+/-- Information flow from Low to High is allowed. -/
+example : InformationFlow.allowed twoLevelLattice
+    { source := false, destination := true } := by
+  unfold InformationFlow.allowed twoLevelLattice; exact Or.inr rfl
+
+/-- Information flow from High to Low is forbidden. -/
+example : ¬(InformationFlow.allowed twoLevelLattice
+    { source := true, destination := false }) := by
+  unfold InformationFlow.allowed twoLevelLattice; decide
 
 /-- SecurityLevel.le is definitionally L.le. -/
 example
