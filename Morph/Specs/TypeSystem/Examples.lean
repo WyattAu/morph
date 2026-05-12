@@ -24,31 +24,32 @@ def env_x_bool_y_int : TypEnv := [("x", .boolType), ("y", .intType)]
 def env_empty : TypEnv := []
 
 /-- Type inference for a literal integer returns intType. -/
-example : inferType env_empty (.lit (.int 42)) = some .intType := rfl
+example : inferType env_empty (.lit (.int 42)) = some .intType := by
+  simp [inferType]
 
 /-- Type inference for a literal boolean returns boolType. -/
-example : inferType env_empty (.lit (.bool true)) = some .boolType := rfl
+example : inferType env_empty (.lit (.bool true)) = some .boolType := by
+  simp [inferType]
 
 /-- Type inference for a literal string returns stringType. -/
-example : inferType env_empty (.lit (.string "hello")) = some .stringType := rfl
+example : inferType env_empty (.lit (.string "hello")) = some .stringType := by
+  simp [inferType]
 
 /-- Type inference for a literal unit returns unitType. -/
-example : inferType env_empty (.lit .unit) = some .unitType := rfl
+example : inferType env_empty (.lit .unit) = some .unitType := by
+  simp [inferType]
 
 /-- Type inference for undefined literal returns none. -/
-example : inferType env_empty (.lit .undef) = none := rfl
+example : inferType env_empty (.lit .undef) = none := by
+  simp [inferType]
 
 /-- Type inference for a variable looks up the environment. -/
 example : inferType env_x_int (.var { name := "x" }) = some .intType := by
-  show lookupTyp env_x_int "x" = some .intType
-  unfold lookupTyp
-  simp [env_x_int]
+  simp [inferType, lookupTyp, env_x_int]
 
 /-- Type inference for an unknown variable returns none. -/
 example : inferType env_empty (.var { name := "z" }) = none := by
-  show lookupTyp env_empty "z" = none
-  unfold lookupTyp
-  simp [env_empty]
+  simp [inferType, lookupTyp, env_empty]
 
 /-- typeCheck for a literal int against boolType is false. -/
 example : (typeCheck env_empty (.lit (.int 10)) .boolType) = False := by

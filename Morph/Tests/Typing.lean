@@ -12,13 +12,13 @@ section TypeSystemTests
   open Morph.Syntax
 
   example : inferType [] (.lit (.int 42)) = some .intType := by
-    rfl
+    simp [inferType]
 
   example : inferType [] (.lit (.bool true)) = some .boolType := by
-    rfl
+    simp [inferType]
 
   example : inferType [] (.lit .unit) = some .unitType := by
-    rfl
+    simp [inferType]
 
   example : inferType [("x", .intType)] (.var { name := "x" }) = some .intType := by
     unfold inferType lookupTyp

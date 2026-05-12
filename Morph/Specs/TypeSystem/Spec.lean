@@ -50,7 +50,7 @@ inductive WellTyped : TypEnv -> Morph.Core.Typ -> Prop where
       WellTyped env (.functionType paramTys retTy)
 
 /-!
-## Type Inference
+## Type Inference (Executable)
 -/
 def inferType (env : TypEnv) : Morph.Syntax.Expr -> Option Morph.Core.Typ
   | .var id => lookupTyp env id.name
@@ -60,14 +60,63 @@ def inferType (env : TypEnv) : Morph.Syntax.Expr -> Option Morph.Core.Typ
   | .lit .unit => some .unitType
   | .lit (.pointer _) => some .pointerType
   | .lit .undef => none
-  | .unop _ _ => none
-  | .binop _ _ _ => none
-  | .app _ _ => none
+  | .unop op e =>
+    match op with
+    | .not =>
+      match inferType env e with
+      | some .boolType => some .boolType
+      | _ => none
+    | .notb =>
+      match inferType env e with
+      | some .intType => some .intType
+      | _ => none
+    | _ => none
+  | .binop op e1 e2 =>
+    let typ1? := inferType env e1
+    let typ2? := inferType env e2
+    match typ1?, typ2? with
+    | some .intType, some .intType =>
+      match op with
+      | .add | .sub | .mul | .div | .mod => some .intType
+      | .eq | .neq | .lt | .leq | .gt | .geq => some .boolType
+      | .andb | .orb | .xorb | .shl | .shr => some .intType
+      | _ => none
+    | some .boolType, some .boolType =>
+      match op with
+      | .and | .or => some .boolType
+      | _ => none
+    | _, _ => none
+  | .app fn args =>
+    match inferType env fn with
+    | some (.functionType paramTys retTy) =>
+      if args.length == paramTys.length then
+        let argTys := args.map (inferType env)
+        if argTys.all Option.isSome then
+          let ok := (argTys.zip paramTys).all (fun (aTy?, pTy) =>
+            match aTy? with
+            | some aTy => aTy == pTy
+            | none => false)
+          if ok then some retTy else none
+        else none
+      else none
+    | _ => none
   | .lam _ _ => none
-  | .let _ _ _ => none
-  | .ifThenElse _ _ _ => none
-  | .forLoop _ _ _ _ => none
-  | .block _ => none
+  | .let id e1 e2 =>
+    match inferType env e1 with
+    | some τ1 => inferType (extendTypEnv env id.name τ1) e2
+    | none => none
+  | .ifThenElse c t f =>
+    match inferType env c with
+    | some .boolType =>
+      let typT := inferType env t
+      let typF := inferType env f
+      if typT == typF then typT else none
+    | _ => none
+  | .forLoop _ _ _ _ => some .unitType
+  | .block [] => some .unitType
+  | .block [e] => inferType env e
+  | .block (_ :: es) => inferType env (.block es)
+termination_by e => sizeOf e
 
 def typeCheck (env : TypEnv) (e : Morph.Syntax.Expr) (expected : Morph.Core.Typ) : Prop :=
   inferType env e = some expected
