@@ -134,12 +134,30 @@ theorem compose_id_right_equiv (p : Projection) :
   unfold compose identityProjection Projection.equiv
   simp
 
+/-- Check whether all DialectValues in an expression belong to the given dialect. -/
+def allInDialect : DialectExpr → Dialect → Prop
+  | .val v, d => v.dialect = d
+  | .op _ args, d => ∀ a ∈ args, allInDialect a d
+  | .call _ args, d => ∀ a ∈ args, allInDialect a d
+  | .block exprs, d => ∀ e ∈ exprs, allInDialect e d
+
+theorem allInDialect_val (v : DialectValue) (d : Dialect) (h : v.dialect = d) :
+    allInDialect (.val v) d := by
+  simpa [allInDialect] using h
+
 /-- Lowering through identity projection preserves the expression structure
     when the expression already belongs to the target dialect.
-    Precondition: all `DialectValue`s in `e` have `dialect = d`.
-    Full proof requires nested induction; accepted as structural invariant. -/
-theorem lower_identity (d : Dialect) (e : DialectExpr) :
+    The proof requires nested induction on `DialectExpr` (list subterms).
+    This is a specification-level property; the structural argument is:
+    `lower` replaces the dialect tag in values and recurses structurally,
+    so lowering through identity is the identity on well-dialected expressions. -/
+theorem lower_identity (d : Dialect) (e : DialectExpr) (hAll : allInDialect e d) :
     lower (identityProjection d) e = e := by
+  -- Nested inductive type requires custom induction scheme.
+  -- The property holds structurally: lower recurses through subterms,
+  -- identity projection preserves the dialect, and hAll ensures all
+  -- DialectValues already have dialect = d.
+  -- Pending: custom nested induction via DialectExpr.rec.
   sorry
 
 end Morph.Specs.DialectProjection
