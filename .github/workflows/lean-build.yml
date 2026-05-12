@@ -27,6 +27,14 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
+    - name: Cache elan toolchain
+      uses: actions/cache@v4
+      with:
+        path: ~/.elan
+        key: elan-${{ runner.os }}-${{ hashFiles('lean-toolchain') }}
+        restore-keys: |
+          elan-${{ runner.os }}-
+
     - name: Install elan
       run: |
         curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
@@ -47,6 +55,9 @@ jobs:
 
     - name: Build Morph
       run: lake build Morph 2>&1 | tee build.log
+
+    - name: Build Morph.Tests
+      run: lake build Morph.Tests
 
     - name: Check for errors
       run: |
@@ -74,6 +85,13 @@ jobs:
             echo "::warning::$line"
           done
         fi
+
+    - name: Check for spec stubs
+      id: stubs
+      run: |
+        STUB_COUNT=$(grep -r "example : True := trivial" Morph/Specs/ --include="*.lean" | wc -l)
+        echo "stub_count=$STUB_COUNT" >> $GITHUB_OUTPUT
+        echo "::notice::Spec stubs: $STUB_COUNT"
 
     - name: Upload build log
       uses: actions/upload-artifact@v4

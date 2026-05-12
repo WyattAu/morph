@@ -14,18 +14,18 @@ echo ""
 FAILURES=0
 
 # Step 1: Lake build (compile all Lean 4 sources)
-echo "[1/4] Running lake build Morph..."
+echo "[1/5] Running lake build Morph..."
 BUILD_START=$(date +%s)
 
 if lake build Morph 2>&1 | tee /tmp/morph_precommit_build.log; then
     BUILD_END=$(date +%s)
     BUILD_SECS=$((BUILD_END - BUILD_START))
     echo ""
-    echo "[1/4] Lake build PASSED (${BUILD_SECS}s)"
+    echo "[1/5] Lake build PASSED (${BUILD_SECS}s)"
 else
     ERR_COUNT=$(grep -c "^error:" /tmp/morph_precommit_build.log 2>/dev/null || echo "unknown")
     echo ""
-    echo "[1/4] Lake build FAILED (${ERR_COUNT} errors)"
+    echo "[1/5] Lake build FAILED (${ERR_COUNT} errors)"
     echo ""
     echo "First 10 errors:"
     grep "^error:" /tmp/morph_precommit_build.log | head -10
@@ -36,32 +36,32 @@ fi
 
 # Step 2: Check for sorry declarations (formal verification gaps)
 echo ""
-echo "[2/4] Checking for 'sorry' declarations..."
+echo "[2/5] Checking for 'sorry' declarations..."
 
 SORRY_COUNT=$(grep -r "sorry" Morph/ --include="*.lean" 2>/dev/null | grep -v "\.olean" | grep -v "/--" | wc -l || true)
 SORRY_FILES=$(grep -rl "sorry" Morph/ --include="*.lean" 2>/dev/null | grep -v "\.olean" | wc -l || true)
 
 if [ "$SORRY_COUNT" -gt 0 ]; then
-    echo "[2/4] WARNING: Found ${SORRY_COUNT} 'sorry' declarations in ${SORRY_FILES} files."
+    echo "[2/5] WARNING: Found ${SORRY_COUNT} 'sorry' declarations in ${SORRY_FILES} files."
     echo "       These represent gaps in formal verification."
     echo "       Listing affected files:"
     grep -rn "sorry" Morph/ --include="*.lean" 2>/dev/null | grep -v "\.olean" | grep -v "/--" | head -20
     echo ""
     echo "Commit allowed (warnings only). Consider fixing 'sorry' declarations."
 else
-    echo "[2/4] No 'sorry' declarations found."
+    echo "[2/5] No 'sorry' declarations found."
 fi
 
 # Step 3: Lake build Morph.Tests
 echo ""
-echo "[3/4] Running lake build Morph.Tests..."
+echo "[3/5] Running lake build Morph.Tests..."
 
 if lake build Morph.Tests 2>&1 | tee /tmp/morph_precommit_tests_build.log; then
     echo ""
-    echo "[3/4] Morph.Tests build PASSED"
+    echo "[3/5] Morph.Tests build PASSED"
 else
     echo ""
-    echo "[3/4] Morph.Tests build FAILED"
+    echo "[3/5] Morph.Tests build FAILED"
     echo ""
     echo "First 10 errors:"
     grep "^error:" /tmp/morph_precommit_tests_build.log | head -10
@@ -72,7 +72,7 @@ fi
 
 # Step 4: Python spec-tools tests (if venv and spec-tools are available)
 echo ""
-echo "[4/4] Running Python spec-tools tests..."
+echo "[4/5] Running Python spec-tools tests..."
 
 # Try to find spec-tools: check project venv, then system
 SPEC_TOOLS_PYTEST=""
@@ -85,10 +85,10 @@ fi
 if [ -n "$SPEC_TOOLS_PYTEST" ]; then
     if $SPEC_TOOLS_PYTEST scripts/tests/ --tb=short -q 2>&1 | tee /tmp/morph_precommit_pytest.log; then
         echo ""
-        echo "[4/4] Python spec-tools tests PASSED"
+        echo "[4/5] Python spec-tools tests PASSED"
     else
         echo ""
-        echo "[4/4] Python spec-tools tests FAILED"
+        echo "[4/5] Python spec-tools tests FAILED"
         echo ""
         echo "Commit blocked. Fix the failing Python tests above."
         echo "Tip: Activate the venv with 'source .venv/bin/activate' and run"
@@ -96,8 +96,26 @@ if [ -n "$SPEC_TOOLS_PYTEST" ]; then
         exit 1
     fi
 else
-    echo "[4/4] Python spec-tools not found (skipped)."
+    echo "[4/5] Python spec-tools not found (skipped)."
     echo "       To enable: pip install -e scripts/ in a virtual environment."
+fi
+
+# Step 5: spec-tools checks on markdown files (if available)
+echo ""
+echo "[5/5] Running spec-tools checks on markdown files..."
+if command -v spec-tools &>/dev/null; then
+    MD_FILES=$(git diff --cached --name-only --diff-filter=ACM '*.md' 2>/dev/null || true)
+    if [ -n "$MD_FILES" ]; then
+        if spec-tools lint $MD_FILES 2>&1; then
+            echo "[5/5] spec-tools lint PASSED"
+        else
+            echo "[5/5] spec-tools lint FAILED (warnings only, commit allowed)"
+        fi
+    else
+        echo "[5/5] No markdown files staged, skipping spec-tools."
+    fi
+else
+    echo "[5/5] spec-tools not found (skipped)."
 fi
 
 echo ""

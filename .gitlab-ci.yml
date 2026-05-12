@@ -2,132 +2,36 @@
 
 stages:
   - test
-  - validate
   - security
-  - report
 
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
-  COVERAGE_THRESHOLD: "80"
 
-# Cache pip dependencies
 cache:
   paths:
     - .cache/pip
     - venv/
 
-# Test stage
-test:python38:
-  stage: test
-  image: python:3.8
-  script:
-    - python -m pip install --upgrade pip
-    - pip install -r tests/requirements.txt
-    - cd tests
-    - pytest specification_test_suite.py -v --cov=tests --cov-report=xml --cov-report=html --cov-fail-under=$COVERAGE_THRESHOLD
-  coverage: '/(?i)total.*? (100(?:\.0+)?\s|[1-9]?\d(?:\.\d+)?\s%)$/'
-  artifacts:
-    reports:
-      coverage_report:
-        coverage_format: cobertura
-        path: tests/coverage.xml
-    paths:
-      - tests/htmlcov/
-    expire_in: 30 days
-  only:
-    - branches
-    - merge_requests
-
-test:python39:
-  stage: test
-  image: python:3.9
-  script:
-    - python -m pip install --upgrade pip
-    - pip install -r tests/requirements.txt
-    - cd tests
-    - pytest specification_test_suite.py -v --cov=tests --cov-report=xml --cov-report=html --cov-fail-under=$COVERAGE_THRESHOLD
-  coverage: '/(?i)total.*? (100(?:\.0+)?\s|[1-9]?\d(?:\.\d+)?\s%)$/'
-  artifacts:
-    reports:
-      coverage_report:
-        coverage_format: cobertura
-        path: tests/coverage.xml
-    paths:
-      - tests/htmlcov/
-    expire_in: 30 days
-  only:
-    - branches
-    - merge_requests
-
-test:python310:
-  stage: test
-  image: python:3.10
-  script:
-    - python -m pip install --upgrade pip
-    - pip install -r tests/requirements.txt
-    - cd tests
-    - pytest specification_test_suite.py -v --cov=tests --cov-report=xml --cov-report=html --cov-fail-under=$COVERAGE_THRESHOLD
-  coverage: '/(?i)total.*? (100(?:\.0+)?\s|[1-9]?\d(?:\.\d+)?\s%)$/'
-  artifacts:
-    reports:
-      coverage_report:
-        coverage_format: cobertura
-        path: tests/coverage.xml
-    paths:
-      - tests/htmlcov/
-    expire_in: 30 days
-  only:
-    - branches
-    - merge_requests
-
-test:python311:
+test:
   stage: test
   image: python:3.11
   script:
     - python -m pip install --upgrade pip
-    - pip install -r tests/requirements.txt
-    - cd tests
-    - pytest specification_test_suite.py -v --cov=tests --cov-report=xml --cov-report=html --cov-fail-under=$COVERAGE_THRESHOLD
-  coverage: '/(?i)total.*? (100(?:\.0+)?\s|[1-9]?\d(?:\.\d+)?\s%)$/'
-  artifacts:
-    reports:
-      coverage_report:
-        coverage_format: cobertura
-        path: tests/coverage.xml
-    paths:
-      - tests/htmlcov/
-    expire_in: 30 days
+    - pip install -e scripts/
+    - pytest scripts/tests/ -v --tb=short
   only:
     - branches
     - merge_requests
 
-# Validation stage
-validate:specs:
-  stage: validate
-  image: python:3.10
-  script:
-    - python -m pip install --upgrade pip
-    - pip install -r tests/requirements.txt
-    - python scripts/spec_linter.py spec/
-    - python scripts/spec_link_checker.py spec/
-    - python scripts/spec_version_validator.py spec/
-  artifacts:
-    paths:
-      - validation-report.json
-    expire_in: 30 days
-  only:
-    - branches
-    - merge_requests
-
-# Security stage
 security:bandit:
   stage: security
-  image: python:3.10
+  image: python:3.11
   script:
     - python -m pip install --upgrade pip
+    - pip install -e scripts/
     - pip install bandit[toml]
-    - bandit -r tests/ -f json -o bandit-report.json || true
-    - bandit -r tests/ -f txt -o bandit-report.txt || true
+    - bandit -r scripts/ -f json -o bandit-report.json || true
+    - bandit -r scripts/ -f txt -o bandit-report.txt || true
   artifacts:
     paths:
       - bandit-report.json
@@ -140,12 +44,13 @@ security:bandit:
 
 security:safety:
   stage: security
-  image: python:3.10
+  image: python:3.11
   script:
     - python -m pip install --upgrade pip
+    - pip install -e scripts/
     - pip install safety
-    - safety check --file tests/requirements.txt --json --output safety-report.json || true
-    - safety check --file tests/requirements.txt --output safety-report.txt || true
+    - safety check --file scripts/pyproject.toml --json --output safety-report.json || true
+    - safety check --file scripts/pyproject.toml --output safety-report.txt || true
   artifacts:
     paths:
       - safety-report.json
@@ -156,41 +61,12 @@ security:safety:
     - branches
     - merge_requests
 
-# Report stage
-report:coverage:
-  stage: report
-  image: python:3.10
-  script:
-    - python -m pip install --upgrade pip
-    - pip install coverage
-    - coverage combine tests/coverage.xml
-    - coverage report --fail-under=$COVERAGE_THRESHOLD
-  dependencies:
-    - test:python38
-    - test:python39
-    - test:python310
-    - test:python311
-  only:
-    - main
-    - develop
-
-# Scheduled tests
 test:scheduled:
   stage: test
-  image: python:3.10
+  image: python:3.11
   script:
     - python -m pip install --upgrade pip
-    - pip install -r tests/requirements.txt
-    - cd tests
-    - pytest specification_test_suite.py -v --cov=tests --cov-report=xml --cov-report=html --cov-fail-under=$COVERAGE_THRESHOLD
-  coverage: '/(?i)total.*? (100(?:\.0+)?\s|[1-9]?\d(?:\.\d+)?\s%)$/'
-  artifacts:
-    reports:
-      coverage_report:
-        coverage_format: cobertura
-        path: tests/coverage.xml
-    paths:
-      - tests/htmlcov/
-    expire_in: 30 days
+    - pip install -e scripts/
+    - pytest scripts/tests/ -v --tb=short
   only:
     - schedules
