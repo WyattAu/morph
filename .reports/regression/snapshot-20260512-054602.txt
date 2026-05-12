@@ -1,0 +1,11 @@
+Morph Regression Snapshot - Tue 12 May 05:46:02 BST 2026
+================================
+
+errors: 0
+0
+warnings: 1
+sorries: 3
+stubs: 15
+
+Build completed successfully (186 jobs).
+

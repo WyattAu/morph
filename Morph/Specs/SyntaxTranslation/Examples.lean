@@ -10,10 +10,23 @@ namespace Morph.Specs.SyntaxTranslation
 ## Examples
 
 Concrete examples demonstrating the SyntaxTranslation specification.
-TODO: Add substantive examples as the specification matures.
 -/
 
-/-- Trivial example: True is true -/
-example : True := trivial
+example : translationRules.length = 5 := rfl
+
+def fnRule : TranslationRule := {
+  minPattern := "fn",
+  humPattern := "function",
+  description := "Function keyword"
+}
+
+example : fnRule.minPattern = "fn" := rfl
+
+example : fnRule.humPattern = "function" := rfl
+
+example : roundTripProperty "" = true := by
+  unfold roundTripProperty minToHum humToMin; simp
+
+example : semanticEquivalence "fn" "function" = true := rfl
 
 end Morph.Specs.SyntaxTranslation

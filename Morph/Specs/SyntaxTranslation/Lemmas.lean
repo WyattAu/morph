@@ -12,7 +12,16 @@ namespace Morph.Specs.SyntaxTranslation
 Lemmas and auxiliary results for the SyntaxTranslation specification.
 -/
 
-/-- Trivial lemma: True is true -/
-example : True := trivial
+theorem translationRules_length : translationRules.length = 5 := rfl
+
+theorem roundTripProperty_empty : roundTripProperty "" = true := by
+  unfold roundTripProperty minToHum humToMin; simp
+
+theorem semanticEquivalence_trivial (code : String) :
+  semanticEquivalence code code = true := rfl
+
+theorem minToHum_empty : minToHum "" = "" := rfl
+
+theorem humToMin_empty : humToMin "" = "" := rfl
 
 end Morph.Specs.SyntaxTranslation
