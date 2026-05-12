@@ -31,7 +31,7 @@ def allocContract : SafetyContract Pointer :=
 
 /-- Contract for memory free: block must be alive before, dead after. -/
 def freeContract : SafetyContract Pointer :=
-  { pre := fun p => True -- block is alloc'd
+  { pre := fun _ => True -- block is alloc'd
   , post := fun _ _ => True -- block is freed
   , name := "free-valid" }
 
