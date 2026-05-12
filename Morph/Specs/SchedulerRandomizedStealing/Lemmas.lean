@@ -18,7 +18,7 @@ theorem isBalanced_empty : isBalanced [] := by
   unfold isBalanced; intro _ w1 _ w2; simp_all
 
 theorem isBalanced_singleton (b : Bin) : isBalanced [b] := by
-  unfold isBalanced; simp [Nat.le_add_left]
+  unfold isBalanced; simp
 
 theorem isFair_empty : isFair [] := by
   unfold isFair; trivial
