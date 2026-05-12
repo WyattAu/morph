@@ -12,11 +12,18 @@ namespace Morph.Specs.AbiAlignmentAlgebra
 Lemmas and auxiliary results for the AbiAlignmentAlgebra specification.
 -/
 
+/-! ### Primitive Layout -/
+
 theorem computePrimitiveLayout_size_eq_width (p : PrimitiveWidth) :
   (computePrimitiveLayout p).size = p.width := rfl
 
 theorem computePrimitiveLayout_align_eq_width (p : PrimitiveWidth) :
   (computePrimitiveLayout p).align.align = p.width := rfl
+
+theorem computePrimitiveLayout_offsets (p : PrimitiveWidth) :
+  (computePrimitiveLayout p).offsets = [0] := rfl
+
+/-! ### Padding -/
 
 theorem computePadding_aligned_zero (alignment : Nat) :
   computePadding (2 * alignment) alignment = 0 := by
@@ -27,6 +34,12 @@ theorem computePadding_unaligned (offset alignment : Nat) (hne : offset % alignm
   computePadding offset alignment = alignment - offset % alignment := by
   simp [computePadding, hne]
 
+theorem computePadding_zero_offset (alignment : Nat) :
+  computePadding 0 alignment = 0 := by
+  unfold computePadding; simp
+
+/-! ### Struct Layout -/
+
 theorem computeStructAlign_empty : computeStructAlign [] = { align := 1 } := rfl
 
 theorem computeStructSize_empty : computeStructSize [] = 0 := rfl
@@ -35,6 +48,8 @@ theorem computeFieldOffset_zero (fields : List FieldLayout) :
   computeFieldOffset fields 0 = 0 := by
   unfold computeFieldOffset computeFieldOffsetAux
   split <;> simp_all
+
+/-! ### CeilDiv -/
 
 theorem ceilDiv_exact (a b : Nat) (_h : b > 0) (h2 : a % b = 0) :
   ceilDiv a b = a / b := by
@@ -45,6 +60,8 @@ theorem ceilDiv_round_up (a b : Nat) (_h : b > 0) (h2 : a % b > 0) :
   unfold ceilDiv
   have : a % b ≠ 0 := by omega
   split <;> simp_all
+
+/-! ### Defaults -/
 
 theorem defaultFieldLayout_eq :
   defaultFieldLayout = { fieldType := default, offset := 0, size := 0 } := rfl

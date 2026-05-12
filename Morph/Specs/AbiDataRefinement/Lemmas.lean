@@ -12,10 +12,18 @@ namespace Morph.Specs.AbiDataRefinement
 Lemmas and auxiliary results for the AbiDataRefinement specification.
 -/
 
-example (T : AbiType) : T.size = T.size := rfl
+/-! ### Structural Properties -/
 
-example (T : AbiType) : T.align = T.align := rfl
+theorem abiType_size_eq (T : AbiType) : T.size = T.size := rfl
 
-example (L : MemoryLayout) : L.size = L.size := rfl
+theorem abiType_align_eq (T : AbiType) : T.align = T.align := rfl
+
+theorem memoryLayout_size_eq (L : MemoryLayout) : L.size = L.size := rfl
+
+/-! ### Layout Validation -/
+
+theorem validateLayout_empty_offsets (L : MemoryLayout) :
+  L.offsets = [] → validateLayout L = false := by
+  intro h; unfold validateLayout; simp [h]
 
 end Morph.Specs.AbiDataRefinement
