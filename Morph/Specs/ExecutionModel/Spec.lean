@@ -46,7 +46,33 @@ inductive Expr where
   | app : Expr → Expr → Expr
   | lam : String → Expr → Expr
   | add : Expr → Expr → Expr
-  deriving Repr, BEq
+  | letE : String → Expr → Expr → Expr
+  | ifE : Expr → Expr → Expr → Expr
+  | seq : Expr → Expr → Expr
+deriving Repr, BEq
+
+/-- Substitution: replace variable `x` with value `v` in expression `e`. -/
+def subst (e : Expr) (x : String) (v : Value) : Expr :=
+  match e with
+  | .val _ => e
+  | .var y => if y == x then .val v else e
+  | .app e1 e2 => .app (subst e1 x v) (subst e2 x v)
+  | .lam y body => if y == x then e else .lam y (subst body x v)
+  | .add e1 e2 => .add (subst e1 x v) (subst e2 x v)
+  | .letE y e1 e2 => .letE y (subst e1 x v) (if y == x then e2 else subst e2 x v)
+  | .ifE c t f => .ifE (subst c x v) (subst t x v) (subst f x v)
+  | .seq e1 e2 => .seq (subst e1 x v) (subst e2 x v)
+
+/-- Evaluation contexts: where reduction can occur -/
+inductive EvalContext where
+  | hole
+  | appL : EvalContext → Expr → EvalContext
+  | appR : Value → EvalContext → EvalContext
+  | addL : EvalContext → Expr → EvalContext
+  | addR : Value → EvalContext → EvalContext
+  | letE : String → EvalContext → Expr → EvalContext
+  | ifE : EvalContext → Expr → Expr → EvalContext
+deriving Repr
 
 /-- Result of a single evaluation step -/
 inductive StepResult where
