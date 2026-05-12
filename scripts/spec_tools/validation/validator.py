@@ -8,7 +8,7 @@ functionality for specification files using various validation checks.
 from pathlib import Path
 from typing import List
 
-from spec_tools.models import LintError, ValidationResult, ValidationConfig
+from spec_tools.models import LintError, ValidationConfig, ValidationResult
 from spec_tools.validation.checks import ValidationCheck
 from spec_tools.validation.checks.maintainability import MaintainabilitySpecCheck
 from spec_tools.validation.checks.performance import PerformanceSpecCheck
@@ -85,10 +85,10 @@ class SpecValidator:
             raise FileNotFoundError(f"File not found: {filepath}")
 
         if not filepath.is_file():
-            raise IOError(f"Path is not a file: {filepath}")
+            raise OSError(f"Path is not a file: {filepath}")
 
         # Read file content
-        content = filepath.read_text(encoding='utf-8')
+        content = filepath.read_text(encoding="utf-8")
 
         # Run all checks
         errors: List[LintError] = []
@@ -126,7 +126,7 @@ class SpecValidator:
             raise NotADirectoryError(f"Path is not a directory: {directory}")
 
         # Find all markdown files
-        pattern = '**/*.md' if recursive else '*.md'
+        pattern = "**/*.md" if recursive else "*.md"
         files = list(directory.glob(pattern))
 
         # Validate each file
@@ -135,7 +135,7 @@ class SpecValidator:
             try:
                 result = self.validate_file(filepath)
                 results.append(result)
-            except (FileNotFoundError, IOError) as e:
+            except (OSError, FileNotFoundError) as e:
                 # Add error result for files that couldn't be read
                 results.append(
                     ValidationResult(

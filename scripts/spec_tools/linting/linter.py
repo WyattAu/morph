@@ -47,7 +47,7 @@ class SpecLinter:
         Returns:
             Dictionary mapping rule names to rule instances
         """
-        rules = {}
+        rules: Dict[str, LintingRule] = {}
 
         # Always load header and section validation
         rules["header"] = HeaderValidationRule()
@@ -92,7 +92,7 @@ class SpecLinter:
             errors = []
 
             # Run all rules
-            for rule_name, rule in self.rules.items():
+            for _rule_name, rule in self.rules.items():
                 rule_errors = rule.check(content, lines, filepath)
                 errors.extend(rule_errors)
 
@@ -120,9 +120,7 @@ class SpecLinter:
                 details={"error": str(e)},
             ) from e
 
-    def lint_directory(
-        self, directory: Path, recursive: bool = True
-    ) -> List[ValidationResult]:
+    def lint_directory(self, directory: Path, recursive: bool = True) -> List[ValidationResult]:
         """Lint all files in a directory.
 
         Applies linting rules to all markdown files in the specified

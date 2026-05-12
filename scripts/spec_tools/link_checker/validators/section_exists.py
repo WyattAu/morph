@@ -25,14 +25,12 @@ class SectionExistsValidator:
     - Provides informative error messages
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize section existence validator."""
         self._heading_pattern = re.compile(r"^#{1,6}\s+(.+)$", re.MULTILINE)
         self._section_cache: dict[Path, Set[str]] = {}
 
-    def validate(
-        self, link: LinkInfo, sections: Set[str] | None = None
-    ) -> bool:
+    def validate(self, link: LinkInfo, sections: Set[str] | None = None) -> bool:
         """Validate that a referenced section exists.
 
         Args:

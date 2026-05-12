@@ -13,15 +13,15 @@ The tool supports:
 """
 
 import re
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Set, Tuple
-from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Set
 
 from spec_tools.verification.models import (
     Issue,
     IssueCategory,
-    IssueSeverity,
     IssueId,
+    IssueSeverity,
 )
 
 
@@ -56,25 +56,25 @@ class AutomatedIssueDetector:
 
     # USP Detection Patterns
     _USP_PATTERNS = [
-        (r'\b(appropriate|reasonable|sufficient|adequate)\b', "Ambiguous quantifier"),
-        (r'\b(some|many|several|few)\b', "Ambiguous quantifier"),
-        (r'\bshould\b', "Normative language"),
-        (r'\bmust\b', "Strong requirement without formal definition"),
-        (r'\bmay\b', "Permissive language without criteria"),
+        (r"\b(appropriate|reasonable|sufficient|adequate)\b", "Ambiguous quantifier"),
+        (r"\b(some|many|several|few)\b", "Ambiguous quantifier"),
+        (r"\bshould\b", "Normative language"),
+        (r"\bmust\b", "Strong requirement without formal definition"),
+        (r"\bmay\b", "Permissive language without criteria"),
     ]
 
     # ISR Detection Patterns
     _ISR_PATTERNS = [
-        (r'/\*\s*[^\n]*?\*/', "Informal comment block"),
-        (r'^--\s*[^\n]*$', "Informal comment line"),
-        (r'\b(described|defined|specified)\b.*?\b(informally|roughly|approximately)\b', "Informal description'),
-        (r'\b(example|instance|case)\b.*?\b(like|similar to)\b', "Informal comparison'),
+        (r"/\*\s*[^\n]*?\*/", "Informal comment block"),
+        (r"/\*\s*[^\n]*?\*/", "Informal comment block"),
+        (r"\b(described|defined|specified)\b.*?\b(informally|roughly|approximately)\b", "Informal description"),
+        (r"\b(example|instance|case)\b.*?\b(like|similar to)\b", "Informal comparison"),
     ]
 
     # MEL Detection Patterns
     _MEL_FILE_PATTERNS = [
-        (r'^\s*$', "Empty file"),
-        (r'^/\*\s*\*/\s*$', "Only comment block"),
+        (r"^\s*$", "Empty file"),
+        (r"^/\*\s*\*/\s*$", "Only comment block"),
     ]
 
     def __init__(self, config: Optional[DetectionConfig] = None):
@@ -104,8 +104,8 @@ class AutomatedIssueDetector:
         issues = []
 
         try:
-            content = file_path.read_text(encoding='utf-8')
-            lines = content.split('\n')
+            content = file_path.read_text(encoding="utf-8")
+            lines = content.split("\n")
 
             # Detect USP issues
             if self.config.detect_usp:
@@ -128,17 +128,19 @@ class AutomatedIssueDetector:
                 issues.extend(ibf_issues)
 
         except Exception as e:
-            issues.append(Issue(
-                issue_id=IssueId(IssueCategory.USP, self._category_counters[IssueCategory.USP] + 1),
-                category=IssueCategory.USP,
-                severity=IssueSeverity.MEDIUM,
-                spec_name=file_path.parent.name,
-                file_path=file_path,
-                line_numbers=[1],
-                description=f"Error reading file: {str(e)}",
-                detection_method="Automated Detection",
-                suggested_fix="Ensure file is readable and properly formatted",
-            ))
+            issues.append(
+                Issue(
+                    issue_id=IssueId(IssueCategory.USP, self._category_counters[IssueCategory.USP] + 1),
+                    category=IssueCategory.USP,
+                    severity=IssueSeverity.MEDIUM,
+                    spec_name=file_path.parent.name,
+                    file_path=file_path,
+                    line_numbers=[1],
+                    description=f"Error reading file: {str(e)}",
+                    detection_method="Automated Detection",
+                    suggested_fix="Ensure file is readable and properly formatted",
+                )
+            )
 
         return issues
 
@@ -160,10 +162,7 @@ class AutomatedIssueDetector:
 
         return issues
 
-    def detect_cross_file_inconsistencies(
-        self,
-        spec_dir: Path
-    ) -> List[Issue]:
+    def detect_cross_file_inconsistencies(self, spec_dir: Path) -> List[Issue]:
         """Detect inconsistencies between related files.
 
         Args:
@@ -195,7 +194,7 @@ class AutomatedIssueDetector:
 
         for file_path in files_to_check:
             try:
-                content = file_path.read_text(encoding='utf-8')
+                content = file_path.read_text(encoding="utf-8")
                 definitions = self._extract_definitions(content)
                 examples = self._extract_examples(content)
                 all_definitions.update(definitions)
@@ -206,18 +205,13 @@ class AutomatedIssueDetector:
         # Check for inconsistencies
         if self.config.detect_ibf:
             ibf_issues = self._detect_ibf_cross_file(
-                spec_dir, spec_path, examples_path, lemmas_path,
-                all_definitions, all_examples
+                spec_dir, spec_path, examples_path, lemmas_path, all_definitions, all_examples
             )
             issues.extend(ibf_issues)
 
         return issues
 
-    def _detect_usp_issues(
-        self,
-        file_path: Path,
-        lines: List[str]
-    ) -> List[Issue]:
+    def _detect_usp_issues(self, file_path: Path, lines: List[str]) -> List[Issue]:
         """Detect unclear specification points (USP).
 
         Args:
@@ -228,38 +222,36 @@ class AutomatedIssueDetector:
             List of Issue objects for USP category.
         """
         issues = []
-        content = '\n'.join(lines)
+        "\n".join(lines)
 
         for line_num, line in enumerate(lines, start=1):
             line = line.strip()
 
             # Skip comments and empty lines
-            if not line or line.startswith('--') or line.startswith('/-'):
+            if not line or line.startswith("--") or line.startswith("/-"):
                 continue
 
             # Check for USP patterns
             for pattern, description in self._USP_PATTERNS:
                 if re.search(pattern, line, re.IGNORECASE):
                     self._category_counters[IssueCategory.USP] += 1
-                    issues.append(Issue(
-                        issue_id=IssueId(IssueCategory.USP, self._category_counters[IssueCategory.USP]),
-                        category=IssueCategory.USP,
-                        severity=IssueSeverity.MEDIUM,
-                        spec_name=file_path.parent.name,
-                        file_path=file_path,
-                        line_numbers=[line_num],
-                        description=f"Unclear specification: {description}",
-                        detection_method="Automated USP Detection",
-                        suggested_fix="Replace with formal definition or precise language",
-                    ))
+                    issues.append(
+                        Issue(
+                            issue_id=IssueId(IssueCategory.USP, self._category_counters[IssueCategory.USP]),
+                            category=IssueCategory.USP,
+                            severity=IssueSeverity.MEDIUM,
+                            spec_name=file_path.parent.name,
+                            file_path=file_path,
+                            line_numbers=[line_num],
+                            description=f"Unclear specification: {description}",
+                            detection_method="Automated USP Detection",
+                            suggested_fix="Replace with formal definition or precise language",
+                        )
+                    )
 
         return issues
 
-    def _detect_isr_issues(
-        self,
-        file_path: Path,
-        lines: List[str]
-    ) -> List[Issue]:
+    def _detect_isr_issues(self, file_path: Path, lines: List[str]) -> List[Issue]:
         """Detect insufficient rigor (ISR).
 
         Args:
@@ -275,7 +267,7 @@ class AutomatedIssueDetector:
             line = line.strip()
 
             # Skip comments
-            if line.startswith('--') or line.startswith('/-'):
+            if line.startswith("--") or line.startswith("/-"):
                 continue
 
             # Check for ISR patterns
@@ -283,26 +275,23 @@ class AutomatedIssueDetector:
                 if re.search(pattern, line, re.IGNORECASE):
                     self._category_counters[IssueCategory.ISR] += 1
                     severity = IssueSeverity.HIGH if "informal" in description.lower() else IssueSeverity.MEDIUM
-                    issues.append(Issue(
-                        issue_id=IssueId(IssueCategory.ISR, self._category_counters[IssueCategory.ISR]),
-                        category=IssueCategory.ISR,
-                        severity=severity,
-                        spec_name=file_path.parent.name,
-                        file_path=file_path,
-                        line_numbers=[line_num],
-                        description=f"Insufficient rigor: {description}",
-                        detection_method="Automated ISR Detection",
-                        suggested_fix="Replace with formal definition using Lean 4 syntax",
-                    ))
+                    issues.append(
+                        Issue(
+                            issue_id=IssueId(IssueCategory.ISR, self._category_counters[IssueCategory.ISR]),
+                            category=IssueCategory.ISR,
+                            severity=severity,
+                            spec_name=file_path.parent.name,
+                            file_path=file_path,
+                            line_numbers=[line_num],
+                            description=f"Insufficient rigor: {description}",
+                            detection_method="Automated ISR Detection",
+                            suggested_fix="Replace with formal definition using Lean 4 syntax",
+                        )
+                    )
 
         return issues
 
-    def _detect_mel_issues(
-        self,
-        file_path: Path,
-        lines: List[str],
-        content: str
-    ) -> List[Issue]:
+    def _detect_mel_issues(self, file_path: Path, lines: List[str], content: str) -> List[Issue]:
         """Detect missing examples or lemmas (MEL).
 
         Args:
@@ -319,66 +308,67 @@ class AutomatedIssueDetector:
         is_empty = True
         for line in lines:
             stripped = line.strip()
-            if stripped and not stripped.startswith('--') and not stripped.startswith('/-'):
+            if stripped and not stripped.startswith("--") and not stripped.startswith("/-"):
                 is_empty = False
                 break
 
         if is_empty:
             self._category_counters[IssueCategory.MEL] += 1
-            issues.append(Issue(
-                issue_id=IssueId(IssueCategory.MEL, self._category_counters[IssueCategory.MEL]),
-                category=IssueCategory.MEL,
-                severity=IssueSeverity.HIGH,
-                spec_name=file_path.parent.name,
-                file_path=file_path,
-                line_numbers=[1],
-                description="File is empty or contains only comments",
-                detection_method="Automated MEL Detection",
-                suggested_fix="Add examples or lemmas to this file",
-            ))
+            issues.append(
+                Issue(
+                    issue_id=IssueId(IssueCategory.MEL, self._category_counters[IssueCategory.MEL]),
+                    category=IssueCategory.MEL,
+                    severity=IssueSeverity.HIGH,
+                    spec_name=file_path.parent.name,
+                    file_path=file_path,
+                    line_numbers=[1],
+                    description="File is empty or contains only comments",
+                    detection_method="Automated MEL Detection",
+                    suggested_fix="Add examples or lemmas to this file",
+                )
+            )
 
         # Check for missing examples in Examples.lean
         if file_path.name == "Examples.lean":
             example_count = self._extract_examples(content)
             if len(example_count) < 3:
                 self._category_counters[IssueCategory.MEL] += 1
-                issues.append(Issue(
-                    issue_id=IssueId(IssueCategory.MEL, self._category_counters[IssueCategory.MEL]),
-                    category=IssueCategory.MEL,
-                    severity=IssueSeverity.MEDIUM,
-                    spec_name=file_path.parent.name,
-                    file_path=file_path,
-                    line_numbers=[],
-                    description=f"Insufficient examples: only {len(example_count)} examples found",
-                    detection_method="Automated MEL Detection",
-                    suggested_fix="Add more examples covering edge cases",
-                ))
+                issues.append(
+                    Issue(
+                        issue_id=IssueId(IssueCategory.MEL, self._category_counters[IssueCategory.MEL]),
+                        category=IssueCategory.MEL,
+                        severity=IssueSeverity.MEDIUM,
+                        spec_name=file_path.parent.name,
+                        file_path=file_path,
+                        line_numbers=[],
+                        description=f"Insufficient examples: only {len(example_count)} examples found",
+                        detection_method="Automated MEL Detection",
+                        suggested_fix="Add more examples covering edge cases",
+                    )
+                )
 
         # Check for missing lemmas in Lemmas.lean
         if file_path.name == "Lemmas.lean":
             lemma_count = self._extract_lemmas(content)
             if len(lemma_count) < 3:
                 self._category_counters[IssueCategory.MEL] += 1
-                issues.append(Issue(
-                    issue_id=IssueId(IssueCategory.MEL, self._category_counters[IssueCategory.MEL]),
-                    category=IssueCategory.MEL,
-                    severity=IssueSeverity.HIGH,
-                    spec_name=file_path.parent.name,
-                    file_path=file_path,
-                    line_numbers=[],
-                    description=f"Insufficient lemmas: only {len(lemma_count)} lemmas found",
-                    detection_method="Automated MEL Detection",
-                    suggested_fix="Add lemmas for key specification properties",
-                ))
+                issues.append(
+                    Issue(
+                        issue_id=IssueId(IssueCategory.MEL, self._category_counters[IssueCategory.MEL]),
+                        category=IssueCategory.MEL,
+                        severity=IssueSeverity.HIGH,
+                        spec_name=file_path.parent.name,
+                        file_path=file_path,
+                        line_numbers=[],
+                        description=f"Insufficient lemmas: only {len(lemma_count)} lemmas found",
+                        detection_method="Automated MEL Detection",
+                        suggested_fix="Add lemmas for key specification properties",
+                    )
+                )
 
         return issues
 
-    def _detect_ibf_issues(
-        self,
-        file_path: Path,
-        lines: List[str],
-        content: str
-    ) -> List[Issue]:
+    def _detect_ibf_issues(self, file_path: Path, lines: List[str], content: str) -> List[Issue]:
         """Detect inconsistencies within a single file (IBF).
 
         Args:
@@ -392,12 +382,12 @@ class AutomatedIssueDetector:
         issues = []
 
         # Extract all definitions
-        definitions = self._extract_definitions(content)
+        self._extract_definitions(content)
 
         # Check for duplicate definitions
         definition_counts: Dict[str, List[int]] = {}
         for line_num, line in enumerate(lines, start=1):
-            match = re.match(r'def\s+(\w+)', line)
+            match = re.match(r"def\s+(\w+)", line)
             if match:
                 def_name = match.group(1)
                 if def_name not in definition_counts:
@@ -407,17 +397,19 @@ class AutomatedIssueDetector:
         for def_name, line_nums in definition_counts.items():
             if len(line_nums) > 1:
                 self._category_counters[IssueCategory.IBF] += 1
-                issues.append(Issue(
-                    issue_id=IssueId(IssueCategory.IBF, self._category_counters[IssueCategory.IBF]),
-                    category=IssueCategory.IBF,
-                    severity=IssueSeverity.MEDIUM,
-                    spec_name=file_path.parent.name,
-                    file_path=file_path,
-                    line_numbers=line_nums,
-                    description=f"Duplicate definition: '{def_name}' defined at lines {line_nums}",
-                    detection_method="Automated IBF Detection",
-                    suggested_fix="Remove duplicate definition or rename one",
-                ))
+                issues.append(
+                    Issue(
+                        issue_id=IssueId(IssueCategory.IBF, self._category_counters[IssueCategory.IBF]),
+                        category=IssueCategory.IBF,
+                        severity=IssueSeverity.MEDIUM,
+                        spec_name=file_path.parent.name,
+                        file_path=file_path,
+                        line_numbers=line_nums,
+                        description=f"Duplicate definition: '{def_name}' defined at lines {line_nums}",
+                        detection_method="Automated IBF Detection",
+                        suggested_fix="Remove duplicate definition or rename one",
+                    )
+                )
 
         return issues
 
@@ -428,7 +420,7 @@ class AutomatedIssueDetector:
         examples_path: Path,
         lemmas_path: Path,
         all_definitions: Set[str],
-        all_examples: Set[str]
+        all_examples: Set[str],
     ) -> List[Issue]:
         """Detect inconsistencies between related files (IBF).
 
@@ -448,46 +440,50 @@ class AutomatedIssueDetector:
         # Check if Examples.lean references non-existent definitions
         if examples_path.exists():
             try:
-                content = examples_path.read_text(encoding='utf-8')
+                content = examples_path.read_text(encoding="utf-8")
                 referenced = self._extract_references(content)
                 undefined = referenced - all_definitions
 
                 if undefined:
                     self._category_counters[IssueCategory.IBF] += 1
-                    issues.append(Issue(
-                        issue_id=IssueId(IssueCategory.IBF, self._category_counters[IssueCategory.IBF]),
-                        category=IssueCategory.IBF,
-                        severity=IssueSeverity.HIGH,
-                        spec_name=spec_dir.name,
-                        file_path=examples_path,
-                        line_numbers=[],
-                        description=f"Examples reference undefined definitions: {', '.join(undefined)}",
-                        detection_method="Automated IBF Cross-File Detection",
-                        suggested_fix="Add missing definitions to Spec.lean or remove references",
-                    ))
+                    issues.append(
+                        Issue(
+                            issue_id=IssueId(IssueCategory.IBF, self._category_counters[IssueCategory.IBF]),
+                            category=IssueCategory.IBF,
+                            severity=IssueSeverity.HIGH,
+                            spec_name=spec_dir.name,
+                            file_path=examples_path,
+                            line_numbers=[],
+                            description=f"Examples reference undefined definitions: {', '.join(undefined)}",
+                            detection_method="Automated IBF Cross-File Detection",
+                            suggested_fix="Add missing definitions to Spec.lean or remove references",
+                        )
+                    )
             except Exception:
                 pass
 
         # Check if Lemmas.lean references non-existent definitions
         if lemmas_path.exists():
             try:
-                content = lemmas_path.read_text(encoding='utf-8')
+                content = lemmas_path.read_text(encoding="utf-8")
                 referenced = self._extract_references(content)
                 undefined = referenced - all_definitions
 
                 if undefined:
                     self._category_counters[IssueCategory.IBF] += 1
-                    issues.append(Issue(
-                        issue_id=IssueId(IssueCategory.IBF, self._category_counters[IssueCategory.IBF]),
-                        category=IssueCategory.IBF,
-                        severity=IssueSeverity.HIGH,
-                        spec_name=spec_dir.name,
-                        file_path=lemmas_path,
-                        line_numbers=[],
-                        description=f"Lemmas reference undefined definitions: {', '.join(undefined)}",
-                        detection_method="Automated IBF Cross-File Detection",
-                        suggested_fix="Add missing definitions to Spec.lean or remove references",
-                    ))
+                    issues.append(
+                        Issue(
+                            issue_id=IssueId(IssueCategory.IBF, self._category_counters[IssueCategory.IBF]),
+                            category=IssueCategory.IBF,
+                            severity=IssueSeverity.HIGH,
+                            spec_name=spec_dir.name,
+                            file_path=lemmas_path,
+                            line_numbers=[],
+                            description=f"Lemmas reference undefined definitions: {', '.join(undefined)}",
+                            detection_method="Automated IBF Cross-File Detection",
+                            suggested_fix="Add missing definitions to Spec.lean or remove references",
+                        )
+                    )
             except Exception:
                 pass
 
@@ -506,10 +502,10 @@ class AutomatedIssueDetector:
 
         # Match def, structure, inductive, class definitions
         patterns = [
-            r'def\s+(\w+)',
-            r'structure\s+(\w+)',
-            r'inductive\s+(\w+)',
-            r'class\s+(\w+)',
+            r"def\s+(\w+)",
+            r"structure\s+(\w+)",
+            r"inductive\s+(\w+)",
+            r"class\s+(\w+)",
         ]
 
         for pattern in patterns:
@@ -531,9 +527,9 @@ class AutomatedIssueDetector:
 
         # Match example, theorem, lemma declarations
         patterns = [
-            r'example\s+:\s*(\w+)',
-            r'theorem\s+(\w+)',
-            r'lemma\s+(\w+)',
+            r"example\s+:\s*(\w+)",
+            r"theorem\s+(\w+)",
+            r"lemma\s+(\w+)",
         ]
 
         for pattern in patterns:
@@ -554,7 +550,7 @@ class AutomatedIssueDetector:
         lemmas = set()
 
         # Match lemma declarations
-        pattern = r'lemma\s+(\w+)'
+        pattern = r"lemma\s+(\w+)"
 
         for match in re.finditer(pattern, content):
             lemmas.add(match.group(1))
@@ -573,7 +569,7 @@ class AutomatedIssueDetector:
         references = set()
 
         # Match variable/function references (simplified)
-        pattern = r'\b([A-Z][a-zA-Z0-9_]*)\b'
+        pattern = r"\b([A-Z][a-zA-Z0-9_]*)\b"
 
         for match in re.finditer(pattern, content):
             references.add(match.group(1))

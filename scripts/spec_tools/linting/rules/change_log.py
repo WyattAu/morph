@@ -32,7 +32,7 @@ class ChangeLogRule(LintingRule):
         """Get rule description."""
         return "Validates change log section"
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize change log rule."""
         self._required_columns = ["Version", "Date", "Author", "Changes"]
         self._table_pattern = re.compile(r"^\|(.+)\|$")

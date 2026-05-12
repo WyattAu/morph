@@ -634,14 +634,14 @@ $$ \text{monomorphize}(G, T) \iff \text{cost}(G, T) < 0 $$
 
 **When to Use Monomorphization:**
 
-✅ **Use monomorphization when:**
+**Use monomorphization when:**
 - Performance-critical code paths
 - Small number of concrete types (< 10)
 - Simple type bounds
 - Code size is not a constraint
 - Compilation time is acceptable
 
-❌ **Avoid monomorphization when:**
+**Avoid monomorphization when:**
 - Large number of concrete types (> 20)
 - Complex type bounds
 - Code size is constrained (embedded, mobile)
@@ -1065,14 +1065,14 @@ struct HybridVec<T> {
 
 #### 4.2.8.2 Best Practices
 
-✅ **DO:**
+**DO:**
 - Profile your code to identify hot paths
 - Use monomorphization for performance-critical code
 - Use type erasure for code with many concrete types
 - Consider hybrid approaches for complex applications
 - Document monomorphization decisions
 
-❌ **DON'T:**
+**DON'T:**
 - Monomorphize everything by default
 - Ignore code size constraints
 - Forget about compilation time impact

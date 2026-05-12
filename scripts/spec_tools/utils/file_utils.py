@@ -67,7 +67,7 @@ def read_file_safely(filepath: Path) -> str:
         SpecToolsError: If the file cannot be read
     """
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError as e:
         raise SpecToolsError(

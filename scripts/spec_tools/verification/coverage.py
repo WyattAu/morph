@@ -12,18 +12,18 @@ The tool supports:
 - Progress reporting
 """
 
-from pathlib import Path
-from typing import List, Dict, Set, Optional, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional, Set, Tuple
 
 from spec_tools.verification.models import (
     CompilationResult,
+    CoverageMetrics,
+    CoverageReport,
     Issue,
     IssueCategory,
     IssueSeverity,
-    CoverageMetrics,
-    CoverageReport,
 )
 
 
@@ -41,12 +41,14 @@ class CoverageConfig:
     specs_root: Path = field(default_factory=lambda: Path("Morph/Specs"))
     required_files: List[str] = field(default_factory=lambda: ["Spec.lean", "Examples.lean", "Lemmas.lean"])
     spec_point_threshold: int = 1
-    success_criteria: Dict[str, float] = field(default_factory=lambda: {
-        "file_coverage": 95.0,
-        "spec_coverage": 95.0,
-        "compilation_success_rate": 95.0,
-        "type_checking_success_rate": 98.0,
-    })
+    success_criteria: Dict[str, float] = field(
+        default_factory=lambda: {
+            "file_coverage": 95.0,
+            "spec_coverage": 95.0,
+            "compilation_success_rate": 95.0,
+            "type_checking_success_rate": 98.0,
+        }
+    )
 
 
 class CoverageTracker:
@@ -130,10 +132,7 @@ class CoverageTracker:
             spec_name = spec_dir.name
 
             # Check if all required files exist
-            required_files_exist = all(
-                (spec_dir / filename).exists()
-                for filename in self.config.required_files
-            )
+            required_files_exist = all((spec_dir / filename).exists() for filename in self.config.required_files)
 
             if required_files_exist:
                 # Check if Spec.lean is verified
@@ -243,9 +242,7 @@ class CoverageTracker:
         all_passed = all_passed and spec_passed
 
         # Overall success
-        criteria_results["overall_success"] = (
-            "PASSED" if all_passed else "FAILED"
-        )
+        criteria_results["overall_success"] = "PASSED" if all_passed else "FAILED"
 
         return all_passed, criteria_results
 
@@ -308,30 +305,31 @@ class CoverageTracker:
             count = metrics.issues_by_category.get(category, 0)
             summary_lines.append(f"- **{category.value}:** {count}")
 
-        summary_lines.extend([
-            "",
-            "## Issues by Severity",
-        ])
+        summary_lines.extend(
+            [
+                "",
+                "## Issues by Severity",
+            ]
+        )
 
         for severity in IssueSeverity:
             count = metrics.issues_by_severity.get(severity, 0)
             summary_lines.append(f"- **{severity.value}:** {count}")
 
-        summary_lines.extend([
-            "",
-            "## Success Criteria",
-        ])
+        summary_lines.extend(
+            [
+                "",
+                "## Success Criteria",
+            ]
+        )
 
         all_passed, criteria = self.validate_success_criteria()
-        for criterion, result in criteria.items():
+        for _criterion, result in criteria.items():
             summary_lines.append(f"- {result}")
 
         return "\n".join(summary_lines)
 
-    def generate_markdown_report(
-        self,
-        output_path: Path = Path("VERIFICATION_COVERAGE.md")
-    ) -> None:
+    def generate_markdown_report(self, output_path: Path = Path("VERIFICATION_COVERAGE.md")) -> None:
         """Generate a markdown coverage report.
 
         Args:
@@ -340,12 +338,12 @@ class CoverageTracker:
         report = self.generate_coverage_report()
         all_passed, criteria = self.validate_success_criteria()
 
-        with open(output_path, 'w') as f:
+        with open(output_path, "w") as f:
             f.write("# Specification Verification Coverage Report\n\n")
             f.write(f"**Generated:** {datetime.now().isoformat()}\n\n")
 
             # Summary
-            f.write(report)
+            f.write(str(report))
             f.write("\n---\n\n")
 
             # Detailed metrics
@@ -356,12 +354,14 @@ class CoverageTracker:
             f.write(f"- **Total Files:** {metrics.total_files}\n")
             f.write(f"- **Verified Files:** {metrics.verified_files} ({metrics.file_coverage:.1f}%)\n")
             f.write(f"- **Total Spec Points:** {metrics.total_spec_points}\n")
-            f.write(f"- **Verified Spec Points:** {metrics.verified_spec_points} ({metrics.spec_point_coverage:.1f}%)\n\n")
+            f.write(
+                f"- **Verified Spec Points:** {metrics.verified_spec_points} ({metrics.spec_point_coverage:.1f}%)\n\n"
+            )
 
             # Success criteria validation
             f.write("## Success Criteria Validation\n\n")
             f.write("Based on threat model success criteria:\n\n")
-            for criterion, result in criteria.items():
+            for _criterion, result in criteria.items():
                 f.write(f"- {result}\n")
 
             # Overall status

@@ -54,7 +54,7 @@ class EmphasisNormalizationRule(FormattingRule):
         if not self.enabled:
             return content
 
-        math_blocks = []
+        math_blocks: list[str] = []
         protected_content = self._protect_math_blocks(content, math_blocks)
 
         protected_content = self._bold_underscore_pattern.sub(r"**\1**", protected_content)
@@ -83,7 +83,7 @@ class EmphasisNormalizationRule(FormattingRule):
         lines = content.split("\n")
 
         for line_num, line in enumerate(lines, start=1):
-            math_blocks = []
+            math_blocks: list[str] = []
             protected_line = self._protect_math_blocks(line, math_blocks)
 
             # Apply bold normalization first to avoid false italic matches
@@ -133,7 +133,8 @@ class EmphasisNormalizationRule(FormattingRule):
         Returns:
             Content with math blocks replaced by placeholders
         """
-        def replace_math(match):
+
+        def replace_math(match: re.Match[str]) -> str:
             math_blocks.append(match.group(0))
             return f"{self._PLACEHOLDER_PREFIX}{len(math_blocks) - 1}{self._PLACEHOLDER_SUFFIX}"
 

@@ -14,36 +14,36 @@ from spec_tools.models import Config
 def run_init_config_command(args: Any) -> int:
     """
     Run the init-config command.
-    
+
     Args:
         args: Parsed command-line arguments
-        
+
     Returns:
         Exit code (0 for success, 1 for errors)
     """
     output_path = Path(args.output)
     template = args.template
-    
+
     try:
         # Check if file already exists
         if output_path.exists():
             print(f"Error: Configuration file already exists: {output_path}", file=sys.stderr)
-            print(f"Use --output to specify a different path", file=sys.stderr)
+            print("Use --output to specify a different path", file=sys.stderr)
             return 1
-        
+
         # Generate configuration
         config = Config()
-        
+
         # Save configuration
         config_manager = ConfigManager()
         config_manager.save_config(config, output_path)
-        
+
         print(f"✓ Configuration file created: {output_path}")
         print(f"  Template: {template}")
-        print(f"\nYou can now customize the configuration file for your project.")
-        
+        print("\nYou can now customize the configuration file for your project.")
+
         return 0
-        
+
     except Exception as e:
         print(f"Error creating configuration file: {e}", file=sys.stderr)
         return 1
@@ -51,17 +51,17 @@ def run_init_config_command(args: Any) -> int:
 
 class ConfigManager:
     """Configuration manager for loading and saving config files."""
-    
+
     def save_config(self, config: Config, filepath: Path) -> None:
         """
         Save configuration to YAML file.
-        
+
         Args:
             config: Config instance to save
             filepath: Path to save the configuration file
         """
         import yaml
-        
+
         config_dict = {
             "formatting": {
                 "max_line_length": config.formatting.max_line_length,
@@ -98,7 +98,7 @@ class ConfigManager:
                 "color_output": config.output.color_output,
             },
         }
-        
+
         # Add header comment
         header = (
             "# Spec Tools Configuration File\n"
@@ -106,37 +106,38 @@ class ConfigManager:
             "# Customize this file to suit your project's needs\n"
             "\n"
         )
-        
+
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(header)
             yaml.dump(config_dict, f, default_flow_style=False, sort_keys=False)
-    
+
     def load_config(self, filepath: Path) -> Config:
         """
         Load configuration from YAML file.
-        
+
         Args:
             filepath: Path to the configuration file
-            
+
         Returns:
             Config instance
-            
+
         Raises:
             SpecToolsError: If configuration file cannot be loaded
         """
         import yaml
+
         from spec_tools.exceptions import SpecToolsError
-        
+
         try:
-            with open(filepath, "r", encoding="utf-8") as f:
+            with open(filepath, encoding="utf-8") as f:
                 config_dict = yaml.safe_load(f)
-            
+
             if not config_dict:
                 return Config()
-            
+
             # Create config from dict
             config = Config()
-            
+
             if "formatting" in config_dict:
                 fmt = config_dict["formatting"]
                 config.formatting.max_line_length = fmt.get("max_line_length", 120)
@@ -144,7 +145,7 @@ class ConfigManager:
                 config.formatting.normalize_lists = fmt.get("normalize_lists", True)
                 config.formatting.fix_heading_spacing = fmt.get("fix_heading_spacing", True)
                 config.formatting.normalize_emphasis = fmt.get("normalize_emphasis", True)
-            
+
             if "linting" in config_dict:
                 lint = config_dict["linting"]
                 config.linting.strict = lint.get("strict", False)
@@ -152,7 +153,7 @@ class ConfigManager:
                 config.linting.check_math_notation = lint.get("check_math_notation", True)
                 config.linting.check_mermaid_syntax = lint.get("check_mermaid_syntax", True)
                 config.linting.check_cross_references = lint.get("check_cross_references", True)
-            
+
             if "validation" in config_dict:
                 val = config_dict["validation"]
                 config.validation.check_traceability = val.get("check_traceability", True)
@@ -161,24 +162,24 @@ class ConfigManager:
                 config.validation.check_security_specs = val.get("check_security_specs", True)
                 config.validation.check_performance_specs = val.get("check_performance_specs", True)
                 config.validation.check_maintainability_specs = val.get("check_maintainability_specs", True)
-            
+
             if "link_checking" in config_dict:
                 lc = config_dict["link_checking"]
                 config.link_checking.check_broken_links = lc.get("check_broken_links", True)
                 config.link_checking.check_orphaned_sections = lc.get("check_orphaned_sections", True)
                 config.link_checking.check_duplicate_links = lc.get("check_duplicate_links", True)
                 config.link_checking.check_self_references = lc.get("check_self_references", False)
-            
+
             if "output" in config_dict:
                 out = config_dict["output"]
                 config.output.format = out.get("format", "text")
                 config.output.verbose = out.get("verbose", False)
                 config.output.quiet = out.get("quiet", False)
                 config.output.color_output = out.get("color_output", True)
-            
+
             return config
-            
+
         except yaml.YAMLError as e:
-            raise SpecToolsError(f"Invalid YAML in configuration file: {e}")
+            raise SpecToolsError(f"Invalid YAML in configuration file: {e}") from e
         except Exception as e:
-            raise SpecToolsError(f"Error loading configuration file: {e}")
+            raise SpecToolsError(f"Error loading configuration file: {e}") from e

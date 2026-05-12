@@ -30,7 +30,7 @@ class MathNotationRule(LintingRule):
         """Get rule description."""
         return "Validates mathematical notation syntax"
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize math notation rule."""
         self._inline_math_pattern = re.compile(r"\$([^$]+)\$")
         self._display_math_pattern = re.compile(r"\$\$([^$]+)\$\$")
@@ -46,7 +46,7 @@ class MathNotationRule(LintingRule):
         Returns:
             List of math notation errors
         """
-        errors = []
+        errors: list[LintError] = []
 
         # Check for matching $ delimiters
         self._check_inline_math(content, filepath, errors)
@@ -59,9 +59,7 @@ class MathNotationRule(LintingRule):
 
         return errors
 
-    def _check_inline_math(
-        self, content: str, filepath: Path, errors: List[LintError]
-    ) -> None:
+    def _check_inline_math(self, content: str, filepath: Path, errors: List[LintError]) -> None:
         """Check for matching inline math delimiters.
 
         Args:
@@ -91,9 +89,7 @@ class MathNotationRule(LintingRule):
                         )
                     )
 
-    def _check_display_math(
-        self, content: str, filepath: Path, errors: List[LintError]
-    ) -> None:
+    def _check_display_math(self, content: str, filepath: Path, errors: List[LintError]) -> None:
         """Check for matching display math delimiters.
 
         Args:
@@ -123,9 +119,7 @@ class MathNotationRule(LintingRule):
                         )
                     )
 
-    def _check_balanced_braces(
-        self, content: str, filepath: Path, errors: List[LintError]
-    ) -> None:
+    def _check_balanced_braces(self, content: str, filepath: Path, errors: List[LintError]) -> None:
         """Check for balanced braces in math expressions.
 
         Args:

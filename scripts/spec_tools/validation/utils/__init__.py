@@ -21,7 +21,7 @@ def extract_section(content: str, section_name: str) -> Optional[str]:
     """
     # Pattern to match section headers (## through #### Section Name)
     pattern = f"^#{{2,4}}\\s+{re.escape(section_name)}\\s*$"
-    lines = content.split('\n')
+    lines = content.split("\n")
 
     section_start = None
     section_end = None
@@ -29,13 +29,13 @@ def extract_section(content: str, section_name: str) -> Optional[str]:
     for i, line in enumerate(lines):
         if re.match(pattern, line, re.IGNORECASE):
             # Determine the heading level of the matched section
-            heading_level = len(line) - len(line.lstrip('#'))
+            heading_level = len(line) - len(line.lstrip("#"))
             section_start = i
             # Find the next section at the same or higher level
             for j in range(i + 1, len(lines)):
                 stripped = lines[j].lstrip()
-                if stripped.startswith('#'):
-                    next_level = len(stripped) - len(stripped.lstrip('#'))
+                if stripped.startswith("#"):
+                    next_level = len(stripped) - len(stripped.lstrip("#"))
                     if next_level <= heading_level:
                         section_end = j
                         break
@@ -48,8 +48,8 @@ def extract_section(content: str, section_name: str) -> Optional[str]:
         section_end = len(lines)
 
     # Extract content between header and next section
-    section_lines = lines[section_start + 1:section_end]
-    return '\n'.join(section_lines).strip()
+    section_lines = lines[section_start + 1 : section_end]
+    return "\n".join(section_lines).strip()
 
 
 def find_section_line(content: str, section_name: str) -> Optional[int]:
@@ -63,7 +63,7 @@ def find_section_line(content: str, section_name: str) -> Optional[int]:
         The line number (1-indexed) if found, None otherwise
     """
     pattern = f"^#{{2,4}}\\s+{re.escape(section_name)}\\s*$"
-    lines = content.split('\n')
+    lines = content.split("\n")
 
     for i, line in enumerate(lines):
         if re.match(pattern, line, re.IGNORECASE):
@@ -81,7 +81,7 @@ def extract_table(content: str) -> List[List[str]]:
     Returns:
         List of rows, where each row is a list of cell values
     """
-    lines = content.split('\n')
+    lines = content.split("\n")
     table = []
     in_table = False
 
@@ -92,20 +92,20 @@ def extract_table(content: str) -> List[List[str]]:
                 break
             continue
 
-        if '|' in stripped:
+        if "|" in stripped:
             if not in_table:
                 in_table = True
 
             # Check if it's a separator line (e.g., |---|---|)
-            if re.match(r'^\|[\s\-:]+\|$', stripped):
+            if re.match(r"^\|[\s\-:]+\|$", stripped):
                 continue
 
             # Parse table row
-            cells = [cell.strip() for cell in stripped.split('|')]
+            cells = [cell.strip() for cell in stripped.split("|")]
             # Remove empty cells at start and end
-            if cells and cells[0] == '':
+            if cells and cells[0] == "":
                 cells = cells[1:]
-            if cells and cells[-1] == '':
+            if cells and cells[-1] == "":
                 cells = cells[:-1]
 
             if cells:
@@ -123,13 +123,13 @@ def extract_list_items(content: str) -> List[str]:
     Returns:
         List of list item texts (without the bullet/number)
     """
-    lines = content.split('\n')
+    lines = content.split("\n")
     items = []
 
     for line in lines:
         stripped = line.strip()
         # Match bullet points (-, *, +) or numbered lists (1., 2., etc.)
-        match = re.match(r'^[\-\*\+]\s+(.+)$|^\d+\.\s+(.+)$', stripped)
+        match = re.match(r"^[\-\*\+]\s+(.+)$|^\d+\.\s+(.+)$", stripped)
         if match:
             item_text = match.group(1) or match.group(2)
             items.append(item_text.strip())
@@ -148,8 +148,8 @@ def parse_requirement_ref(text: str) -> Optional[str]:
     """
     # Pattern for requirement references like [REQ-001], REQ-001, etc.
     patterns = [
-        r'\[([A-Z]+-\d+)\]',  # [REQ-001]
-        r'\b([A-Z]+-\d+)\b',   # REQ-001
+        r"\[([A-Z]+-\d+)\]",  # [REQ-001]
+        r"\b([A-Z]+-\d+)\b",  # REQ-001
     ]
 
     for pattern in patterns:
@@ -169,7 +169,7 @@ def extract_requirement_ids(content: str) -> List[str]:
     Returns:
         List of unique requirement IDs found
     """
-    pattern = r'\b([A-Z]+-\d+)\b'
+    pattern = r"\b([A-Z]+-\d+)\b"
     matches = re.findall(pattern, content)
     return list(set(matches))
 

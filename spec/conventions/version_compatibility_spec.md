@@ -384,16 +384,16 @@ Compatibility between core specifications:
 
 | Spec A | Spec B | Compatible? | Reason |
 |---------|---------|-------------|--------|
-| morph_language_spec.md (2.0.0) | type_system_spec.md (2.0.0) | ✅ Yes | Same MAJOR version |
-| morph_language_spec.md (2.0.0) | memory_model_spec.md (2.0.0) | ✅ Yes | Same MAJOR version |
-| morph_language_spec.md (2.0.0) | execution_model_spec.md (2.0.0) | ✅ Yes | Same MAJOR version |
-| morph_language_spec.md (2.0.0) | security_flow_spec.md (2.0.0) | ✅ Yes | Same MAJOR version |
-| type_system_spec.md (2.0.0) | memory_model_spec.md (2.0.0) | ✅ Yes | Same MAJOR version |
-| type_system_spec.md (2.0.0) | execution_model_spec.md (2.0.0) | ✅ Yes | Same MAJOR version |
-| type_system_spec.md (2.0.0) | security_flow_spec.md (2.0.0) | ✅ Yes | Same MAJOR version |
-| memory_model_spec.md (2.0.0) | execution_model_spec.md (2.0.0) | ✅ Yes | Same MAJOR version |
-| memory_model_spec.md (2.0.0) | security_flow_spec.md (2.0.0) | ✅ Yes | Same MAJOR version |
-| execution_model_spec.md (2.0.0) | security_flow_spec.md (2.0.0) | ✅ Yes | Same MAJOR version |
+| morph_language_spec.md (2.0.0) | type_system_spec.md (2.0.0) | Yes | Same MAJOR version |
+| morph_language_spec.md (2.0.0) | memory_model_spec.md (2.0.0) | Yes | Same MAJOR version |
+| morph_language_spec.md (2.0.0) | execution_model_spec.md (2.0.0) | Yes | Same MAJOR version |
+| morph_language_spec.md (2.0.0) | security_flow_spec.md (2.0.0) | Yes | Same MAJOR version |
+| type_system_spec.md (2.0.0) | memory_model_spec.md (2.0.0) | Yes | Same MAJOR version |
+| type_system_spec.md (2.0.0) | execution_model_spec.md (2.0.0) | Yes | Same MAJOR version |
+| type_system_spec.md (2.0.0) | security_flow_spec.md (2.0.0) | Yes | Same MAJOR version |
+| memory_model_spec.md (2.0.0) | execution_model_spec.md (2.0.0) | Yes | Same MAJOR version |
+| memory_model_spec.md (2.0.0) | security_flow_spec.md (2.0.0) | Yes | Same MAJOR version |
+| execution_model_spec.md (2.0.0) | security_flow_spec.md (2.0.0) | Yes | Same MAJOR version |
 
 **VCOMP-REQ-012:* THE system SHALL maintain a compatibility matrix for all specification pairs.
 
@@ -411,11 +411,11 @@ Specifications depending on type system:
 
 | Dependent Spec | Type System Version | Compatible? | Required Version |
 |----------------|-------------------|---------------|------------------|
-| morph_language_spec.md | 2.0.0 | ✅ Yes | ≥ 2.0.0 |
-| memory_model_spec.md | 2.0.0 | ✅ Yes | ≥ 2.0.0 |
-| execution_model_spec.md | 2.0.0 | ✅ Yes | ≥ 2.0.0 |
-| security_flow_spec.md | 2.0.0 | ✅ Yes | ≥ 2.0.0 |
-| All other specs | 1.0.0 | ✅ Yes | ≥ 1.0.0 |
+| morph_language_spec.md | 2.0.0 | Yes | ≥ 2.0.0 |
+| memory_model_spec.md | 2.0.0 | Yes | ≥ 2.0.0 |
+| execution_model_spec.md | 2.0.0 | Yes | ≥ 2.0.0 |
+| security_flow_spec.md | 2.0.0 | Yes | ≥ 2.0.0 |
+| All other specs | 1.0.0 | Yes | ≥ 1.0.0 |
 
 **VCOMP-REQ-013:* THE system SHALL validate that dependent specifications meet minimum version requirements.
 
@@ -431,8 +431,8 @@ Specifications depending on language:
 
 | Dependent Spec | Language Version | Compatible? | Required Version |
 |----------------|------------------|---------------|------------------|
-| type_system_spec.md | 2.0.0-MASTER | ✅ Yes | ≥ 2.0.0 |
-| All other specs | 1.0.0 | ✅ Yes | ≥ 1.0.0 |
+| type_system_spec.md | 2.0.0-MASTER | Yes | ≥ 2.0.0 |
+| All other specs | 1.0.0 | Yes | ≥ 1.0.0 |
 
 **VCOMP-REQ-014:* THE system SHALL validate language version dependencies before compilation.
 
@@ -448,9 +448,9 @@ Specifications depending on memory model:
 
 | Dependent Spec | Memory Model Version | Compatible? | Required Version |
 |----------------|----------------------|---------------|------------------|
-| execution_model_spec.md | 2.0.0 | ✅ Yes | ≥ 2.0.0 |
-| distributed_vector_clock_spec.md | 1.0.0 | ✅ Yes | ≥ 1.0.0 |
-| distributed_crdt_spec.md | 1.0.0 | ✅ Yes | ≥ 1.0.0 |
+| execution_model_spec.md | 2.0.0 | Yes | ≥ 2.0.0 |
+| distributed_vector_clock_spec.md | 1.0.0 | Yes | ≥ 1.0.0 |
+| distributed_crdt_spec.md | 1.0.0 | Yes | ≥ 1.0.0 |
 
 **VCOMP-REQ-015:* THE system SHALL validate memory model version dependencies.
 
@@ -1249,8 +1249,8 @@ If you encounter issues:
 ```markdown
 | Spec A | Spec B | Compatible? | Reason |
 |---------|---------|-------------|--------|
-| [spec_a] | [spec_b] | [✅/❌] | [reason] |
-| [spec_a] | [spec_c] | [✅/✅] | [reason] |
+| [spec_a] | [spec_b] | [Yes/No] | [reason] |
+| [spec_a] | [spec_c] | [Yes/Yes] | [reason] |
 | ... | ... | ... | ... |
 ```
 
@@ -1259,8 +1259,8 @@ If you encounter issues:
 ```markdown
 | Dependent Spec | Dependency Version | Compatible? | Required Version |
 |----------------|---------------------|---------------|------------------|
-| [spec] | [version] | [✅/❌] | [min_version] |
-| [spec] | [version] | [✅/✅] | [min_version] |
+| [spec] | [version] | [Yes/No] | [min_version] |
+| [spec] | [version] | [Yes/Yes] | [min_version] |
 | ... | ... | ... | ... |
 ```
 

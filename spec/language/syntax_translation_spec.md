@@ -1896,17 +1896,17 @@ function complex(): Int32 {
 **Proof:*
 
 1. **Keyword Round-Trip:*
-   - `fn` → `function` → `fn` ✓
-   - `ret` → `return` → `ret` ✓
+   - `fn` → `function` → `fn`
+   - `ret` → `return` → `ret`
    - All keywords round-trip correctly
 
 2. **Type Round-Trip:*
-   - `i32` → `Int32` → `i32` ✓
+   - `i32` → `Int32` → `i32`
    - All types round-trip correctly
 
 3. **Syntax Round-Trip:*
-   - `:=` → `let ... =` → `:=` ✓
-   - `if cond{a}` → `if (cond) { a; }` → `if cond{a}` ✓
+   - `:=` → `let ... =` → `:=`
+   - `if cond{a}` → `if (cond) { a; }` → `if cond{a}`
    - All syntax round-trips correctly
 
 4. **Conclusion:* All translation rules are reversible, therefore round-trip property holds. ∎

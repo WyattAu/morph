@@ -11,14 +11,14 @@ from pathlib import Path
 from typing import Optional
 
 from spec_tools.config import ConfigManager
-from spec_tools.models import Config
 from spec_tools.exceptions import SpecToolsError
+from spec_tools.models import Config
 
 
 def create_parser() -> argparse.ArgumentParser:
     """
     Create the main CLI argument parser with all subcommands.
-    
+
     Returns:
         Configured ArgumentParser instance
     """
@@ -259,13 +259,13 @@ For more information on a specific command, use:
 def load_config(config_path: Optional[str]) -> Config:
     """
     Load configuration from file or use defaults.
-    
+
     Args:
         config_path: Optional path to configuration file
-        
+
     Returns:
         Config instance
-        
+
     Raises:
         SpecToolsError: If configuration file cannot be loaded
     """
@@ -273,16 +273,16 @@ def load_config(config_path: Optional[str]) -> Config:
         config_file = Path(config_path)
         if not config_file.exists():
             raise SpecToolsError(f"Configuration file not found: {config_path}")
-        
+
         config_manager = ConfigManager()
         return config_manager.load_config(config_file)
-    
+
     # Try to load default config file
     default_config = Path(".spec-tools.yaml")
     if default_config.exists():
         config_manager = ConfigManager()
         return config_manager.load_config(default_config)
-    
+
     # Return default config
     return Config()
 
@@ -290,32 +290,32 @@ def load_config(config_path: Optional[str]) -> Config:
 def main() -> int:
     """
     Main entry point for the CLI.
-    
+
     Returns:
         Exit code (0 for success, non-zero for errors)
     """
     parser = create_parser()
     args = parser.parse_args()
-    
+
     if not args.command:
         parser.print_help()
         return 0
-    
+
     try:
         # Load configuration
         config_path = getattr(args, "config", None)
         config = load_config(config_path)
-        
+
         # Import command handlers
         from spec_tools.cli.commands import (
+            run_check_all_command,
+            run_check_links_command,
             run_format_command,
+            run_init_config_command,
             run_lint_command,
             run_validate_command,
-            run_check_links_command,
-            run_check_all_command,
-            run_init_config_command,
         )
-        
+
         # Route to appropriate command handler
         if args.command == "format":
             return run_format_command(args, config)
@@ -332,7 +332,7 @@ def main() -> int:
         else:
             parser.print_help()
             return 1
-            
+
     except SpecToolsError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

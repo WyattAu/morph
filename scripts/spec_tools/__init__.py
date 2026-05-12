@@ -12,30 +12,28 @@ __version__ = "1.0.0"
 __author__ = "Morph Project"
 __license__ = "Apache-2.0"
 
+from spec_tools.config import ConfigManager
 from spec_tools.exceptions import (
-    SpecToolsError,
     FormattingError,
-    LintingError,
-    ValidationError,
     LinkCheckError,
+    LintingError,
+    SpecToolsError,
+    ValidationError,
 )
-
 from spec_tools.models import (
     Config,
     FormattingConfig,
-    LintingConfig,
-    ValidationConfig,
     LinkCheckingConfig,
-    OutputConfig,
-    LintError,
-    ValidationResult,
     LinkInfo,
     LinkReport,
-    Severity,
     LinkType,
+    LintError,
+    LintingConfig,
+    OutputConfig,
+    Severity,
+    ValidationConfig,
+    ValidationResult,
 )
-
-from spec_tools.config import ConfigManager
 
 __all__ = [
     # Version info

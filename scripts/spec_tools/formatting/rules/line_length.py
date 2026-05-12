@@ -50,7 +50,6 @@ class LineLengthRule(FormattingRule):
         """
         lines = content.split("\n")
         result = []
-        in_code_block = False
         in_fenced_block = False
         fence_char = None
 
@@ -100,7 +99,6 @@ class LineLengthRule(FormattingRule):
         """
         errors = []
         lines = content.split("\n")
-        in_code_block = False
         in_fenced_block = False
         fence_char = None
 

@@ -45,7 +45,7 @@ class MarkdownFormatter:
         Returns:
             List of formatting rules to apply
         """
-        rules = []
+        rules: List[FormattingRule] = []
 
         # Load rules in order of application
         rules.append(LineLengthRule(self.config.max_line_length))

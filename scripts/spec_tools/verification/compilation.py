@@ -11,22 +11,22 @@ The tool supports:
 - Resource management (timeouts, memory monitoring)
 """
 
-import subprocess
+import datetime
 import re
+import subprocess
 import time
-import psutil
-from pathlib import Path
-from typing import List, Optional, Tuple, Dict, Set
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Dict, List, Optional
+
+import psutil
 
 from spec_tools.verification.models import (
-    CompilationResult,
     CompilationError,
+    CompilationResult,
     CompilationStatus,
     IssueCategory,
     IssueSeverity,
-    Issue,
-    IssueId,
 )
 
 
@@ -107,11 +107,7 @@ class Lean4CompilationVerifier:
             memory_peak = memory_monitor.stop()
 
             # Parse errors from output
-            errors = self._parse_compilation_errors(
-                result.stdout,
-                result.stderr,
-                file_path
-            )
+            errors = self._parse_compilation_errors(result.stdout, result.stderr, file_path)
 
             # Determine compilation status
             if result.returncode == 0 and not errors:
@@ -229,7 +225,7 @@ class Lean4CompilationVerifier:
             )
             return result
         except subprocess.TimeoutExpired:
-            raise subprocess.TimeoutExpired(cmd, self.config.timeout_seconds)
+            raise subprocess.TimeoutExpired(cmd, self.config.timeout_seconds) from None
 
     def _clean_build(self) -> None:
         """Clean Lake build artifacts."""
@@ -257,12 +253,7 @@ class Lean4CompilationVerifier:
         lean_files = list(directory.glob("**/*.lean"))
         return lean_files
 
-    def _parse_compilation_errors(
-        self,
-        stdout: str,
-        stderr: str,
-        file_path: Path
-    ) -> List[CompilationError]:
+    def _parse_compilation_errors(self, stdout: str, stderr: str, file_path: Path) -> List[CompilationError]:
         """Parse compilation errors from Lean 4 output.
 
         Args:
@@ -278,19 +269,13 @@ class Lean4CompilationVerifier:
 
         # Parse Lean 4 error patterns
         # Pattern 1: File:line:column: error message
-        pattern1 = re.compile(
-            r'^([^:]+):(\d+):(\d+): error:\s*(.+)$',
-            re.MULTILINE
-        )
+        pattern1 = re.compile(r"^([^:]+):(\d+):(\d+): error:\s*(.+)$", re.MULTILINE)
 
         # Pattern 2: error: at line X
-        pattern2 = re.compile(r'^error:\s*at\s+line\s+(\d+)', re.MULTILINE)
+        pattern2 = re.compile(r"^error:\s*at\s+line\s+(\d+)", re.MULTILINE)
 
         # Pattern 3: type mismatch errors
-        pattern3 = re.compile(
-            r'type mismatch.*?expected\s+(.+?),?\s+found\s+(.+)',
-            re.MULTILINE | re.IGNORECASE
-        )
+        pattern3 = re.compile(r"type mismatch.*?expected\s+(.+?),?\s+found\s+(.+)", re.MULTILINE | re.IGNORECASE)
 
         # Pattern 4: unknown identifier
         pattern4 = re.compile(r"unknown identifier '([^']+)'", re.MULTILINE)
@@ -298,76 +283,86 @@ class Lean4CompilationVerifier:
         # Pattern 5: import errors
         pattern5 = re.compile(r"unknown import '([^']+)'", re.MULTILINE)
 
-        lines = output.split('\n')
+        lines = output.split("\n")
         for line_num, line in enumerate(lines, start=1):
             line = line.strip()
 
             # Match pattern 1: File:line:column: error message
             match = pattern1.match(line)
             if match:
-                errors.append(CompilationError(
-                    file_path=file_path,
-                    line_number=int(match.group(2)),
-                    column_number=int(match.group(3)),
-                    error_type="Syntax/Type Error",
-                    error_message=match.group(4).strip(),
-                    context=self._get_error_context(lines, line_num),
-                ))
+                errors.append(
+                    CompilationError(
+                        file_path=file_path,
+                        line_number=int(match.group(2)),
+                        column_number=int(match.group(3)),
+                        error_type="Syntax/Type Error",
+                        error_message=match.group(4).strip(),
+                        context=self._get_error_context(lines, line_num),
+                    )
+                )
                 continue
 
             # Match pattern 2: error at line X
             match = pattern2.match(line)
             if match:
-                errors.append(CompilationError(
-                    file_path=file_path,
-                    line_number=int(match.group(1)),
-                    column_number=0,
-                    error_type="Compilation Error",
-                    error_message=line,
-                    context=self._get_error_context(lines, line_num),
-                ))
+                errors.append(
+                    CompilationError(
+                        file_path=file_path,
+                        line_number=int(match.group(1)),
+                        column_number=0,
+                        error_type="Compilation Error",
+                        error_message=line,
+                        context=self._get_error_context(lines, line_num),
+                    )
+                )
                 continue
 
             # Match pattern 3: type mismatch
             match = pattern3.search(line)
             if match:
-                errors.append(CompilationError(
-                    file_path=file_path,
-                    line_number=line_num,
-                    column_number=0,
-                    error_type="Type Mismatch",
-                    error_message=f"expected {match.group(1)}, found {match.group(2)}",
-                    suggestion="Check type annotations and ensure types match",
-                    context=self._get_error_context(lines, line_num),
-                ))
+                errors.append(
+                    CompilationError(
+                        file_path=file_path,
+                        line_number=line_num,
+                        column_number=0,
+                        error_type="Type Mismatch",
+                        error_message=f"expected {match.group(1)}, found {match.group(2)}",
+                        suggestion="Check type annotations and ensure types match",
+                        context=self._get_error_context(lines, line_num),
+                    )
+                )
                 continue
 
             # Match pattern 4: unknown identifier
             match = pattern4.search(line)
             if match:
-                errors.append(CompilationError(
-                    file_path=file_path,
-                    line_number=line_num,
-                    column_number=0,
-                    error_type="Unknown Identifier",
-                    error_message=f"Unknown identifier: {match.group(1)}",
-                    suggestion="Check if identifier is defined or imported",
-                    context=self._get_error_context(lines, line_num),
-                ))
+                errors.append(
+                    CompilationError(
+                        file_path=file_path,
+                        line_number=line_num,
+                        column_number=0,
+                        error_type="Unknown Identifier",
+                        error_message=f"Unknown identifier: {match.group(1)}",
+                        suggestion="Check if identifier is defined or imported",
+                        context=self._get_error_context(lines, line_num),
+                    )
+                )
                 continue
 
             # Match pattern 5: import error
             match = pattern5.search(line)
             if match:
-                errors.append(CompilationError(
-                    file_path=file_path,
-                    line_number=line_num,
-                    column_number=0,
-                    error_type="Import Error",
-                    error_message=f"Unknown import: {match.group(1)}",
-                    suggestion="Check if import path is correct and dependency is available",
-                    context=self._get_error_context(lines, line_num),
-                ))
+                errors.append(
+                    CompilationError(
+                        file_path=file_path,
+                        line_number=line_num,
+                        column_number=0,
+                        error_type="Import Error",
+                        error_message=f"Unknown import: {match.group(1)}",
+                        suggestion="Check if import path is correct and dependency is available",
+                        context=self._get_error_context(lines, line_num),
+                    )
+                )
                 continue
 
         return errors
@@ -387,10 +382,10 @@ class Lean4CompilationVerifier:
         context_lines = lines[context_start:context_end]
 
         if context_lines:
-            return '\n'.join(context_lines)
+            return "\n".join(context_lines)
         return None
 
-    def get_statistics(self, results: List[CompilationResult]) -> Dict[str, int]:
+    def get_statistics(self, results: List[CompilationResult]) -> Dict[str, float]:
         """Get compilation statistics from results.
 
         Args:
@@ -468,8 +463,7 @@ class _MemoryMonitor:
 
 
 def create_verification_issues_markdown(
-    results: List[CompilationResult],
-    output_path: Path = Path("VERIFICATION_ISSUES.md")
+    results: List[CompilationResult], output_path: Path = Path("VERIFICATION_ISSUES.md")
 ) -> None:
     """Create a markdown report of verification issues.
 
@@ -480,9 +474,9 @@ def create_verification_issues_markdown(
     verifier = Lean4CompilationVerifier()
     stats = verifier.get_statistics(results)
 
-    with open(output_path, 'w') as f:
+    with open(output_path, "w") as f:
         f.write("# Lean 4 Compilation Verification Report\n\n")
-        f.write(f"**Generated:** {datetime.now().isoformat()}\n\n")
+        f.write(f"**Generated:** {datetime.datetime.now().isoformat()}\n\n")
 
         # Summary
         f.write("## Summary\n\n")

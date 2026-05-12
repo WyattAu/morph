@@ -6,7 +6,6 @@ configuration for the spec-tools package using YAML format.
 """
 
 from pathlib import Path
-from typing import Optional
 
 import yaml
 
@@ -14,10 +13,10 @@ from spec_tools.exceptions import ValidationError
 from spec_tools.models import (
     Config,
     FormattingConfig,
-    LintingConfig,
-    ValidationConfig,
     LinkCheckingConfig,
+    LintingConfig,
     OutputConfig,
+    ValidationConfig,
 )
 
 
@@ -44,7 +43,7 @@ class ConfigManager:
             ValidationError: If the file cannot be read or contains invalid data
         """
         try:
-            with open(filepath, "r", encoding="utf-8") as f:
+            with open(filepath, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
         except FileNotFoundError as e:
             raise ValidationError(
@@ -123,9 +122,7 @@ class ConfigManager:
         formatting_data = data.get("formatting", {})
         formatting = FormattingConfig(
             max_line_length=formatting_data.get("max_line_length", 120),
-            enforce_trailing_whitespace=formatting_data.get(
-                "enforce_trailing_whitespace", True
-            ),
+            enforce_trailing_whitespace=formatting_data.get("enforce_trailing_whitespace", True),
             normalize_lists=formatting_data.get("normalize_lists", True),
             fix_heading_spacing=formatting_data.get("fix_heading_spacing", True),
             normalize_emphasis=formatting_data.get("normalize_emphasis", True),
@@ -150,9 +147,7 @@ class ConfigManager:
             check_risk_assessment=validation_data.get("check_risk_assessment", True),
             check_security_specs=validation_data.get("check_security_specs", True),
             check_performance_specs=validation_data.get("check_performance_specs", True),
-            check_maintainability_specs=validation_data.get(
-                "check_maintainability_specs", True
-            ),
+            check_maintainability_specs=validation_data.get("check_maintainability_specs", True),
         )
 
         # Parse link checking config
@@ -230,9 +225,7 @@ class ConfigManager:
         }
 
     @staticmethod
-    def _validate_formatting_config(
-        config: FormattingConfig, filepath: Path
-    ) -> None:
+    def _validate_formatting_config(config: FormattingConfig, filepath: Path) -> None:
         """Validate formatting configuration values.
 
         Args:

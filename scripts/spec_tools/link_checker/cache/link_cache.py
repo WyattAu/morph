@@ -21,7 +21,7 @@ class LinkCache:
     - Validation result (True/False) as value
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the link cache."""
         self._cache: dict[str, bool] = {}
         self._lock = threading.Lock()

@@ -566,23 +566,23 @@ spec-tools check-all spec/ --verbose
 
 # Output:
 # Checking format...
-# ✓ spec/feature_a.md: Properly formatted
-# ✓ spec/feature_b.md: Properly formatted
+# [PASS] spec/feature_a.md: Properly formatted
+# [PASS] spec/feature_b.md: Properly formatted
 #
 # Linting...
-# ✓ spec/feature_a.md: No issues found
-# ✗ spec/feature_b.md: 2 issues found
+# [PASS] spec/feature_a.md: No issues found
+# [FAIL] spec/feature_b.md: 2 issues found
 #   Line 15: [WARNING] ears-validation: Requirement does not follow EARS pattern
 #   Line 20: [ERROR] header-validation: Missing required header field: Version
 #
 # Validating...
-# ✓ spec/feature_a.md: All checks passed
-# ✗ spec/feature_b.md: 1 issue found
+# [PASS] spec/feature_a.md: All checks passed
+# [FAIL] spec/feature_b.md: 1 issue found
 #   Line 1: [ERROR] TRACEABILITY-001: Traceability Matrix section is missing
 #
 # Checking links...
-# ✓ spec/feature_a.md: All links valid
-# ✓ spec/feature_b.md: All links valid
+# [PASS] spec/feature_a.md: All links valid
+# [PASS] spec/feature_b.md: All links valid
 ```
 
 ### Example 3: Use Custom Configuration
@@ -681,12 +681,12 @@ spec-tools validate spec/ \
 spec-tools lint spec/ --fix
 
 # Output:
-# ✓ spec/feature_a.md: Fixed 3 issues
+# [PASS] spec/feature_a.md: Fixed 3 issues
 #   - Fixed heading spacing
 #   - Normalized list formatting
 #   - Removed trailing whitespace
 #
-# ✓ spec/feature_b.md: Fixed 1 issue
+# [PASS] spec/feature_b.md: Fixed 1 issue
 #   - Normalized emphasis markers
 ```
 

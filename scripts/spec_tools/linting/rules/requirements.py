@@ -35,7 +35,7 @@ class EARSValidationRule(LintingRule):
         """Get rule description."""
         return "Validates requirements against EARS pattern"
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize EARS validation rule."""
         self._req_id_pattern = re.compile(r"REQ-\d+")
         self._ears_keywords = [
@@ -131,9 +131,7 @@ class EARSValidationRule(LintingRule):
 
         return duplicates
 
-    def _validate_requirement(
-        self, req: dict, filepath: Path, errors: List[LintError]
-    ) -> None:
+    def _validate_requirement(self, req: dict, filepath: Path, errors: List[LintError]) -> None:
         """Validate a single requirement.
 
         Args:
@@ -163,7 +161,7 @@ class EARSValidationRule(LintingRule):
                     line_number=req["line_number"],
                     severity=Severity.WARNING,
                     rule_id="ears-validation",
-                    message=f"Requirement does not follow EARS pattern",
+                    message="Requirement does not follow EARS pattern",
                     suggestion="Use EARS pattern: 'The system shall...' or 'The system shall, when/where/if...'",
                     context=req["text"][:80] + "..." if len(req["text"]) > 80 else req["text"],
                 )
@@ -173,10 +171,7 @@ class EARSValidationRule(LintingRule):
         # These are typically in the same or following lines
         # For simplicity, we check if they appear in the requirement text
         has_priority = "Priority:" in req["text"] or "Priority " in req["text"]
-        has_verification = (
-            "Verification Method:" in req["text"]
-            or "Verification Method " in req["text"]
-        )
+        has_verification = "Verification Method:" in req["text"] or "Verification Method " in req["text"]
 
         if not has_priority:
             errors.append(
@@ -185,7 +180,7 @@ class EARSValidationRule(LintingRule):
                     line_number=req["line_number"],
                     severity=Severity.WARNING,
                     rule_id="ears-validation",
-                    message=f"Requirement missing Priority attribute",
+                    message="Requirement missing Priority attribute",
                     suggestion="Add 'Priority: <value>' to requirement",
                     context=req["id"],
                 )
@@ -198,7 +193,7 @@ class EARSValidationRule(LintingRule):
                     line_number=req["line_number"],
                     severity=Severity.WARNING,
                     rule_id="ears-validation",
-                    message=f"Requirement missing Verification Method attribute",
+                    message="Requirement missing Verification Method attribute",
                     suggestion="Add 'Verification Method: <value>' to requirement",
                     context=req["id"],
                 )

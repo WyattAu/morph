@@ -6,10 +6,10 @@ verification, including compilation results, issue tracking, and coverage metric
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import List, Optional, Dict, Set
-from datetime import datetime
+from typing import Dict, List, Optional
 
 
 class CompilationStatus(Enum):

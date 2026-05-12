@@ -30,7 +30,7 @@ class CrossReferenceRule(LintingRule):
         """Get rule description."""
         return "Validates cross-references and links"
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize cross-reference rule."""
         self._markdown_link_pattern = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
         self._section_ref_pattern = re.compile(r"\[([^\]]+)\]\(#([^)]+)\)")
@@ -47,7 +47,7 @@ class CrossReferenceRule(LintingRule):
         Returns:
             List of cross-reference errors
         """
-        errors = []
+        errors: list[LintError] = []
 
         # Find all markdown links
         links = self._extract_links(content, filepath)
@@ -109,9 +109,7 @@ class CrossReferenceRule(LintingRule):
         else:
             return "file"
 
-    def _validate_link(
-        self, link: dict, filepath: Path, errors: List[LintError]
-    ) -> None:
+    def _validate_link(self, link: dict, filepath: Path, errors: List[LintError]) -> None:
         """Validate a single link.
 
         Args:
@@ -131,9 +129,7 @@ class CrossReferenceRule(LintingRule):
         if link["type"] == "section":
             self._validate_section_reference(link, filepath, errors)
 
-    def _validate_file_reference(
-        self, link: dict, filepath: Path, errors: List[LintError]
-    ) -> None:
+    def _validate_file_reference(self, link: dict, filepath: Path, errors: List[LintError]) -> None:
         """Validate a file reference.
 
         Args:
@@ -164,9 +160,7 @@ class CrossReferenceRule(LintingRule):
                 )
             )
 
-    def _validate_section_reference(
-        self, link: dict, filepath: Path, errors: List[LintError]
-    ) -> None:
+    def _validate_section_reference(self, link: dict, filepath: Path, errors: List[LintError]) -> None:
         """Validate a section reference.
 
         Args:

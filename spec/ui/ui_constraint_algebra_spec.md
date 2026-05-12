@@ -511,7 +511,7 @@ let container = Row {
 3. Total flex: 2 + 1 = 3
 4. Child 2: 800 * (2/3) = 533.33px
 5. Child 3: 800 * (1/3) = 266.67px
-6. Total: 200 + 533.33 + 266.67 = 1000px ✓
+6. Total: 200 + 533.33 + 266.67 = 1000px
 
 ### 6.2 Nested Flexbox
 
@@ -535,7 +535,7 @@ let container = Row {
    - Grandchild 1: 333.33 * (1/2) = 166.67px
    - Grandchild 2: 333.33 * (1/2) = 166.67px
 4. Child 2 (flex 2): 1000 * (2/3) = 666.67px
-5. Total: 333.33 + 666.67 = 1000px ✓
+5. Total: 333.33 + 666.67 = 1000px
 
 ### 6.3 Occlusion Example
 
@@ -597,7 +597,7 @@ let container = Row {
 - Layout Computation:*
 1. Child 1: 0px (base width only)
 2. Child 2: 1000 * (1/1) = 1000px
-3. Total: 0 + 1000 = 1000px ✓
+3. Total: 0 + 1000 = 1000px
 
 #### 6.5.2 Overflow
 

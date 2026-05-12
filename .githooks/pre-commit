@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Pre-commit hook for Morph monorepo
-# Enforces Lean 4 compilation, sorry scanning, and Python spec-tools tests.
+# Enforces: Lean 4 compilation, sorry scanning, Python spec-tools tests,
+#           ruff lint, ruff format, mypy type-check, and stub detection.
 #
 # Install: cp .githooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
 
@@ -11,21 +12,19 @@ echo " Morph Pre-Commit Check"
 echo "========================================="
 echo ""
 
-FAILURES=0
-
 # Step 1: Lake build (compile all Lean 4 sources)
-echo "[1/5] Running lake build Morph..."
+echo "[1/7] Running lake build Morph..."
 BUILD_START=$(date +%s)
 
 if lake build Morph 2>&1 | tee /tmp/morph_precommit_build.log; then
     BUILD_END=$(date +%s)
     BUILD_SECS=$((BUILD_END - BUILD_START))
     echo ""
-    echo "[1/5] Lake build PASSED (${BUILD_SECS}s)"
+    echo "[1/7] Lake build PASSED (${BUILD_SECS}s)"
 else
     ERR_COUNT=$(grep -c "^error:" /tmp/morph_precommit_build.log 2>/dev/null || echo "unknown")
     echo ""
-    echo "[1/5] Lake build FAILED (${ERR_COUNT} errors)"
+    echo "[1/7] Lake build FAILED (${ERR_COUNT} errors)"
     echo ""
     echo "First 10 errors:"
     grep "^error:" /tmp/morph_precommit_build.log | head -10
@@ -36,32 +35,46 @@ fi
 
 # Step 2: Check for sorry declarations (formal verification gaps)
 echo ""
-echo "[2/5] Checking for 'sorry' declarations..."
+echo "[2/7] Checking for 'sorry' declarations..."
 
 SORRY_COUNT=$(grep -r "sorry" Morph/ --include="*.lean" 2>/dev/null | grep -v "\.olean" | grep -v "/--" | wc -l || true)
 SORRY_FILES=$(grep -rl "sorry" Morph/ --include="*.lean" 2>/dev/null | grep -v "\.olean" | wc -l || true)
 
 if [ "$SORRY_COUNT" -gt 0 ]; then
-    echo "[2/5] WARNING: Found ${SORRY_COUNT} 'sorry' declarations in ${SORRY_FILES} files."
+    echo "[2/7] WARNING: Found ${SORRY_COUNT} 'sorry' declarations in ${SORRY_FILES} files."
     echo "       These represent gaps in formal verification."
     echo "       Listing affected files:"
     grep -rn "sorry" Morph/ --include="*.lean" 2>/dev/null | grep -v "\.olean" | grep -v "/--" | head -20
     echo ""
     echo "Commit allowed (warnings only). Consider fixing 'sorry' declarations."
 else
-    echo "[2/5] No 'sorry' declarations found."
+    echo "[2/7] No 'sorry' declarations found."
 fi
 
-# Step 3: Lake build Morph.Tests
+# Step 3: Check for spec stubs
 echo ""
-echo "[3/5] Running lake build Morph.Tests..."
+echo "[3/7] Checking for spec stubs (example : True := trivial)..."
+
+STUB_COUNT=$(grep -r "example : True := trivial" Morph/Specs/ --include="*.lean" 2>/dev/null | wc -l || true)
+
+if [ "$STUB_COUNT" -gt 0 ]; then
+    echo "[3/7] WARNING: Found ${STUB_COUNT} spec stubs in Morph/Specs/."
+    echo "       These should be replaced with real proofs."
+    echo "       Commit allowed (warnings only)."
+else
+    echo "[3/7] No spec stubs found."
+fi
+
+# Step 4: Lake build Morph.Tests
+echo ""
+echo "[4/7] Running lake build Morph.Tests..."
 
 if lake build Morph.Tests 2>&1 | tee /tmp/morph_precommit_tests_build.log; then
     echo ""
-    echo "[3/5] Morph.Tests build PASSED"
+    echo "[4/7] Morph.Tests build PASSED"
 else
     echo ""
-    echo "[3/5] Morph.Tests build FAILED"
+    echo "[4/7] Morph.Tests build FAILED"
     echo ""
     echo "First 10 errors:"
     grep "^error:" /tmp/morph_precommit_tests_build.log | head -10
@@ -70,11 +83,10 @@ else
     exit 1
 fi
 
-# Step 4: Python spec-tools tests (if venv and spec-tools are available)
+# Step 5: Python spec-tools tests (if available)
 echo ""
-echo "[4/5] Running Python spec-tools tests..."
+echo "[5/7] Running Python spec-tools tests..."
 
-# Try to find spec-tools: check project venv, then system
 SPEC_TOOLS_PYTEST=""
 if [ -f ".venv/bin/pytest" ] && [ -d ".venv/lib" ]; then
     SPEC_TOOLS_PYTEST=".venv/bin/pytest"
@@ -85,37 +97,76 @@ fi
 if [ -n "$SPEC_TOOLS_PYTEST" ]; then
     if $SPEC_TOOLS_PYTEST scripts/tests/ --tb=short -q 2>&1 | tee /tmp/morph_precommit_pytest.log; then
         echo ""
-        echo "[4/5] Python spec-tools tests PASSED"
+        echo "[5/7] Python spec-tools tests PASSED"
     else
         echo ""
-        echo "[4/5] Python spec-tools tests FAILED"
+        echo "[5/7] Python spec-tools tests FAILED"
         echo ""
         echo "Commit blocked. Fix the failing Python tests above."
-        echo "Tip: Activate the venv with 'source .venv/bin/activate' and run"
-        echo "     'pytest scripts/tests/' to debug failures."
         exit 1
     fi
 else
-    echo "[4/5] Python spec-tools not found (skipped)."
+    echo "[5/7] Python spec-tools not found (skipped)."
     echo "       To enable: pip install -e scripts/ in a virtual environment."
 fi
 
-# Step 5: spec-tools checks on markdown files (if available)
+# Step 6: Python linting and type-checking (if available)
 echo ""
-echo "[5/5] Running spec-tools checks on markdown files..."
+echo "[6/7] Running ruff lint and mypy type-check..."
+
+LINT_PASS=true
+if command -v ruff &>/dev/null; then
+    if ruff check scripts/spec_tools/ 2>&1 | tee /tmp/morph_precommit_ruff.log; then
+        echo "  ruff check PASSED"
+    else
+        echo "  ruff check FAILED"
+        LINT_PASS=false
+    fi
+
+    if ruff format --check scripts/spec_tools/ 2>&1 | tee /tmp/morph_precommit_format.log; then
+        echo "  ruff format PASSED"
+    else
+        echo "  ruff format FAILED -- run 'ruff format scripts/spec_tools/' to fix"
+        LINT_PASS=false
+    fi
+else
+    echo "  ruff not found (skipped)."
+fi
+
+if command -v mypy &>/dev/null; then
+    if mypy scripts/spec_tools/ --ignore-missing-imports 2>&1 | tee /tmp/morph_precommit_mypy.log; then
+        echo "  mypy PASSED"
+    else
+        echo "  mypy FAILED"
+        LINT_PASS=false
+    fi
+else
+    echo "  mypy not found (skipped)."
+fi
+
+if [ "$LINT_PASS" = false ]; then
+    echo ""
+    echo "[6/7] Lint/type-check FAILED. Commit blocked."
+    exit 1
+fi
+echo "[6/7] All lint/type-check PASSED"
+
+# Step 7: spec-tools checks on staged markdown files (if available)
+echo ""
+echo "[7/7] Running spec-tools checks on markdown files..."
 if command -v spec-tools &>/dev/null; then
     MD_FILES=$(git diff --cached --name-only --diff-filter=ACM '*.md' 2>/dev/null || true)
     if [ -n "$MD_FILES" ]; then
         if spec-tools lint $MD_FILES 2>&1; then
-            echo "[5/5] spec-tools lint PASSED"
+            echo "[7/7] spec-tools lint PASSED"
         else
-            echo "[5/5] spec-tools lint FAILED (warnings only, commit allowed)"
+            echo "[7/7] spec-tools lint FAILED (warnings only, commit allowed)"
         fi
     else
-        echo "[5/5] No markdown files staged, skipping spec-tools."
+        echo "[7/7] No markdown files staged, skipping spec-tools."
     fi
 else
-    echo "[5/5] spec-tools not found (skipped)."
+    echo "[7/7] spec-tools not found (skipped)."
 fi
 
 echo ""

@@ -24,7 +24,7 @@ class FileExistsValidator:
     - Provides informative error messages
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize file existence validator."""
         pass
 
@@ -57,9 +57,7 @@ class FileExistsValidator:
         link.error_message = None
         return True
 
-    def validate_batch(
-        self, links: list[LinkInfo], checked_files: Set[Path] | None = None
-    ) -> None:
+    def validate_batch(self, links: list[LinkInfo], checked_files: Set[Path] | None = None) -> None:
         """Validate multiple file references.
 
         Args:

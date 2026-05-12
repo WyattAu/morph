@@ -12,9 +12,9 @@ from typing import List
 from spec_tools.models import LintError, Severity
 from spec_tools.validation.checks import ValidationCheck
 from spec_tools.validation.utils import (
+    extract_requirement_ids,
     extract_section,
     extract_table,
-    extract_requirement_ids,
     find_section_line,
 )
 

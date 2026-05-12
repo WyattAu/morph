@@ -24,7 +24,7 @@ class FileReferenceParser:
     - Absolute paths (e.g., `/path/to/file.md`)
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize file reference parser."""
         self._file_ref_pattern = re.compile(r"([a-zA-Z0-9_\-./]+\.md)")
         self._markdown_link_pattern = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
@@ -52,9 +52,7 @@ class FileReferenceParser:
                 column = match.start() + 1
 
                 # Skip if this is part of a markdown link
-                if self._is_in_markdown_link(
-                    line_num, column, markdown_link_positions
-                ):
+                if self._is_in_markdown_link(line_num, column, markdown_link_positions):
                     continue
 
                 links.append(
@@ -91,9 +89,7 @@ class FileReferenceParser:
 
         return positions
 
-    def _is_in_markdown_link(
-        self, line_num: int, column: int, markdown_links: List[tuple]
-    ) -> bool:
+    def _is_in_markdown_link(self, line_num: int, column: int, markdown_links: List[tuple]) -> bool:
         """Check if position is within a markdown link.
 
         Args:

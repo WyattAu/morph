@@ -87,7 +87,7 @@ class HeadingSpacingRule(FormattingRule):
             if match:
                 hashes = match.group(1)
                 spaces = match.group(2)
-                text = match.group(3)
+                match.group(3)
 
                 # Check if there's no space or more than one space
                 if len(spaces) != 1:

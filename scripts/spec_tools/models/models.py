@@ -319,11 +319,7 @@ class LinkReport:
         Returns:
             Number of invalid links (broken + orphaned + self-references)
         """
-        return (
-            len(self.broken_links)
-            + len(self.orphaned_sections)
-            + len(self.self_references)
-        )
+        return len(self.broken_links) + len(self.orphaned_sections) + len(self.self_references)
 
     @property
     def duplicate_count(self) -> int:

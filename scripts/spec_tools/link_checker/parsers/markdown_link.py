@@ -25,7 +25,7 @@ class MarkdownLinkParser:
     - EXTERNAL: Link to an external URL
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize markdown link parser."""
         self._link_pattern = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
         self._external_url_pattern = re.compile(r"^(https?://|ftp://|mailto:)")

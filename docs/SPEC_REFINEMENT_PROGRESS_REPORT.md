@@ -807,7 +807,7 @@ The Morph specification refinement project was initiated to address:
 
 | Category | Count | Examples |
 |----------|-------|----------|
-| New Specifications | 8 | Pure type, Effect system, Projection system, Scheduling modes, Layered architecture, Terminology standardization, Version compatibility, Agent syntax, Human syntax, Syntax translation |
+| New Specifications | 10 | Pure type, Effect system, Projection system, Scheduling modes, Layered architecture, Terminology standardization, Version compatibility, Agent syntax, Human syntax, Syntax translation |
 | Updated Specifications | ~50 | All specs updated with new definitions |
 | Documentation | 3 | Cross-reference fixes summary, Progress report, Migration guide |
 | Scripts | 0 | (Pending: Linter, Link checker, Version validator) |

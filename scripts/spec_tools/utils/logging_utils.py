@@ -123,7 +123,7 @@ def setup_logging(config: OutputConfig) -> None:
 
     # Set formatter based on output format
     if config.format == "json":
-        formatter = JSONFormatter()
+        formatter: logging.Formatter = JSONFormatter()
     elif config.color_output and sys.stderr.isatty():
         formatter = ColoredFormatter(
             fmt="%(asctime)s %(levelname)s %(name)s: %(message)s",

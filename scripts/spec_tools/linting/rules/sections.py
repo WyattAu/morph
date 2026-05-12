@@ -7,7 +7,7 @@ the structure and organization of sections in specification files.
 
 import re
 from pathlib import Path
-from typing import List, Set
+from typing import List
 
 from spec_tools.linting.rules import LintingRule
 from spec_tools.models import LintError, Severity
@@ -32,7 +32,7 @@ class SectionStructureRule(LintingRule):
         """Get rule description."""
         return "Validates section structure and organization"
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize section structure rule."""
         self._mandatory_sections = {
             "1. Purpose and Scope",
@@ -116,9 +116,7 @@ class SectionStructureRule(LintingRule):
         """
         return bool(re.match(r"^\d+\.", text))
 
-    def _check_section_numbering(
-        self, sections: List[dict], filepath: Path, errors: List[LintError]
-    ) -> None:
+    def _check_section_numbering(self, sections: List[dict], filepath: Path, errors: List[LintError]) -> None:
         """Check that numbered sections are sequential.
 
         Args:
@@ -146,9 +144,7 @@ class SectionStructureRule(LintingRule):
                     )
                 expected_number = actual_number + 1
 
-    def _check_heading_hierarchy(
-        self, sections: List[dict], filepath: Path, errors: List[LintError]
-    ) -> None:
+    def _check_heading_hierarchy(self, sections: List[dict], filepath: Path, errors: List[LintError]) -> None:
         """Check that heading levels follow proper hierarchy.
 
         Args:

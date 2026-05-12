@@ -11,15 +11,13 @@ The tool supports:
 - Resource allocation guidelines based on severity
 """
 
-from typing import List, Optional, Dict, Tuple
 from dataclasses import dataclass, field
-from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple
 
 from spec_tools.verification.models import (
     Issue,
     IssueCategory,
     IssueSeverity,
-    IssueId,
 )
 
 
@@ -37,12 +35,14 @@ class SeverityConfig:
     strict_mode: bool = False
     require_rationale: bool = True
     enable_peer_review: bool = True
-    resource_allocation: Dict[IssueSeverity, float] = field(default_factory=lambda: {
-        IssueSeverity.CRITICAL: 0.50,  # 50% of resources
-        IssueSeverity.HIGH: 0.30,     # 30% of resources
-        IssueSeverity.MEDIUM: 0.15,   # 15% of resources
-        IssueSeverity.LOW: 0.05,      # 5% of resources
-    })
+    resource_allocation: Dict[IssueSeverity, float] = field(
+        default_factory=lambda: {
+            IssueSeverity.CRITICAL: 0.50,  # 50% of resources
+            IssueSeverity.HIGH: 0.30,  # 30% of resources
+            IssueSeverity.MEDIUM: 0.15,  # 15% of resources
+            IssueSeverity.LOW: 0.05,  # 5% of resources
+        }
+    )
 
 
 class SeverityAssessor:
@@ -102,9 +102,7 @@ class SeverityAssessor:
         }
 
     def assess_severity(
-        self,
-        issue: Issue,
-        override_severity: Optional[IssueSeverity] = None
+        self, issue: Issue, override_severity: Optional[IssueSeverity] = None
     ) -> Tuple[IssueSeverity, str]:
         """Assess severity for a given issue.
 
@@ -128,10 +126,7 @@ class SeverityAssessor:
         return severity, rationale
 
     def assess_compilation_error(
-        self,
-        error_type: str,
-        blocks_compilation: bool = True,
-        error_message: str = ""
+        self, error_type: str, blocks_compilation: bool = True, error_message: str = ""
     ) -> IssueSeverity:
         """Assess severity for a compilation error.
 
@@ -154,12 +149,7 @@ class SeverityAssessor:
         # Medium for other errors
         return IssueSeverity.MEDIUM
 
-    def assess_missing_content(
-        self,
-        content_type: str,
-        file_type: str,
-        count: int
-    ) -> IssueSeverity:
+    def assess_missing_content(self, content_type: str, file_type: str, count: int) -> IssueSeverity:
         """Assess severity for missing content issues.
 
         Args:
@@ -185,10 +175,7 @@ class SeverityAssessor:
         return IssueSeverity.LOW
 
     def assess_inconsistency(
-        self,
-        inconsistency_type: str,
-        impact: str,
-        affects_core_specification: bool = False
+        self, inconsistency_type: str, impact: str, affects_core_specification: bool = False
     ) -> IssueSeverity:
         """Assess severity for inconsistency issues.
 
@@ -203,9 +190,9 @@ class SeverityAssessor:
         impact_lower = impact.lower()
 
         # Critical for fundamental contradictions
-        if any(keyword in impact_lower for keyword in [
-            "contradiction", "conflict", "fundamental", "cannot be resolved"
-        ]):
+        if any(
+            keyword in impact_lower for keyword in ["contradiction", "conflict", "fundamental", "cannot be resolved"]
+        ):
             return IssueSeverity.CRITICAL
 
         # High if affects core specification
@@ -215,11 +202,7 @@ class SeverityAssessor:
         # Medium for other inconsistencies
         return IssueSeverity.MEDIUM
 
-    def assess_ambiguity(
-        self,
-        ambiguity_type: str,
-        affects_specification: bool = True
-    ) -> IssueSeverity:
+    def assess_ambiguity(self, ambiguity_type: str, affects_specification: bool = True) -> IssueSeverity:
         """Assess severity for ambiguity issues.
 
         Args:
@@ -260,11 +243,7 @@ class SeverityAssessor:
         else:
             return IssueSeverity.MEDIUM
 
-    def _assess_lcf_severity(
-        self,
-        issue: Issue,
-        desc_lower: str
-    ) -> IssueSeverity:
+    def _assess_lcf_severity(self, issue: Issue, desc_lower: str) -> IssueSeverity:
         """Assess severity for LCF (Lean 4 Compilation Failures) issues.
 
         Args:
@@ -286,11 +265,7 @@ class SeverityAssessor:
 
         return IssueSeverity.MEDIUM
 
-    def _assess_ibf_severity(
-        self,
-        issue: Issue,
-        desc_lower: str
-    ) -> IssueSeverity:
+    def _assess_ibf_severity(self, issue: Issue, desc_lower: str) -> IssueSeverity:
         """Assess severity for IBF (Inconsistencies Between Files) issues.
 
         Args:
@@ -301,24 +276,16 @@ class SeverityAssessor:
             IssueSeverity for IBF issues.
         """
         # Check for critical characteristics
-        if any(keyword in desc_lower for keyword in [
-            "contradiction", "conflict", "fundamental", "cannot coexist"
-        ]):
+        if any(keyword in desc_lower for keyword in ["contradiction", "conflict", "fundamental", "cannot coexist"]):
             return IssueSeverity.CRITICAL
 
         # Check for high characteristics
-        if any(keyword in desc_lower for keyword in [
-            "different definition", "mismatch", "inconsistent type"
-        ]):
+        if any(keyword in desc_lower for keyword in ["different definition", "mismatch", "inconsistent type"]):
             return IssueSeverity.HIGH
 
         return IssueSeverity.MEDIUM
 
-    def _assess_mel_severity(
-        self,
-        issue: Issue,
-        desc_lower: str
-    ) -> IssueSeverity:
+    def _assess_mel_severity(self, issue: Issue, desc_lower: str) -> IssueSeverity:
         """Assess severity for MEL (Missing Examples or Lemmas) issues.
 
         Args:
@@ -329,24 +296,16 @@ class SeverityAssessor:
             IssueSeverity for MEL issues.
         """
         # Check for critical characteristics
-        if any(keyword in desc_lower for keyword in [
-            "empty", "no content", "completely missing"
-        ]):
+        if any(keyword in desc_lower for keyword in ["empty", "no content", "completely missing"]):
             return IssueSeverity.CRITICAL
 
         # Check for high characteristics
-        if any(keyword in desc_lower for keyword in [
-            "missing key", "significant gap", "no example", "no lemma"
-        ]):
+        if any(keyword in desc_lower for keyword in ["missing key", "significant gap", "no example", "no lemma"]):
             return IssueSeverity.HIGH
 
         return IssueSeverity.MEDIUM
 
-    def _assess_isr_severity(
-        self,
-        issue: Issue,
-        desc_lower: str
-    ) -> IssueSeverity:
+    def _assess_isr_severity(self, issue: Issue, desc_lower: str) -> IssueSeverity:
         """Assess severity for ISR (Insufficient Rigor) issues.
 
         Args:
@@ -357,18 +316,12 @@ class SeverityAssessor:
             IssueSeverity for ISR issues.
         """
         # Check for high characteristics
-        if any(keyword in desc_lower for keyword in [
-            "informal", "not formal", "lacks rigor", "insufficient"
-        ]):
+        if any(keyword in desc_lower for keyword in ["informal", "not formal", "lacks rigor", "insufficient"]):
             return IssueSeverity.HIGH
 
         return IssueSeverity.MEDIUM
 
-    def _assess_usp_severity(
-        self,
-        issue: Issue,
-        desc_lower: str
-    ) -> IssueSeverity:
+    def _assess_usp_severity(self, issue: Issue, desc_lower: str) -> IssueSeverity:
         """Assess severity for USP (Unclear Specification Points) issues.
 
         Args:
@@ -379,18 +332,12 @@ class SeverityAssessor:
             IssueSeverity for USP issues.
         """
         # Check for high characteristics
-        if any(keyword in desc_lower for keyword in [
-            "ambiguous", "unclear", "vague", "multiple interpretation"
-        ]):
+        if any(keyword in desc_lower for keyword in ["ambiguous", "unclear", "vague", "multiple interpretation"]):
             return IssueSeverity.HIGH
 
         return IssueSeverity.MEDIUM
 
-    def _generate_rationale(
-        self,
-        issue: Issue,
-        severity: IssueSeverity
-    ) -> str:
+    def _generate_rationale(self, issue: Issue, severity: IssueSeverity) -> str:
         """Generate rationale for severity assessment.
 
         Args:
@@ -441,10 +388,7 @@ class SeverityAssessor:
 
         return ". ".join(rationale_parts)
 
-    def get_priority_order(
-        self,
-        issues: List[Issue]
-    ) -> List[Issue]:
+    def get_priority_order(self, issues: List[Issue]) -> List[Issue]:
         """Sort issues by priority (severity and category).
 
         Args:
@@ -453,6 +397,7 @@ class SeverityAssessor:
         Returns:
             List of issues sorted by priority.
         """
+
         def priority_key(issue: Issue) -> Tuple[int, int]:
             """Generate priority key for sorting.
 
@@ -472,17 +417,11 @@ class SeverityAssessor:
                 IssueCategory.ISR: 3,
                 IssueCategory.USP: 4,
             }
-            return (
-                severity_order.get(issue.severity, 2),
-                category_order.get(issue.category, 4)
-            )
+            return (severity_order.get(issue.severity, 2), category_order.get(issue.category, 4))
 
         return sorted(issues, key=priority_key)
 
-    def get_resource_allocation(
-        self,
-        issues: List[Issue]
-    ) -> Dict[IssueSeverity, int]:
+    def get_resource_allocation(self, issues: List[Issue]) -> Dict[IssueSeverity, int]:
         """Calculate resource allocation based on severity distribution.
 
         Args:
@@ -493,20 +432,17 @@ class SeverityAssessor:
         """
         total_issues = len(issues)
         if total_issues == 0:
-            return {severity: 0 for severity in IssueSeverity}
+            return dict.fromkeys(IssueSeverity, 0)
 
         allocation = {}
         for severity in IssueSeverity:
-            count = sum(1 for i in issues if i.severity == severity)
+            sum(1 for i in issues if i.severity == severity)
             percentage = self.config.resource_allocation.get(severity, 0.0)
             allocation[severity] = int(total_issues * percentage)
 
         return allocation
 
-    def get_severity_statistics(
-        self,
-        issues: List[Issue]
-    ) -> Dict[str, any]:
+    def get_severity_statistics(self, issues: List[Issue]) -> Dict[str, Any]:
         """Get severity statistics from issues.
 
         Args:
@@ -515,7 +451,7 @@ class SeverityAssessor:
         Returns:
             Dictionary with severity statistics.
         """
-        stats = {
+        stats: Dict[str, Any] = {
             "total_issues": len(issues),
         }
 
@@ -523,9 +459,7 @@ class SeverityAssessor:
         for severity in IssueSeverity:
             count = sum(1 for i in issues if i.severity == severity)
             stats[f"{severity.value}_count"] = count
-            stats[f"{severity.value}_percentage"] = (
-                (count / len(issues) * 100) if issues else 0
-            )
+            stats[f"{severity.value}_percentage"] = float((count / len(issues) * 100) if issues else 0)
 
         # Calculate priority distribution
         critical_count = sum(1 for i in issues if i.severity == IssueSeverity.CRITICAL)
@@ -534,10 +468,7 @@ class SeverityAssessor:
 
         return stats
 
-    def validate_severity(
-        self,
-        issue: Issue
-    ) -> Tuple[bool, List[str]]:
+    def validate_severity(self, issue: Issue) -> Tuple[bool, List[str]]:
         """Validate severity assignment for an issue.
 
         Args:
@@ -551,9 +482,7 @@ class SeverityAssessor:
         # Validate severity matches category
         if issue.category == IssueCategory.LCF and issue.severity != IssueSeverity.CRITICAL:
             if self.config.strict_mode:
-                messages.append(
-                    f"LCF issues should be Critical, but got {issue.severity.value}"
-                )
+                messages.append(f"LCF issues should be Critical, but got {issue.severity.value}")
 
         # Validate severity is within allowed range
         if not isinstance(issue.severity, IssueSeverity):

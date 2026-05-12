@@ -6,11 +6,11 @@ for error handling and reporting.
 """
 
 from spec_tools.exceptions.exceptions import (
-    SpecToolsError,
     FormattingError,
-    LintingError,
-    ValidationError,
     LinkCheckError,
+    LintingError,
+    SpecToolsError,
+    ValidationError,
 )
 
 __all__ = [

@@ -31,7 +31,7 @@ class MermaidSyntaxRule(LintingRule):
         """Get rule description."""
         return "Validates Mermaid diagram syntax"
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize Mermaid syntax rule."""
         self._valid_diagram_types = {
             "flowchart",
@@ -59,7 +59,7 @@ class MermaidSyntaxRule(LintingRule):
         Returns:
             List of Mermaid syntax errors
         """
-        errors = []
+        errors: list[LintError] = []
 
         # Check for unclosed mermaid blocks
         self._check_unclosed_blocks(content, filepath, errors)
@@ -78,9 +78,7 @@ class MermaidSyntaxRule(LintingRule):
 
         return errors
 
-    def _check_unclosed_blocks(
-        self, content: str, filepath: Path, errors: List[LintError]
-    ) -> None:
+    def _check_unclosed_blocks(self, content: str, filepath: Path, errors: List[LintError]) -> None:
         """Check for unclosed mermaid code blocks.
 
         Args:
@@ -175,7 +173,7 @@ class MermaidSyntaxRule(LintingRule):
 
         # Check for unclosed parentheses
         if paren_stack:
-            for open_char, pos in paren_stack:
+            for _open_char, pos in paren_stack:
                 errors.append(
                     LintError(
                         file_path=str(filepath),
@@ -213,7 +211,7 @@ class MermaidSyntaxRule(LintingRule):
 
         # Check for unclosed brackets
         if bracket_stack:
-            for open_char, pos in bracket_stack:
+            for _open_char, pos in bracket_stack:
                 errors.append(
                     LintError(
                         file_path=str(filepath),

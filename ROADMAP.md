@@ -10,13 +10,13 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 |---|---|
 | `lake build Morph` | 323 jobs, 0 errors, 1 warning |
 | `lake build Morph.Tests` | 186 jobs, 0 errors |
-| Python spec-tools | 256 tests, 48% coverage |
+| Python spec-tools | 405 tests |
 | `.lean` files | 150 |
-| Lines of Lean | ~9,600 |
-| Spec modules | 44 |
-| Real theorems/lemmas (Specs/) | ~80 |
+| Lines of Lean | ~13,000 |
+| Spec modules | 43 |
+| Real theorems/lemmas (Specs/) | 83 |
 | `sorry` declarations | 3 (`Preservation.lean:284,296,309`) |
-| `example : True := trivial` stubs | 36 across 27 spec directories |
+| `example : True := trivial` stubs | 15 across 12 spec directories |
 | Real proof modules | 7 (TypeSystem, SecurityFlow, GLOSSARY, MorphLanguage, ConcurrencyProcessAlgebra, MemoryModel, ModuleSystem) |
 
 ---
@@ -454,8 +454,8 @@ Ongoing:   [7.x]                                -- research directions
 | `lake build Morph` errors | 0 | 0 |
 | `lake build Morph` warnings | 0 | 1 |
 | `sorry` in `Morph/` | 0 | 3 |
-| `example : True := trivial` stubs (Tier 1) | 0 | 3 |
-| `example : True := trivial` stubs (all) | 0 | 36 |
+| `example : True := trivial` stubs (Tier 1) | 0 | 0 |
+| `example : True := trivial` stubs (all) | 0 | 15 |
 | CI passes on every push | Yes | Partial (ghost refs) |
 | Python spec-tools coverage | >= 70% | 48% |
 | Lean tests pass | All | All |

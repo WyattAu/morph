@@ -8,16 +8,16 @@ for configuration, error reporting, and data structures.
 from spec_tools.models.models import (
     Config,
     FormattingConfig,
-    LintingConfig,
-    ValidationConfig,
     LinkCheckingConfig,
-    OutputConfig,
-    LintError,
-    ValidationResult,
     LinkInfo,
     LinkReport,
-    Severity,
     LinkType,
+    LintError,
+    LintingConfig,
+    OutputConfig,
+    Severity,
+    ValidationConfig,
+    ValidationResult,
 )
 
 __all__ = [

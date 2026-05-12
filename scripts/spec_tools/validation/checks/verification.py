@@ -12,8 +12,8 @@ from typing import List
 from spec_tools.models import LintError, Severity
 from spec_tools.validation.checks import ValidationCheck
 from spec_tools.validation.utils import (
-    extract_section,
     extract_list_items,
+    extract_section,
     find_section_line,
 )
 

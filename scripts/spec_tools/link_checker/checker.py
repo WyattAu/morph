@@ -109,9 +109,7 @@ class SpecLinkChecker:
                 details={"error": str(e)},
             ) from e
 
-    def check_directory(
-        self, directory: Path, recursive: bool = True
-    ) -> LinkReport:
+    def check_directory(self, directory: Path, recursive: bool = True) -> LinkReport:
         """Check links in all files in a directory.
 
         Applies link checking to all markdown files in the specified

@@ -35,7 +35,7 @@ class HeaderValidationRule(LintingRule):
         """Get rule description."""
         return "Validates specification file header fields"
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the header validation rule."""
         self._required_fields = ["Title", "Version", "Status", "Author", "Last Modified"]
         self._valid_statuses = ["Draft", "Review", "Approved", "Deprecated"]

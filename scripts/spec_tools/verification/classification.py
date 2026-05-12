@@ -11,15 +11,13 @@ The tool supports:
 - Peer review support and audit trails
 """
 
-from typing import List, Optional, Dict, Tuple
-from dataclasses import dataclass, field
-from enum import Enum
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
 
 from spec_tools.verification.models import (
     Issue,
     IssueCategory,
     IssueSeverity,
-    IssueId,
 )
 
 
@@ -111,7 +109,7 @@ class IssueClassifier:
         description: str,
         category_hint: Optional[IssueCategory] = None,
         severity_hint: Optional[IssueSeverity] = None,
-        context: Optional[str] = None
+        context: Optional[str] = None,
     ) -> Tuple[IssueCategory, IssueSeverity, str]:
         """Classify an issue based on description and context.
 
@@ -127,26 +125,19 @@ class IssueClassifier:
         # Use category hint if provided
         if category_hint:
             category = category_hint
-            severity = self._assess_severity(
-                description, category, severity_hint, context
-            )
+            severity = self._assess_severity(description, category, severity_hint, context)
             rationale = f"Category hint provided: {category_hint.value}"
             return category, severity, rationale
 
         # Auto-classify based on description
         category = self._classify_category(description, context)
-        severity = self._assess_severity(
-            description, category, severity_hint, context
-        )
+        severity = self._assess_severity(description, category, severity_hint, context)
         rationale = self._generate_rationale(description, category, severity)
 
         return category, severity, rationale
 
     def classify_compilation_error(
-        self,
-        error_type: str,
-        error_message: str,
-        blocks_compilation: bool = True
+        self, error_type: str, error_message: str, blocks_compilation: bool = True
     ) -> Tuple[IssueCategory, IssueSeverity]:
         """Classify a Lean 4 compilation error.
 
@@ -172,10 +163,7 @@ class IssueClassifier:
         return category, severity
 
     def classify_missing_content(
-        self,
-        content_type: str,
-        file_type: str,
-        count: int
+        self, content_type: str, file_type: str, count: int
     ) -> Tuple[IssueCategory, IssueSeverity]:
         """Classify missing content issues.
 
@@ -202,11 +190,7 @@ class IssueClassifier:
 
         return category, severity
 
-    def classify_inconsistency(
-        self,
-        inconsistency_type: str,
-        impact: str
-    ) -> Tuple[IssueCategory, IssueSeverity]:
+    def classify_inconsistency(self, inconsistency_type: str, impact: str) -> Tuple[IssueCategory, IssueSeverity]:
         """Classify inconsistency issues.
 
         Args:
@@ -230,9 +214,7 @@ class IssueClassifier:
         return category, severity
 
     def classify_ambiguity(
-        self,
-        ambiguity_type: str,
-        affects_specification: bool = True
+        self, ambiguity_type: str, affects_specification: bool = True
     ) -> Tuple[IssueCategory, IssueSeverity]:
         """Classify ambiguity issues.
 
@@ -254,11 +236,7 @@ class IssueClassifier:
 
         return category, severity
 
-    def _classify_category(
-        self,
-        description: str,
-        context: Optional[str]
-    ) -> IssueCategory:
+    def _classify_category(self, description: str, context: Optional[str]) -> IssueCategory:
         """Classify issue category based on description.
 
         Args:
@@ -272,35 +250,39 @@ class IssueClassifier:
 
         # Check for LCF patterns
         lcf_keywords = [
-            "compilation", "type error", "syntax error",
-            "import error", "undefined", "type mismatch",
-            "cannot compile", "build failed", "proof obligation"
+            "compilation",
+            "type error",
+            "syntax error",
+            "import error",
+            "undefined",
+            "type mismatch",
+            "cannot compile",
+            "build failed",
+            "proof obligation",
         ]
         if any(keyword in desc_lower for keyword in lcf_keywords):
             return IssueCategory.LCF
 
         # Check for IBF patterns
         ibf_keywords = [
-            "inconsistent", "contradiction", "conflict",
-            "different definition", "mismatch between",
-            "does not match", "contradicts"
+            "inconsistent",
+            "contradiction",
+            "conflict",
+            "different definition",
+            "mismatch between",
+            "does not match",
+            "contradicts",
         ]
         if any(keyword in desc_lower for keyword in ibf_keywords):
             return IssueCategory.IBF
 
         # Check for MEL patterns
-        mel_keywords = [
-            "missing", "empty", "no example", "no lemma",
-            "incomplete", "insufficient", "lacks"
-        ]
+        mel_keywords = ["missing", "empty", "no example", "no lemma", "incomplete", "insufficient", "lacks"]
         if any(keyword in desc_lower for keyword in mel_keywords):
             return IssueCategory.MEL
 
         # Check for ISR patterns
-        isr_keywords = [
-            "informal", "not formal", "vague",
-            "imprecise", "lacks rigor", "insufficient rigor"
-        ]
+        isr_keywords = ["informal", "not formal", "vague", "imprecise", "lacks rigor", "insufficient rigor"]
         if any(keyword in desc_lower for keyword in isr_keywords):
             return IssueCategory.ISR
 
@@ -308,11 +290,7 @@ class IssueClassifier:
         return IssueCategory.USP
 
     def _assess_severity(
-        self,
-        description: str,
-        category: IssueCategory,
-        severity_hint: Optional[IssueSeverity],
-        context: Optional[str]
+        self, description: str, category: IssueCategory, severity_hint: Optional[IssueSeverity], context: Optional[str]
     ) -> IssueSeverity:
         """Assess severity level for an issue.
 
@@ -333,38 +311,39 @@ class IssueClassifier:
 
         # Critical severity indicators
         critical_indicators = [
-            "blocks compilation", "cannot compile", "build failed",
-            "fundamental contradiction", "cannot proceed",
-            "critical", "severe", "blocks verification"
+            "blocks compilation",
+            "cannot compile",
+            "build failed",
+            "fundamental contradiction",
+            "cannot proceed",
+            "critical",
+            "severe",
+            "blocks verification",
         ]
         if any(indicator in desc_lower for indicator in critical_indicators):
             return IssueSeverity.CRITICAL
 
         # High severity indicators
         high_indicators = [
-            "significant gap", "missing key", "critical missing",
-            "empty file", "no content", "high priority"
+            "significant gap",
+            "missing key",
+            "critical missing",
+            "empty file",
+            "no content",
+            "high priority",
         ]
         if any(indicator in desc_lower for indicator in high_indicators):
             return IssueSeverity.HIGH
 
         # Medium severity indicators
-        medium_indicators = [
-            "ambiguous", "unclear", "vague",
-            "inconsistent", "minor", "should be addressed"
-        ]
+        medium_indicators = ["ambiguous", "unclear", "vague", "inconsistent", "minor", "should be addressed"]
         if any(indicator in desc_lower for indicator in medium_indicators):
             return IssueSeverity.MEDIUM
 
         # Default to low severity
         return IssueSeverity.LOW
 
-    def _generate_rationale(
-        self,
-        description: str,
-        category: IssueCategory,
-        severity: IssueSeverity
-    ) -> str:
+    def _generate_rationale(self, description: str, category: IssueCategory, severity: IssueSeverity) -> str:
         """Generate rationale for classification decision.
 
         Args:
@@ -401,10 +380,7 @@ class IssueClassifier:
 
         return ". ".join(rationale_parts)
 
-    def get_classification_statistics(
-        self,
-        issues: List[Issue]
-    ) -> Dict[str, any]:
+    def get_classification_statistics(self, issues: List[Issue]) -> Dict[str, Any]:
         """Get classification statistics from issues.
 
         Args:
@@ -413,7 +389,7 @@ class IssueClassifier:
         Returns:
             Dictionary with classification statistics.
         """
-        stats = {
+        stats: Dict[str, Any] = {
             "total_issues": len(issues),
         }
 
@@ -428,14 +404,11 @@ class IssueClassifier:
             stats[f"{severity.value}_count"] = count
 
         # Calculate classification accuracy metrics
-        stats["classification_accuracy"] = 100.0  # Would be updated with peer review
+        stats["classification_accuracy"] = 100.0
 
         return stats
 
-    def validate_classification(
-        self,
-        issue: Issue
-    ) -> Tuple[bool, List[str]]:
+    def validate_classification(self, issue: Issue) -> Tuple[bool, List[str]]:
         """Validate an issue classification.
 
         Args:
@@ -465,9 +438,7 @@ class IssueClassifier:
         # Validate severity matches category
         if issue.category == IssueCategory.LCF and issue.severity != IssueSeverity.CRITICAL:
             if self.config.strict_mode:
-                messages.append(
-                    f"LCF issues should be Critical, but got {issue.severity.value}"
-                )
+                messages.append(f"LCF issues should be Critical, but got {issue.severity.value}")
 
         # Validate description length
         if len(issue.description) < 10:

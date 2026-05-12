@@ -55,8 +55,8 @@ class ListNormalizationRule(FormattingRule):
             match = self._unordered_list_pattern.match(line)
             if match:
                 indent = match.group(1)
-                bullet = match.group(2)
-                spaces = match.group(3)
+                match.group(2)
+                match.group(3)
                 text = match.group(4)
 
                 # Normalize to `-` with one space
@@ -90,7 +90,7 @@ class ListNormalizationRule(FormattingRule):
                 indent = match.group(1)
                 bullet = match.group(2)
                 spaces = match.group(3)
-                text = match.group(4)
+                match.group(4)
 
                 # Check if bullet is not `-`
                 if bullet != "-":
