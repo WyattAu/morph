@@ -1,0 +1,20 @@
+name: Nightly Full Build
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+jobs:
+  full-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v30
+      - uses: DeterminateSystems/magic-nix-cache-action@v8
+      - name: Full build
+        run: nix develop --command lake build Morph 2>&1 | tee build.log
+      - name: Check for errors
+        run: |
+          if grep "^error:" build.log; then
+            echo "::error::Nightly build has errors"
+            exit 1
+          fi

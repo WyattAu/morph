@@ -67,6 +67,14 @@ jobs:
           exit 1
         fi
 
+    - name: Fail on specific sorry warnings
+      run: |
+        if grep -q "warning: Morph/Proofs/TypeSoundness/Preservation.lean:194:16: declaration uses 'sorry'" build.log; then
+          echo "::error::Preservation.lean:194:16 still uses sorry - proof not complete"
+          grep "warning: Morph/Proofs/TypeSoundness/Preservation.lean:194:16: declaration uses 'sorry'" build.log
+          exit 1
+        fi
+
     - name: Check for warnings in Morph source
       run: |
         MORPH_WARNINGS=$(grep "warning: Morph/" build.log | grep -v "warning: declaration uses 'sorry'" || true)

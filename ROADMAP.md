@@ -10,13 +10,13 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 |---|---|
 | `lake build Morph` | 323 jobs, 0 errors, 1 warning |
 | `lake build Morph.Tests` | 186 jobs, 0 errors |
-| Python spec-tools | 405 tests |
-| `.lean` files | 150 |
-| Lines of Lean | ~13,000 |
+| Python spec-tools | 636 tests, 86% coverage |
+| `.lean` files | 151 |
+| Lines of Lean | ~14,878 |
 | Spec modules | 43 |
-| Real theorems/lemmas (Specs/) | 83 |
-| `sorry` declarations | 3 (`Preservation.lean:284,296,309`) |
-| `example : True := trivial` stubs | 15 across 12 spec directories |
+| Real theorems/lemmas (Specs/) | 485 |
+| `sorry` declarations | 3 (`Preservation.lean`, documented) |
+| `example : True := trivial` stubs | 0 |
 | Real proof modules | 7 (TypeSystem, SecurityFlow, GLOSSARY, MorphLanguage, ConcurrencyProcessAlgebra, MemoryModel, ModuleSystem) |
 
 ---
@@ -455,9 +455,9 @@ Ongoing:   [7.x]                                -- research directions
 | `lake build Morph` warnings | 0 | 1 |
 | `sorry` in `Morph/` | 0 | 3 |
 | `example : True := trivial` stubs (Tier 1) | 0 | 0 |
-| `example : True := trivial` stubs (all) | 0 | 15 |
+| `example : True := trivial` stubs (all) | 0 | 0 |
 | CI passes on every push | Yes | Partial (ghost refs) |
-| Python spec-tools coverage | >= 70% | 48% |
+| Python spec-tools coverage | >= 80% | 86% |
 | Lean tests pass | All | All |
 | Pre-commit blocks on sorry | Yes | Warns only |
 | Regression snapshot tracking | Active | None |

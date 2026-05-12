@@ -275,12 +275,23 @@ private theorem subst_preserves_type (Gamma : TypEnv) (e : Expr) (x : String) (v
       exact HasType.lam_type Gamma x' body τ1' τ2
         (HasType_lookup_eq hBody (lookupTyp_drop_shadowed x' τ1' hNameEq))
     · next hNC =>
-      -- Non-capture: x'.name ≠ x, so subst goes into body.
-      -- To complete this proof, we need weakening:
-      --   hV : HasType Gamma v tau1  →  HasType (extendTypEnv Gamma x'.name τ1') v tau1
-      -- This requires x'.name ∉ freeVars v, which is not a precondition of
-      -- subst_preserves_type. Adding it would require restructuring the entire
-      -- mutual block. See ROADMAP.md item 1.1 for the planned fix.
+      -- Non-capture: x'.name != x, so subst recurses into body.
+      -- Result: .lam [x'] (subst body x v)
+      -- By lam_type, need: HasType (extendTypEnv Gamma x'.name tau1') (subst body x v) tau2
+      --
+      -- hBody : HasType (extendTypEnv Gamma x'.name tau1') body tau2
+      -- The body is typed under the LAMBDA's binder, not the substitution variable.
+      -- subst_preserves_type requires the expression to be typed in
+      -- extendTypEnv Gamma x tau1 (the substitution variable's extension).
+      -- These are DIFFERENT environments: x' vs x.
+      --
+      -- Resolution: prove a generalized substitution lemma
+      --   subst_preserves_type_gen : forall {Gamma' e x v tau1 tau},
+      --     HasType Gamma' e tau -> HasType Gamma v tau1 ->
+      --     x'.name notin freeVars v ->
+      --     HasType Gamma' (subst e x v) tau
+      -- Then use it with Gamma' = extendTypEnv Gamma x'.name tau1'.
+      -- This avoids the environment mismatch.
       sorry
   | HasType.let_type _ id e1 e2 τ1 τ2 hE1 hE2 =>
     simp only [subst]
@@ -291,8 +302,6 @@ private theorem subst_preserves_type (Gamma : TypEnv) (e : Expr) (x : String) (v
         (subst_preserves_type Gamma e1 x v tau1 τ1 hE1 hV)
         (HasType_lookup_eq hE2 (lookupTyp_drop_shadowed id τ1 hNameEq))
     · next hNC =>
-      -- Non-capture: id.name ≠ x, so subst goes into e2.
-      -- Requires weakening of hV into extended env (see lam_type case above).
       sorry
   | HasType.for_type _ id s e body hS hE hBody =>
     simp only [subst]
@@ -304,8 +313,6 @@ private theorem subst_preserves_type (Gamma : TypEnv) (e : Expr) (x : String) (v
         (subst_preserves_type Gamma e x v tau1 .intType hE hV)
         (HasTypeAll_lookup_eq hBody (lookupTyp_drop_shadowed id .intType hNameEq))
     · next hNC =>
-      -- Non-capture: id.name ≠ x, so subst goes into body.
-      -- Requires weakening of hV into extended env (see lam_type case above).
       sorry
 end
 
