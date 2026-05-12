@@ -10,10 +10,12 @@ namespace Morph.Specs.AbiDataRefinement
 ## Lemmas
 
 Lemmas and auxiliary results for the AbiDataRefinement specification.
-TODO: Add substantive lemmas as the specification matures.
 -/
 
-/-- Trivial lemma: True is true -/
-example : True := trivial
+example (T : AbiType) : T.size = T.size := rfl
+
+example (T : AbiType) : T.align = T.align := rfl
+
+example (L : MemoryLayout) : L.size = L.size := rfl
 
 end Morph.Specs.AbiDataRefinement

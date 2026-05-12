@@ -10,10 +10,26 @@ namespace Morph.Specs.LicenseDeonticLogic
 ## Examples
 
 Concrete examples demonstrating the LicenseDeonticLogic specification.
-TODO: Add substantive examples as the specification matures.
 -/
 
-/-- Trivial example: True is true -/
-example : True := trivial
+def mitLicense : License := {
+  name := "MIT",
+  predicates := [
+    { predicateType := .permission, action := .modify, value := true },
+    { predicateType := .permission, action := .distribute, value := true },
+    { predicateType := .permission, action := .commercialUse, value := true }
+  ],
+  actions := [.modify, .distribute, .commercialUse]
+}
+
+example : gplLicense.name = "GPL" := rfl
+
+example : mitLicense.predicates.length = 3 := rfl
+
+example : PredicateType.permission ≠ PredicateType.obligation := by
+  intro h; cases h
+
+example : Action.linkStatic ≠ Action.linkDynamic := by
+  intro h; cases h
 
 end Morph.Specs.LicenseDeonticLogic

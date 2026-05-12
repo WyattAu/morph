@@ -10,10 +10,15 @@ namespace Morph.Specs.VersionCompatibility
 ## Lemmas
 
 Lemmas and auxiliary results for the VersionCompatibility specification.
-TODO: Add substantive lemmas as the specification matures.
 -/
 
-/-- Trivial lemma: True is true -/
-example : True := trivial
+theorem applyVersionBump_breaking (v : SemVer) :
+  (applyVersionBump v .breaking).major = v.major + 1 := rfl
+
+theorem applyVersionBump_feature (v : SemVer) :
+  (applyVersionBump v .feature).minor = v.minor + 1 := rfl
+
+theorem applyVersionBump_bugfix (v : SemVer) :
+  (applyVersionBump v .bugfix).patch = v.patch + 1 := rfl
 
 end Morph.Specs.VersionCompatibility

@@ -12,7 +12,29 @@ namespace Morph.Specs.SchedulingModes
 Concrete examples demonstrating the SchedulingModes specification.
 -/
 
-/-- Trivial example: True is true -/
-example : True := trivial
+def task1 : Task := { id := 0, priority := 1, workload := 10 }
+
+def task2 : Task := { id := 1, priority := 2, workload := 5 }
+
+def worker1 : Worker := {
+  id := 0,
+  queue := [task1, task2],
+  mode := SchedulingMode.priority
+}
+
+example : worker1.queue.length = 2 := rfl
+
+example : findPosition worker1.queue task1 = 0 := rfl
+
+example : findPosition worker1.queue task2 = 1 := rfl
+
+example : fairnessBound [worker1] [task1] = 1 := rfl
+
+example : fairnessBound [worker1] [task1, task2] = 2 := rfl
+
+example : SchedulingMode.deterministic ≠ SchedulingMode.randomized := by
+  intro h; cases h
+
+example : fairnessBound [] [] = 0 := rfl
 
 end Morph.Specs.SchedulingModes

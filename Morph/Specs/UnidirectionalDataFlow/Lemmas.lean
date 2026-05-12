@@ -1,35 +1,10 @@
-/- Copyright 2024-2025 The Morph Project Authors
-SPDX-License-Identifier: Apache-2.0
+/-!
+Lemmas for UnidirectionalDataFlow.
+
+TODO: Add substantive lemmas as the specification matures.
 -/
-
-import Morph.Core
-import Morph.Syntax
-import Morph.Specs.UnidirectionalDataFlow.Spec
-
 namespace Morph.Specs.UnidirectionalDataFlow
 
-/-!
-## Unidirectional Data Flow Lemmas and Theorems
-
-This module contains mathematical lemmas and theorems for
-UDF (Unidirectional Data Flow) pattern.
--/
-
-/-!
-## Data Flow Theorems
-
-UDF pattern produces semantically correct results.
--/
-
--- Theorem 1: Data Flow is Sound
-
-theorem data_flow_sound
-  (_source _sink : Morph.Syntax.Expr) :
-  -- Data flow is sound by construction
-  True := by
-  -- Source produces values
-  -- Sink consumes values
-  -- Therefore, data flow is sound
-  trivial
+example : True := trivial
 
 end Morph.Specs.UnidirectionalDataFlow

@@ -12,7 +12,21 @@ namespace Morph.Specs.SchedulingModes
 Lemmas and auxiliary results for the SchedulingModes specification.
 -/
 
-/-- Trivial lemma: True is true -/
-example : True := trivial
+theorem fairnessBound_empty : fairnessBound [] [] = 0 := rfl
+
+theorem fairnessBound_cons (w : Worker) (ws : List Worker) (tasks : List Task) :
+  fairnessBound (w :: ws) tasks = (ws.length + 1) * tasks.length := by
+  unfold fairnessBound; simp
+
+theorem findPosition_empty (task : Task) :
+  findPosition [] task = 0 := rfl
+
+theorem schedulingMode_cases (m : SchedulingMode) :
+  m = SchedulingMode.deterministic ∨ m = SchedulingMode.randomized ∨
+  m = SchedulingMode.priority ∨ m = SchedulingMode.workStealing := by
+  cases m <;> simp
+
+theorem fairnessBound_nil_tasks (ws : List Worker) :
+  fairnessBound ws [] = 0 := rfl
 
 end Morph.Specs.SchedulingModes

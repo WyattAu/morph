@@ -6,14 +6,31 @@ import Morph.Specs.MemoryAffineLogic.Spec
 
 namespace Morph.Specs.MemoryAffineLogic
 
+open Morph.Specs.CommonTypes
+
 /-!
 ## Examples
 
 Concrete examples demonstrating the MemoryAffineLogic specification.
-TODO: Add substantive examples as the specification matures.
 -/
 
-/-- Trivial example: True is true -/
-example : True := trivial
+def emptyCtx : AffineContext := { variables := [], resources := [] }
+
+def ctx1 : AffineContext := { variables := [("x", .nat)], resources := [] }
+
+example : isWellFormedContext emptyCtx := by
+  unfold isWellFormedContext variableCount emptyCtx; intro x; simp [List.filter]
+
+example : isAffineTypeM .nat := trivial
+
+example : isAffineTypeM (.arrow .nat .bool) := trivial
+
+example : isLinearType (.base .nat) := trivial
+
+example : ¬isLinearType .nat := by unfold isLinearType; simp
+
+example : emptyCtx.variables = [] := rfl
+
+example : ctx1.variables.length = 1 := rfl
 
 end Morph.Specs.MemoryAffineLogic

@@ -6,14 +6,33 @@ import Morph.Specs.ArcAffineIntegration.Spec
 
 namespace Morph.Specs.ArcAffineIntegration
 
+open Morph.Specs.CommonTypes
+
 /-!
 ## Examples
 
 Concrete examples demonstrating the ArcAffineIntegration specification.
-TODO: Add substantive examples as the specification matures.
 -/
 
-/-- Trivial example: True is true -/
-example : True := trivial
+def obj0 : ObjectId := { id := 0 }
+
+def obj1 : ObjectId := { id := 1 }
+
+example : transition Capability.iso Capability.val = true := rfl
+
+example : transition Capability.val Capability.ref = true := rfl
+
+example : transition Capability.ref Capability.weak = true := rfl
+
+example : transition Capability.iso Capability.weak = false := rfl
+
+example : transition Capability.weak Capability.iso = false := rfl
+
+example : isIso Capability.iso := rfl
+
+example : ¬isIso Capability.val := by simp [isIso]
+
+example : strongReferences obj0 defaultReferenceGraph = [] := by
+  unfold strongReferences defaultReferenceGraph; simp
 
 end Morph.Specs.ArcAffineIntegration

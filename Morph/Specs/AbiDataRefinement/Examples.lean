@@ -10,10 +10,32 @@ namespace Morph.Specs.AbiDataRefinement
 ## Examples
 
 Concrete examples demonstrating the AbiDataRefinement specification.
-TODO: Add substantive examples as the specification matures.
 -/
 
-/-- Trivial example: True is true -/
-example : True := trivial
+def int32Type : AbiType := { name := "int32", size := 4, align := 4 }
+
+def float64Type : AbiType := { name := "float64", size := 8, align := 8 }
+
+def validLayout : MemoryLayout := {
+  abiType := int32Type,
+  size := 4,
+  align := 4,
+  offsets := [4]
+}
+
+def emptyOffsetsLayout : MemoryLayout := {
+  abiType := int32Type,
+  size := 4,
+  align := 4,
+  offsets := []
+}
+
+example : int32Type.size = 4 := rfl
+
+example : int32Type.align = 4 := rfl
+
+example : float64Type.size = 8 := rfl
+
+example : emptyOffsetsLayout.offsets = [] := rfl
 
 end Morph.Specs.AbiDataRefinement
