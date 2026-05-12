@@ -113,4 +113,10 @@ theorem syncTrigger_cases (t : SyncTrigger) :
   t = .securityFix ∨ t = .scheduledRelease := by
   cases t <;> simp
 
+/-! ### Version Compatibility -/
+
+theorem isCompatible_refl_false (v : SemVer) :
+    isCompatible v v = false := by
+  unfold isCompatible; simp [versionLeq]
+
 end Morph.Specs.VersionCompatibility

@@ -35,4 +35,15 @@ theorem tilingStrategy_cases (s : TilingStrategy) :
   | .strip _ => True
   | .cyclic _ => True := by cases s <;> simp
 
+/-! ### Tile Generation Properties -/
+
+theorem generateTiles_zero_arraySize :
+    generateTiles 0 4 = [] := by
+  unfold generateTiles; simp
+
+/-! ### Cache Hit Ratio -/
+
+theorem cacheHitRatio_zero_both :
+    cacheHitRatio 0 0 = 1.0 := rfl
+
 end Morph.Specs.BackendTiling

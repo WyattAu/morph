@@ -39,4 +39,10 @@ theorem referentialTransparency_eq {A B : Type} (f : PureFunction A B) (x y : A)
     (h : x = y) : f.apply x = f.apply y := by
   subst h; rfl
 
+/-! ### Consistency Invariant -/
+
+theorem consistencyInvariant_empty :
+    consistencyInvariant ([] : List Term) := by
+  unfold consistencyInvariant; simp
+
 end Morph.Specs.TerminologyStandardization
