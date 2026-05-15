@@ -63,7 +63,7 @@ This specification applies to all specification documents in the `spec/` directo
 
 - [`SPEC_INCONSISTENCIES.md`](SPEC_INCONSISTENCIES.md) - Terminology conflicts identified
 - [`SPEC_FIX_PROPOSAL.md`](SPEC_FIX_PROPOSAL.md) - Standardization requirements
-- [`GLOSSARY.md`](GLOSSARY.md) - Existing glossary definitions
+- [`GLOSSARY.md`](../GLOSSARY.md) - Existing glossary definitions
 - [`docs/conventions/specification_convention.md`](docs/conventions/specification_convention.md) - Specification formatting standards
 
 ---
@@ -131,7 +131,7 @@ Where:
 **Context:* FRP, reactive programming, time-varying values
 
 **Related Specifications:*
-- [`spec/tooling/reactive_frp_spec.md`](tooling/reactive_frp_spec.md)
+- [`spec/tooling/reactive_frp_spec.md`](../tooling/reactive_frp_spec.md)
 
 #### 3.1.3 Stream Definition
 
@@ -151,7 +151,7 @@ Where:
 **Context:* Data flow, event processing, discrete sequences
 
 **Related Specifications:*
-- [`spec/language/unidirectional_data_flow_spec.md`](language/unidirectional_data_flow_spec.md)
+- [`spec/language/unidirectional_data_flow_spec.md`](../language/unidirectional_data_flow_spec.md)
 
 #### 3.1.4 Relationship Between Signal and Stream
 
@@ -211,8 +211,8 @@ $$
 **Context:* State reduction, fold operations, aggregation
 
 **Related Specifications:*
-- [`spec/language/ast_graph_spec.md`](language/ast_graph_spec.md)
-- [`spec/stdlib/stdlib_algebraic_spec.md`](stdlib/stdlib_algebraic_spec.md)
+- [`spec/language/ast_graph_spec.md`](../language/ast_graph_spec.md)
+- [`spec/stdlib/stdlib_algebraic_spec.md`](../stdlib/stdlib_algebraic_spec.md)
 
 #### 3.2.3 Transducer Definition
 
@@ -239,7 +239,7 @@ $$
 **Context:* Graph rewriting, program transformation, AST manipulation
 
 **Related Specifications:*
-- [`spec/tooling/graph_rewriting_spec.md`](tooling/graph_rewriting_spec.md)
+- [`spec/tooling/graph_rewriting_spec.md`](../tooling/graph_rewriting_spec.md)
 
 #### 3.2.4 Relationship Between Reducer and Transducer
 
@@ -283,8 +283,8 @@ $$
 **Context:* Type system, functional programming, effect system
 
 **Related Specifications:*
-- [`spec/type/type_system_spec.md`](type/type_system_spec.md)
-- [`spec/concurrency/monadic_effect_spec.md`](concurrency/monadic_effect_spec.md)
+- [`spec/type/type_system_spec.md`](../type/type_system_spec.md)
+- [`spec/concurrency/monadic_effect_spec.md`](../concurrency/monadic_effect_spec.md)
 
 #### 3.3.2 Deprecated Definitions
 
@@ -307,8 +307,8 @@ The following definitions of "pure" are **deprecated** and should not be used:
   - **Replacement:* Use canonical definition above
 
 **Related Specifications:*
-- [`spec/language/scoping_lambda_calculus_spec.md`](language/scoping_lambda_calculus_spec.md)
-- [`spec/memory/memory_affine_logic_spec.md`](memory/memory_affine_logic_spec.md)
+- [`spec/language/scoping_lambda_calculus_spec.md`](../language/scoping_lambda_calculus_spec.md)
+- [`spec/memory/memory_affine_logic_spec.md`](../memory/memory_affine_logic_spec.md)
 
 ---
 
@@ -731,7 +731,7 @@ Use **Signal** when:
 
 - Describing FRP time-varying values
 - Working with continuous or discrete values that change over time
-- Referencing [`spec/tooling/reactive_frp_spec.md`](tooling/reactive_frp_spec.md)
+- Referencing [`spec/tooling/reactive_frp_spec.md`](../tooling/reactive_frp_spec.md)
 
 **Migration Example:*
 
@@ -749,7 +749,7 @@ Use **Stream** when:
 
 - Describing discrete event sequences
 - Working with event processing pipelines
-- Referencing [`spec/language/unidirectional_data_flow_spec.md`](language/unidirectional_data_flow_spec.md)
+- Referencing [`spec/language/unidirectional_data_flow_spec.md`](../language/unidirectional_data_flow_spec.md)
 
 **Migration Example:*
 
@@ -834,7 +834,7 @@ When updating specifications that reference pure functions:
 1. Replace all deprecated definitions with the canonical definition
 2. Add cross-reference to this specification
 3. Update examples to use canonical terminology
-4. Verify consistency with [`spec/type/type_system_spec.md`](type/type_system_spec.md)
+4. Verify consistency with [`spec/type/type_system_spec.md`](../type/type_system_spec.md)
 
 ### 7.4 Naming Convention Migration
 
@@ -931,7 +931,7 @@ let doubledSignal: Signal<Int> = mapSignal(timeSignal, fn(x: Int): Int { x * 2 }
 
 **Context:* FRP, time-varying values
 
-**Related Specification:* [`spec/tooling/reactive_frp_spec.md`](tooling/reactive_frp_spec.md)
+**Related Specification:* [`spec/tooling/reactive_frp_spec.md`](../tooling/reactive_frp_spec.md)
 
 #### 8.1.2 Stream Usage (Correct)
 
@@ -951,7 +951,7 @@ let processedStream: Stream<Int> = mapStream(eventStream, fn(x: Int): Int { x + 
 
 **Context:* Data flow, discrete events
 
-**Related Specification:* [`spec/language/unidirectional_data_flow_spec.md`](language/unidirectional_data_flow_spec.md)
+**Related Specification:* [`spec/language/unidirectional_data_flow_spec.md`](../language/unidirectional_data_flow_spec.md)
 
 #### 8.1.3 Reducer Usage (Correct)
 
@@ -969,7 +969,7 @@ let total: Int = reduceList([1, 2, 3, 4, 5], 0, sumReducer);
 
 **Context:* State reduction, fold operations
 
-**Related Specification:* [`spec/language/ast_graph_spec.md`](language/ast_graph_spec.md)
+**Related Specification:* [`spec/language/ast_graph_spec.md`](../language/ast_graph_spec.md)
 
 #### 8.1.4 Transducer Usage (Correct)
 
@@ -990,7 +990,7 @@ let simplifiedAST: AST = normalizeTransducer(originalAST);
 
 **Context:* Graph rewriting, program transformation
 
-**Related Specification:* [`spec/tooling/graph_rewriting_spec.md`](tooling/graph_rewriting_spec.md)
+**Related Specification:* [`spec/tooling/graph_rewriting_spec.md`](../tooling/graph_rewriting_spec.md)
 
 #### 8.1.5 Pure Function Usage (Correct)
 
@@ -1009,7 +1009,7 @@ pure fn add(x: Int, y: Int): Int {
 
 **Context:* Type system, functional programming
 
-**Related Specification:* [`spec/type/type_system_spec.md`](type/type_system_spec.md)
+**Related Specification:* [`spec/type/type_system_spec.md`](../type/type_system_spec.md)
 
 ### 8.2 Incorrect Terminology Usage
 
@@ -1160,21 +1160,21 @@ This specification is referenced by and references the following specifications:
 #### 10.1.1 Referenced By
 
 - All specification documents in `spec/` directory
-- [`GLOSSARY.md`](GLOSSARY.md) - Glossary definitions
+- [`GLOSSARY.md`](../GLOSSARY.md) - Glossary definitions
 - [`docs/conventions/specification_convention.md`](docs/conventions/specification_convention.md) - Specification formatting
 
 #### 10.1.2 References
 
 - [`SPEC_INCONSISTENCIES.md`](SPEC_INCONSISTENCIES.md) - Terminology conflicts identified
 - [`SPEC_FIX_PROPOSAL.md`](SPEC_FIX_PROPOSAL.md) - Standardization requirements
-- [`spec/tooling/reactive_frp_spec.md`](tooling/reactive_frp_spec.md) - Signal usage
-- [`spec/language/unidirectional_data_flow_spec.md`](language/unidirectional_data_flow_spec.md) - Stream usage
-- [`spec/language/ast_graph_spec.md`](language/ast_graph_spec.md) - Reducer usage
-- [`spec/tooling/graph_rewriting_spec.md`](tooling/graph_rewriting_spec.md) - Transducer usage
-- [`spec/type/type_system_spec.md`](type/type_system_spec.md) - Pure function definition
-- [`spec/language/scoping_lambda_calculus_spec.md`](language/scoping_lambda_calculus_spec.md) - Deprecated pure function definitions
-- [`spec/memory/memory_affine_logic_spec.md`](memory/memory_affine_logic_spec.md) - Deprecated pure function definitions
-- [`spec/concurrency/monadic_effect_spec.md`](concurrency/monadic_effect_spec.md) - Deprecated pure function definitions
+- [`spec/tooling/reactive_frp_spec.md`](../tooling/reactive_frp_spec.md) - Signal usage
+- [`spec/language/unidirectional_data_flow_spec.md`](../language/unidirectional_data_flow_spec.md) - Stream usage
+- [`spec/language/ast_graph_spec.md`](../language/ast_graph_spec.md) - Reducer usage
+- [`spec/tooling/graph_rewriting_spec.md`](../tooling/graph_rewriting_spec.md) - Transducer usage
+- [`spec/type/type_system_spec.md`](../type/type_system_spec.md) - Pure function definition
+- [`spec/language/scoping_lambda_calculus_spec.md`](../language/scoping_lambda_calculus_spec.md) - Deprecated pure function definitions
+- [`spec/memory/memory_affine_logic_spec.md`](../memory/memory_affine_logic_spec.md) - Deprecated pure function definitions
+- [`spec/concurrency/monadic_effect_spec.md`](../concurrency/monadic_effect_spec.md) - Deprecated pure function definitions
 
 ### 10.2 Dependency Graph
 

@@ -17,7 +17,7 @@
 
 This specification formalizeses **UI Layout Engine** using **Constraint Algebra**, providing mathematical foundation for automatic layout computation and semantic accessibility. This formalization enables compiler to reason about widget geometry, occlusion, and visibility.
 
-* Note:* The layout geometry computed by this specification is consumed by **Semantic Accessibility Protocol (SAP)** defined in [`spec/ui/semantic_accessibility_spec.md`](ui/semantic_accessibility_spec.md). SAP uses computed geometry to build a semantic tree for agent interaction.
+* Note:* The layout geometry computed by this specification is consumed by **Semantic Accessibility Protocol (SAP)** defined in [`spec/ui/semantic_accessibility_spec.md`](./semantic_accessibility_spec.md). SAP uses computed geometry to build a semantic tree for agent interaction.
 
 ### 1.2 Scope
 

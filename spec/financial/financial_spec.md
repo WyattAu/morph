@@ -476,7 +476,7 @@ let discounted: Fixed<i64, 6> = total_fixed * (1 - discount); // 90450000000 mic
 let discounted_dec: dec128<USD> = discounted.into(); // 90450.00 USD
 ```
 
-* Note:* The dual numeric system is a **domain-specific extension** for financial calculations. Core math types (e.g., `BigInt`, `f64`) are defined in the Math Specification. See [`spec/math/maths_spec.md`](math/maths_spec.md) for details on core numeric types.
+* Note:* The dual numeric system is a **domain-specific extension** for financial calculations. Core math types (e.g., `BigInt`, `f64`) are defined in the Math Specification. See [`spec/math/maths_spec.md`](../math/maths_spec.md) for details on core numeric types.
 
 - -
 

@@ -63,25 +63,25 @@ This specification does not cover:
 The Effect System Specification is closely related to several other Morph specifications:
 
 * Type System Specifications:*
-- [`spec/type/pure_type_spec.md`](type/pure_type_spec.md) - Pure type definition and effect lattice bottom element
-- [`spec/type/type_system_spec.md`](type/type_system_spec.md) - Overall type system architecture and effect categories
-- [`spec/type/type_category_spec.md`](type/type_category_spec.md) - Category theory foundations for types
-- [`spec/type/type_unification_spec.md`](type/type_unification_spec.md) - Type unification algorithm
+- [`spec/type/pure_type_spec.md`](./pure_type_spec.md) - Pure type definition and effect lattice bottom element
+- [`spec/type/type_system_spec.md`](./type_system_spec.md) - Overall type system architecture and effect categories
+- [`spec/type/type_category_spec.md`](./type_category_spec.md) - Category theory foundations for types
+- [`spec/type/type_unification_spec.md`](./type_unification_spec.md) - Type unification algorithm
 
 * Language Specifications:*
-- [`spec/language/morph_language_spec.md`](language/morph_language_spec.md) - Core language syntax and effect annotations
-- [`spec/language/scoping_lambda_calculus_spec.md`](language/scoping_lambda_calculus_spec.md) - Lambda calculus and scoping rules
+- [`spec/language/morph_language_spec.md`](../language/morph_language_spec.md) - Core language syntax and effect annotations
+- [`spec/language/scoping_lambda_calculus_spec.md`](../language/scoping_lambda_calculus_spec.md) - Lambda calculus and scoping rules
 
 * Concurrency Specifications:*
-- [`spec/concurrency/monadic_effect_spec.md`](concurrency/monadic_effect_spec.md) - Monadic effect handling
-- [`spec/concurrency/execution_model_spec.md`](concurrency/execution_model_spec.md) - Execution model and effect propagation
+- [`spec/concurrency/monadic_effect_spec.md`](../concurrency/monadic_effect_spec.md) - Monadic effect handling
+- [`spec/concurrency/execution_model_spec.md`](../concurrency/execution_model_spec.md) - Execution model and effect propagation
 
 * Security Specifications:*
-- [`spec/security/security_flow_spec.md`](security/security_flow_spec.md) - Security flow analysis and effect-based access control
+- [`spec/security/security_flow_spec.md`](../security/security_flow_spec.md) - Security flow analysis and effect-based access control
 
 * Tooling Specifications:*
-- [`spec/tooling/operational_semantics_spec.md`](tooling/operational_semantics_spec.md) - Operational semantics for effectful expressions
-- [`spec/tooling/comptime_partial_eval_spec.md`](tooling/comptime_partial_eval_spec.md) - Compile-time evaluation of effectful expressions
+- [`spec/tooling/operational_semantics_spec.md`](../tooling/operational_semantics_spec.md) - Operational semantics for effectful expressions
+- [`spec/tooling/comptime_partial_eval_spec.md`](../tooling/comptime_partial_eval_spec.md) - Compile-time evaluation of effectful expressions
 
 * Note:* This specification provides the authoritative definition of the Effect system that supersedes all previous references in the listed specifications.
 
@@ -125,7 +125,7 @@ $$
 | **Time** | Time-dependent operations (includes Net). | Getting current time, sleeping |
 | **System** | System-level operations (includes Time). | FFI calls, process spawning |
 
-**Note:* Pure is a **capability** defined in [`spec/type/pure_type_spec.md`](type/pure_type_spec.md), not an effect type. Pure functions have no effects and are orthogonal to the effect lattice.
+**Note:* Pure is a **capability** defined in [`spec/type/pure_type_spec.md`](./pure_type_spec.md), not an effect type. Pure functions have no effects and are orthogonal to the effect lattice.
 
 ### 2.3 Effect Lattice
 
@@ -264,7 +264,7 @@ $$
 \end{aligned}
 $$
 
-**Note:* Pure is a capability defined in [`spec/type/pure_type_spec.md`](type/pure_type_spec.md), not an effect type. Pure functions have no effects and are orthogonal to the effect lattice.
+**Note:* Pure is a capability defined in [`spec/type/pure_type_spec.md`](./pure_type_spec.md), not an effect type. Pure functions have no effects and are orthogonal to the effect lattice.
 
 ### 2.6 Function Types with Effects
 
@@ -538,7 +538,7 @@ $$
 \text{SecurityLevel}: \mathcal{E} \to \mathcal{L}_{\text{security}}
 $$
 
-where $\mathcal{L}_{\text{security}}$ is the security lattice from [`spec/security/security_flow_spec.md`](security/security_flow_spec.md).
+where $\mathcal{L}_{\text{security}}$ is the security lattice from [`spec/security/security_flow_spec.md`](../security/security_flow_spec.md).
 
 **Default Mapping:*
 
@@ -551,7 +551,7 @@ $$
 \end{aligned}
 $$
 
-**Note:* Pure functions (capability) map to Public security level, but Pure is not an effect type. See [`spec/type/pure_type_spec.md`](type/pure_type_spec.md) for Pure capability definition.
+**Note:* Pure functions (capability) map to Public security level, but Pure is not an effect type. See [`spec/type/pure_type_spec.md`](./pure_type_spec.md) for Pure capability definition.
 
 #### 4.5.2 Effect-Based Access Control
 

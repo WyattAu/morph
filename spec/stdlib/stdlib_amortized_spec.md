@@ -17,7 +17,7 @@
 
 This specification formalizes the **Standard Library Performance** using **Amortized Analysis (The Potential Method)**, providing mathematical foundation for data structure performance guarantees. This formalization enables the Morph standard library to provide provable performance bounds for operations.
 
-* Note:* This specification focuses on **performance** through amortized analysis. For **correctness** guarantees, see [`spec/stdlib/stdlib_algebraic_spec.md`](stdlib/stdlib_algebraic_spec.md), which formalizes standard library correctness using algebraic specifications (equational logic). Both specifications are complementary: algebraic specifications ensure correctness, while amortized analysis ensures performance. Together, they provide a complete formal foundation for the standard library.
+* Note:* This specification focuses on **performance** through amortized analysis. For **correctness** guarantees, see [`spec/stdlib/stdlib_algebraic_spec.md`](./stdlib_algebraic_spec.md), which formalizes standard library correctness using algebraic specifications (equational logic). Both specifications are complementary: algebraic specifications ensure correctness, while amortized analysis ensures performance. Together, they provide a complete formal foundation for the standard library.
 
 ### 1.2 Scope
 

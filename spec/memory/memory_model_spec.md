@@ -61,21 +61,21 @@ This specification does not cover:
 The Memory Model Specification is closely related to several other Morph specifications. The following cross-references provide additional context and detailed specifications for related concepts:
 
 * Type System Specifications:*
-- [`spec/type/type_system_spec.md`](type/type_system_spec.md) - Type system, capability sigils, and affine logic formalization
-- [`spec/type/type_category_spec.md`](type/type_category_spec.md) - Type category theory and algebraic type foundations
+- [`spec/type/type_system_spec.md`](../type/type_system_spec.md) - Type system, capability sigils, and affine logic formalization
+- [`spec/type/type_category_spec.md`](../type/type_category_spec.md) - Type category theory and algebraic type foundations
 
 * Memory Specifications:*
-- [`spec/memory/memory_acyclicity_spec.md`](memory/memory_acyclicity_spec.md) - Memory acyclicity enforcement using affine logic and graph theory
-- [`spec/memory/memory_affine_logic_spec.md`](memory/memory_affine_logic_spec.md) - Affine logic formalization for memory safety
-- [`spec/memory/memory_petri_net_spec.md`](memory/memory_petri_net_spec.md) - Petri net formalization of memory operations
+- [`spec/memory/memory_acyclicity_spec.md`](./memory_acyclicity_spec.md) - Memory acyclicity enforcement using affine logic and graph theory
+- [`spec/memory/memory_affine_logic_spec.md`](./memory_affine_logic_spec.md) - Affine logic formalization for memory safety
+- [`spec/memory/memory_petri_net_spec.md`](./memory_petri_net_spec.md) - Petri net formalization of memory operations
 
 * Concurrency Specifications:*
-- [`spec/concurrency/execution_model_spec.md`](concurrency/execution_model_spec.md) - Execution model, actor model, and scheduler implementation
-- [`spec/concurrency/concurrency_process_algebra_spec.md`](concurrency/concurrency_process_algebra_spec.md) - Process algebra formalization of concurrent communication
+- [`spec/concurrency/execution_model_spec.md`](../concurrency/execution_model_spec.md) - Execution model, actor model, and scheduler implementation
+- [`spec/concurrency/concurrency_process_algebra_spec.md`](../concurrency/concurrency_process_algebra_spec.md) - Process algebra formalization of concurrent communication
 
 * Distributed Systems Specifications:*
-- [`spec/distributed_vector_clock_spec.md`](distributed_vector_clock_spec.md) - Vector clocks for distributed causality and sequential consistency
-- [`spec/tooling/deterministic_time_spec.md`](tooling/deterministic_time_spec.md) - Deterministic time simulation for debugging
+- [`spec/distributed_vector_clock_spec.md`](../distributed_vector_clock_spec.md) - Vector clocks for distributed causality and sequential consistency
+- [`spec/tooling/deterministic_time_spec.md`](../tooling/deterministic_time_spec.md) - Deterministic time simulation for debugging
 
 * Note:* These cross-references help readers navigate to Morph specification ecosystem by providing links to related specifications that provide complementary or detailed information about concepts referenced in this document.
 
@@ -589,7 +589,7 @@ $$ \forall o_1, o_2 \in \text{Operations}, o_1 \prec o_2 \implies \text{Visible}
 
 * Note on Distributed Consistency:*
 - Sequential consistency applies to local memory operations within a single actor
-- Distributed systems use vector clocks for causal consistency (see [`distributed_vector_clock_spec.md`](distributed_vector_clock_spec.md))
+- Distributed systems use vector clocks for causal consistency (see [`distributed_vector_clock_spec.md`](../distributed_vector_clock_spec.md))
 - Vector clocks provide causal ordering, not sequential consistency
 - Sequential consistency is only guaranteed within a single actor's memory space
 
@@ -2667,73 +2667,73 @@ logic receiver {
 
 ### 7.1 Type System Specifications
 
-- [`spec/type/type_system_spec.md`](spec/type/type_system_spec.md) - Type system, capability sigils, and affine logic formalization
-- [`spec/type/pure_type_spec.md`](spec/type/pure_type_spec.md) - Pure type theory
-- [`spec/type/type_category_spec.md`](spec/type/type_category_spec.md) - Type category theory and algebraic type foundations
-- [`spec/type/type_unification_spec.md`](spec/type/type_unification_spec.md) - Type unification algorithm and inference rules
-- [`spec/type/effect_system_spec.md`](spec/type/effect_system_spec.md) - Complete effect system specification with formal semantics and type-level effect tracking
+- [`spec/type/type_system_spec.md`](../type/type_system_spec.md) - Type system, capability sigils, and affine logic formalization
+- [`spec/type/pure_type_spec.md`](../type/pure_type_spec.md) - Pure type theory
+- [`spec/type/type_category_spec.md`](../type/type_category_spec.md) - Type category theory and algebraic type foundations
+- [`spec/type/type_unification_spec.md`](../type/type_unification_spec.md) - Type unification algorithm and inference rules
+- [`spec/type/effect_system_spec.md`](../type/effect_system_spec.md) - Complete effect system specification with formal semantics and type-level effect tracking
 
 ### 7.2 Memory Specifications
 
-- [`spec/memory/memory_model_spec.md`](spec/memory/memory_model_spec.md) - This specification (self-reference)
-- [`spec/memory/memory_acyclicity_spec.md`](spec/memory/memory_acyclicity_spec.md) - Memory acyclicity enforcement using affine logic and graph theory
-- [`spec/memory/memory_affine_logic_spec.md`](spec/memory/memory_affine_logic_spec.md) - Affine logic formalization for memory safety
-- [`spec/memory/memory_petri_net_spec.md`](spec/memory/memory_petri_net_spec.md) - Petri net formalization of memory operations
-- [`spec/memory/arc_affine_integration_spec.md`](spec/memory/arc_affine_integration_spec.md) - ARC and affine types
+- [`spec/memory/memory_model_spec.md`](../memory/memory_model_spec.md) - This specification (self-reference)
+- [`spec/memory/memory_acyclicity_spec.md`](../memory/memory_acyclicity_spec.md) - Memory acyclicity enforcement using affine logic and graph theory
+- [`spec/memory/memory_affine_logic_spec.md`](../memory/memory_affine_logic_spec.md) - Affine logic formalization for memory safety
+- [`spec/memory/memory_petri_net_spec.md`](../memory/memory_petri_net_spec.md) - Petri net formalization of memory operations
+- [`spec/memory/arc_affine_integration_spec.md`](../memory/arc_affine_integration_spec.md) - ARC and affine types
 
 ### 7.3 Concurrency Specifications
 
-- [`spec/concurrency/execution_model_spec.md`](spec/concurrency/execution_model_spec.md) - Execution model, actor model, and scheduler implementation
-- [`spec/concurrency/scheduling_modes_spec.md`](spec/concurrency/scheduling_modes_spec.md) - Dual-mode scheduling specification (work-stealing and deterministic modes)
-- [`spec/concurrency/concurrency_process_algebra_spec.md`](spec/concurrency/concurrency_process_algebra_spec.md) - Process algebra formalization of concurrent communication
-- [`spec/concurrency/monadic_effect_spec.md`](spec/concurrency/monadic_effect_spec.md) - Monadic effects for concurrent operations
+- [`spec/concurrency/execution_model_spec.md`](../concurrency/execution_model_spec.md) - Execution model, actor model, and scheduler implementation
+- [`spec/concurrency/scheduling_modes_spec.md`](../concurrency/scheduling_modes_spec.md) - Dual-mode scheduling specification (work-stealing and deterministic modes)
+- [`spec/concurrency/concurrency_process_algebra_spec.md`](../concurrency/concurrency_process_algebra_spec.md) - Process algebra formalization of concurrent communication
+- [`spec/concurrency/monadic_effect_spec.md`](../concurrency/monadic_effect_spec.md) - Monadic effects for concurrent operations
 
 ### 7.4 Build System Specifications
 
-- [`spec/build/build_lattice_spec.md`](spec/build/build_lattice_spec.md) - Build dependency lattice and incremental compilation
-- [`spec/build/dependency_sat_spec.md`](spec/build/dependency_sat_spec.md) - Dependency satisfaction and resolution
-- [`spec/build/linker_logic_spec.md`](spec/build/linker_logic_spec.md) - Linker logic and symbol resolution
-- [`spec/build/backend_tiling_spec.md`](spec/build/backend_tiling_spec.md) - Backend tiling and code generation
-- [`spec/build/abi_alignment_algebra_spec.md`](spec/build/abi_alignment_algebra_spec.md) - ABI alignment and data refinement
+- [`spec/build/build_lattice_spec.md`](../build/build_lattice_spec.md) - Build dependency lattice and incremental compilation
+- [`spec/build/dependency_sat_spec.md`](../build/dependency_sat_spec.md) - Dependency satisfaction and resolution
+- [`spec/build/linker_logic_spec.md`](../build/linker_logic_spec.md) - Linker logic and symbol resolution
+- [`spec/build/backend_tiling_spec.md`](../build/backend_tiling_spec.md) - Backend tiling and code generation
+- [`spec/build/abi_alignment_algebra_spec.md`](../build/abi_alignment_algebra_spec.md) - ABI alignment and data refinement
 
 ### 7.5 Security Specifications
 
-- [`spec/security/security_flow_spec.md`](spec/security/security_flow_spec.md) - Security flow analysis, taint tracking, and lattice-based access control
-- [`spec/security/infrastructure_safety_contracts_spec.md`](spec/security/infrastructure_safety_contracts_spec.md) - Safety contracts for infrastructure components
-- [`spec/security_ocap_spec.md`](spec/security_ocap_spec.md) - Object capability security model
+- [`spec/security/security_flow_spec.md`](../security/security_flow_spec.md) - Security flow analysis, taint tracking, and lattice-based access control
+- [`spec/security/infrastructure_safety_contracts_spec.md`](../security/infrastructure_safety_contracts_spec.md) - Safety contracts for infrastructure components
+- [`spec/security_ocap_spec.md`](../security_ocap_spec.md) - Object capability security model
 
 ### 7.6 Tooling Specifications
 
-- [`spec/tooling/metaprogramming_spec.md`](spec/tooling/metaprogramming_spec.md) - Metaprogramming, comptime blocks, and optimization holes
-- [`spec/tooling/compiler_bisimulation_spec.md`](spec/tooling/compiler_bisimulation_spec.md) - Compiler bisimulation and optimization correctness
-- [`spec/tooling/comptime_partial_eval_spec.md`](spec/tooling/comptime_partial_eval_spec.md) - Compile-time evaluation
-- [`spec/tooling/operational_semantics_spec.md`](spec/tooling/operational_semantics_spec.md) - Operational semantics for language constructs
+- [`spec/tooling/metaprogramming_spec.md`](../tooling/metaprogramming_spec.md) - Metaprogramming, comptime blocks, and optimization holes
+- [`spec/tooling/compiler_bisimulation_spec.md`](../tooling/compiler_bisimulation_spec.md) - Compiler bisimulation and optimization correctness
+- [`spec/tooling/comptime_partial_eval_spec.md`](../tooling/comptime_partial_eval_spec.md) - Compile-time evaluation
+- [`spec/tooling/operational_semantics_spec.md`](../tooling/operational_semantics_spec.md) - Operational semantics for language constructs
 
 ### 7.7 Standard Library Specifications
 
-- [`spec/stdlib/stdlib_algebraic_spec.md`](spec/stdlib/stdlib_algebraic_spec.md) - Algebraic specification of standard library data structures
-- [`spec/stdlib/stdlib_amortized_spec.md`](spec/stdlib/stdlib_amortized_spec.md) - Amortized analysis of standard library operations
+- [`spec/stdlib/stdlib_algebraic_spec.md`](../stdlib/stdlib_algebraic_spec.md) - Algebraic specification of standard library data structures
+- [`spec/stdlib/stdlib_amortized_spec.md`](../stdlib/stdlib_amortized_spec.md) - Amortized analysis of standard library operations
 
 ### 7.8 Language Specifications
 
-- [`spec/language/morph_language_spec.md`](spec/language/morph_language_spec.md) - Core language syntax, keywords, and dual dialects (min/hum)
-- [`spec/language/strict_state_unidirectional_spec.md`](spec/language/strict_state_unidirectional_spec.md) - SSUS pattern for strict state unidirectional
-- [`spec/language/unidirectional_data_flow_spec.md`](spec/language/unidirectional_data_flow_spec.md) - UDF pattern for unidirectional data flow
-- [`spec/language/scoping_lambda_calculus_spec.md`](spec/language/scoping_lambda_calculus_spec.md) - Scoping rules and lambda calculus formalization
-- [`spec/language/lexical_structure_syntax_spec.md`](spec/language/lexical_structure_syntax_spec.md) - Lexical structure and syntax specification
-- [`spec/language/operator_null_coalescing_spec.md`](spec/language/operator_null_coalescing_spec.md) - ?? operator semantics and optimization search space
+- [`spec/language/morph_language_spec.md`](../language/morph_language_spec.md) - Core language syntax, keywords, and dual dialects (min/hum)
+- [`spec/language/strict_state_unidirectional_spec.md`](../language/strict_state_unidirectional_spec.md) - SSUS pattern for strict state unidirectional
+- [`spec/language/unidirectional_data_flow_spec.md`](../language/unidirectional_data_flow_spec.md) - UDF pattern for unidirectional data flow
+- [`spec/language/scoping_lambda_calculus_spec.md`](../language/scoping_lambda_calculus_spec.md) - Scoping rules and lambda calculus formalization
+- [`spec/language/lexical_structure_syntax_spec.md`](../language/lexical_structure_syntax_spec.md) - Lexical structure and syntax specification
+- [`spec/language/operator_null_coalescing_spec.md`](../language/operator_null_coalescing_spec.md) - ?? operator semantics and optimization search space
 
 ### 7.9 Domain Extensions
 
-- [`spec/financial/financial_spec.md`](spec/financial/financial_spec.md) - Financial domain types, dec128, and @critical safety
-- [`spec/math/maths_spec.md`](spec/math/maths_spec.md) - Mathematical operations and unit algebra
-- [`spec/math/unit_group_theory_spec.md`](spec/math/unit_group_theory_spec.md) - Unit group theory and dimensional analysis
+- [`spec/financial/financial_spec.md`](../financial/financial_spec.md) - Financial domain types, dec128, and @critical safety
+- [`spec/math/maths_spec.md`](../math/maths_spec.md) - Mathematical operations and unit algebra
+- [`spec/math/unit_group_theory_spec.md`](../math/unit_group_theory_spec.md) - Unit group theory and dimensional analysis
 
 ### 7.10 UI Specifications
 
-- [`spec/ui/ui_constraint_algebra_spec.md`](spec/ui/ui_constraint_algebra_spec.md) - UI constraint algebra for layout
-- [`spec/ui/ui_event_topology_spec.md`](spec/ui/ui_event_topology_spec.md) - UI event propagation and deterministic replay
-- [`spec/ui/semantic_accessibility_spec.md`](spec/ui/semantic_accessibility_spec.md) - Semantic accessibility protocol
+- [`spec/ui/ui_constraint_algebra_spec.md`](../ui/ui_constraint_algebra_spec.md) - UI constraint algebra for layout
+- [`spec/ui/ui_event_topology_spec.md`](../ui/ui_event_topology_spec.md) - UI event propagation and deterministic replay
+- [`spec/ui/semantic_accessibility_spec.md`](../ui/semantic_accessibility_spec.md) - Semantic accessibility protocol
 
 ---
 

@@ -62,19 +62,19 @@ This specification does not cover:
 The Strict State Unidirectional Specification is closely related to several other Morph specifications. The following cross-references provide additional context and detailed specifications for related concepts:
 
 * Language Specifications:*
-- [`spec/language/unidirectional_data_flow_spec.md`](language/unidirectional_data_flow_spec.md) - Unidirectional Data Flow (UDF) pattern specification
-- [`spec/language/dialect_projection_spec.md`](language/dialect_projection_spec.md) - Dialect and projection specification
+- [`spec/language/unidirectional_data_flow_spec.md`](./unidirectional_data_flow_spec.md) - Unidirectional Data Flow (UDF) pattern specification
+- [`spec/language/dialect_projection_spec.md`](./dialect_projection_spec.md) - Dialect and projection specification
 
 * Concurrency Specifications:*
-- [`spec/concurrency/execution_model_spec.md`](concurrency/execution_model_spec.md) - Execution model, actor model, and scheduler implementation
-- [`spec/concurrency/scheduling_modes_spec.md`](concurrency/scheduling_modes_spec.md) - Dual-mode scheduling specification
+- [`spec/concurrency/execution_model_spec.md`](../concurrency/execution_model_spec.md) - Execution model, actor model, and scheduler implementation
+- [`spec/concurrency/scheduling_modes_spec.md`](../concurrency/scheduling_modes_spec.md) - Dual-mode scheduling specification
 
 * Architecture Specifications:*
-- [`spec/architecture/layered_concurrency_spec.md`](architecture/layered_concurrency_spec.md) - Layered concurrency architecture for integrating SSUS pattern with execution model
+- [`spec/architecture/layered_concurrency_spec.md`](../architecture/layered_concurrency_spec.md) - Layered concurrency architecture for integrating SSUS pattern with execution model
 
 * Type System Specifications:*
-- [`spec/type/type_system_spec.md`](type/type_system_spec.md) - Type system with capability enforcement and effect tracking
-- [`spec/type/effect_system_spec.md`](type/effect_system_spec.md) - Effect system for tracking side effects and enforcing purity
+- [`spec/type/type_system_spec.md`](../type/type_system_spec.md) - Type system with capability enforcement and effect tracking
+- [`spec/type/effect_system_spec.md`](../type/effect_system_spec.md) - Effect system for tracking side effects and enforcing purity
 
 * Note:* These cross-references help readers navigate the Morph specification ecosystem by providing links to related specifications that provide complementary or detailed information about concepts referenced in this document.
 

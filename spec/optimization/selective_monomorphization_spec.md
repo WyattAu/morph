@@ -59,20 +59,20 @@ This specification does not cover:
 This specification is closely related to several other Morph specifications:
 
 * Metaprogramming Specifications:*
-- [`spec/tooling/metaprogramming_spec.md`](tooling/metaprogramming_spec.md) - Monomorphization requirements and cost analysis
-- [`spec/tooling/comptime_partial_eval_spec.md`](tooling/comptime_partial_eval_spec.md) - Compile-time evaluation for specialization decisions
+- [`spec/tooling/metaprogramming_spec.md`](../tooling/metaprogramming_spec.md) - Monomorphization requirements and cost analysis
+- [`spec/tooling/comptime_partial_eval_spec.md`](../tooling/comptime_partial_eval_spec.md) - Compile-time evaluation for specialization decisions
 
 * Type System Specifications:*
-- [`spec/type/type_system_spec.md`](type/type_system_spec.md) - Generic type system and monomorphization mandate
-- [`spec/type/type_unification_spec.md`](type/type_unification_spec.md) - Type unification for specialization
+- [`spec/type/type_system_spec.md`](../type/type_system_spec.md) - Generic type system and monomorphization mandate
+- [`spec/type/type_unification_spec.md`](../type/type_unification_spec.md) - Type unification for specialization
 
 * Optimization Specifications:*
-- [`spec/optimization/optimization_manifold_spec.md`](optimization/optimization_manifold_spec.md) - Optimization search engine and fitness landscapes
-- [`spec/optimization/optimization_bayesian_spec.md`](optimization/optimization_bayesian_spec.md) - Bayesian optimization for heuristic tuning
+- [`spec/optimization/optimization_manifold_spec.md`](./optimization_manifold_spec.md) - Optimization search engine and fitness landscapes
+- [`spec/optimization/optimization_bayesian_spec.md`](./optimization_bayesian_spec.md) - Bayesian optimization for heuristic tuning
 
 * Build System Specifications:*
-- [`spec/build/dependency_sat_spec.md`](build/dependency_sat_spec.md) - Code size constraints and dead code elimination
-- [`spec/build/linker_logic_spec.md`](build/linker_logic_spec.md) - Link-time code deduplication
+- [`spec/build/dependency_sat_spec.md`](../build/dependency_sat_spec.md) - Code size constraints and dead code elimination
+- [`spec/build/linker_logic_spec.md`](../build/linker_logic_spec.md) - Link-time code deduplication
 
 ---
 

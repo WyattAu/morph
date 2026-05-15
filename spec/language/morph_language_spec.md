@@ -303,7 +303,7 @@ The `flow` construct is a **strict subset of `act` with additional constraints f
 * See Also:*
 - [`strict_state_unidirectional_spec.md`](strict_state_unidirectional_spec.md) - SSUS pattern specification
 - [`unidirectional_data_flow_spec.md`](unidirectional_data_flow_spec.md) - UDF pattern specification
-- [`spec/language/dialect_projection_spec.md`](language/dialect_projection_spec.md) - Dialect and projection specification, formalizing the relationship between `min` and `hum` projections
+- [`spec/language/dialect_projection_spec.md`](./dialect_projection_spec.md) - Dialect and projection specification, formalizing the relationship between `min` and `hum` projections
 
 ### 4.2 Memory Management
 
@@ -963,44 +963,44 @@ fn impure_function(x: i64) -> i64 performs IO {
 
 ### 12.1 Type System Specifications
 
-- [`spec/type/type_system_spec.md`](spec/type/type_system_spec.md) - Comprehensive type system specification
-- [`spec/type/pure_type_spec.md`](spec/type/pure_type_spec.md) - Pure type theory
-- [`spec/type/type_category_spec.md`](spec/type/type_category_spec.md) - Category theory foundations
-- [`spec/type/type_unification_spec.md`](spec/type/type_unification_spec.md) - Type unification algorithms
-- [`spec/type/effect_system_spec.md`](spec/type/effect_system_spec.md) - Effect system specification
+- [`spec/type/type_system_spec.md`](../type/type_system_spec.md) - Comprehensive type system specification
+- [`spec/type/pure_type_spec.md`](../type/pure_type_spec.md) - Pure type theory
+- [`spec/type/type_category_spec.md`](../type/type_category_spec.md) - Category theory foundations
+- [`spec/type/type_unification_spec.md`](../type/type_unification_spec.md) - Type unification algorithms
+- [`spec/type/effect_system_spec.md`](../type/effect_system_spec.md) - Effect system specification
 
 ### 12.2 Memory Specifications
 
-- [`spec/memory/memory_model_spec.md`](spec/memory/memory_model_spec.md) - Memory model and ARC
-- [`spec/memory/memory_affine_logic_spec.md`](spec/memory/memory_affine_logic_spec.md) - Affine type logic
-- [`spec/memory/arc_affine_integration_spec.md`](spec/memory/arc_affine_integration_spec.md) - ARC and affine types
-- [`spec/memory/memory_acyclicity_spec.md`](spec/memory/memory_acyclicity_spec.md) - Memory acyclicity
+- [`spec/memory/memory_model_spec.md`](../memory/memory_model_spec.md) - Memory model and ARC
+- [`spec/memory/memory_affine_logic_spec.md`](../memory/memory_affine_logic_spec.md) - Affine type logic
+- [`spec/memory/arc_affine_integration_spec.md`](../memory/arc_affine_integration_spec.md) - ARC and affine types
+- [`spec/memory/memory_acyclicity_spec.md`](../memory/memory_acyclicity_spec.md) - Memory acyclicity
 
 ### 12.3 Concurrency Specifications
 
-- [`spec/concurrency/execution_model_spec.md`](spec/concurrency/execution_model_spec.md) - Execution model
-- [`spec/concurrency/scheduling_modes_spec.md`](spec/concurrency/scheduling_modes_spec.md) - Scheduling modes
-- [`spec/concurrency/concurrency_process_algebra_spec.md`](spec/concurrency/concurrency_process_algebra_spec.md) - Process algebra
-- [`spec/concurrency/monadic_effect_spec.md`](spec/concurrency/monadic_effect_spec.md) - Monadic effects
+- [`spec/concurrency/execution_model_spec.md`](../concurrency/execution_model_spec.md) - Execution model
+- [`spec/concurrency/scheduling_modes_spec.md`](../concurrency/scheduling_modes_spec.md) - Scheduling modes
+- [`spec/concurrency/concurrency_process_algebra_spec.md`](../concurrency/concurrency_process_algebra_spec.md) - Process algebra
+- [`spec/concurrency/monadic_effect_spec.md`](../concurrency/monadic_effect_spec.md) - Monadic effects
 
 ### 12.4 Build System Specifications
 
-- [`spec/build/build_lattice_spec.md`](spec/build/build_lattice_spec.md) - Build dependency lattice
-- [`spec/build/dependency_sat_spec.md`](spec/build/dependency_sat_spec.md) - Dependency satisfaction
-- [`spec/build/linker_logic_spec.md`](spec/build/linker_logic_spec.md) - Linker logic
-- [`spec/build/backend_tiling_spec.md`](spec/build/backend_tiling_spec.md) - Backend tiling
+- [`spec/build/build_lattice_spec.md`](../build/build_lattice_spec.md) - Build dependency lattice
+- [`spec/build/dependency_sat_spec.md`](../build/dependency_sat_spec.md) - Dependency satisfaction
+- [`spec/build/linker_logic_spec.md`](../build/linker_logic_spec.md) - Linker logic
+- [`spec/build/backend_tiling_spec.md`](../build/backend_tiling_spec.md) - Backend tiling
 
 ### 12.5 Security Specifications
 
-- [`spec/security/security_flow_spec.md`](spec/security/security_flow_spec.md) - Security information flow
-- [`spec/security/infrastructure_safety_contracts_spec.md`](spec/security/infrastructure_safety_contracts_spec.md) - Safety contracts
-- [`spec/security_ocap_spec.md`](spec/security_ocap_spec.md) - Object capabilities
+- [`spec/security/security_flow_spec.md`](../security/security_flow_spec.md) - Security information flow
+- [`spec/security/infrastructure_safety_contracts_spec.md`](../security/infrastructure_safety_contracts_spec.md) - Safety contracts
+- [`spec/security_ocap_spec.md`](../security_ocap_spec.md) - Object capabilities
 
 ### 12.6 Tooling Specifications
 
-- [`spec/tooling/metaprogramming_spec.md`](spec/tooling/metaprogramming_spec.md) - Metaprogramming
-- [`spec/tooling/operational_semantics_spec.md`](spec/tooling/operational_semantics_spec.md) - Operational semantics
-- [`spec/tooling/comptime_partial_eval_spec.md`](spec/tooling/comptime_partial_eval_spec.md) - Compile-time evaluation
+- [`spec/tooling/metaprogramming_spec.md`](../tooling/metaprogramming_spec.md) - Metaprogramming
+- [`spec/tooling/operational_semantics_spec.md`](../tooling/operational_semantics_spec.md) - Operational semantics
+- [`spec/tooling/comptime_partial_eval_spec.md`](../tooling/comptime_partial_eval_spec.md) - Compile-time evaluation
 
 ---
 

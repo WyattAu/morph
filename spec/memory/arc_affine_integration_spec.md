@@ -65,17 +65,17 @@ This specification does not cover:
 The ARC with Affine Types Integration Specification is closely related to several other Morph specifications. The following cross-references provide additional context and detailed specifications for related concepts:
 
 * Memory Model Specifications:*
-- [`spec/memory/memory_model_spec.md`](memory/memory_model_spec.md) - Memory management model, ARC implementation, and runtime memory operations
-- [`spec/memory/memory_affine_logic_spec.md`](memory/memory_affine_logic_spec.md) - Affine logic formalization for memory safety
-- [`spec/memory/memory_acyclicity_spec.md`](memory/memory_acyclicity_spec.md) - Memory acyclicity enforcement using affine logic and graph theory
+- [`spec/memory/memory_model_spec.md`](./memory_model_spec.md) - Memory management model, ARC implementation, and runtime memory operations
+- [`spec/memory/memory_affine_logic_spec.md`](./memory_affine_logic_spec.md) - Affine logic formalization for memory safety
+- [`spec/memory/memory_acyclicity_spec.md`](./memory_acyclicity_spec.md) - Memory acyclicity enforcement using affine logic and graph theory
 
 * Type System Specifications:*
-- [`spec/type/type_system_spec.md`](type/type_system_spec.md) - Type system, capability sigils, and affine logic formalization
-- [`spec/type/type_category_spec.md`](type/type_category_spec.md) - Type category theory and algebraic type foundations
+- [`spec/type/type_system_spec.md`](../type/type_system_spec.md) - Type system, capability sigils, and affine logic formalization
+- [`spec/type/type_category_spec.md`](../type/type_category_spec.md) - Type category theory and algebraic type foundations
 
 * Concurrency Specifications:*
-- [`spec/concurrency/execution_model_spec.md`](concurrency/execution_model_spec.md) - Execution model, actor model, and scheduler implementation
-- [`spec/concurrency/concurrency_process_algebra_spec.md`](concurrency/concurrency_process_algebra_spec.md) - Process algebra formalization of concurrent communication
+- [`spec/concurrency/execution_model_spec.md`](../concurrency/execution_model_spec.md) - Execution model, actor model, and scheduler implementation
+- [`spec/concurrency/concurrency_process_algebra_spec.md`](../concurrency/concurrency_process_algebra_spec.md) - Process algebra formalization of concurrent communication
 
 * Contradiction Resolution:*
 - [`SPEC_CONTRADICTIONS.md`](SPEC_CONTRADICTIONS.md) - Contradiction #4: ARC vs Tracing GC analysis

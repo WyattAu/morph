@@ -17,7 +17,7 @@
 
 This specification formalizeses **UI Event Propagation Model** using **Tree Transducers**, providing mathematical foundation for deterministic event handling. This formalization enables Morph UI framework to guarantee that events propagate correctly throughs widget tree and that interactions are reproducible.
 
-* Note:* The event propagation model depends on widget geometry computed by the **UI Layout Engine** defined in [`spec/ui/ui_constraint_algebra_spec.md`](ui/ui_constraint_algebra_spec.md). The Layout Engine computes widget geometry using constraint algebra, and event propagation uses this computed geometry for hit testing and bubbling. The deterministic nature of both systems ensures reproducible UI interactions.
+* Note:* The event propagation model depends on widget geometry computed by the **UI Layout Engine** defined in [`spec/ui/ui_constraint_algebra_spec.md`](./ui_constraint_algebra_spec.md). The Layout Engine computes widget geometry using constraint algebra, and event propagation uses this computed geometry for hit testing and bubbling. The deterministic nature of both systems ensures reproducible UI interactions.
 
 ### 1.2 Scope
 

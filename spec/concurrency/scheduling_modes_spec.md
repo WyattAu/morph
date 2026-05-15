@@ -55,9 +55,9 @@ This specification does not cover:
 - Lamport, L. (1978). "Time, Clocks, and the Ordering of Events in a Distributed System"
 - ISO/IEC 29148: Systems and software engineering — Requirements engineering
 - IEEE 1016: Recommended Practice for Software Design Descriptions
-- [`spec/concurrency/execution_model_spec.md`](concurrency/execution_model_spec.md) - Execution model and M:N scheduling
-- [`spec/scheduler_randomized_stealing_spec.md`](scheduler_randomized_stealing_spec.md) - Randomized work-stealing
-- [`spec/tooling/deterministic_time_spec.md`](tooling/deterministic_time_spec.md) - Deterministic time system
+- [`spec/concurrency/execution_model_spec.md`](./execution_model_spec.md) - Execution model and M:N scheduling
+- [`spec/scheduler_randomized_stealing_spec.md`](../scheduler_randomized_stealing_spec.md) - Randomized work-stealing
+- [`spec/tooling/deterministic_time_spec.md`](../tooling/deterministic_time_spec.md) - Deterministic time system
 
 ---
 
@@ -85,7 +85,7 @@ $$ \forall \text{state}_1, \text{state}_2 \in \text{States}, \text{state}_1 = \t
 
 1. **Deterministic Selection:* Victim selection in work stealing uses deterministic algorithm
 2. **Fixed Random Seeds:* All random number generation uses fixed seeds
-3. **Logical Clock:* Time progression uses logical clock (see [`deterministic_time_spec.md`](tooling/deterministic_time_spec.md))
+3. **Logical Clock:* Time progression uses logical clock (see [`deterministic_time_spec.md`](../tooling/deterministic_time_spec.md))
 4. **Reproducible Execution:* Same input produces identical execution trace
 
 * SCHED-INV-002:* THE system SHALL guarantee deterministic scheduling decisions in deterministic mode.
@@ -605,7 +605,7 @@ stateDiagram-v2
 
 * Proof Sketch:*
 1. By definition of deterministic mode, all scheduling decisions are deterministic (SCHED-INV-002)
-2. By definition of logical clock, time progression is deterministic (see [`deterministic_time_spec.md`](tooling/deterministic_time_spec.md))
+2. By definition of logical clock, time progression is deterministic (see [`deterministic_time_spec.md`](../tooling/deterministic_time_spec.md))
 3. By definition of fixed random seed, all random operations are deterministic
 4. Therefore, same input produces identical execution trace
 

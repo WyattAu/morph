@@ -29,7 +29,7 @@ This specification covers:
 - Correctness properties and invariants
 
 This specification does NOT cover:
-- AST node type definitions (see [`spec/language/ast_graph_spec.md`](language/ast_graph_spec.md))
+- AST node type definitions (see [`spec/language/ast_graph_spec.md`](./ast_graph_spec.md))
 - LSP protocol implementation details (see tooling specifications)
 - Syntax parsing algorithms (see [`lexical_structure_syntax_spec.md`](lexical_structure_syntax_spec.md))
 
@@ -50,8 +50,8 @@ This specification does NOT cover:
 
 - [`morph_language_spec.md`](morph_language_spec.md) - Core language specification with Projectional Only Mandate
 - [`ast_graph_spec.md`](ast_graph_spec.md) - AST graph structure and operations
-- [`spec/language/lexical_structure_syntax_spec.md`](language/lexical_structure_syntax_spec.md) - Lexical structure and syntax
-- [`spec/tooling/hot_reload_projection_spec.md`](tooling/hot_reload_projection_spec.md) - Projectional editing and hot reload
+- [`spec/language/lexical_structure_syntax_spec.md`](./lexical_structure_syntax_spec.md) - Lexical structure and syntax
+- [`spec/tooling/hot_reload_projection_spec.md`](../tooling/hot_reload_projection_spec.md) - Projectional editing and hot reload
 - [`metaprogramming_spec.md`](../tooling/metaprogramming_spec.md) - Metaprogramming capabilities
 - SPEC_CONTRADICTIONS.md - Contradiction analysis (Contradiction #2)
 - SPEC_FIX_PROPOSAL.md - Fix proposal (Critical Fix #4)

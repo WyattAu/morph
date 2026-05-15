@@ -51,9 +51,9 @@ This specification does not cover:
 
 ### 1.4 References
 
-- [`spec/language/strict_state_unidirectional_spec.md`](strict_state_unidirectional_spec.md) - SSUS requirements
-- [`spec/language/unidirectional_data_flow_spec.md`](unidirectional_data_flow_spec.md) - UDF requirements
-- [`spec/concurrency/execution_model_spec.md`](execution_model_spec.md) - Actor model
+- [`spec/language/strict_state_unidirectional_spec.md`](../language/strict_state_unidirectional_spec.md) - SSUS requirements
+- [`spec/language/unidirectional_data_flow_spec.md`](../language/unidirectional_data_flow_spec.md) - UDF requirements
+- [`spec/concurrency/execution_model_spec.md`](../concurrency/execution_model_spec.md) - Actor model
 - [`SPEC_CONTRADICTIONS.md`](../../SPEC_CONTRADICTIONS.md) - Contradiction analysis
 - [`SPEC_FIX_PROPOSAL.md`](../../SPEC_FIX_PROPOSAL.md) - Fix requirements
 - IEEE 1016: Recommended Practice for Software Design Descriptions

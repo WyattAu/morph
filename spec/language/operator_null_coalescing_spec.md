@@ -58,17 +58,17 @@ This specification does not cover:
 The Null-Coalescing Operator Specification is closely related to several other Morph specifications:
 
 * Type System Specifications:*
-- [`spec/type/type_system_spec.md`](type/type_system_spec.md) - Overall type system architecture and optional types
-- [`spec/type/pure_type_spec.md`](type/pure_type_spec.md) - Pure type definition and effect lattice
-- [`spec/type/effect_system_spec.md`](type/effect_system_spec.md) - Effect system and effect algebra
+- [`spec/type/type_system_spec.md`](../type/type_system_spec.md) - Overall type system architecture and optional types
+- [`spec/type/pure_type_spec.md`](../type/pure_type_spec.md) - Pure type definition and effect lattice
+- [`spec/type/effect_system_spec.md`](../type/effect_system_spec.md) - Effect system and effect algebra
 
 * Language Specifications:*
-- [`spec/language/morph_language_spec.md`](language/morph_language_spec.md) - Core language syntax and operators
-- [`spec/language/lexical_structure_syntax_spec.md`](language/lexical_structure_syntax_spec.md) - Lexical structure and syntax
-- [`spec/language/scoping_lambda_calculus_spec.md`](language/scoping_lambda_calculus_spec.md) - Lambda calculus and scoping rules
+- [`spec/language/morph_language_spec.md`](./morph_language_spec.md) - Core language syntax and operators
+- [`spec/language/lexical_structure_syntax_spec.md`](./lexical_structure_syntax_spec.md) - Lexical structure and syntax
+- [`spec/language/scoping_lambda_calculus_spec.md`](./scoping_lambda_calculus_spec.md) - Lambda calculus and scoping rules
 
 * Tooling Specifications:*
-- [`spec/tooling/operational_semantics_spec.md`](tooling/operational_semantics_spec.md) - Operational semantics for expressions
+- [`spec/tooling/operational_semantics_spec.md`](../tooling/operational_semantics_spec.md) - Operational semantics for expressions
 
 * Note:* This specification provides the authoritative definition of the `??` operator that supersedes all previous references in the listed specifications.
 

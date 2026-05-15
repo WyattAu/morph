@@ -115,15 +115,31 @@ echo ""
 echo "[6/7] Running ruff lint and mypy type-check..."
 
 LINT_PASS=true
-if command -v ruff &>/dev/null; then
-    if ruff check scripts/spec_tools/ 2>&1 | tee /tmp/morph_precommit_ruff.log; then
+
+# Prefer .venv/bin/ tools over system tools
+RUFF_CMD=""
+MYPY_CMD=""
+if [ -f ".venv/bin/ruff" ]; then
+    RUFF_CMD=".venv/bin/ruff"
+elif command -v ruff &>/dev/null; then
+    RUFF_CMD="ruff"
+fi
+
+if [ -f ".venv/bin/mypy" ]; then
+    MYPY_CMD=".venv/bin/mypy"
+elif command -v mypy &>/dev/null; then
+    MYPY_CMD="mypy"
+fi
+
+if [ -n "$RUFF_CMD" ]; then
+    if $RUFF_CMD check scripts/spec_tools/ 2>&1 | tee /tmp/morph_precommit_ruff.log; then
         echo "  ruff check PASSED"
     else
         echo "  ruff check FAILED"
         LINT_PASS=false
     fi
 
-    if ruff format --check scripts/spec_tools/ 2>&1 | tee /tmp/morph_precommit_format.log; then
+    if $RUFF_CMD format --check scripts/spec_tools/ 2>&1 | tee /tmp/morph_precommit_format.log; then
         echo "  ruff format PASSED"
     else
         echo "  ruff format FAILED -- run 'ruff format scripts/spec_tools/' to fix"
@@ -133,8 +149,8 @@ else
     echo "  ruff not found (skipped)."
 fi
 
-if command -v mypy &>/dev/null; then
-    if mypy scripts/spec_tools/ --ignore-missing-imports 2>&1 | tee /tmp/morph_precommit_mypy.log; then
+if [ -n "$MYPY_CMD" ]; then
+    if $MYPY_CMD scripts/spec_tools/ --ignore-missing-imports 2>&1 | tee /tmp/morph_precommit_mypy.log; then
         echo "  mypy PASSED"
     else
         echo "  mypy FAILED"

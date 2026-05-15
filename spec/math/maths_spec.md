@@ -10,7 +10,7 @@
 
 How do we declare units? We do not want them to be runtime objects (too slow). They must be **Compile-Time Metadata Tags** attached to numeric types.
 
-* Note:* This specification provides the **practical syntax** for declaring and using units. The **formal mathematical foundation** is defined in [`spec/math/unit_group_theory_spec.md`](math/unit_group_theory_spec.md), which formalizes the unit system as a Free Abelian Group. The syntax defined here maps directly to the algebraic structures defined in Unit Group Theory Spec.
+* Note:* This specification provides the **practical syntax** for declaring and using units. The **formal mathematical foundation** is defined in [`spec/math/unit_group_theory_spec.md`](./unit_group_theory_spec.md), which formalizes the unit system as a Free Abelian Group. The syntax defined here maps directly to the algebraic structures defined in Unit Group Theory Spec.
 
 ### 1.1 Declaration Syntax (`unit`)
 
@@ -67,7 +67,7 @@ let ratio = (10.0<Meter> / 2.0<Meter>); // Result is f64<scalar> (5.0)
 
 ### 1.5 Syntax to Algebra Mapping
 
-The practical syntax defined in this specification maps directly to the formal algebraic structures defined in [`spec/math/unit_group_theory_spec.md`](math/unit_group_theory_spec.md).
+The practical syntax defined in this specification maps directly to the formal algebraic structures defined in [`spec/math/unit_group_theory_spec.md`](./unit_group_theory_spec.md).
 
 #### 1.5.1 Unit Declaration Mapping
 
@@ -146,12 +146,12 @@ Morph provides domain-specific numeric types for specialized use cases. These ty
 The Financial Domain Extension provides specialized numeric types for monetary calculations:
 
 - **`dec128`**: IEEE 754-2008 Decimal128 with 34 digits of decimal precision
-  - Defined in: [`spec/financial/financial_spec.md`](financial/financial_spec.md)
+  - Defined in: [`spec/financial/financial_spec.md`](../financial/financial_spec.md)
   - Use case: Regulatory compliance, high-precision financial calculations
   - Performance: Moderate (software emulation)
 
 - **`Fixed<T, Scale>`**: Fixed-point arithmetic with explicit decimal scale
-  - Defined in: [`spec/financial/financial_spec.md`](financial/financial_spec.md)
+  - Defined in: [`spec/financial/financial_spec.md`](../financial/financial_spec.md)
   - Use case: High-frequency trading, performance-critical financial code
   - Performance: High (native integer operations)
 

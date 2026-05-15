@@ -17,7 +17,7 @@
 
 This specification formalizes the Unit System of Morph as a **Free Abelian Group**, providing mathematical foundation for dimensional analysis, type-safe unit conversions, and compile-time unit checking. This formalization ensures that physical quantities are handled correctly at the type level.
 
-* Note:* This specification provides the **formal mathematical foundation** for the unit system. The **practical syntax** for declaring and using units is defined in [`spec/math/maths_spec.md`](math/maths_spec.md). The formal structures defined here map directly to the syntax defined in Math Spec.
+* Note:* This specification provides the **formal mathematical foundation** for the unit system. The **practical syntax** for declaring and using units is defined in [`spec/math/maths_spec.md`](./maths_spec.md). The formal structures defined here map directly to the syntax defined in Math Spec.
 
 ### 1.2 Scope
 
@@ -54,7 +54,7 @@ This specification does not cover:
 
 ### 1.5 Algebra to Syntax Mapping
 
-The formal algebraic structures defined in this specification map directly to practical syntax defined in [`spec/math/maths_spec.md`](math/maths_spec.md).
+The formal algebraic structures defined in this specification map directly to practical syntax defined in [`spec/math/maths_spec.md`](./maths_spec.md).
 
 #### 1.5.1 Unit Vector to Syntax Mapping
 

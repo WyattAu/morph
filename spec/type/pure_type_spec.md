@@ -57,24 +57,24 @@ This specification does not cover:
 The Pure Type Specification is closely related to several other Morph specifications:
 
 * Type System Specifications:*
-- [`spec/type/type_system_spec.md`](type/type_system_spec.md) - Overall type system architecture and effect categories
-- [`spec/type/type_category_spec.md`](type/type_category_spec.md) - Category theory foundations for types
-- [`spec/type/type_unification_spec.md`](type/type_unification_spec.md) - Type unification algorithm
+- [`spec/type/type_system_spec.md`](./type_system_spec.md) - Overall type system architecture and effect categories
+- [`spec/type/type_category_spec.md`](./type_category_spec.md) - Category theory foundations for types
+- [`spec/type/type_unification_spec.md`](./type_unification_spec.md) - Type unification algorithm
 
 * Language Specifications:*
-- [`spec/language/scoping_lambda_calculus_spec.md`](language/scoping_lambda_calculus_spec.md) - Lambda calculus and scoping rules
-- [`spec/language/morph_language_spec.md`](language/morph_language_spec.md) - Core language syntax and semantics
+- [`spec/language/scoping_lambda_calculus_spec.md`](../language/scoping_lambda_calculus_spec.md) - Lambda calculus and scoping rules
+- [`spec/language/morph_language_spec.md`](../language/morph_language_spec.md) - Core language syntax and semantics
 
 * Concurrency Specifications:*
-- [`spec/concurrency/monadic_effect_spec.md`](concurrency/monadic_effect_spec.md) - Monadic effect handling
-- [`spec/concurrency/execution_model_spec.md`](concurrency/execution_model_spec.md) - Execution model and effect propagation
+- [`spec/concurrency/monadic_effect_spec.md`](../concurrency/monadic_effect_spec.md) - Monadic effect handling
+- [`spec/concurrency/execution_model_spec.md`](../concurrency/execution_model_spec.md) - Execution model and effect propagation
 
 * Security Specifications:*
-- [`spec/security/security_flow_spec.md`](security/security_flow_spec.md) - Security flow analysis and effect-based access control
+- [`spec/security/security_flow_spec.md`](../security/security_flow_spec.md) - Security flow analysis and effect-based access control
 
 * Tooling Specifications:*
-- [`spec/tooling/operational_semantics_spec.md`](tooling/operational_semantics_spec.md) - Operational semantics for Pure functions
-- [`spec/tooling/comptime_partial_eval_spec.md`](tooling/comptime_partial_eval_spec.md) - Compile-time evaluation of Pure expressions
+- [`spec/tooling/operational_semantics_spec.md`](../tooling/operational_semantics_spec.md) - Operational semantics for Pure functions
+- [`spec/tooling/comptime_partial_eval_spec.md`](../tooling/comptime_partial_eval_spec.md) - Compile-time evaluation of Pure expressions
 
 * Note:* This specification provides authoritative definition of Pure type that supersedes all previous references in listed specifications.
 
@@ -156,7 +156,7 @@ $$
 
 #### 2.4.1 Effect Type Definitions (for reference)
 
-The effect system defines the following effect types (from [`spec/type/effect_system_spec.md`](type/effect_system_spec.md)):
+The effect system defines the following effect types (from [`spec/type/effect_system_spec.md`](./effect_system_spec.md)):
 
 $$
 \begin{aligned}
