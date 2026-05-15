@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Specifications -- Morph</title>
+  <meta name="description" content="Morph specification modules: type system, concurrency, memory, language design, tooling, security, and more.">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>M</text></svg>">
+</head>
+<body>
+  <header>
+    <nav>
+      <a href="../index.html" class="logo">Morph</a>
+      <div class="nav-links">
+        <a href="../index.html#overview">Overview</a>
+        <a href="../index.html#verification">Verification</a>
+        <a href="specs.html" style="color:var(--text)">Specification</a>
+        <a href="tools.html">Tools</a>
+        <a href="index.html">Docs</a>
+        <a href="../index.html#getting-started">Getting Started</a>
+        <a href="https://github.com/WyattAu/morph" class="nav-cta">GitHub</a>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <section>
+      <p style="margin-bottom:0.25rem"><a href="index.html">&larr; Documentation</a></p>
+      <h1>Specification Modules</h1>
+      <p class="tagline">60+ formal specification modules organized by domain</p>
+      <p class="description">All specifications live under <code>spec/</code> in the repository. Each module defines requirements, constraints, and properties verified against the Lean 4 formalization.</p>
+    </section>
+
+    <section>
+      <h2>Type System</h2>
+      <div class="grid">
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/type/type_system_spec.md">type_system_spec.md</a></h3>
+          <p>Core type system specification. Dependent types, de Bruijn indices, HasType inductive families.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/type/pure_type_spec.md">pure_type_spec.md</a></h3>
+          <p>Pure type system definition and typing rules.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/type/type_category_spec.md">type_category_spec.md</a></h3>
+          <p>Type categories and classification hierarchy.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/type/type_unification_spec.md">type_unification_spec.md</a></h3>
+          <p>Type unification algorithm and constraints.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/type/effect_system_spec.md">effect_system_spec.md</a></h3>
+          <p>Effect system specification for tracking side effects.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Language</h2>
+      <div class="grid">
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/language/morph_language_spec.md">morph_language_spec.md</a></h3>
+          <p>Core language specification and surface syntax.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/language/lexical_structure_syntax_spec.md">lexical_structure_syntax_spec.md</a></h3>
+          <p>Lexical structure and tokenization rules.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/language/scoping_lambda_calculus_spec.md">scoping_lambda_calculus_spec.md</a></h3>
+          <p>Scoping rules and lambda calculus foundations.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/language/module_system_spec.md">module_system_spec.md</a></h3>
+          <p>Module system and namespace resolution.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/language/syntax_translation_spec.md">syntax_translation_spec.md</a></h3>
+          <p>Syntax translation and desugaring passes.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/language/ast_graph_spec.md">ast_graph_spec.md</a></h3>
+          <p>AST graph structure and traversal properties.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/language/dialect_projection_spec.md">dialect_projection_spec.md</a></h3>
+          <p>Dialect projection and language variants.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/language/operator_null_coalescing_spec.md">operator_null_coalescing_spec.md</a></h3>
+          <p>Null coalescing operator specification.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/language/dual_optimization_spec.md">dual_optimization_spec.md</a></h3>
+          <p>Dual optimization passes for the language.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/language/strict_state_unidirectional_spec.md">strict_state_unidirectional_spec.md</a></h3>
+          <p>Strict state and unidirectional data flow constraints.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/language/unidirectional_data_flow_spec.md">unidirectional_data_flow_spec.md</a></h3>
+          <p>Unidirectional data flow analysis and enforcement.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Concurrency</h2>
+      <div class="grid">
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/concurrency/concurrency_process_algebra_spec.md">concurrency_process_algebra_spec.md</a></h3>
+          <p>Process algebra for agent communication and composition.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/concurrency/execution_model_spec.md">execution_model_spec.md</a></h3>
+          <p>Execution model for concurrent programs.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/concurrency/scheduling_modes_spec.md">scheduling_modes_spec.md</a></h3>
+          <p>Scheduling modes and green thread management.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/concurrency/monadic_effect_spec.md">monadic_effect_spec.md</a></h3>
+          <p>Monadic effect tracking for concurrent operations.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/architecture/layered_concurrency_spec.md">layered_concurrency_spec.md</a></h3>
+          <p>Layered concurrency architecture model.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Memory</h2>
+      <div class="grid">
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/memory/memory_model_spec.md">memory_model_spec.md</a></h3>
+          <p>Core memory model specification.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/memory/memory_affine_logic_spec.md">memory_affine_logic_spec.md</a></h3>
+          <p>Affine logic for memory ownership.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/memory/memory_acyclicity_spec.md">memory_acyclicity_spec.md</a></h3>
+          <p>Memory acyclicity guarantees and proof obligations.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/memory/memory_petri_net_spec.md">memory_petri_net_spec.md</a></h3>
+          <p>Petri net model for memory state transitions.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/memory/arc_affine_integration_spec.md">arc_affine_integration_spec.md</a></h3>
+          <p>ARC and affine type integration rules.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Security</h2>
+      <div class="grid">
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/security_ocap_spec.md">security_ocap_spec.md</a></h3>
+          <p>Object capability (ocap) security model for agents.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/security/security_flow_spec.md">security_flow_spec.md</a></h3>
+          <p>Information flow analysis and security policies.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/security/infrastructure_safety_contracts_spec.md">infrastructure_safety_contracts_spec.md</a></h3>
+          <p>Infrastructure safety contracts and invariants.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Tooling</h2>
+      <div class="grid">
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/metaprogramming_spec.md">metaprogramming_spec.md</a></h3>
+          <p>Metaprogramming and compile-time computation.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/comptime_partial_eval_spec.md">comptime_partial_eval_spec.md</a></h3>
+          <p>Compile-time partial evaluation strategy.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/operational_semantics_spec.md">operational_semantics_spec.md</a></h3>
+          <p>Operational semantics for the tooling layer.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/parsing_island_grammar_spec.md">parsing_island_grammar_spec.md</a></h3>
+          <p>Island grammar parsing approach.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/compiler_bisimulation_spec.md">compiler_bisimulation_spec.md</a></h3>
+          <p>Compiler correctness via bisimulation.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/fuzzing_combinatorial_spec.md">fuzzing_combinatorial_spec.md</a></h3>
+          <p>Combinatorial fuzzing strategies.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/symbolic_execution_fuzz_spec.md">symbolic_execution_fuzz_spec.md</a></h3>
+          <p>Symbolic execution for fuzz testing.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/graph_rewriting_spec.md">graph_rewriting_spec.md</a></h3>
+          <p>Graph rewriting for program transformation.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/pattern_coverage_matrix_spec.md">pattern_coverage_matrix_spec.md</a></h3>
+          <p>Pattern matching coverage analysis.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/diagnose_protocol_spec.md">diagnose_protocol_spec.md</a></h3>
+          <p>Diagnostic protocol for error reporting.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/protocol_session_types_spec.md">protocol_session_types_spec.md</a></h3>
+          <p>Session types for protocol verification.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/semantic_trie_spec.md">semantic_trie_spec.md</a></h3>
+          <p>Semantic trie data structure for tooling.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/semantic_vector_spec.md">semantic_vector_spec.md</a></h3>
+          <p>Semantic vector space for code analysis.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/serialization_isomorphism_spec.md">serialization_isomorphism_spec.md</a></h3>
+          <p>Serialization with isomorphism guarantees.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/synthesis_inhabitation_spec.md">synthesis_inhabitation_spec.md</a></h3>
+          <p>Program synthesis via type inhabitation.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/registry_merkle_spec.md">registry_merkle_spec.md</a></h3>
+          <p>Merkle tree registry for dependency tracking.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/distributed_crdt_spec.md">distributed_crdt_spec.md</a></h3>
+          <p>CRDT specification for distributed state.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/realtime_mtl_spec.md">realtime_mtl_spec.md</a></h3>
+          <p>Real-time monad transformer library.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/reactive_frp_spec.md">reactive_frp_spec.md</a></h3>
+          <p>Functional reactive programming specification.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/deterministic_time_spec.md">deterministic_time_spec.md</a></h3>
+          <p>Deterministic timing guarantees.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/learning_theory_spec.md">learning_theory_spec.md</a></h3>
+          <p>Computational learning theory foundations.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/meta_modal_logic_spec.md">meta_modal_logic_spec.md</a></h3>
+          <p>Meta-level modal logic for reasoning about specifications.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/context_comonad_spec.md">context_comonad_spec.md</a></h3>
+          <p>Comonadic context for scoped computations.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/context_temporal_logic_spec.md">context_temporal_logic_spec.md</a></h3>
+          <p>Temporal logic over computational contexts.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/analysis_abstract_interp_spec.md">analysis_abstract_interp_spec.md</a></h3>
+          <p>Abstract interpretation for static analysis.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/hot_reload_projection_spec.md">hot_reload_projection_spec.md</a></h3>
+          <p>Hot reload via projection editing.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/history_persistent_tree_spec.md">history_persistent_tree_spec.md</a></h3>
+          <p>Persistent tree structure for edit history.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/agent_planning_mdp_spec.md">agent_planning_mdp_spec.md</a></h3>
+          <p>Agent planning via Markov decision processes.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Build</h2>
+      <div class="grid">
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/build/build_lattice_spec.md">build_lattice_spec.md</a></h3>
+          <p>Lattice-based build dependency ordering.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/build/dependency_sat_spec.md">dependency_sat_spec.md</a></h3>
+          <p>Dependency satisfiability solving.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/build/linker_logic_spec.md">linker_logic_spec.md</a></h3>
+          <p>Linker logic and symbol resolution.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/build/backend_tiling_spec.md">backend_tiling_spec.md</a></h3>
+          <p>Backend code generation tiling strategy.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/build/abi_alignment_algebra_spec.md">abi_alignment_algebra_spec.md</a></h3>
+          <p>ABI alignment via algebraic constraints.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/build/abi_data_refinement_spec.md">abi_data_refinement_spec.md</a></h3>
+          <p>ABI data layout refinement rules.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Optimization</h2>
+      <div class="grid">
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/optimization/optimization_search_engine_specification.md">optimization_search_engine_specification.md</a></h3>
+          <p>Search engine for optimization pass selection.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/optimization/optimization_bayesian_spec.md">optimization_bayesian_spec.md</a></h3>
+          <p>Bayesian optimization for parameter tuning.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/optimization/optimization_manifold_spec.md">optimization_manifold_spec.md</a></h3>
+          <p>Manifold-based optimization space exploration.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/optimization/selective_monomorphization_spec.md">selective_monomorphization_spec.md</a></h3>
+          <p>Selective monomorphization for code size reduction.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Mathematics</h2>
+      <div class="grid">
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/math/maths_spec.md">maths_spec.md</a></h3>
+          <p>Mathematical foundations and formalization approach.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/math/unit_group_theory_spec.md">unit_group_theory_spec.md</a></h3>
+          <p>Unit group theory for algebraic abstractions.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Standard Library</h2>
+      <div class="grid">
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/stdlib/stdlib_algebraic_spec.md">stdlib_algebraic_spec.md</a></h3>
+          <p>Algebraic data structures for the standard library.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/stdlib/stdlib_amortized_spec.md">stdlib_amortized_spec.md</a></h3>
+          <p>Amortized analysis for standard library operations.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Financial</h2>
+      <div class="grid">
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/financial/financial_spec.md">financial_spec.md</a></h3>
+          <p>Financial domain types, fixed-point arithmetic, and regulatory constraints.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>UI</h2>
+      <div class="grid">
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/ui/ui_constraint_algebra_spec.md">ui_constraint_algebra_spec.md</a></h3>
+          <p>Constraint algebra for UI layout solving.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/ui/ui_event_topology_spec.md">ui_event_topology_spec.md</a></h3>
+          <p>Event topology for UI interaction graphs.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/ui/semantic_accessibility_spec.md">semantic_accessibility_spec.md</a></h3>
+          <p>Semantic accessibility requirements and audit rules.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Licensing</h2>
+      <div class="grid">
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/licensing/licensing_spec.md">licensing_spec.md</a></h3>
+          <p>Licensing model and compliance requirements.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/licensing/license_deontic_logic_spec.md">license_deontic_logic_spec.md</a></h3>
+          <p>Deontic logic for license obligation modeling.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Conventions</h2>
+      <div class="grid">
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/conventions/terminology_standardization_spec.md">terminology_standardization_spec.md</a></h3>
+          <p>Terminology standardization across specifications.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/conventions/version_compatibility_spec.md">version_compatibility_spec.md</a></h3>
+          <p>Version compatibility and migration rules.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Validation</h2>
+      <div class="grid">
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/validation/unproven_assumptions_spec.md">unproven_assumptions_spec.md</a></h3>
+          <p>Registry of unproven assumptions and open verification gaps.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Standalone Specifications</h2>
+      <ul class="doc-links">
+        <li><a href="https://github.com/WyattAu/morph/blob/main/spec/distributed_vector_clock_spec.md">distributed_vector_clock_spec.md</a></li>
+        <li><a href="https://github.com/WyattAu/morph/blob/main/spec/registry_consensus_spec.md">registry_consensus_spec.md</a></li>
+        <li><a href="https://github.com/WyattAu/morph/blob/main/spec/scheduler_randomized_stealing_spec.md">scheduler_randomized_stealing_spec.md</a></li>
+        <li><a href="https://github.com/WyattAu/morph/blob/main/spec/storage_dawg_spec.md">storage_dawg_spec.md</a></li>
+        <li><a href="https://github.com/WyattAu/morph/blob/main/spec/module_existential_spec.md">module_existential_spec.md</a></li>
+        <li><a href="https://github.com/WyattAu/morph/blob/main/spec/GLOSSARY.md">GLOSSARY.md</a></li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    <p>Morph -- Formal Specification for an Agentic Programming Language</p>
+    <p>
+      <a href="https://github.com/WyattAu/morph">Source</a>
+      <span class="sep">|</span>
+      <a href="https://github.com/WyattAu/morph/blob/main/LICENSE">License (Apache-2.0)</a>
+    </p>
+  </footer>
+</body>
+</html>

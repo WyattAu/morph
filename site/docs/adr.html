@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Architecture Decision Records -- Morph</title>
+  <meta name="description" content="Morph Architecture Decision Records (ADRs): key decisions on Lean toolchain, module patterns, build system, proof requirements, and CI/CD.">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>M</text></svg>">
+</head>
+<body>
+  <header>
+    <nav>
+      <a href="../index.html" class="logo">Morph</a>
+      <div class="nav-links">
+        <a href="../index.html#overview">Overview</a>
+        <a href="../index.html#verification">Verification</a>
+        <a href="specs.html">Specification</a>
+        <a href="tools.html">Tools</a>
+        <a href="index.html">Docs</a>
+        <a href="../index.html#getting-started">Getting Started</a>
+        <a href="https://github.com/WyattAu/morph" class="nav-cta">GitHub</a>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <section>
+      <p style="margin-bottom:0.25rem"><a href="index.html">&larr; Documentation</a></p>
+      <h1>Architecture Decision Records</h1>
+      <p class="tagline">Key design decisions for the Morph project</p>
+      <p class="description">ADRs capture significant architectural decisions, their context, rationale, and consequences. All records live under <code>.specs/02_adrs/</code> in the repository.</p>
+    </section>
+
+    <section>
+      <h2>Toolchain and Dependencies</h2>
+      <div class="grid">
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/.specs/02_adrs/ADR-001-lean-4.28.0-rc1-migration.md">ADR-001: Lean 4.28.0-rc1 Migration</a></h3>
+          <p>Decision to migrate the Lean toolchain to version 4.28.0-rc1, including rationale for the upgrade path and compatibility considerations.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/.specs/02_adrs/ADR-003-dependency-version-alignment.md">ADR-003: Dependency Version Alignment</a></h3>
+          <p>Policy for aligning dependency versions across the project to ensure reproducible builds and consistent behavior.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/.specs/02_adrs/ADR-003-lean4-mathlib4.md">ADR-003: Lean 4 and mathlib4</a></h3>
+          <p>Decision on the relationship between Lean 4 and mathlib4, including version compatibility and dependency management strategy.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Module Organization</h2>
+      <div class="grid">
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/.specs/02_adrs/ADR-001-three-file-module-pattern.md">ADR-001: Three-File Module Pattern</a></h3>
+          <p>Establishes the three-file module pattern (types, rules, proofs) for organizing Lean specification modules.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/.specs/02_adrs/ADR-004-three-file-module-pattern.md">ADR-004: Three-File Module Pattern (revised)</a></h3>
+          <p>Revised version of the three-file module pattern decision, incorporating lessons learned from initial adoption.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/.specs/02_adrs/ADR-005-domain-based-module-organization.md">ADR-005: Domain-Based Module Organization</a></h3>
+          <p>Decision to organize modules by domain (type, concurrency, memory, etc.) rather than by technical layer.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Code Quality</h2>
+      <div class="grid">
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/.specs/02_adrs/ADR-002-zero-tolerance-commented-code.md">ADR-002: Zero-Tolerance Commented Code</a></h3>
+          <p>Policy of zero tolerance for commented-out code in the repository. All dead code must be removed, not commented.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/.specs/02_adrs/ADR-002-proofwidgets-removal.md">ADR-002: ProofWidgets Removal</a></h3>
+          <p>Decision to remove ProofWidgets dependency and rationale for simplifying the proof toolchain.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/.specs/02_adrs/ADR-006-complete-proof-requirement.md">ADR-006: Complete Proof Requirement</a></h3>
+          <p>Requirement that all specification properties must have complete proofs. No <code>sorry</code> or partial proofs in production modules.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Build and Infrastructure</h2>
+      <div class="grid">
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/.specs/02_adrs/ADR-004-lake-build-system.md">ADR-004: Lake Build System</a></h3>
+          <p>Decision to use Lake as the primary build system for Lean 4, including configuration approach and dependency management.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/.specs/02_adrs/ADR-007-ci-cd-integration.md">ADR-007: CI/CD Integration</a></h3>
+          <p>CI/CD pipeline design: GitHub Actions workflows, pre-commit hooks, build verification, and deployment strategy.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Morph -- Formal Specification for an Agentic Programming Language</p>
+    <p>
+      <a href="https://github.com/WyattAu/morph">Source</a>
+      <span class="sep">|</span>
+      <a href="https://github.com/WyattAu/morph/blob/main/LICENSE">License (Apache-2.0)</a>
+    </p>
+  </footer>
+</body>
+</html>

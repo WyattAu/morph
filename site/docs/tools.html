@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>spec-tools -- Morph</title>
+  <meta name="description" content="spec-tools: Python-based specification validation tooling for the Morph project. Format checking, linting, cross-references, and coverage.">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>M</text></svg>">
+</head>
+<body>
+  <header>
+    <nav>
+      <a href="../index.html" class="logo">Morph</a>
+      <div class="nav-links">
+        <a href="../index.html#overview">Overview</a>
+        <a href="../index.html#verification">Verification</a>
+        <a href="specs.html">Specification</a>
+        <a href="tools.html" style="color:var(--text)">Tools</a>
+        <a href="index.html">Docs</a>
+        <a href="../index.html#getting-started">Getting Started</a>
+        <a href="https://github.com/WyattAu/morph" class="nav-cta">GitHub</a>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <section>
+      <p style="margin-bottom:0.25rem"><a href="index.html">&larr; Documentation</a></p>
+      <h1>spec-tools</h1>
+      <p class="tagline">Python-based specification validation and linting</p>
+      <p class="description">spec-tools provides automated validation for all 60+ specification modules. It enforces format consistency, checks cross-references, validates link integrity, and reports coverage metrics. 636 tests with 88% coverage.</p>
+    </section>
+
+    <section>
+      <h2>Installation</h2>
+      <div class="code-block">
+<pre><code># Install spec-tools as an editable package
+pip install -e scripts/</code></pre>
+      </div>
+    </section>
+
+    <section>
+      <h2>Usage</h2>
+      <div class="code-block">
+<pre><code># Validate all specification modules
+spec-tools validate spec/
+
+# Lint specification files for style and format
+spec-tools lint spec/
+
+# Run the full test suite
+pytest scripts/</code></pre>
+      </div>
+    </section>
+
+    <section>
+      <h2>Capabilities</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Format Checking</h3>
+          <p>Validates that each specification file follows the required frontmatter format, section structure, and markdown conventions.</p>
+        </div>
+        <div class="card">
+          <h3>Linting</h3>
+          <p>Checks for common issues: trailing whitespace, line length, heading hierarchy, missing sections, and style violations.</p>
+        </div>
+        <div class="card">
+          <h3>Cross-Reference Validation</h3>
+          <p>Verifies that all internal cross-references between specification modules resolve correctly. Detects dangling references.</p>
+        </div>
+        <div class="card">
+          <h3>Link Integrity</h3>
+          <p>Checks that all external links (GitHub URLs, documentation references) are valid and reachable.</p>
+        </div>
+        <div class="card">
+          <h3>Structural Analysis</h3>
+          <p>Analyzes the dependency graph between specification modules. Reports orphaned files, circular references, and coverage gaps.</p>
+        </div>
+        <div class="card">
+          <h3>Coverage Reporting</h3>
+          <p>Generates coverage metrics showing which specification areas are complete, partial, or missing documentation.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Documentation</h2>
+      <div class="grid">
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/docs/spec-tools/user-guide.md">User Guide</a></h3>
+          <p>End-user documentation for spec-tools. Covers installation, CLI usage, configuration options, and output formats.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/docs/spec-tools/developer-guide.md">Developer Guide</a></h3>
+          <p>Developer documentation for extending spec-tools. Covers architecture, adding new checks, test patterns, and contribution workflow.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>CI Integration</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Pre-commit Hooks</h3>
+          <p>spec-tools runs as part of pre-commit hooks, enforcing build, lint, format, and type-check gates before every commit.</p>
+        </div>
+        <div class="card">
+          <h3>GitHub Actions</h3>
+          <p>Spec validation runs in CI on every push and PR. Separate workflow for nightly Nix-based builds with full environment.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Morph -- Formal Specification for an Agentic Programming Language</p>
+    <p>
+      <a href="https://github.com/WyattAu/morph">Source</a>
+      <span class="sep">|</span>
+      <a href="https://github.com/WyattAu/morph/blob/main/LICENSE">License (Apache-2.0)</a>
+    </p>
+  </footer>
+</body>
+</html>

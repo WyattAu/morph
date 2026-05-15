@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Architecture -- Morph</title>
+  <meta name="description" content="Morph architecture documentation: build system, layering, input handling, and GUI architecture.">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>M</text></svg>">
+</head>
+<body>
+  <header>
+    <nav>
+      <a href="../index.html" class="logo">Morph</a>
+      <div class="nav-links">
+        <a href="../index.html#overview">Overview</a>
+        <a href="../index.html#verification">Verification</a>
+        <a href="specs.html">Specification</a>
+        <a href="tools.html">Tools</a>
+        <a href="index.html">Docs</a>
+        <a href="../index.html#getting-started">Getting Started</a>
+        <a href="https://github.com/WyattAu/morph" class="nav-cta">GitHub</a>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <section>
+      <p style="margin-bottom:0.25rem"><a href="index.html">&larr; Documentation</a></p>
+      <h1>Architecture</h1>
+      <p class="tagline">System design and structural documentation</p>
+      <p class="description">Architecture documents describe the high-level structure, layering, build system, and design decisions that shape the Morph project.</p>
+    </section>
+
+    <section>
+      <h2>Specification Architecture Layers</h2>
+      <p style="margin-bottom:1rem;font-size:0.9rem;color:var(--text-dim)">The specification follows a layered architecture, from core definitions to validation infrastructure.</p>
+      <div class="arch-layers">
+        <div class="layer">
+          <span class="layer-name">Core</span>
+          <span class="layer-desc">Types, expressions, operators, values</span>
+          <code>Core.lean, Syntax.lean</code>
+        </div>
+        <div class="layer">
+          <span class="layer-name">Semantics</span>
+          <span class="layer-desc">Small-step reduction, evaluation, substitution</span>
+          <code>Semantics.lean</code>
+        </div>
+        <div class="layer">
+          <span class="layer-name">Type System</span>
+          <span class="layer-desc">Typing rules, lemmas, examples</span>
+          <code>Specs/TypeSystem/</code>
+        </div>
+        <div class="layer">
+          <span class="layer-name">Verification</span>
+          <span class="layer-desc">Progress, Preservation, ExprDepth</span>
+          <code>Proofs/TypeSoundness/</code>
+        </div>
+        <div class="layer">
+          <span class="layer-name">Infrastructure</span>
+          <span class="layer-desc">Type checker, parser, tests</span>
+          <code>TypeChecker.lean, Tests/</code>
+        </div>
+        <div class="layer">
+          <span class="layer-name">Validation</span>
+          <span class="layer-desc">Spec-tools (Python), 60+ spec modules</span>
+          <code>scripts/spec_tools/, spec/</code>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Architecture Documents</h2>
+      <div class="grid">
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/docs/architecture/layering_architecture.md">Layering Architecture</a></h3>
+          <p>System layering strategy and module boundaries. Defines how the core calculus, type system, verification layer, and tooling layer interact.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/docs/architecture/build_system_architecture.md">Build System Architecture</a></h3>
+          <p>Lake build system configuration, dependency management, and Lean 4 project structure. Covers elan toolchain integration and CI build pipeline.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/docs/architecture/input_architecture.md">Input Architecture</a></h3>
+          <p>Input processing pipeline: lexing, parsing, AST construction, and desugaring. Covers the path from source text to core syntax.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/docs/architecture/gui_architecture.md">GUI Architecture</a></h3>
+          <p>Graphical interface architecture for Morph tooling. Covers rendering pipeline, editor integration, and visualization of proof states.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Related Specifications</h2>
+      <div class="grid">
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/architecture/layered_concurrency_spec.md">Layered Concurrency</a></h3>
+          <p>Formal specification for the layered concurrency model used in agent communication.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/build/build_lattice_spec.md">Build Lattice</a></h3>
+          <p>Lattice-based build dependency ordering and incremental compilation.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/language/module_system_spec.md">Module System</a></h3>
+          <p>Module system design, namespace resolution, and import semantics.</p>
+        </div>
+        <div class="card">
+          <h3><a href="https://github.com/WyattAu/morph/blob/main/spec/tooling/compiler_bisimulation_spec.md">Compiler Bisimulation</a></h3>
+          <p>Compiler correctness guarantees via bisimulation relations.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Directory Structure</h2>
+      <div class="code-block">
+<pre><code>morph/
+  Morph/                  # Lean 4 source
+    Core.lean             # Core types and definitions
+    Syntax.lean           # Syntax definitions
+    Semantics.lean        # Operational semantics
+    Specs/                # Type system specifications
+      TypeSystem/
+    Proofs/               # Formal proofs
+      TypeSoundness/
+    Tests/                # Lean tests
+    TypeChecker.lean      # Type checker implementation
+  spec/                   # Python spec modules (60+)
+  docs/                   # Architecture and convention docs
+  .specs/                 # ADRs, standards, threat model
+  scripts/                # spec-tools (Python validation)
+  impl/                   # Implementation notes</code></pre>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Morph -- Formal Specification for an Agentic Programming Language</p>
+    <p>
+      <a href="https://github.com/WyattAu/morph">Source</a>
+      <span class="sep">|</span>
+      <a href="https://github.com/WyattAu/morph/blob/main/LICENSE">License (Apache-2.0)</a>
+    </p>
+  </footer>
+</body>
+</html>
