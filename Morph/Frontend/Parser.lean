@@ -45,7 +45,7 @@ def parseIdentifier (p : Parser) : Option (Expr × Parser) :=
   match peek p with
   | some t =>
     match t.kind with
-    | .identifier => some (.var ⟨t.lexeme⟩, advance p)
+    | .identifier => some (.fvar t.lexeme, advance p)
     | _ => none
   | none => none
 
@@ -211,7 +211,6 @@ where
       | some t =>
         match t.kind with
         | .identifier =>
-          let id := ⟨t.lexeme⟩
           let p := advance p
           match expect (.operator "=") p with
           | none => none
@@ -224,7 +223,7 @@ where
               | some p =>
                 match parseExpr p with
                 | none => none
-                | some (body, p) => some (.let id init body, p)
+                | some (body, p) => some (.let_ init body, p)
         | _ => none
       | none => none
 
@@ -233,18 +232,18 @@ where
     | none => none
     | some p => parseFnParams [] p
 
-  parseFnParams (params : List Id) (p : Parser) : Option (Expr × Parser) :=
+  parseFnParams (params : List String) (p : Parser) : Option (Expr × Parser) :=
     match peek p with
     | some t =>
       match t.kind with
       | .identifier =>
         let p := advance p
-        parseFnParams (⟨t.lexeme⟩ :: params) p
+        parseFnParams (t.lexeme :: params) p
       | .operator "->" =>
         let p := advance p
         match parseExpr p with
         | none => none
-        | some (body, p) => some (.lam params.reverse body, p)
+        | some (body, p) => some (.lam params.length body, p)
       | _ => none
     | none => none
 

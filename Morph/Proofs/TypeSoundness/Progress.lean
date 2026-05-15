@@ -20,12 +20,13 @@ open HasType
 /-! # Progress Theorem
 
 Every well-typed closed term is either a value or can take a step.
+Closed means: empty bound-variable context (bvs = []) and empty free-variable env (Γ = []).
 -/
 
 /-! ## Canonical Forms -/
 
 theorem canonical_bool : forall {e : Expr},
-    IsValue e -> HasType [] e .boolType -> exists b, e = .lit (.bool b) := by
+    IsValue e -> HasType [] [] e .boolType -> exists b, e = .lit (.bool b) := by
   intro e hv ht
   cases hv with
   | lit v => cases v with
@@ -34,7 +35,7 @@ theorem canonical_bool : forall {e : Expr},
   | lam _ _ => cases ht
 
 theorem canonical_int : forall {e : Expr},
-    IsValue e -> HasType [] e .intType -> exists n, e = .lit (.int n) := by
+    IsValue e -> HasType [] [] e .intType -> exists n, e = .lit (.int n) := by
   intro e hv ht
   cases hv with
   | lit v => cases v with
@@ -43,14 +44,6 @@ theorem canonical_int : forall {e : Expr},
   | lam _ _ => cases ht
 
 /-! ## Helpers -/
-
-private theorem lookupTyp_nil (name : String) : lookupTyp [] name = none := by
-  unfold lookupTyp; simp
-
-private theorem sub_lt_d (d : Nat) {sub parent : Expr}
-    (hSub : exprDepth sub < exprDepth parent)
-    (hDepth : exprDepth parent < d + 1) : exprDepth sub < d :=
-  Nat.lt_of_lt_of_le hSub (Nat.le_of_lt_succ hDepth)
 
 private theorem depth_unop (op : Operator) {e : Expr} :
     exprDepth e < exprDepth (.unop op e) := by
@@ -66,8 +59,8 @@ private theorem depth_binop_r (op : Operator) {e1 e2 : Expr} :
   simp only [exprDepth]
   exact Nat.lt_of_le_of_lt (Nat.le_max_right _ _) (Nat.lt_succ_self _)
 
-private theorem depth_let_l {id : Id} {e1 e2 : Expr} :
-    exprDepth e1 < exprDepth (.let id e1 e2) := by
+private theorem depth_let_l {e1 e2 : Expr} :
+    exprDepth e1 < exprDepth (.let_ e1 e2) := by
   simp only [exprDepth]
   exact Nat.lt_of_le_of_lt (Nat.le_max_left _ _) (Nat.lt_succ_self _)
 
@@ -76,13 +69,13 @@ private theorem depth_if_c {c t f : Expr} :
   simp only [exprDepth]
   exact Nat.lt_of_le_of_lt (Nat.le_max_left _ _) (Nat.lt_succ_self _)
 
-private theorem depth_for_s {id : Id} {s e : Expr} {body : List Expr} :
-    exprDepth s < exprDepth (.forLoop id s e body) := by
+private theorem depth_for_s {s e : Expr} {body : List Expr} :
+    exprDepth s < exprDepth (.forLoop s e body) := by
   simp only [exprDepth]
   exact Nat.lt_of_le_of_lt (Nat.le_max_left (exprDepth s) _) (Nat.lt_succ_self _)
 
-private theorem depth_for_e {id : Id} {s e : Expr} {body : List Expr} :
-    exprDepth e < exprDepth (.forLoop id s e body) := by
+private theorem depth_for_e {s e : Expr} {body : List Expr} :
+    exprDepth e < exprDepth (.forLoop s e body) := by
   simp only [exprDepth]
   exact Nat.lt_of_le_of_lt
     (Nat.le_trans (Nat.le_max_left (exprDepth e) (listExprDepth body))
@@ -99,67 +92,72 @@ private theorem depth_app_fn {fn : Expr} {args : List Expr} :
   simp only [exprDepth]
   exact Nat.lt_of_le_of_lt (Nat.le_max_left _ _) (Nat.lt_succ_self _)
 
-private theorem HasTypeAll_nil_types {Γ : TypEnv} {tys : List Typ} :
-    HasTypeAll Γ [] tys → tys = [] := by
+private theorem HasTypeAll_nil_types {bvs : List Typ} {Γ : TypEnv} {tys : List Typ} :
+    HasTypeAll bvs Γ [] tys → tys = [] := by
   intro h
   cases h with
   | nil => rfl
 
-private theorem HasTypeAll_length (Γ : TypEnv) (es : List Expr) (taus : List Typ) :
-    HasTypeAll Γ es taus → es.length = taus.length := by
+private theorem HasTypeAll_length (bvs : List Typ) (Γ : TypEnv) (es : List Expr) (τs : List Typ) :
+    HasTypeAll bvs Γ es τs → es.length = τs.length := by
   intro h
   cases es with
   | nil =>
     match h with
-    | HasTypeAll.nil _ =>
-      cases taus with
+    | HasTypeAll.nil _ _ =>
+      cases τs with
       | nil => rfl
       | cons => contradiction
   | cons e es' =>
-    cases taus with
+    cases τs with
     | nil => cases h
-    | cons tau taus' =>
+    | cons τ τs' =>
       simp only [List.length_cons]
       match h with
-      | HasTypeAll.cons _ _ _ _ _ _ hRest =>
-        exact congrArg (· + 1) (HasTypeAll_length Γ es' taus' hRest)
+      | HasTypeAll.cons _ _ _ _ _ _ _ hRest =>
+        exact congrArg (· + 1) (HasTypeAll_length bvs Γ es' τs' hRest)
 
-private theorem HasTypeAll_append_cons_head {Γ : TypEnv} {e : Expr} {es : List Expr}
-    {τs : List Typ} {τ : Typ} (h : HasTypeAll Γ (e :: es) (τs ++ [τ])) :
-    ∃ τ_h, HasType Γ e τ_h := by
+private theorem HasTypeAll_append_cons_head {bvs : List Typ} {Γ : TypEnv} {e : Expr} {es : List Expr}
+    {τs : List Typ} {τ : Typ} (h : HasTypeAll bvs Γ (e :: es) (τs ++ [τ])) :
+    ∃ τ_h, HasType bvs Γ e τ_h := by
   cases τs with
   | nil =>
-    change HasTypeAll Γ (e :: es) [τ] at h
+    change HasTypeAll bvs Γ (e :: es) [τ] at h
     cases h with
-    | cons _ _ _ _ _ hE _ => exact ⟨_, hE⟩
+    | cons _ _ _ _ _ _ hE _ => exact ⟨_, hE⟩
   | cons τ' τs' =>
-    change HasTypeAll Γ (e :: es) (τ' :: (τs' ++ [τ])) at h
+    change HasTypeAll bvs Γ (e :: es) (τ' :: (τs' ++ [τ])) at h
     cases h with
-    | cons _ _ _ _ _ hE _ => exact ⟨_, hE⟩
+    | cons _ _ _ _ _ _ hE _ => exact ⟨_, hE⟩
 
 /-! ## Progress (strong induction on depth) -/
 
 private theorem progress_strong :
     forall (d : Nat) (e : Expr), exprDepth e < d ->
-    forall (tau : Typ), HasType [] e tau -> IsValue e \/ exists e', Step e e' := by
+    forall (τ : Typ), HasType [] [] e τ -> IsValue e \/ exists e', Step e e' := by
   intro d
   induction d with
   | zero =>
     intro e hDepth _ _
     exact absurd hDepth (Nat.not_lt_zero _)
   | succ d ih =>
-    intro e hDepth tau hType
+    intro e hDepth τ hType
     cases hType with
-    | var_type _ id _ hLookup =>
+    | bvar_type _ _ n hLen =>
       exfalso
-      exact absurd (lookupTyp_nil id.name |>.symm.trans hLookup) (by contradiction)
-    | lit_int _ n => left; exact IsValue.lit (Value.int n)
-    | lit_bool _ b => left; exact IsValue.lit (Value.bool b)
-    | lit_string _ s => left; exact IsValue.lit (Value.string s)
-    | lit_unit => left; exact IsValue.lit Value.unit
-    | lit_pointer _ p => left; exact IsValue.lit (Value.pointer p)
-    | unop_not _ eSub hSub =>
-      have hRes := ih eSub (sub_lt_d d (depth_unop .not) hDepth) .boolType hSub
+      exact absurd hLen (Nat.not_lt_zero _)
+    | fvar_type _ _ name τ_val hLookup =>
+      exfalso
+      have h_eq : lookupTyp [] name = none := rfl
+      rw [h_eq] at hLookup
+      cases hLookup
+    | lit_int _ _ n => left; exact IsValue.lit (Value.int n)
+    | lit_bool _ _ b => left; exact IsValue.lit (Value.bool b)
+    | lit_string _ _ s => left; exact IsValue.lit (Value.string s)
+    | lit_unit _ _ => left; exact IsValue.lit Value.unit
+    | lit_pointer _ _ p => left; exact IsValue.lit (Value.pointer p)
+    | unop_not _ _ eSub hSub =>
+      have hRes := ih eSub (Nat.lt_of_lt_of_le (depth_unop .not) (Nat.le_of_lt_succ hDepth)) .boolType hSub
       cases hRes with
       | inl hv =>
         obtain ⟨b, hb⟩ := canonical_bool hv hSub
@@ -167,8 +165,8 @@ private theorem progress_strong :
       | inr hStep =>
         obtain ⟨e', hs⟩ := hStep
         right; exact ⟨.unop .not e', Step.unop_step .not eSub e' hs⟩
-    | unop_notb _ eSub hSub =>
-      have hRes := ih eSub (sub_lt_d d (depth_unop .notb) hDepth) .intType hSub
+    | unop_notb _ _ eSub hSub =>
+      have hRes := ih eSub (Nat.lt_of_lt_of_le (depth_unop .notb) (Nat.le_of_lt_succ hDepth)) .intType hSub
       cases hRes with
       | inl hv =>
         obtain ⟨k, hk⟩ := canonical_int hv hSub
@@ -176,9 +174,9 @@ private theorem progress_strong :
       | inr hStep =>
         obtain ⟨e', hs⟩ := hStep
         right; exact ⟨.unop .notb e', Step.unop_step .notb eSub e' hs⟩
-    | binop_arith _ op e1 e2 hArith hSub1 hSub2 =>
-      have h1 := ih e1 (sub_lt_d d (depth_binop_l op) hDepth) .intType hSub1
-      have h2 := ih e2 (sub_lt_d d (depth_binop_r op) hDepth) .intType hSub2
+    | binop_arith _ _ op e1 e2 hArith hSub1 hSub2 =>
+      have h1 := ih e1 (Nat.lt_of_lt_of_le (depth_binop_l op) (Nat.le_of_lt_succ hDepth)) .intType hSub1
+      have h2 := ih e2 (Nat.lt_of_lt_of_le (depth_binop_r op) (Nat.le_of_lt_succ hDepth)) .intType hSub2
       cases h1 with
       | inl hv1 =>
         obtain ⟨k1, hk1⟩ := canonical_int hv1 hSub1
@@ -216,9 +214,9 @@ private theorem progress_strong :
       | inr hStep1 =>
         obtain ⟨e1', hs⟩ := hStep1
         right; exact ⟨.binop op e1' e2, Step.binop_left op e1 e1' e2 hs⟩
-    | binop_comp _ op e1 e2 hComp hSub1 hSub2 =>
-      have h1 := ih e1 (sub_lt_d d (depth_binop_l op) hDepth) .intType hSub1
-      have h2 := ih e2 (sub_lt_d d (depth_binop_r op) hDepth) .intType hSub2
+    | binop_comp _ _ op e1 e2 hComp hSub1 hSub2 =>
+      have h1 := ih e1 (Nat.lt_of_lt_of_le (depth_binop_l op) (Nat.le_of_lt_succ hDepth)) .intType hSub1
+      have h2 := ih e2 (Nat.lt_of_lt_of_le (depth_binop_r op) (Nat.le_of_lt_succ hDepth)) .intType hSub2
       cases h1 with
       | inl hv1 =>
         obtain ⟨k1, hk1⟩ := canonical_int hv1 hSub1
@@ -236,9 +234,9 @@ private theorem progress_strong :
       | inr hStep1 =>
         obtain ⟨e1', hs⟩ := hStep1
         right; exact ⟨.binop op e1' e2, Step.binop_left op e1 e1' e2 hs⟩
-    | binop_logic _ op e1 e2 hLogic hSub1 hSub2 =>
-      have h1 := ih e1 (sub_lt_d d (depth_binop_l op) hDepth) .boolType hSub1
-      have h2 := ih e2 (sub_lt_d d (depth_binop_r op) hDepth) .boolType hSub2
+    | binop_logic _ _ op e1 e2 hLogic hSub1 hSub2 =>
+      have h1 := ih e1 (Nat.lt_of_lt_of_le (depth_binop_l op) (Nat.le_of_lt_succ hDepth)) .boolType hSub1
+      have h2 := ih e2 (Nat.lt_of_lt_of_le (depth_binop_r op) (Nat.le_of_lt_succ hDepth)) .boolType hSub2
       cases h1 with
       | inl hv1 =>
         obtain ⟨b1, hb1⟩ := canonical_bool hv1 hSub1
@@ -262,9 +260,9 @@ private theorem progress_strong :
       | inr hStep1 =>
         obtain ⟨e1', hs⟩ := hStep1
         right; exact ⟨.binop op e1' e2, Step.binop_left op e1 e1' e2 hs⟩
-    | binop_bitwise _ op e1 e2 hBitwise hSub1 hSub2 =>
-      have h1 := ih e1 (sub_lt_d d (depth_binop_l op) hDepth) .intType hSub1
-      have h2 := ih e2 (sub_lt_d d (depth_binop_r op) hDepth) .intType hSub2
+    | binop_bitwise _ _ op e1 e2 hBitwise hSub1 hSub2 =>
+      have h1 := ih e1 (Nat.lt_of_lt_of_le (depth_binop_l op) (Nat.le_of_lt_succ hDepth)) .intType hSub1
+      have h2 := ih e2 (Nat.lt_of_lt_of_le (depth_binop_r op) (Nat.le_of_lt_succ hDepth)) .intType hSub2
       cases h1 with
       | inl hv1 =>
         obtain ⟨k1, hk1⟩ := canonical_int hv1 hSub1
@@ -288,42 +286,43 @@ private theorem progress_strong :
       | inr hStep1 =>
         obtain ⟨e1', hs⟩ := hStep1
         right; exact ⟨.binop op e1' e2, Step.binop_left op e1 e1' e2 hs⟩
-    | lam_type _ x body _ _ _ => left; exact IsValue.lam [x] body
-    | app_type =>
-      rename_i fnE argsE tRs hArgsE hFnE
-      have ih_fn := ih fnE (sub_lt_d d depth_app_fn hDepth) (.functionType tRs tau) hFnE
+    | lam_type _ _ n body paramTys retTy hLen hBody =>
+      left; exact IsValue.lam n body
+    | app_type _ _ fnE argsE τs _ hFnE hArgsE =>
+      have ih_fn := ih fnE (Nat.lt_of_lt_of_le depth_app_fn (Nat.le_of_lt_succ hDepth)) (.functionType τs τ) hFnE
       cases ih_fn with
       | inl hv =>
         cases hv with
         | lit _ =>
           exfalso
           cases hFnE with <;> contradiction
-        | lam xs body =>
-          have hLam : HasType [] (.lam xs body) (.functionType tRs tau) := hFnE
-          have hArgsLen : argsE.length = xs.length := by
-            have h1 := HasTypeAll_length [] argsE tRs hArgsE
-            cases hLam with
-            | lam_type _ _ _ _ _ => simp only [List.length_cons, List.length_nil] at h1; exact h1
+        | lam n body =>
+          have hArgsLen : argsE.length = n := by
+            have h := HasTypeAll_length [] [] argsE τs hArgsE
+            cases hFnE with
+            | lam_type _ _ _ _ paramTys _ hLen _ =>
+              simp at *
+              omega
             | _ => contradiction
           right
-          exact ⟨substAll body xs argsE, Step.app_lam xs body argsE hArgsLen⟩
+          exact ⟨substAll argsE.reverse body, Step.app_lam n body argsE hArgsLen⟩
       | inr hStep_fn =>
         obtain ⟨fnE', hs⟩ := hStep_fn
         right; exact ⟨.app fnE' argsE, Step.app_fn fnE fnE' argsE hs⟩
-    | let_type _ id e1 e2 tau1 tau2 hSub1 hSub2 =>
-      have h1 := ih e1 (sub_lt_d d depth_let_l hDepth) tau1 hSub1
+    | let_type _ _ e1 e2 τ1 τ2 hSub1 hSub2 =>
+      have h1 := ih e1 (Nat.lt_of_lt_of_le depth_let_l (Nat.le_of_lt_succ hDepth)) τ1 hSub1
       cases h1 with
       | inl hv =>
         cases hv with
         | lit v =>
-          right; exact ⟨subst e2 id.name (.lit v), Step.let_subst id (.lit v) e2 (IsValue.lit v)⟩
-        | lam xs body =>
-          right; exact ⟨subst e2 id.name (.lam xs body), Step.let_subst id (.lam xs body) e2 (IsValue.lam xs body)⟩
+          right; exact ⟨subst e2 (.lit v), Step.let_subst (.lit v) e2 (IsValue.lit v)⟩
+        | lam n body =>
+          right; exact ⟨subst e2 (.lam n body), Step.let_subst (.lam n body) e2 (IsValue.lam n body)⟩
       | inr hStep1 =>
         obtain ⟨e1', hs⟩ := hStep1
-        right; exact ⟨.let id e1' e2, Step.let_step id e1 e1' e2 hs⟩
-    | if_type _ c t f tau hCond _ _ =>
-      have hc := ih c (sub_lt_d d depth_if_c hDepth) .boolType hCond
+        right; exact ⟨.let_ e1' e2, Step.let_step e1 e1' e2 hs⟩
+    | if_type _ _ c t f τ_if hCond hT hF =>
+      have hc := ih c (Nat.lt_of_lt_of_le depth_if_c (Nat.le_of_lt_succ hDepth)) .boolType hCond
       cases hc with
       | inl hv =>
         obtain ⟨b, hb⟩ := canonical_bool hv hCond
@@ -334,27 +333,27 @@ private theorem progress_strong :
       | inr hStep =>
         obtain ⟨c', hs⟩ := hStep
         right; exact ⟨.ifThenElse c' t f, Step.if_cond c c' t f hs⟩
-    | for_type _ id s e body hStart hEnd hBody =>
-      have hResS := ih s (sub_lt_d d depth_for_s hDepth) .intType hStart
+    | for_type _ _ s e body hStart hEnd hBody =>
+      have hResS := ih s (Nat.lt_of_lt_of_le depth_for_s (Nat.le_of_lt_succ hDepth)) .intType hStart
       cases hResS with
       | inl hv =>
         obtain ⟨k1, hk1⟩ := canonical_int hv hStart
         rw [hk1]
-        have hResE := ih e (sub_lt_d d depth_for_e hDepth) .intType hEnd
+        have hResE := ih e (Nat.lt_of_lt_of_le depth_for_e (Nat.le_of_lt_succ hDepth)) .intType hEnd
         cases hResE with
         | inl hv2 =>
           obtain ⟨k2, hk2⟩ := canonical_int hv2 hEnd
           rw [hk2]
           exact dite (k1 < k2)
-            (fun hLt => Or.inr ⟨_, Step.for_exec id k1 k2 body hLt⟩)
-            (fun hNlt => Or.inr ⟨_, Step.for_done id k1 k2 body (by omega)⟩)
+            (fun hLt => Or.inr ⟨_, Step.for_exec k1 k2 body hLt⟩)
+            (fun hNlt => Or.inr ⟨_, Step.for_done k1 k2 body (by omega)⟩)
         | inr hStep2 =>
           obtain ⟨e', hs⟩ := hStep2
-          right; exact ⟨_, Step.for_end id (.int k1) e e' body (IsValue.lit (.int k1)) hs⟩
+          right; exact ⟨_, Step.for_end (.int k1) e e' body (IsValue.lit (.int k1)) hs⟩
       | inr hStep1 =>
         obtain ⟨s', hs⟩ := hStep1
-        right; exact ⟨_, Step.for_start id s s' e body hs⟩
-    | block_type _ exprs τs τ hAll =>
+        right; exact ⟨_, Step.for_start s s' e body hs⟩
+    | block_type _ _ exprs τs τ hAll =>
       cases exprs with
       | nil =>
         exfalso
@@ -363,7 +362,7 @@ private theorem progress_strong :
         omega
       | cons head rest =>
         obtain ⟨τ_h, hHead⟩ := HasTypeAll_append_cons_head hAll
-        have hRes := ih head (sub_lt_d d depth_block_head hDepth) τ_h hHead
+        have hRes := ih head (Nat.lt_of_lt_of_le depth_block_head (Nat.le_of_lt_succ hDepth)) τ_h hHead
         cases hRes with
         | inr hStep =>
           obtain ⟨head', hs⟩ := hStep
@@ -373,15 +372,15 @@ private theorem progress_strong :
           | nil =>
             cases hv with
             | lit v => right; exact ⟨_, Step.block_singleton v (IsValue.lit v)⟩
-            | lam xs body => right; exact ⟨_, Step.block_lam_singleton xs body⟩
+            | lam n body => right; exact ⟨_, Step.block_lam_singleton n body⟩
           | cons head2 rest2 =>
             right; exact ⟨_, Step.block_pop head head2 rest2 hv⟩
 
 /-! ## Main Theorem -/
 
-theorem progress : forall {e : Expr} {tau : Typ},
-    HasType [] e tau -> IsValue e \/ exists e', Step e e' := by
-  intro e tau h
-  exact progress_strong (exprDepth e + 1) e (Nat.lt_succ_self _) tau h
+theorem progress : forall {e : Expr} {τ : Typ},
+    HasType [] [] e τ -> IsValue e \/ exists e', Step e e' := by
+  intro e τ h
+  exact progress_strong (exprDepth e + 1) e (Nat.lt_succ_self _) τ h
 
 end Morph.Proofs.TypeSoundness

@@ -9,7 +9,7 @@ import Aesop
 
 **Author:** QA Engineer
 **Created:** 2026-01-16
-**Last Updated:** 2026-05-08
+**Last Updated:** 2026-05-14
 **Status:** Complete
 
 ## Purpose
@@ -22,7 +22,7 @@ This module provides unit tests and property-based tests for:
 - Step relation (all constructors)
 - Operator classification functions (isArithOp, isCompOp, isLogicOp, isBitwiseOp)
 - Evaluation helper functions (evalArithOp, evalCompOp, evalLogicOp, evalBitwiseOp)
-- Substitution functions (subst, substList, substAll)
+- Substitution functions (subst, substAll)
 - Property-based tests for evaluation determinism
 
 ## Dependencies
@@ -37,6 +37,7 @@ This module provides unit tests and property-based tests for:
 
 - Tests use `theorem` for named verification
 - Property-based tests verify generic properties
+- Uses de Bruijn indices: `bvar 0` = most recent binder
 
 ## References
 
@@ -70,18 +71,18 @@ section IsValueTests
   theorem isValue_string : IsValue (.lit (.string "hello")) := by apply IsValue.lit
 
   /-- lambda expressions are values -/
-  theorem isValue_lam : IsValue (.lam [⟨"x"⟩] (.var ⟨"x"⟩)) := by apply IsValue.lam
+  theorem isValue_lam : IsValue (.lam 1 (.bvar 0)) := by apply IsValue.lam
 
   /-- multi-parameter lambdas are values -/
   theorem isValue_lam_multi :
-    IsValue (.lam [⟨"x"⟩, ⟨"y"⟩] (.binop .add (.var ⟨"x"⟩) (.var ⟨"y"⟩))) := by
+    IsValue (.lam 2 (.binop .add (.bvar 1) (.bvar 0))) := by
       apply IsValue.lam
 
   /-- any literal is a value -/
   theorem isValue_any_lit (v : Value) : IsValue (.lit v) := by apply IsValue.lit
 
   /-- any lambda is a value -/
-  theorem isValue_any_lam (xs : List Id) (body : Expr) : IsValue (.lam xs body) := by
+  theorem isValue_any_lam (n : Nat) (body : Expr) : IsValue (.lam n body) := by
     apply IsValue.lam
 
 end IsValueTests
@@ -185,120 +186,124 @@ end EvalHelperTests
 
 /-!
 ## Section 4: Substitution Function Tests
--/
 
+All substitution tests use de Bruijn indices.
+`subst e v` substitutes bound variable at index 0 with `v`.
+-/
 section SubstitutionTests
 
-  theorem subst_var_match :
-    subst (.var ⟨"x"⟩) "x" (.lit (.int 42)) = .lit (.int 42) := by
-      simp [subst]
+  /-- subst replaces bvar 0 with the value -/
+  theorem subst_bvar_zero :
+    subst (.bvar 0) (.lit (.int 42)) = .lit (.int 42) := by
+      simp [subst, subst', liftUnder]
 
-  theorem subst_var_no_match :
-    subst (.var ⟨"y"⟩) "x" (.lit (.int 42)) = .var ⟨"y"⟩ := by
-      simp [subst]
+  /-- subst shifts bvar 1 down to bvar 0 (no match at index 0) -/
+  theorem subst_bvar_one :
+    subst (.bvar 1) (.lit (.int 42)) = .bvar 0 := by
+      simp [subst, subst']
 
+  /-- subst leaves bvar 2 as bvar 1 (shifts down by 1) -/
+  theorem subst_bvar_two :
+    subst (.bvar 2) (.lit (.int 42)) = .bvar 1 := by
+      simp [subst, subst']
+
+  /-- subst on a literal returns the literal unchanged -/
   theorem subst_lit :
-    subst (.lit (.int 5)) "x" (.lit (.int 42)) = .lit (.int 5) := by
-      unfold subst; rfl
+    subst (.lit (.int 5)) (.lit (.int 42)) = .lit (.int 5) := by
+      simp [subst, subst']
 
+  /-- subst on an fvar returns the fvar unchanged -/
+  theorem subst_fvar :
+    subst (.fvar "x") (.lit (.int 42)) = .fvar "x" := by
+      simp [subst, subst']
+
+  /-- subst on unop recurses into the operand -/
   theorem subst_unop :
-    subst (.unop .not (.var ⟨"x"⟩)) "x" (.lit (.bool true))
+    subst (.unop .not (.bvar 0)) (.lit (.bool true))
       = .unop .not (.lit (.bool true)) := by
-        simp [subst]
+        simp [subst, subst', liftUnder]
 
-  theorem subst_binop :
-    subst (.binop .add (.var ⟨"x"⟩) (.var ⟨"y"⟩)) "x" (.lit (.int 10))
-      = .binop .add (.lit (.int 10)) (.var ⟨"y"⟩) := by
-        simp [subst]
+  /-- subst on binop recurses into both operands -/
+  theorem subst_binop_left :
+    subst (.binop .add (.bvar 0) (.bvar 1)) (.lit (.int 10))
+      = .binop .add (.lit (.int 10)) (.bvar 0) := by
+        simp [subst, subst', liftUnder]
 
   theorem subst_binop_right :
-    subst (.binop .add (.lit (.int 1)) (.var ⟨"x"⟩)) "x" (.lit (.int 10))
+    subst (.binop .add (.lit (.int 1)) (.bvar 0)) (.lit (.int 10))
       = .binop .add (.lit (.int 1)) (.lit (.int 10)) := by
-        simp [subst]
+        simp [subst, subst', liftUnder]
 
-  theorem subst_lam_shadow :
-    subst (.lam [⟨"x"⟩] (.var ⟨"x"⟩)) "x" (.lit (.int 42))
-      = .lam [⟨"x"⟩] (.var ⟨"x"⟩) := by
-        simp [subst]
+  /-- subst under lam: bvar 0 in body refers to lam's param, not subst target -/
+  theorem subst_lam_captured :
+    subst (.lam 1 (.bvar 0)) (.lit (.int 42))
+      = .lam 1 (.bvar 0) := by
+        simp [subst, subst']
 
-  theorem subst_lam_no_shadow :
-    subst (.lam [⟨"y"⟩] (.var ⟨"x"⟩)) "x" (.lit (.int 42))
-      = .lam [⟨"y"⟩] (.lit (.int 42)) := by
-        simp [subst]
+  /-- subst under lam: bvar 1 in body refers to outer (subst target), becomes the value lifted -/
+  theorem subst_lam_escape :
+    subst (.lam 1 (.bvar 1)) (.lit (.int 42))
+      = .lam 1 (.lit (.int 42)) := by
+        simp [subst, subst', liftUnder]
 
-  theorem subst_let :
-    subst (.let ⟨"y"⟩ (.var ⟨"x"⟩) (.var ⟨"x"⟩)) "x" (.lit (.int 10))
-      = .let ⟨"y"⟩ (.lit (.int 10)) (.lit (.int 10)) := by
-        simp [subst]
+  /-- subst on let_: bvar 0 in body is captured by let binder, not substituted -/
+  theorem subst_let_body :
+    subst (.let_ (.lit (.int 0)) (.bvar 0)) (.lit (.int 10))
+      = .let_ (.lit (.int 0)) (.bvar 0) := by
+        simp [subst, subst']
 
-  theorem subst_let_shadow :
-    subst (.let ⟨"x"⟩ (.var ⟨"z"⟩) (.var ⟨"x"⟩)) "x" (.lit (.int 10))
-      = .let ⟨"x"⟩ (.var ⟨"z"⟩) (.var ⟨"x"⟩) := by
-        simp [subst]
-
+  /-- subst on ifThenElse recurses into all three branches -/
   theorem subst_if :
-    subst (.ifThenElse (.var ⟨"c"⟩) (.var ⟨"x"⟩) (.lit (.int 0))) "x" (.lit (.int 1))
-      = .ifThenElse (.var ⟨"c"⟩) (.lit (.int 1)) (.lit (.int 0)) := by
-        simp [subst]
+    subst (.ifThenElse (.fvar "c") (.bvar 0) (.lit (.int 0))) (.lit (.int 1))
+      = .ifThenElse (.fvar "c") (.lit (.int 1)) (.lit (.int 0)) := by
+        simp [subst, subst', liftUnder]
 
+  /-- subst on block recurses into all expressions -/
   theorem subst_block :
-    subst (.block [.var ⟨"x"⟩, .var ⟨"y"⟩]) "x" (.lit (.int 1))
-      = .block [.lit (.int 1), .var ⟨"y"⟩] := by
-        simp [subst]
+    subst (.block [.bvar 0, .bvar 1]) (.lit (.int 1))
+      = .block [.lit (.int 1), .bvar 0] := by
+        simp [subst, subst', liftUnder]
 
+  /-- subst on app recurses into function and arguments -/
   theorem subst_app :
-    subst (.app (.var ⟨"f"⟩) [.var ⟨"x"⟩]) "x" (.lit (.int 1))
-      = .app (.var ⟨"f"⟩) [.lit (.int 1)] := by
-        simp [subst]
+    subst (.app (.fvar "f") [.bvar 0]) (.lit (.int 1))
+      = .app (.fvar "f") [.lit (.int 1)] := by
+        simp [subst, subst', liftUnder]
 
+  /-- subst on forLoop: start substituted; body at depth 1: bvar 0 = loop var (captured), bvar 1 = outer (substituted) -/
   theorem subst_forLoop :
-    subst (.forLoop ⟨"i"⟩ (.var ⟨"x"⟩) (.lit (.int 10)) [.var ⟨"x"⟩])
-      "x" (.lit (.int 1))
-      = .forLoop ⟨"i"⟩ (.lit (.int 1)) (.lit (.int 10)) [.lit (.int 1)] := by
-        simp [subst]
+    subst (.forLoop (.bvar 0) (.lit (.int 10)) [.bvar 0, .bvar 1])
+      (.lit (.int 1))
+      = .forLoop (.lit (.int 1)) (.lit (.int 10)) [.bvar 0, .lit (.int 1)] := by
+        simp [subst, subst', liftUnder]
 
-  theorem subst_forLoop_shadow :
-    subst (.forLoop ⟨"x"⟩ (.var ⟨"y"⟩) (.lit (.int 10)) [.var ⟨"x"⟩])
-      "x" (.lit (.int 1))
-      = .forLoop ⟨"x"⟩ (.var ⟨"y"⟩) (.lit (.int 10)) [.var ⟨"x"⟩] := by
-        simp [subst]
-
-  theorem substList_empty :
-    substList [] "x" (.lit (.int 42)) = [] := by rfl
-
-  theorem substList_singleton :
-    substList [.var ⟨"x"⟩] "x" (.lit (.int 42)) = [.lit (.int 42)] := by
-      simp [substList, subst]
-
-  theorem substList_multi :
-    substList [.var ⟨"x"⟩, .var ⟨"y"⟩, .lit (.int 0)] "x" (.lit (.int 1))
-      = [.lit (.int 1), .var ⟨"y"⟩, .lit (.int 0)] := by
-        simp [substList, subst]
-
+  /-- substAll with no values leaves expression unchanged -/
   theorem substAll_empty :
-    substAll (.var ⟨"x"⟩) [] [] = .var ⟨"x"⟩ := by rfl
+    substAll [] (.bvar 0) = .bvar 0 := by
+      simp [substAll, substAll']
 
+  /-- substAll with one value replaces bvar 0 -/
   theorem substAll_single :
-    substAll (.var ⟨"x"⟩) [⟨"x"⟩] [.lit (.int 42)] = .lit (.int 42) := by
-      simp [substAll, subst]
+    substAll [.lit (.int 42)] (.bvar 0) = .lit (.int 42) := by
+      simp [substAll, substAll', liftUnder]
 
-  theorem substAll_mismatch :
-    substAll (.var ⟨"x"⟩) [⟨"x"⟩] [] = .var ⟨"x"⟩ := by rfl
-
-  theorem substAll_extra_args :
-    substAll (.var ⟨"x"⟩) [] [.lit (.int 42)] = .var ⟨"x"⟩ := by rfl
-
+  /-- substAll with two values replaces bvar 0 and bvar 1 -/
   theorem substAll_multi :
-    substAll (.binop .add (.var ⟨"x"⟩) (.var ⟨"y"⟩))
-      [⟨"x"⟩, ⟨"y"⟩] [.lit (.int 1), .lit (.int 2)]
+    substAll [.lit (.int 1), .lit (.int 2)] (.binop .add (.bvar 0) (.bvar 1))
       = .binop .add (.lit (.int 1)) (.lit (.int 2)) := by
-        simp [substAll, subst]
+      simp [substAll, substAll', liftUnder]
 
-  /-- second substitution has no effect on literal result -/
-  theorem substAll_no_effect :
-    substAll (.var ⟨"x"⟩) [⟨"x"⟩, ⟨"x"⟩] [.lit (.int 1), .lit (.int 2)]
+  /-- substAll under lam: body bvar 0 refers to lam's param, outer bvar 1 gets value -/
+  theorem substAll_under_lam :
+    substAll [.lit (.int 1)] (.lam 1 (.bvar 1))
+      = .lam 1 (.lit (.int 1)) := by
+      simp [substAll, substAll', liftUnder]
+
+  /-- substAll with more values than bvars: first value maps to bvar 0 -/
+  theorem substAll_extra :
+    substAll [.lit (.int 1), .lit (.int 2)] (.bvar 0)
       = .lit (.int 1) := by
-        simp [substAll, subst]
+      simp [substAll, substAll', liftUnder]
 
 end SubstitutionTests
 
@@ -474,18 +479,18 @@ end StepConditionalTests
 section StepLetTests
 
   theorem step_let_step :
-    Step (.let ⟨"x"⟩ (.binop .add (.lit (.int 1)) (.lit (.int 2))) (.var ⟨"x"⟩))
-      (.let ⟨"x"⟩ (.lit (.int 3)) (.var ⟨"x"⟩)) := by
+    Step (.let_ (.binop .add (.lit (.int 1)) (.lit (.int 2))) (.bvar 0))
+      (.let_ (.lit (.int 3)) (.bvar 0)) := by
     apply Step.let_step; apply Step.binop_arith <;> trivial
 
   theorem step_let_subst :
-    Step (.let ⟨"x"⟩ (.lit (.int 42)) (.var ⟨"x"⟩))
-      (subst (.var ⟨"x"⟩) "x" (.lit (.int 42))) := by
+    Step (.let_ (.lit (.int 42)) (.bvar 0))
+      (subst (.bvar 0) (.lit (.int 42))) := by
     apply Step.let_subst; apply IsValue.lit
 
   theorem step_let_subst_lam :
-    Step (.let ⟨"f"⟩ (.lam [⟨"x"⟩] (.var ⟨"x"⟩)) (.var ⟨"f"⟩))
-      (subst (.var ⟨"f"⟩) "f" (.lam [⟨"x"⟩] (.var ⟨"x"⟩))) := by
+    Step (.let_ (.lam 1 (.bvar 0)) (.bvar 0))
+      (subst (.bvar 0) (.lam 1 (.bvar 0))) := by
     apply Step.let_subst; apply IsValue.lam
 
 end StepLetTests
@@ -497,29 +502,29 @@ end StepLetTests
 section StepForLoopTests
 
   theorem step_for_start :
-    Step (.forLoop ⟨"i"⟩ (.binop .add (.lit (.int 0)) (.lit (.int 1)))
+    Step (.forLoop (.binop .add (.lit (.int 0)) (.lit (.int 1)))
           (.lit (.int 5)) [])
-      (.forLoop ⟨"i"⟩ (.lit (.int 1)) (.lit (.int 5)) []) := by
+      (.forLoop (.lit (.int 1)) (.lit (.int 5)) []) := by
     apply Step.for_start; apply Step.binop_arith <;> trivial
 
   theorem step_for_end :
-    Step (.forLoop ⟨"i"⟩ (.lit (.int 0)) (.binop .add (.lit (.int 3)) (.lit (.int 2)))
+    Step (.forLoop (.lit (.int 0)) (.binop .add (.lit (.int 3)) (.lit (.int 2)))
           [])
-      (.forLoop ⟨"i"⟩ (.lit (.int 0)) (.lit (.int 5)) []) := by
+      (.forLoop (.lit (.int 0)) (.lit (.int 5)) []) := by
     apply Step.for_end; apply IsValue.lit; apply Step.binop_arith <;> trivial
 
   theorem step_for_exec :
-    Step (.forLoop ⟨"i"⟩ (.lit (.int 0)) (.lit (.int 3)) [.var ⟨"i"⟩])
-      (.let ⟨"i"⟩ (.lit (.int 0))
-        (.block ([.var ⟨"i"⟩] ++ [.forLoop ⟨"i"⟩ (.lit (.int 1)) (.lit (.int 3)) [.var ⟨"i"⟩]]))) := by
+    Step (.forLoop (.lit (.int 0)) (.lit (.int 3)) [.bvar 0])
+      (.let_ (.lit (.int 0))
+        (.block ([.bvar 0] ++ [.forLoop (.lit (.int 1)) (.lit (.int 3)) [.bvar 0]]))) := by
     apply Step.for_exec; decide
 
   theorem step_for_done :
-    Step (.forLoop ⟨"i"⟩ (.lit (.int 5)) (.lit (.int 3)) []) (.lit .unit) := by
+    Step (.forLoop (.lit (.int 5)) (.lit (.int 3)) []) (.lit .unit) := by
     apply Step.for_done; decide
 
   theorem step_for_done_equal :
-    Step (.forLoop ⟨"i"⟩ (.lit (.int 3)) (.lit (.int 3)) []) (.lit .unit) := by
+    Step (.forLoop (.lit (.int 3)) (.lit (.int 3)) []) (.lit .unit) := by
     apply Step.for_done; decide
 
 end StepForLoopTests
@@ -540,7 +545,7 @@ section StepBlockTests
     apply Step.block_singleton; apply IsValue.lit
 
   theorem step_block_lam_singleton :
-    Step (.block [.lam [⟨"x"⟩] (.var ⟨"x"⟩)]) (.lam [⟨"x"⟩] (.var ⟨"x"⟩)) := by
+    Step (.block [.lam 1 (.bvar 0)]) (.lam 1 (.bvar 0)) := by
     apply Step.block_lam_singleton
 
   theorem step_block_pop :
@@ -557,28 +562,27 @@ end StepBlockTests
 section StepAppTests
 
   theorem step_let_subst_lam_in_app :
-    Step (.let ⟨"f"⟩ (.lam [⟨"x"⟩] (.var ⟨"x"⟩))
-          (.app (.var ⟨"f"⟩) [.lit (.int 1)]))
-      (subst (.app (.var ⟨"f"⟩) [.lit (.int 1)]) "f"
-        (.lam [⟨"x"⟩] (.var ⟨"x"⟩))) := by
+    Step (.let_ (.lam 1 (.bvar 0))
+          (.app (.bvar 0) [.lit (.int 1)]))
+      (subst (.app (.bvar 0) [.lit (.int 1)]) (.lam 1 (.bvar 0))) := by
     apply Step.let_subst; apply IsValue.lam
 
   theorem step_app_arg :
-    Step (.app (.lam [⟨"x"⟩] (.var ⟨"x"⟩))
+    Step (.app (.lam 1 (.bvar 0))
           [.binop .add (.lit (.int 1)) (.lit (.int 2))])
-      (.app (.lam [⟨"x"⟩] (.var ⟨"x"⟩)) [.lit (.int 3)]) := by
+      (.app (.lam 1 (.bvar 0)) [.lit (.int 3)]) := by
     apply Step.app_arg; apply IsValue.lam; apply Step.binop_arith <;> trivial
 
   theorem step_app_lam :
-    Step (.app (.lam [⟨"x"⟩] (.var ⟨"x"⟩)) [.lit (.int 42)])
-      (substAll (.var ⟨"x"⟩) [⟨"x"⟩] [.lit (.int 42)]) := by
+    Step (.app (.lam 1 (.bvar 0)) [.lit (.int 42)])
+      (substAll [.lit (.int 42)] (.bvar 0)) := by
     apply Step.app_lam; rfl
 
   theorem step_app_lam_multi :
-    Step (.app (.lam [⟨"x"⟩, ⟨"y"⟩] (.binop .add (.var ⟨"x"⟩) (.var ⟨"y"⟩)))
+    Step (.app (.lam 2 (.binop .add (.bvar 1) (.bvar 0)))
           [.lit (.int 3), .lit (.int 4)])
-      (substAll (.binop .add (.var ⟨"x"⟩) (.var ⟨"y"⟩))
-        [⟨"x"⟩, ⟨"y"⟩] [.lit (.int 3), .lit (.int 4)]) := by
+      (substAll [.lit (.int 4), .lit (.int 3)]
+        (.binop .add (.bvar 1) (.bvar 0))) := by
     apply Step.app_lam; rfl
 
 end StepAppTests
@@ -589,7 +593,8 @@ end StepAppTests
 
 section ExprTests
 
-  theorem expr_var (x : String) : (Expr.var ⟨x⟩) = Expr.var ⟨x⟩ := by rfl
+  theorem expr_bvar (n : Nat) : (Expr.bvar n) = Expr.bvar n := by rfl
+  theorem expr_fvar (name : String) : (Expr.fvar name) = Expr.fvar name := by rfl
   theorem expr_lit (v : Value) : (Expr.lit v) = Expr.lit v := by rfl
   theorem expr_binop (op : Operator) (e1 e2 : Expr) :
     (Expr.binop op e1 e2) = Expr.binop op e1 e2 := by rfl
@@ -597,14 +602,14 @@ section ExprTests
     (Expr.unop op e) = Expr.unop op e := by rfl
   theorem expr_app (fn : Expr) (args : List Expr) :
     (Expr.app fn args) = Expr.app fn args := by rfl
-  theorem expr_lam (xs : List Id) (body : Expr) :
-    (Expr.lam xs body) = Expr.lam xs body := by rfl
-  theorem expr_let (id : Id) (e1 e2 : Expr) :
-    (Expr.let id e1 e2) = Expr.let id e1 e2 := by rfl
+  theorem expr_lam (n : Nat) (body : Expr) :
+    (Expr.lam n body) = Expr.lam n body := by rfl
+  theorem expr_let (e1 e2 : Expr) :
+    (Expr.let_ e1 e2) = Expr.let_ e1 e2 := by rfl
   theorem expr_ifThenElse (c t f : Expr) :
     (Expr.ifThenElse c t f) = Expr.ifThenElse c t f := by rfl
-  theorem expr_forLoop (id : Id) (s e : Expr) (body : List Expr) :
-    (Expr.forLoop id s e body) = Expr.forLoop id s e body := by rfl
+  theorem expr_forLoop (s e : Expr) (body : List Expr) :
+    (Expr.forLoop s e body) = Expr.forLoop s e body := by rfl
   theorem expr_block (exprs : List Expr) :
     (Expr.block exprs) = Expr.block exprs := by rfl
 

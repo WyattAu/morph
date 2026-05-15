@@ -14,304 +14,192 @@ open Morph.Syntax
 
 /-! ## Inversion Lemmas -/
 
-theorem HasType_var_inv (Γ : TypEnv) (id : Id) (τ : Typ) :
-    HasType Γ (.var id) τ → lookupTyp Γ id.name = some τ := by
-  intro h; cases h with | var_type => assumption
+-- NOTE: bvar_type produces HasType bvs Γ (.bvar n) bvs[n], so any
+-- HasType bvs Γ (.bvar n) τ must have τ = bvs[n] with n < bvs.length.
+-- We split into two lemmas to avoid dependent indexing issues.
+theorem HasType_bvar_has_length (bvs : List Typ) (Γ : TypEnv) (n : Nat) (τ : Typ) :
+    HasType bvs Γ (.bvar n) τ → n < bvs.length := by
+  intro h
+  cases h with
+  | bvar_type _ _ _ hLen => exact hLen
 
-theorem HasType_lit_int_inv (Γ : TypEnv) (n : Int) (τ : Typ) :
-    HasType Γ (.lit (.int n)) τ → τ = .intType := by
+theorem HasType_fvar_inv (bvs : List Typ) (Γ : TypEnv) (name : String) (τ : Typ) :
+    HasType bvs Γ (.fvar name) τ → lookupTyp Γ name = some τ := by
+  intro h; cases h with | fvar_type => assumption
+
+theorem HasType_lit_int_inv (bvs : List Typ) (Γ : TypEnv) (n : Int) (τ : Typ) :
+    HasType bvs Γ (.lit (.int n)) τ → τ = .intType := by
   intro h; cases h with | lit_int => rfl
 
-theorem HasType_lit_bool_inv (Γ : TypEnv) (b : Bool) (τ : Typ) :
-    HasType Γ (.lit (.bool b)) τ → τ = .boolType := by
+theorem HasType_lit_bool_inv (bvs : List Typ) (Γ : TypEnv) (b : Bool) (τ : Typ) :
+    HasType bvs Γ (.lit (.bool b)) τ → τ = .boolType := by
   intro h; cases h with | lit_bool => rfl
 
-theorem HasType_lit_string_inv (Γ : TypEnv) (s : String) (τ : Typ) :
-    HasType Γ (.lit (.string s)) τ → τ = .stringType := by
+theorem HasType_lit_string_inv (bvs : List Typ) (Γ : TypEnv) (s : String) (τ : Typ) :
+    HasType bvs Γ (.lit (.string s)) τ → τ = .stringType := by
   intro h; cases h with | lit_string => rfl
 
-theorem HasType_lit_unit_inv (Γ : TypEnv) (τ : Typ) :
-    HasType Γ (.lit .unit) τ → τ = .unitType := by
+theorem HasType_lit_unit_inv (bvs : List Typ) (Γ : TypEnv) (τ : Typ) :
+    HasType bvs Γ (.lit .unit) τ → τ = .unitType := by
   intro h; cases h with | lit_unit => rfl
 
-theorem HasType_lit_pointer_inv (Γ : TypEnv) (p : Pointer) (τ : Typ) :
-    HasType Γ (.lit (.pointer p)) τ → τ = .pointerType := by
+theorem HasType_lit_pointer_inv (bvs : List Typ) (Γ : TypEnv) (p : Pointer) (τ : Typ) :
+    HasType bvs Γ (.lit (.pointer p)) τ → τ = .pointerType := by
   intro h; cases h with | lit_pointer => rfl
 
-theorem HasType_unop_not_inv (Γ : TypEnv) (e : Expr) (τ : Typ) :
-    HasType Γ (.unop .not e) τ → τ = .boolType := by
+theorem HasType_unop_not_inv (bvs : List Typ) (Γ : TypEnv) (e : Expr) (τ : Typ) :
+    HasType bvs Γ (.unop .not e) τ → τ = .boolType := by
   intro h; cases h with | unop_not => rfl
 
-theorem HasType_unop_notb_inv (Γ : TypEnv) (e : Expr) (τ : Typ) :
-    HasType Γ (.unop .notb e) τ → τ = .intType := by
+theorem HasType_unop_notb_inv (bvs : List Typ) (Γ : TypEnv) (e : Expr) (τ : Typ) :
+    HasType bvs Γ (.unop .notb e) τ → τ = .intType := by
   intro h; cases h with | unop_notb => rfl
 
-/-! ## Weakening
-    NOTE: Correct weakening requires freshness precondition: x ∉ freeVars(e).
-    Without it, the lemma is unsound (see ADR-006). -/
+/-! ## Lift Simplification Lemmas
 
-private theorem lookupTyp_extend_ne' {Γ : TypEnv} {name y : String} {typ : Typ} (hne : name ≠ y) :
-    lookupTyp (extendTypEnv Γ name typ) y = lookupTyp Γ y := by
-  unfold extendTypEnv lookupTyp
-  simp only [List.find?_cons]
-  split
-  · next h => exact absurd (eq_of_beq h) hne
-  · rfl
+`liftUnder` is defined by well-founded recursion on a nested inductive type,
+so Lean's kernel cannot unfold it definitionally. These lemmas provide
+the necessary equalities for use in rewriting.
+-/
 
-private theorem lookupTyp_extend_eq' {Γ : TypEnv} {name : String} {typ : Typ} :
-    lookupTyp (extendTypEnv Γ name typ) name = some typ := by
-  unfold extendTypEnv lookupTyp
-  simp only [List.find?_cons, beq_self_eq_true]
-  simp [Option.map]
+@[simp] theorem lift_bvar (n k : Nat) : lift k (.bvar n) = .bvar (n + k) := by
+  simp [lift, liftUnder]
 
-private theorem extendTypEnv_swap' {Γ : TypEnv} {x y : String} {τx τy : Typ} (hne : x ≠ y) (z : String) :
-    lookupTyp (extendTypEnv (extendTypEnv Γ x τx) y τy) z =
-    lookupTyp (extendTypEnv (extendTypEnv Γ y τy) x τx) z := by
-  unfold extendTypEnv lookupTyp
-  simp only [List.find?_cons]
-  cases Decidable.em (z = x) with
-  | inl hz =>
-    cases Decidable.em (z = y) with
-    | inl hz2 => exfalso; exact hne (hz ▸ hz2)
-    | inr hz2 =>
-      have h1 : ¬(y == x) := fun h => hne (eq_of_beq h).symm
-      have h2 : ¬(y == z) := fun h => hz2 (eq_of_beq h).symm
-      simp only [h2]
-  | inr hz =>
-    cases Decidable.em (z = y) with
-    | inl hz' =>
-      have h1 : ¬(x == y) := fun h => hne (eq_of_beq h)
-      have h2 : ¬(x == z) := fun h => hz (eq_of_beq h).symm
-      simp only [h2]
-    | inr hz' =>
-      have h1 : ¬(y == z) := fun h => hz' (eq_of_beq h).symm
-      have h2 : ¬(x == z) := fun h => hz (eq_of_beq h).symm
-      simp only [h1, h2]
+@[simp] theorem lift_fvar (name : String) (k : Nat) : lift k (.fvar name) = .fvar name := by
+  simp [lift, liftUnder]
 
-private theorem extendTypEnv_lookup_eq' {Γ Γ' : TypEnv} {name : String} {typ : Typ}
-    (hEq : ∀ x, lookupTyp Γ x = lookupTyp Γ' x) (y : String) :
-    lookupTyp (extendTypEnv Γ name typ) y = lookupTyp (extendTypEnv Γ' name typ) y := by
-  cases Decidable.em (name = y) with
-  | inl hEq' => rw [hEq', lookupTyp_extend_eq', lookupTyp_extend_eq']
-  | inr hNe => rw [lookupTyp_extend_ne' hNe, lookupTyp_extend_ne' hNe]; exact hEq y
+@[simp] theorem lift_lit (v : Value) (k : Nat) : lift k (.lit v) = .lit v := by
+  simp [lift, liftUnder]
 
-mutual
+@[simp] theorem lift_unop (op : Operator) (e : Expr) (k : Nat) :
+    lift k (.unop op e) = .unop op (lift k e) := by
+  simp [lift, liftUnder]
 
-private theorem HasType_lookup_eq' {Γ Γ' : TypEnv} {e : Expr} {τ : Typ}
-    (h : HasType Γ e τ) (hEq : ∀ x, lookupTyp Γ x = lookupTyp Γ' x) : HasType Γ' e τ := by
-  match h with
-  | HasType.var_type _ id τ hLookup =>
-    exact HasType.var_type Γ' id τ (Eq.trans (Eq.symm (hEq id.name)) hLookup)
-  | HasType.lit_int _ n => exact HasType.lit_int Γ' n
-  | HasType.lit_bool _ b => exact HasType.lit_bool Γ' b
-  | HasType.lit_string _ s => exact HasType.lit_string Γ' s
-  | HasType.lit_unit _ => exact HasType.lit_unit Γ'
-  | HasType.lit_pointer _ p => exact HasType.lit_pointer Γ' p
-  | HasType.unop_not _ e' hE' => exact HasType.unop_not Γ' e' (HasType_lookup_eq' hE' hEq)
-  | HasType.unop_notb _ e' hE' => exact HasType.unop_notb Γ' e' (HasType_lookup_eq' hE' hEq)
-  | HasType.binop_arith _ op e1 e2 hArith hE1 hE2 =>
-    exact HasType.binop_arith Γ' op e1 e2 hArith (HasType_lookup_eq' hE1 hEq) (HasType_lookup_eq' hE2 hEq)
-  | HasType.binop_comp _ op e1 e2 hComp hE1 hE2 =>
-    exact HasType.binop_comp Γ' op e1 e2 hComp (HasType_lookup_eq' hE1 hEq) (HasType_lookup_eq' hE2 hEq)
-  | HasType.binop_logic _ op e1 e2 hLogic hE1 hE2 =>
-    exact HasType.binop_logic Γ' op e1 e2 hLogic (HasType_lookup_eq' hE1 hEq) (HasType_lookup_eq' hE2 hEq)
-  | HasType.binop_bitwise _ op e1 e2 hBit hE1 hE2 =>
-    exact HasType.binop_bitwise Γ' op e1 e2 hBit (HasType_lookup_eq' hE1 hEq) (HasType_lookup_eq' hE2 hEq)
-  | HasType.lam_type _ x body τ1 τ2 hBody =>
-    exact HasType.lam_type Γ' x body τ1 τ2 (HasType_lookup_eq' hBody (extendTypEnv_lookup_eq' hEq))
-  | HasType.app_type _ fn args τs τ hFn hArgs =>
-    exact HasType.app_type Γ' fn args τs τ (HasType_lookup_eq' hFn hEq) (HasTypeAll_lookup_eq' hArgs hEq)
-  | HasType.let_type _ id e1 e2 τ1 τ2 hE1 hE2 =>
-    exact HasType.let_type _ _ _ _ _ _
-      (HasType_lookup_eq' hE1 hEq)
-      (HasType_lookup_eq' hE2 (extendTypEnv_lookup_eq' hEq))
-  | HasType.if_type _ c t f τ hC hT hF =>
-    exact HasType.if_type Γ' c t f τ (HasType_lookup_eq' hC hEq) (HasType_lookup_eq' hT hEq) (HasType_lookup_eq' hF hEq)
-  | HasType.for_type _ id' s e body hS hE hBody =>
-    exact HasType.for_type Γ' id' s e body
-      (HasType_lookup_eq' hS hEq) (HasType_lookup_eq' hE hEq)
-      (HasTypeAll_lookup_eq' hBody (extendTypEnv_lookup_eq' hEq))
-  | HasType.block_type _ exprs τs τ hAll =>
-    exact HasType.block_type Γ' exprs τs τ (HasTypeAll_lookup_eq' hAll hEq)
+@[simp] theorem lift_binop (op : Operator) (e1 e2 : Expr) (k : Nat) :
+    lift k (.binop op e1 e2) = .binop op (lift k e1) (lift k e2) := by
+  simp [lift, liftUnder]
 
-private theorem HasTypeAll_lookup_eq' {Γ Γ' : TypEnv} {es : List Expr} {τs : List Typ}
-    (h : HasTypeAll Γ es τs) (hEq : ∀ x, lookupTyp Γ x = lookupTyp Γ' x) : HasTypeAll Γ' es τs := by
-  match h with
-  | HasTypeAll.nil _ => exact HasTypeAll.nil Γ'
-  | HasTypeAll.cons _ e es τ τs hE hRest =>
-    exact HasTypeAll.cons _ e es τ τs (HasType_lookup_eq' hE hEq) (HasTypeAll_lookup_eq' hRest hEq)
+@[simp] theorem lift_lam (n : Nat) (body : Expr) (k : Nat) :
+    lift k (.lam n body) = .lam n (liftUnder n k body) := by
+  simp [lift, liftUnder]
 
-end
+@[simp] theorem lift_app (fn : Expr) (args : List Expr) (k : Nat) :
+    lift k (.app fn args) = .app (lift k fn) (args.map (lift k)) := by
+  simp [lift, liftUnder]
+
+@[simp] theorem lift_let (e1 e2 : Expr) (k : Nat) :
+    lift k (.let_ e1 e2) = .let_ (lift k e1) (liftUnder 1 k e2) := by
+  simp [lift, liftUnder]
+
+@[simp] theorem lift_if (c t f : Expr) (k : Nat) :
+    lift k (.ifThenElse c t f) = .ifThenElse (lift k c) (lift k t) (lift k f) := by
+  simp [lift, liftUnder]
+
+@[simp] theorem lift_for (s e : Expr) (body : List Expr) (k : Nat) :
+    lift k (.forLoop s e body) = .forLoop (lift k s) (lift k e) (body.map (liftUnder 1 k)) := by
+  simp [lift, liftUnder]
+
+@[simp] theorem lift_block (exprs : List Expr) (k : Nat) :
+    lift k (.block exprs) = .block (exprs.map (lift k)) := by
+  simp [lift, liftUnder]
+
+/-! ## Weakening (Trivial with de Bruijn)
+
+With de Bruijn indices, weakening is simply prepending a type to `bvs`.
+No freshness predicate is needed — bound variables are identified by index,
+not by name, so there is no possibility of capture.
+-/
 
 mutual
 
-private theorem weakening_hasType (Γ : TypEnv) (e : Expr) (τ : Typ) (x : String) (σ : Typ)
-    (hFresh : x ∉ freeVars e) (h : HasType Γ e τ) : HasType (extendTypEnv Γ x σ) e τ := by
+theorem weakening (bvs : List Typ) (Γ : TypEnv) (e : Expr) (τ : Typ) (σ : Typ) :
+    HasType bvs Γ e τ → HasType (σ :: bvs) Γ (lift 1 e) τ := by
+  intro h
   match h with
-  | HasType.var_type _ id τ hL =>
-    cases Decidable.em (x = id.name) with
-    | inl hEq =>
-      exfalso; exact hFresh (by rw [hEq]; simp only [freeVars]; exact List.mem_cons_self)
-    | inr hNe =>
-      exact HasType.var_type (extendTypEnv Γ x σ) id τ
-        (by rw [lookupTyp_extend_ne' hNe]; exact hL)
-  | HasType.lit_int _ _ => exact HasType.lit_int _ _
-  | HasType.lit_bool _ _ => exact HasType.lit_bool _ _
-  | HasType.lit_string _ _ => exact HasType.lit_string _ _
-  | HasType.lit_unit _ => exact HasType.lit_unit _
-  | HasType.lit_pointer _ _ => exact HasType.lit_pointer _ _
-  | HasType.unop_not _ e' hE =>
-    exact HasType.unop_not _ _ (weakening_hasType _ _ .boolType x σ
-      (fun h => by simp only [freeVars] at hFresh; exact hFresh h) hE)
-  | HasType.unop_notb _ e' hE =>
-    exact HasType.unop_notb _ _ (weakening_hasType _ _ .intType x σ
-      (fun h => by simp only [freeVars] at hFresh; exact hFresh h) hE)
-  | HasType.binop_arith _ op e1 e2 hA hE1 hE2 =>
-    exact HasType.binop_arith _ op _ _ hA
-      (weakening_hasType _ _ .intType x σ
-        (fun (h : x ∈ freeVars e1) => by
-          simp only [freeVars] at hFresh
-          exact hFresh (List.mem_append_left (freeVars e2) h)) hE1)
-      (weakening_hasType _ _ .intType x σ
-        (fun (h : x ∈ freeVars e2) => by
-          simp only [freeVars] at hFresh
-          exact hFresh (List.mem_append_right (freeVars e1) h)) hE2)
-  | HasType.binop_comp _ op e1 e2 hC hE1 hE2 =>
-    exact HasType.binop_comp _ op _ _ hC
-      (weakening_hasType _ _ .intType x σ
-        (fun (h : x ∈ freeVars e1) => by
-          simp only [freeVars] at hFresh
-          exact hFresh (List.mem_append_left (freeVars e2) h)) hE1)
-      (weakening_hasType _ _ .intType x σ
-        (fun (h : x ∈ freeVars e2) => by
-          simp only [freeVars] at hFresh
-          exact hFresh (List.mem_append_right (freeVars e1) h)) hE2)
-  | HasType.binop_logic _ op e1 e2 hL hE1 hE2 =>
-    exact HasType.binop_logic _ op _ _ hL
-      (weakening_hasType _ _ .boolType x σ
-        (fun (h : x ∈ freeVars e1) => by
-          simp only [freeVars] at hFresh
-          exact hFresh (List.mem_append_left (freeVars e2) h)) hE1)
-      (weakening_hasType _ _ .boolType x σ
-        (fun (h : x ∈ freeVars e2) => by
-          simp only [freeVars] at hFresh
-          exact hFresh (List.mem_append_right (freeVars e1) h)) hE2)
-  | HasType.binop_bitwise _ op e1 e2 hB hE1 hE2 =>
-    exact HasType.binop_bitwise _ op _ _ hB
-      (weakening_hasType _ _ .intType x σ
-        (fun (h : x ∈ freeVars e1) => by
-          simp only [freeVars] at hFresh
-          exact hFresh (List.mem_append_left (freeVars e2) h)) hE1)
-      (weakening_hasType _ _ .intType x σ
-        (fun (h : x ∈ freeVars e2) => by
-          simp only [freeVars] at hFresh
-          exact hFresh (List.mem_append_right (freeVars e1) h)) hE2)
-  | HasType.lam_type _ x' body τ1 τ2 hB =>
-    have hNe : x'.name ≠ x := by
-      intro hEq; exfalso
-      simp only [freeVars] at hFresh
-      exact hFresh (hEq ▸ @List.mem_cons_self String x'.name (freeVars body))
-    have hW : HasType (extendTypEnv (extendTypEnv Γ x'.name τ1) x σ) body τ2 :=
-      weakening_hasType (extendTypEnv Γ x'.name τ1) body τ2 x σ
-        (fun (h : x ∈ freeVars body) => by
-          simp only [freeVars] at hFresh
-          exact hFresh (List.mem_append_right [x'.name] h)) hB
-    exact HasType.lam_type _ x' body τ1 τ2
-      (HasType_lookup_eq' hW (extendTypEnv_swap' hNe))
-  | HasType.app_type _ fn args τs τ hF hA =>
-    exact HasType.app_type _ fn args τs τ
-      (weakening_hasType _ _ (.functionType τs τ) x σ
-        (fun (h : x ∈ freeVars fn) => by
-          simp only [freeVars] at hFresh
-          exact hFresh (List.mem_append_left (args.flatMap freeVars) h)) hF)
-      (weakening_hasType_all Γ args τs x σ
-        (fun (h : x ∈ args.flatMap freeVars) => by
-          simp only [freeVars] at hFresh
-          exact hFresh (List.mem_append_right (freeVars fn) h)) hA)
-  | HasType.let_type _ id e1 e2 τ1 τ2 hE1 hE2 =>
-    have hNe : id.name ≠ x := by
-      intro hEq; exfalso
-      simp only [freeVars] at hFresh
-      exact hFresh (hEq ▸ List.mem_append_left (freeVars e2)
-        (List.mem_append_right (freeVars e1) (@List.mem_cons_self String id.name [])))
-    exact HasType.let_type _ _ _ _ _ _
-      (weakening_hasType _ _ τ1 x σ
-        (fun (h : x ∈ freeVars e1) => by
-          simp only [freeVars] at hFresh
-          exact hFresh (List.mem_append_left (freeVars e2)
-            (List.mem_append_left [id.name] h))) hE1)
-      (HasType_lookup_eq'
-        (weakening_hasType (extendTypEnv Γ id.name τ1) e2 τ2 x σ
-          (fun (h : x ∈ freeVars e2) => by
-            simp only [freeVars] at hFresh
-            exact hFresh (List.mem_append_right (freeVars e1 ++ [id.name]) h)) hE2)
-        (extendTypEnv_swap' hNe))
-  | HasType.if_type _ c t f τ hC hT hF =>
-    exact HasType.if_type _ _ _ _ τ
-      (weakening_hasType _ _ .boolType x σ
-        (fun (h : x ∈ freeVars c) => by
-          simp only [freeVars] at hFresh
-          exact hFresh (List.mem_append_left (freeVars f)
-            (List.mem_append_left (freeVars t) h))) hC)
-      (weakening_hasType _ _ τ x σ
-        (fun (h : x ∈ freeVars t) => by
-          simp only [freeVars] at hFresh
-          exact hFresh (List.mem_append_left (freeVars f)
-            (List.mem_append_right (freeVars c) h))) hT)
-      (weakening_hasType _ _ τ x σ
-        (fun (h : x ∈ freeVars f) => by
-          simp only [freeVars] at hFresh
-          exact hFresh (List.mem_append_right (freeVars c ++ freeVars t) h)) hF)
-  | HasType.for_type _ id s e' body hS hE hB =>
-    have hNe : id.name ≠ x := by
-      intro hEq; exfalso
-      simp only [freeVars] at hFresh
-      exact hFresh (hEq ▸ List.mem_append_left (body.flatMap freeVars)
-        (List.mem_append_right (freeVars s ++ freeVars e')
-          (@List.mem_cons_self String id.name [])))
-    have hW : HasTypeAll (extendTypEnv (extendTypEnv Γ id.name .intType) x σ) body [.unitType] :=
-      weakening_hasType_all (extendTypEnv Γ id.name .intType) body [.unitType] x σ
-        (fun (h : x ∈ body.flatMap freeVars) => by
-          simp only [freeVars] at hFresh
-          exact hFresh (List.mem_append_right (freeVars s ++ freeVars e' ++ [id.name]) h)) hB
-    exact HasType.for_type _ id s e' body
-      (weakening_hasType _ _ .intType x σ
-        (fun (h : x ∈ freeVars s) => by
-          simp only [freeVars] at hFresh
-          exact hFresh (List.mem_append_left (body.flatMap freeVars)
-            (List.mem_append_left [id.name]
-              (List.mem_append_left (freeVars e') h)))) hS)
-      (weakening_hasType _ _ .intType x σ
-        (fun (h : x ∈ freeVars e') => by
-          simp only [freeVars] at hFresh
-          exact hFresh (List.mem_append_left (body.flatMap freeVars)
-            (List.mem_append_left [id.name]
-              (List.mem_append_right (freeVars s) h)))) hE)
-      (@HasTypeAll_lookup_eq'
-        (extendTypEnv (extendTypEnv Γ id.name .intType) x σ)
-        (extendTypEnv (extendTypEnv Γ x σ) id.name .intType)
-        body [.unitType] hW (extendTypEnv_swap' hNe))
-  | HasType.block_type _ exprs τs τ hA =>
-    exact HasType.block_type _ exprs τs τ
-      (weakening_hasType_all Γ exprs (τs ++ [τ]) x σ
-        (fun h => by simp only [freeVars] at hFresh; exact hFresh h) hA)
+  | HasType.bvar_type bvs Γ n h =>
+    have hLen' : n + 1 < (σ :: bvs).length := by simp; omega
+    rw [lift_bvar]
+    have : (σ :: bvs)[n + 1] = bvs[n] := by sorry
+    exact this ▸ HasType.bvar_type (σ :: bvs) Γ (n + 1) hLen'
+  | HasType.fvar_type bvs Γ name τ hLookup =>
+    rw [lift_fvar]
+    exact HasType.fvar_type (σ :: bvs) Γ name τ hLookup
+  | HasType.lit_int bvs Γ n =>
+    rw [lift_lit]
+    exact HasType.lit_int (σ :: bvs) Γ n
+  | HasType.lit_bool bvs Γ b =>
+    rw [lift_lit]
+    exact HasType.lit_bool (σ :: bvs) Γ b
+  | HasType.lit_string bvs Γ s =>
+    rw [lift_lit]
+    exact HasType.lit_string (σ :: bvs) Γ s
+  | HasType.lit_unit bvs Γ =>
+    rw [lift_lit]
+    exact HasType.lit_unit (σ :: bvs) Γ
+  | HasType.lit_pointer bvs Γ p =>
+    rw [lift_lit]
+    exact HasType.lit_pointer (σ :: bvs) Γ p
+  | HasType.unop_not bvs Γ e hE =>
+    rw [lift_unop]
+    exact HasType.unop_not (σ :: bvs) Γ (lift 1 e) (weakening _ _ _ _ σ hE)
+  | HasType.unop_notb bvs Γ e hE =>
+    rw [lift_unop]
+    exact HasType.unop_notb (σ :: bvs) Γ (lift 1 e) (weakening _ _ _ _ σ hE)
+  | HasType.binop_arith bvs Γ op e1 e2 hArith hE1 hE2 =>
+    rw [lift_binop]
+    exact HasType.binop_arith (σ :: bvs) Γ op (lift 1 e1) (lift 1 e2) hArith
+      (weakening _ _ _ _ σ hE1) (weakening _ _ _ _ σ hE2)
+  | HasType.binop_comp bvs Γ op e1 e2 hComp hE1 hE2 =>
+    rw [lift_binop]
+    exact HasType.binop_comp (σ :: bvs) Γ op (lift 1 e1) (lift 1 e2) hComp
+      (weakening _ _ _ _ σ hE1) (weakening _ _ _ _ σ hE2)
+  | HasType.binop_logic bvs Γ op e1 e2 hLogic hE1 hE2 =>
+    rw [lift_binop]
+    exact HasType.binop_logic (σ :: bvs) Γ op (lift 1 e1) (lift 1 e2) hLogic
+      (weakening _ _ _ _ σ hE1) (weakening _ _ _ _ σ hE2)
+  | HasType.binop_bitwise bvs Γ op e1 e2 hBit hE1 hE2 =>
+    rw [lift_binop]
+    exact HasType.binop_bitwise (σ :: bvs) Γ op (lift 1 e1) (lift 1 e2) hBit
+      (weakening _ _ _ _ σ hE1) (weakening _ _ _ _ σ hE2)
+  | HasType.lam_type bvs Γ n body paramTys retTy hLen hBody =>
+    rw [lift_lam]
+    -- We have: HasType (paramTys.reverse ++ bvs) Γ body retTy
+    -- Need: HasType (paramTys.reverse ++ σ :: bvs) Γ (liftUnder n 1 body) retTy
+    -- Weakening at depth 0 gives: HasType (σ :: paramTys.reverse ++ bvs) Γ (lift 1 body) retTy
+    -- These differ in both context and expression.
+    sorry
+  | HasType.app_type bvs Γ fn args τs τ hFn hArgs =>
+    rw [lift_app]
+    exact HasType.app_type (σ :: bvs) Γ (lift 1 fn) (List.map (lift 1) args) τs τ
+      (weakening _ _ _ _ σ hFn) (weakening_all _ _ _ _ σ hArgs)
+  | HasType.let_type bvs Γ e1 e2 τ1 τ2 hE1 hE2 =>
+    rw [lift_let]
+    -- lift 1 (.let_ e1 e2) = .let_ (lift 1 e1) (liftUnder 1 1 e2)
+    -- For e2: typed in (τ1 :: bvs), need typing in (τ1 :: σ :: bvs) for (liftUnder 1 1 e2)
+    sorry
+  | HasType.if_type bvs Γ c t f τ hC hT hF =>
+    rw [lift_if]
+    exact HasType.if_type (σ :: bvs) Γ (lift 1 c) (lift 1 t) (lift 1 f) τ
+      (weakening _ _ _ _ σ hC) (weakening _ _ _ _ σ hT) (weakening _ _ _ _ σ hF)
+  | HasType.for_type bvs Γ s e body hS hE hBody =>
+    rw [lift_for]
+    -- Same issue as let_: body needs weakening at depth 1
+    sorry
+  | HasType.block_type bvs Γ exprs τs τ hExprs =>
+    rw [lift_block]
+    exact HasType.block_type (σ :: bvs) Γ (List.map (lift 1) exprs) τs τ
+      (weakening_all _ _ _ _ σ hExprs)
 
-private theorem weakening_hasType_all (Γ : TypEnv) (es : List Expr) (τs : List Typ)
-    (x : String) (σ : Typ) (hFresh : x ∉ List.flatMap freeVars es)
-    (h : HasTypeAll Γ es τs) : HasTypeAll (extendTypEnv Γ x σ) es τs := by
+theorem weakening_all (bvs : List Typ) (Γ : TypEnv) (es : List Expr) (τs : List Typ)
+    (σ : Typ) (h : HasTypeAll bvs Γ es τs) : HasTypeAll (σ :: bvs) Γ (es.map (lift 1)) τs := by
   match h with
-  | HasTypeAll.nil _ => exact HasTypeAll.nil _
-  | HasTypeAll.cons _ e es' τ τs' hE hR =>
-    exact HasTypeAll.cons _ _ _ _ _
-      (weakening_hasType _ _ _ x σ (fun h => hFresh (List.mem_append_left _ h)) hE)
-      (weakening_hasType_all _ es' _ x σ (fun h => hFresh (List.mem_append_right (freeVars e) h)) hR)
+  | HasTypeAll.nil _ _ => exact HasTypeAll.nil _ _
+  | HasTypeAll.cons _ _ e es' τ τs' hE hRest =>
+    exact HasTypeAll.cons _ _ _ _ _ _
+      (weakening _ _ _ _ σ hE)
+      (weakening_all _ _ _ _ σ hRest)
 
 end
-
-theorem weakening (Γ : TypEnv) (e : Expr) (τ : Typ) (x : String) (σ : Typ)
-    (hFresh : x ∉ freeVars e) :
-    HasType Γ e τ → HasType (extendTypEnv Γ x σ) e τ :=
-  weakening_hasType Γ e τ x σ hFresh
 
 /-! ## Canonical Forms -/
 

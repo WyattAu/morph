@@ -24,35 +24,35 @@ def env_x_bool_y_int : TypEnv := [("x", .boolType), ("y", .intType)]
 def env_empty : TypEnv := []
 
 /-- Type inference for a literal integer returns intType. -/
-example : inferType env_empty (.lit (.int 42)) = some .intType := by
+example : inferType [] env_empty (.lit (.int 42)) = some .intType := by
   simp [inferType]
 
 /-- Type inference for a literal boolean returns boolType. -/
-example : inferType env_empty (.lit (.bool true)) = some .boolType := by
+example : inferType [] env_empty (.lit (.bool true)) = some .boolType := by
   simp [inferType]
 
 /-- Type inference for a literal string returns stringType. -/
-example : inferType env_empty (.lit (.string "hello")) = some .stringType := by
+example : inferType [] env_empty (.lit (.string "hello")) = some .stringType := by
   simp [inferType]
 
 /-- Type inference for a literal unit returns unitType. -/
-example : inferType env_empty (.lit .unit) = some .unitType := by
+example : inferType [] env_empty (.lit .unit) = some .unitType := by
   simp [inferType]
 
 /-- Type inference for undefined literal returns none. -/
-example : inferType env_empty (.lit .undef) = none := by
+example : inferType [] env_empty (.lit .undef) = none := by
   simp [inferType]
 
 /-- Type inference for a variable looks up the environment. -/
-example : inferType env_x_int (.var { name := "x" }) = some .intType := by
+example : inferType [] env_x_int (.fvar "x") = some .intType := by
   simp [inferType, lookupTyp, env_x_int]
 
 /-- Type inference for an unknown variable returns none. -/
-example : inferType env_empty (.var { name := "z" }) = none := by
+example : inferType [] env_empty (.fvar "z") = none := by
   simp [inferType, lookupTyp, env_empty]
 
 /-- typeCheck for a literal int against boolType is false. -/
-example : (typeCheck env_empty (.lit (.int 10)) .boolType) = False := by
+example : (typeCheck [] env_empty (.lit (.int 10)) .boolType) = False := by
   simp [typeCheck, inferType]
 
 /-- Extending an environment with a new binding. -/
@@ -109,30 +109,30 @@ example : isBitwiseOp .andb = True := rfl
 example : isBitwiseOp .and = False := rfl
 
 /-- A variable has type intType when bound to intType in the environment. -/
-example : HasType env_x_int (.var { name := "x" }) .intType := by
-  apply HasType.var_type
+example : HasType [] env_x_int (.fvar "x") .intType := by
+  apply HasType.fvar_type
   show lookupTyp env_x_int "x" = some .intType
   unfold lookupTyp
   simp [env_x_int]
 
 /-- A literal integer has type intType in any environment. -/
-example (Γ : TypEnv) : HasType Γ (.lit (.int 7)) .intType :=
-  HasType.lit_int Γ 7
+example (Γ : TypEnv) : HasType [] Γ (.lit (.int 7)) .intType :=
+  HasType.lit_int [] Γ 7
 
 /-- A literal boolean has type boolType in any environment. -/
-example (Γ : TypEnv) : HasType Γ (.lit (.bool false)) .boolType :=
-  HasType.lit_bool Γ false
+example (Γ : TypEnv) : HasType [] Γ (.lit (.bool false)) .boolType :=
+  HasType.lit_bool [] Γ false
 
 /-- A literal string has type stringType in any environment. -/
-example (Γ : TypEnv) : HasType Γ (.lit (.string "test")) .stringType :=
-  HasType.lit_string Γ "test"
+example (Γ : TypEnv) : HasType [] Γ (.lit (.string "test")) .stringType :=
+  HasType.lit_string [] Γ "test"
 
 /-- A literal unit has type unitType in any environment. -/
-example (Γ : TypEnv) : HasType Γ (.lit .unit) .unitType :=
-  HasType.lit_unit Γ
+example (Γ : TypEnv) : HasType [] Γ (.lit .unit) .unitType :=
+  HasType.lit_unit [] Γ
 
 /-- HasTypeAll holds for empty lists. -/
-example (Γ : TypEnv) : HasTypeAll Γ [] [] :=
-  HasTypeAll.nil Γ
+example (Γ : TypEnv) : HasTypeAll [] Γ [] [] :=
+  HasTypeAll.nil [] Γ
 
 end Morph.Specs.TypeSystem

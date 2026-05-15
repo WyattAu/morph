@@ -34,31 +34,26 @@ See ADR-004 for bidirectional typing design.
 
     For lambdas, bidirectional typing is needed; use `checkType` with an
     expected function type to infer lambda parameter types. -/
-def synthType (env : TypEnv) (e : Expr) : Option Typ :=
-  inferType env e
+def synthType (bvs : List Typ) (env : TypEnv) (e : Expr) : Option Typ :=
+  inferType bvs env e
 
 /-! ## Type Checking -/
 
 /-- Check that an expression has the expected type in the given environment.
     For lambdas, this performs bidirectional checking: given an expected
-    function type, the parameter types are used to extend the environment
-    and check the body. -/
-def checkType (env : TypEnv) (e : Expr) (expected : Typ) : Bool :=
+    function type, the parameter types are used to extend the de Bruijn
+    context and check the body. -/
+def checkType (bvs : List Typ) (env : TypEnv) (e : Expr) (expected : Typ) : Bool :=
   match e with
-  | .lam xs body =>
+  | .lam n body =>
     match expected with
     | .functionType paramTys retTy =>
-      if _h : xs.length = paramTys.length then
-        -- Extend environment with parameter bindings
-        let extendedEnv := List.foldl (init := env)
-          (fun (acc : TypEnv) (pair : Id × Typ) =>
-            extendTypEnv acc pair.1.name pair.2)
-          (xs.zip paramTys)
-        checkType extendedEnv body retTy
+      if _h : n = paramTys.length then
+        checkType (paramTys.reverse ++ bvs) env body retTy
       else false
     | _ => false
   | _ =>
-    match synthType env e with
+    match synthType bvs env e with
     | some t => t == expected
     | none => false
 
@@ -101,14 +96,14 @@ partial def unify (t1 t2 : Typ) : Option Typ :=
 
     The overall type of the block is the type of the last expression
     (or `unitType` if empty). -/
-def typeCheckBlock (env : TypEnv) (exprs : List Expr) : Bool :=
-  exprs.all (fun e => (synthType env e).isSome)
+def typeCheckBlock (bvs : List Typ) (env : TypEnv) (exprs : List Expr) : Bool :=
+  exprs.all (fun e => (synthType bvs env e).isSome)
 
 /-! ## Error Reporting -/
 
 /-- Produce a human-readable type error message when type checking fails. -/
-def formatTypeError (env : TypEnv) (e : Expr) (expected : Typ) : String :=
-  match synthType env e with
+def formatTypeError (bvs : List Typ) (env : TypEnv) (e : Expr) (expected : Typ) : String :=
+  match synthType bvs env e with
   | some actual =>
     s!"Type mismatch: expected {repr expected}, found {repr actual} in {repr e}"
   | none =>
@@ -116,9 +111,9 @@ def formatTypeError (env : TypEnv) (e : Expr) (expected : Typ) : String :=
 
 /-! ## Utility: Infer Type of List of Expressions -/
 
-def inferTypes (env : TypEnv) (exprs : List Expr) : Option (List Typ) :=
+def inferTypes (bvs : List Typ) (env : TypEnv) (exprs : List Expr) : Option (List Typ) :=
   exprs.foldlM (init := []) (fun acc e =>
-    match synthType env e with
+    match synthType bvs env e with
     | some t => some (acc ++ [t])
     | none => none)
 

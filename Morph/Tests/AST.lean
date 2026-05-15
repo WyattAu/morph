@@ -126,9 +126,14 @@ These tests verify that Expression constructors work correctly and expressions c
 
 section SyntaxExprTests
 
-  /-- Syntax.Expr.var constructor creates valid expression -/
-  example (id : Morph.Syntax.Id) :
-    (Morph.Syntax.Expr.var id) = Morph.Syntax.Expr.var id := by
+  /-- Syntax.Expr.bvar constructor creates valid expression -/
+  example (n : Nat) :
+    (Morph.Syntax.Expr.bvar n) = Morph.Syntax.Expr.bvar n := by
+    rfl
+
+  /-- Syntax.Expr.fvar constructor creates valid expression -/
+  example (name : String) :
+    (Morph.Syntax.Expr.fvar name) = Morph.Syntax.Expr.fvar name := by
     rfl
 
   /-- Syntax.Expr.lit constructor creates valid expression -/
@@ -152,13 +157,13 @@ section SyntaxExprTests
     rfl
 
   /-- Syntax.Expr.lam constructor creates valid expression -/
-  example (params : List Morph.Syntax.Id) (body : Morph.Syntax.Expr) :
-    (Morph.Syntax.Expr.lam params body) = Morph.Syntax.Expr.lam params body := by
+  example (n : Nat) (body : Morph.Syntax.Expr) :
+    (Morph.Syntax.Expr.lam n body) = Morph.Syntax.Expr.lam n body := by
     rfl
 
-  /-- Syntax.Expr.let constructor creates valid expression -/
-  example (id : Morph.Syntax.Id) (e1 e2 : Morph.Syntax.Expr) :
-    (Morph.Syntax.Expr.let id e1 e2) = Morph.Syntax.Expr.let id e1 e2 := by
+  /-- Syntax.Expr.let_ constructor creates valid expression -/
+  example (e1 e2 : Morph.Syntax.Expr) :
+    (Morph.Syntax.Expr.let_ e1 e2) = Morph.Syntax.Expr.let_ e1 e2 := by
     rfl
 
   /-- Syntax.Expr.ifThenElse constructor creates valid expression -/
@@ -166,9 +171,9 @@ section SyntaxExprTests
     (Morph.Syntax.Expr.ifThenElse cond e1 e2) = Morph.Syntax.Expr.ifThenElse cond e1 e2 := by
     rfl
 
-  /-- Syntax.Expr.forLoop constructor creates valid expression (4 args) -/
-  example (id : Morph.Syntax.Id) (start end_ : Morph.Syntax.Expr) (body : List Morph.Syntax.Expr) :
-    (Morph.Syntax.Expr.forLoop id start end_ body) = Morph.Syntax.Expr.forLoop id start end_ body := by
+  /-- Syntax.Expr.forLoop constructor creates valid expression (3 args) -/
+  example (start end_ : Morph.Syntax.Expr) (body : List Morph.Syntax.Expr) :
+    (Morph.Syntax.Expr.forLoop start end_ body) = Morph.Syntax.Expr.forLoop start end_ body := by
     rfl
 
   /-- Syntax.Expr.block constructor creates valid expression -/

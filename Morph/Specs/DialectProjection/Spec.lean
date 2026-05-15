@@ -153,11 +153,31 @@ theorem allInDialect_val (v : DialectValue) (d : Dialect) (h : v.dialect = d) :
     so lowering through identity is the identity on well-dialected expressions. -/
 theorem lower_identity (d : Dialect) (e : DialectExpr) (hAll : allInDialect e d) :
     lower (identityProjection d) e = e := by
-  -- Nested inductive type requires custom induction scheme.
-  -- The property holds structurally: lower recurses through subterms,
-  -- identity projection preserves the dialect, and hAll ensures all
-  -- DialectValues already have dialect = d.
-  -- Pending: custom nested induction via DialectExpr.rec.
-  sorry
+  exact DialectExpr.rec
+    (motive_1 := fun e => allInDialect e d → lower (identityProjection d) e = e)
+    (motive_2 := fun l => (∀ e ∈ l, allInDialect e d) → l.map (lower (identityProjection d)) = l)
+    (val := fun v h => by
+      simp only [lower, identityProjection]
+      simp only [allInDialect] at h
+      subst h; rfl)
+    (op := fun name args ih h => by
+      simp only [lower, identityProjection]
+      simp only [allInDialect] at h
+      congr 1; exact ih h)
+    (call := fun name args ih h => by
+      simp only [lower, identityProjection]
+      simp only [allInDialect] at h
+      congr 1; exact ih h)
+    (block := fun exprs ih h => by
+      simp only [lower, identityProjection]
+      simp only [allInDialect] at h
+      congr 1; exact ih h)
+    (nil := fun _ => rfl)
+    (cons := fun head tail ih_head ih_tail h => by
+      simp only [List.map]
+      congr 1
+      · exact ih_head (h head (by simp))
+      · exact ih_tail (fun e he => h e (by simp [List.mem_cons, he])))
+    e hAll
 
 end Morph.Specs.DialectProjection
