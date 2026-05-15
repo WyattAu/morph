@@ -8,33 +8,51 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 
 | Metric | Value |
 |---|---|
-| `lake build Morph` | 323 jobs, 0 errors, 1 warning |
+| `lake build Morph` | 328 jobs, 0 errors, 4 sorry warnings |
 | `lake build Morph.Tests` | 186 jobs, 0 errors |
-| Python spec-tools | 636 tests, 86% coverage |
+| Python spec-tools | 636 tests, 88% coverage |
 | `.lean` files | 151 |
-| Lines of Lean | ~14,878 |
+| Lines of Lean | ~14,500 |
 | Spec modules | 43 |
 | Real theorems/lemmas (Specs/) | 485 |
-| `sorry` declarations | 3 (`Preservation.lean`, documented) |
+| `sorry` declarations | 10 (6 Preservation.lean + 4 Lemmas.lean) |
 | `example : True := trivial` stubs | 0 |
 | Real proof modules | 7 (TypeSystem, SecurityFlow, GLOSSARY, MorphLanguage, ConcurrencyProcessAlgebra, MemoryModel, ModuleSystem) |
+| Landing page | Deployed via GitHub Pages |
 
 ---
 
 ## 1. Formal Verification Completion [P0]
 
-### 1.1 Fix 3 sorries in Preservation.lean
+### 1.1 Fix 10 sorries in Preservation.lean and Lemmas.lean
 
-**File:** `Morph/Proofs/TypeSoundness/Preservation.lean:284,296,309`
+**Preservation.lean (6 sorries):**
 
-All three sorries occur in non-capture substitution cases (`lam_type`, `let_type`, `for_type`). Each requires weakening `hV : HasType Gamma v tau1` into an extended typing environment `HasType (extendTypEnv Gamma x'.name tau') v tau1`. This demands proving `x'.name not in freeVars v` (beta-reduction guarantees the argument is closed w.r.t. the binder).
+| Line | Location | Required Lemma | Status |
+|---|---|---|---|
+| 116 | `HasType_subst` bvar_type | `lift_preserves_type`: lifting by 0 preserves typing | Needs proof |
+| 156 | `HasType_subst` lam_type | Substitution at depth > 0 (crossing lambda binders) | Needs generalized subst lemma |
+| 171 | `HasType_subst` let_type | Substitution at depth 1 (crossing let binder) | Needs generalized subst lemma |
+| 175 | `HasType_subst` for_type | Substitution at depth 1 (crossing for-loop binder) | Needs generalized subst lemma |
+| 288 | `preservation` for_exec | Simultaneous substitution for loop body | Needs `substAll_preserves_type` |
+| 359 | `preservation` app_lam | Simultaneous substitution for lambda args | Needs `substAll_preserves_type` |
+
+**Lemmas.lean (4 sorries):**
+
+| Line | Location | Required Lemma | Status |
+|---|---|---|---|
+| 122 | `lookupTyp_shift` | List indexing equality after cons | Simple arithmetic |
+| 170 | `lookupTyp_shift` | Environment lookup shift | Needs `lookupTyp_extend_ne` |
+| 179 | `lookupTyp_shift` | Environment lookup shift | Related to above |
+| 187 | `lookupTyp_shift` | Environment lookup shift | Related to above |
 
 **Approach:**
-1. Add a weakening lemma: `theorem weakening {Gamma Gamma' tau e} : Gamma <= Gamma' -> HasType Gamma e tau -> HasType Gamma' e tau`
-2. Alternatively, add freshness preconditions to `subst_preserves_type` and `substList_preserves_type_all`, restructuring the mutual block
-3. In each `sorry` branch, derive `x'.name notin freeVars v` from the evaluation context, then apply weakening
+1. Prove `lift_preserves_type : HasType bvs Γ v τ -> HasType bvs Γ (lift k v) τ` (fixes sorry #1)
+2. Generalize `HasType_subst` to handle arbitrary depth: `subst'_preserves_type : HasType (τ1 :: bvs) Γ e τ -> HasType bvs Γ v τ1 -> HasType bvs Γ (subst' k e v) τ` (fixes sorries #2-4)
+3. Prove `substAll_preserves_type` for simultaneous substitution (fixes sorries #5-6)
+4. Fix the 4 Lemmas.lean environment lookup lemmas (simple arithmetic on List indices)
 
-**Effort:** 3-5 days | **Deps:** none | **Blocks:** sorry-free CI gate
+**Effort:** 1-2 weeks | **Deps:** none | **Blocks:** sorry-free CI gate
 
 ### 1.2 Eliminate stubs -- Tier 1 (runtime foundation)
 
