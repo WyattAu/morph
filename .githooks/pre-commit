@@ -170,10 +170,25 @@ echo "[6/7] All lint/type-check PASSED"
 # Step 7: spec-tools checks on staged markdown files (if available)
 echo ""
 echo "[7/7] Running spec-tools checks on markdown files..."
-if command -v spec-tools &>/dev/null; then
+SPEC_TOOLS_CMD=""
+if [ -f ".venv/bin/spec-tools" ]; then
+    SPEC_TOOLS_CMD=".venv/bin/spec-tools"
+elif command -v spec-tools &>/dev/null; then
+    SPEC_TOOLS_CMD="spec-tools"
+fi
+
+if [ -n "$SPEC_TOOLS_CMD" ]; then
     MD_FILES=$(git diff --cached --name-only --diff-filter=ACM '*.md' 2>/dev/null || true)
     if [ -n "$MD_FILES" ]; then
-        if spec-tools lint $MD_FILES 2>&1; then
+        LINT_OK=true
+        for md_file in $MD_FILES; do
+            if [ -f "$md_file" ]; then
+                if ! $SPEC_TOOLS_CMD lint "$md_file" 2>&1; then
+                    LINT_OK=false
+                fi
+            fi
+        done
+        if [ "$LINT_OK" = true ]; then
             echo "[7/7] spec-tools lint PASSED"
         else
             echo "[7/7] spec-tools lint FAILED (warnings only, commit allowed)"
