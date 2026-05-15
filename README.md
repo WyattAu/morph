@@ -18,7 +18,7 @@ The project has successfully migrated to Lean 4 v4.27.0 with mathlib4. All forma
 - **Standard Library**: mathlib4
 - **Proof Automation**: aesop, batteries
 - **Build System**: Lake (Lean's package manager)
-- **CI/CD**: GitLab CI, Jenkins
+- **CI/CD**: GitHub Actions
 
 ## Key Features
 
@@ -86,6 +86,8 @@ Key specification areas include:
 
 ```
 morph/
+├── .github/workflows/  # GitHub Actions CI/CD
+├── .githooks/           # Git hooks (pre-commit)
 ├── .specs/              # Specifications and ADRs
 │   ├── 01_standards/   # Coding standards
 │   ├── 02_adrs/         # Architecture Decision Records
@@ -94,12 +96,20 @@ morph/
 │   └── 05_migration/    # Migration documentation
 ├── Morph/               # Lean 4 formal verification code
 │   ├── Core.lean        # Core type definitions
-│   ├── Syntax.lean      # Syntax definitions
-│   ├── Semantics.lean   # Operational semantics
+│   ├── Syntax.lean      # Syntax definitions (exprs, subst, free vars)
+│   ├── Semantics.lean   # Operational semantics (Step, IsValue)
 │   ├── Memory.lean      # Memory model
 │   ├── HIR.lean         # High-level IR
 │   ├── MIR.lean         # Mid-level IR
-│   └── Specs/           # Specification modules (40+ modules)
+│   ├── Specs/           # Type system specification
+│   │   ├── TypeSystem/  # HasType, HasTypeAll inductive families
+│   │   └── ExecutionModel/  # Execution model specification
+│   ├── Proofs/          # Formal proofs
+│   │   └── TypeSoundness/  # Progress & Preservation theorems
+│   └── Tests/           # Lean 4 test suite
+├── scripts/             # Python tooling
+│   ├── spec_tools/      # Specification validation tools (636 tests)
+│   └── tests/           # Python test suite
 ├── docs/                # Documentation
 ├── impl/                # Implementation documentation
 └── spec/                # Markdown specification sources
@@ -151,8 +161,8 @@ Contributions are welcome! Please follow these guidelines:
 
 1. Read the [coding standards](.specs/01_standards/coding_standards.md)
 2. Follow the [three-file module pattern](.specs/02_adrs/ADR-001-three-file-module-pattern.md)
-3. Ensure proofs have no `sorry` placeholders where possible (3 known sorries in Preservation.lean require weakening lemma)
-4. Run the CI pipeline locally before submitting
+3. Ensure proofs have no `sorry` placeholders where possible (known sorries exist in Preservation.lean and Lemmas.lean for weakening/substitution lemmas)
+4. Run the pre-commit hook locally before submitting (`lake build Morph` must pass)
 5. Update documentation for any changes
 
 ## License
