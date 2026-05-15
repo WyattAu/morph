@@ -150,8 +150,8 @@ venv.bak/
 # Rope project settings
 .ropeproject
 
-# mkdocs documentation
-/site
+# mkdocs documentation (build output)
+/site/build
 
 # mypy
 .mypy_cache/

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Morph -- Formal Specification for an Agentic Programming Language</title>
+  <meta name="description" content="Morph is a formal specification for an agentic programming language, verified in Lean 4. Provides mathematical guarantees about type safety, memory safety, and concurrency.">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>M</text></svg>">
+</head>
+<body>
+  <header>
+    <nav>
+      <a href="/" class="logo">Morph</a>
+      <div class="nav-links">
+        <a href="#overview">Overview</a>
+        <a href="#verification">Verification</a>
+        <a href="#specification">Specification</a>
+        <a href="#tools">Tools</a>
+        <a href="#getting-started">Getting Started</a>
+        <a href="https://github.com/WyattAu/morph" class="nav-cta">GitHub</a>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <section id="hero">
+      <h1>Morph</h1>
+      <p class="tagline">A formally verified specification for an agentic programming language</p>
+      <p class="description">
+        Morph provides a comprehensive mathematical foundation for building intelligent,
+        concurrent, and type-safe systems. The entire language specification is verified
+        in Lean 4 with mathlib4, yielding machine-checked proofs of type soundness,
+        progress, and preservation.
+      </p>
+      <div class="hero-stats">
+        <div class="stat">
+          <span class="stat-value">328</span>
+          <span class="stat-label">Lean modules</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value">485</span>
+          <span class="stat-label">Theorems</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value">636</span>
+          <span class="stat-label">Python tests</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value">88%</span>
+          <span class="stat-label">Coverage</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Type System</h3>
+          <p>Dependent types with de Bruijn indices, function types, product types,
+          recursive types, and polymorphic operations. Type soundness verified via
+          Progress and Preservation theorems.</p>
+        </div>
+        <div class="card">
+          <h3>Operational Semantics</h3>
+          <p>Small-step operational semantics covering arithmetic, comparison, logic,
+          bitwise operations, lambda calculus, let bindings, conditionals, for loops,
+          blocks, and function application with eager evaluation.</p>
+        </div>
+        <div class="card">
+          <h3>Formal Verification</h3>
+          <p>Machine-checked proofs in Lean 4 v4.27.0 using mathlib4, aesop, and
+          batteries. Type soundness (Progress + Preservation) proven for the core
+          calculus. Substitution lemmas capture-avoidance by construction.</p>
+        </div>
+        <div class="card">
+          <h3>Agent Programming</h3>
+          <p>Designed for the post-text era of computing. The specification covers
+          process algebra for agent communication, green thread scheduling, capability-based
+          security, and information flow analysis.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="verification">
+      <h2>Verification Status</h2>
+      <div class="verification-grid">
+        <div class="v-status">
+          <h4>Progress Theorem</h4>
+          <span class="badge badge-pass">Proven</span>
+          <p>Every well-typed expression is either a value or can take a step.</p>
+        </div>
+        <div class="v-status">
+          <h4>Preservation Theorem</h4>
+          <span class="badge badge-partial">Partial</span>
+          <p>Type preservation under substitution proven. Simultaneous substitution
+          and for-loop execution have documented gaps (6 sorries).</p>
+        </div>
+        <div class="v-status">
+          <h4>Type System Spec</h4>
+          <span class="badge badge-pass">Complete</span>
+          <p>HasType and HasTypeAll inductive families with 19 constructors covering
+          all expression forms.</p>
+        </div>
+        <div class="v-status">
+          <h4>Spec Validation</h4>
+          <span class="badge badge-pass">Automated</span>
+          <p>636 Python tests validate specification format, lint, cross-references,
+          link integrity, and structural correctness.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="specification">
+      <h2>Specification Architecture</h2>
+      <div class="arch-layers">
+        <div class="layer">
+          <span class="layer-name">Core</span>
+          <span class="layer-desc">Types, expressions, operators, values</span>
+          <code>Core.lean, Syntax.lean</code>
+        </div>
+        <div class="layer">
+          <span class="layer-name">Semantics</span>
+          <span class="layer-desc">Small-step reduction, evaluation, substitution</span>
+          <code>Semantics.lean</code>
+        </div>
+        <div class="layer">
+          <span class="layer-name">Type System</span>
+          <span class="layer-desc">Typing rules, lemmas, examples</span>
+          <code>Specs/TypeSystem/</code>
+        </div>
+        <div class="layer">
+          <span class="layer-name">Verification</span>
+          <span class="layer-desc">Progress, Preservation, ExprDepth</span>
+          <code>Proofs/TypeSoundness/</code>
+        </div>
+        <div class="layer">
+          <span class="layer-name">Infrastructure</span>
+          <span class="layer-desc">Type checker, parser, tests</span>
+          <code>TypeChecker.lean, Tests/</code>
+        </div>
+        <div class="layer">
+          <span class="layer-name">Validation</span>
+          <span class="layer-desc">Spec-tools (Python), 60+ spec modules</span>
+          <code>scripts/spec_tools/, spec/</code>
+        </div>
+      </div>
+    </section>
+
+    <section id="tools">
+      <h2>Tools and Infrastructure</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Lean 4 v4.27.0</h3>
+          <p>Theorem prover and specification language. Build system via Lake.
+          Proof automation with aesop and batteries. Standard library: mathlib4.</p>
+        </div>
+        <div class="card">
+          <h3>spec-tools (Python)</h3>
+          <p>636 tests validating specification quality: format checking, linting,
+          cross-reference validation, link checking, structural analysis, and
+          coverage reporting. 88% test coverage.</p>
+        </div>
+        <div class="card">
+          <h3>CI/CD</h3>
+          <p>GitHub Actions with three workflows: Lean build verification,
+          nightly Nix-based builds, and spec validation. Pre-commit hooks
+          enforce build, lint, format, and type-check gates.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="getting-started">
+      <h2>Getting Started</h2>
+      <div class="code-block">
+        <h4>Prerequisites</h4>
+        <p>Lean 4 v4.27.0 (managed by <code>elan</code>), Lake build system.</p>
+        <h4>Build</h4>
+<pre><code># Install toolchain (elan handles Lean version)
+curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh
+
+# Build the project
+lake build
+
+# Run Lean tests
+lake build Morph.Tests</code></pre>
+        <h4>Python spec-tools</h4>
+<pre><code># Install and run validation
+pip install -e scripts/
+spec-tools validate spec/
+spec-tools lint spec/</code></pre>
+      </div>
+    </section>
+
+    <section id="links">
+      <h2>Documentation</h2>
+      <ul class="doc-links">
+        <li><a href="https://github.com/WyattAu/morph/blob/main/README.md">Project README</a></li>
+        <li><a href="https://github.com/WyattAu/morph/blob/main/ROADMAP.md">Development Roadmap</a></li>
+        <li><a href="https://github.com/WyattAu/morph/blob/main/PATH_FORWARD.md">Path Forward</a></li>
+        <li><a href="https://github.com/WyattAu/morph/tree/main/spec">Specification Modules (60+)</a></li>
+        <li><a href="https://github.com/WyattAu/morph/tree/main/docs">Architecture Documents</a></li>
+        <li><a href="https://github.com/WyattAu/morph/tree/main/.specs/02_adrs">Architecture Decision Records</a></li>
+        <li><a href="https://github.com/WyattAu/morph/blob/main/impl/overview.md">Implementation Overview</a></li>
+        <li><a href="https://github.com/WyattAu/morph/blob/main/spec/GLOSSARY.md">Glossary</a></li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    <p>Morph -- Formal Specification for an Agentic Programming Language</p>
+    <p>
+      <a href="https://github.com/WyattAu/morph">Source</a>
+      <span class="sep">|</span>
+      <a href="https://github.com/WyattAu/morph/blob/main/LICENSE">License (Apache-2.0)</a>
+    </p>
+  </footer>
+</body>
+</html>
