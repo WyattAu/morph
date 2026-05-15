@@ -11,7 +11,7 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 | `lake build Morph` | 328 jobs, 0 errors, 4 sorry warnings |
 | `lake build Morph.Tests` | 186 jobs, 0 errors |
 | Python spec-tools | 636 tests, 87.5% coverage |
-| `.lean` files | 151 |
+| `.lean` files | 155 |
 | Lines of Lean | ~14,500 |
 | Spec modules | 43 |
 | Real theorems/lemmas (Specs/) | 485 |

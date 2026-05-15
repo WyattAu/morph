@@ -20,11 +20,11 @@ This probe gathered forensic evidence about file generation tools, scripts, and 
 
 ### Investigation Steps
 
-1. ✅ Searched for file generation scripts (`.sh`, `.py`, `.js`, `.lean` scripts)
-2. ✅ Checked build configuration ([`lakefile.lean`](lakefile.lean), [`lakefile.toml`](lakefile.toml))
-3. ✅ Investigated spec-tools directory
-4. ✅ Checked pre-commit hooks ([`.pre-commit-config.yaml`](.pre-commit-config.yaml))
-5. ✅ Examined source documentation structure
+1. [OK] Searched for file generation scripts (`.sh`, `.py`, `.js`, `.lean` scripts)
+2. [OK] Checked build configuration ([`lakefile.lean`](lakefile.lean), [`lakefile.toml`](lakefile.toml))
+3. [OK] Investigated spec-tools directory
+4. [OK] Checked pre-commit hooks ([`.pre-commit-config.yaml`](.pre-commit-config.yaml))
+5. [OK] Examined source documentation structure
 
 ---
 
@@ -157,11 +157,11 @@ if '/-' in line:
 
 | Tool/Location | Purpose | Evidence of `.lean` Generation | Verdict |
 |---------------|---------|-------------------------------|---------|
-| [`lakefile.lean`](lakefile.lean) | Build configuration | ❌ No generation targets | Not responsible |
-| [`lakefile.toml`](lakefile.toml) | Build configuration | ❌ No generation hooks | Not responsible |
-| [`scripts/spec_tools/`](scripts/spec_tools/) | Spec formatting/linting | ❌ Only processes `.md` files | Not responsible |
-| [`.pre-commit-config.yaml`](.pre-commit-config.yaml) | Pre-commit hooks | ❌ Only processes `.md` files | Not responsible |
-| `spec/` directory | Source documentation | ❌ Contains `.md` files only | Not responsible |
+| [`lakefile.lean`](lakefile.lean) | Build configuration | [FAIL] No generation targets | Not responsible |
+| [`lakefile.toml`](lakefile.toml) | Build configuration | [FAIL] No generation hooks | Not responsible |
+| [`scripts/spec_tools/`](scripts/spec_tools/) | Spec formatting/linting | [FAIL] Only processes `.md` files | Not responsible |
+| [`.pre-commit-config.yaml`](.pre-commit-config.yaml) | Pre-commit hooks | [FAIL] Only processes `.md` files | Not responsible |
+| `spec/` directory | Source documentation | [FAIL] Contains `.md` files only | Not responsible |
 
 ### Potential File Generation Mechanisms
 
@@ -178,14 +178,14 @@ if '/-' in line:
 "An automated file generation process creates `.lean` files with malformed copyright headers due to a bug in the header generation logic."
 
 ### Evidence Supporting Theory A
-❌ **None found** - No automated file generation process was discovered.
+[FAIL] **None found** - No automated file generation process was discovered.
 
 ### Evidence Contradicting Theory A
-✅ **Build configuration** contains no generation targets
-✅ **Spec-tools** only processes Markdown files
-✅ **Pre-commit hooks** only process Markdown files
-✅ **No template or generation scripts** were found in the project
-✅ **Previous fix attempt** was a manual repair script, not a generation process
+[OK] **Build configuration** contains no generation targets
+[OK] **Spec-tools** only processes Markdown files
+[OK] **Pre-commit hooks** only process Markdown files
+[OK] **No template or generation scripts** were found in the project
+[OK] **Previous fix attempt** was a manual repair script, not a generation process
 
 ### Conclusion
 **Theory A is NOT SUPPORTED.**

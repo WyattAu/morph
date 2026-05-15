@@ -68,7 +68,7 @@ The Optimization Manifold Specification is closely related to several other Morp
 - [`spec/type/type_system_spec.md`](../type/type_system_spec.md) - Type system for optimization-time type checking
 - [`spec/type/pure_type_spec.md`](../type/pure_type_spec.md) - Pure type theory
 - [`spec/type/type_category_spec.md`](../type/type_category_spec.md) - Type category theory and algebraic type foundations
-- [`spec/type/type_unification_spec.md`](type/type_type_unification_spec.md) - Type unification algorithm and inference rules
+- [`spec/type/type_unification_spec.md`](../type/type_unification_spec.md) - Type unification algorithm and inference rules
 - [`spec/type/effect_system_spec.md`](../type/effect_system_spec.md) - Complete effect system specification with formal semantics and type-level effect tracking
 
 * Note:* These cross-references help readers navigate to Morph specification ecosystem by providing links to related specifications that provide complementary or detailed information about concepts referenced in this document.

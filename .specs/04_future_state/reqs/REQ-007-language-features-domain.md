@@ -537,8 +537,8 @@ The OperatorNullCoalescing module specifies the null-coalescing operator semanti
 
 **Files:**
 - [`Morph/Specs/README/Spec.lean`](../Morph/Specs/README/Spec.lean:1) - 22 lines
-- [`Morph/Specs/README/Lemmas.lean`](../Morph/Specs/README/Lemmas.lean:1) - 8 lines ⚠️ **STUB**
-- [`Morph/Specs/README/Examples.lean`](../Morph/Specs/README/Examples.lean:1) - 8 lines ⚠️ **STUB**
+- [`Morph/Specs/README/Lemmas.lean`](../Morph/Specs/README/Lemmas.lean:1) - 8 lines [WARNING] STUB
+- [`Morph/Specs/README/Examples.lean`](../Morph/Specs/README/Examples.lean:1) - 8 lines [WARNING] STUB
 - **Total:** 38 lines
 
 #### Description
@@ -572,7 +572,7 @@ The README module specifies project overview and entry point documentation.
 ### 15. RegistryConsensus Module
 
 **Files:**
-- [`Morph/Specs/RegistryConsensus/Spec.lean`](../Morph/Specs/RegistryConsensus/Spec.lean:1) - 8 lines ⚠️ **STUB**
+- [`Morph/Specs/RegistryConsensus/Spec.lean`](../Morph/Specs/RegistryConsensus/Spec.lean:1) - 8 lines [WARNING] STUB
 - [`Morph/Specs/RegistryConsensus/Lemmas.lean`](../Morph/Specs/RegistryConsensus/Lemmas.lean:1) - 307 lines
 - [`Morph/Specs/RegistryConsensus/Examples.lean`](../Morph/Specs/RegistryConsensus/Examples.lean:1) - 325 lines
 - **Total:** 640 lines
@@ -771,8 +771,8 @@ The SyntaxTranslation module specifies syntax transformation rules for convertin
 
 **Files:**
 - [`Morph/Specs/TerminologyStandardization/Spec.lean`](../Morph/Specs/TerminologyStandardization/Spec.lean:1) - 292 lines
-- [`Morph/Specs/TerminologyStandardization/Lemmas.lean`](../Morph/Specs/TerminologyStandardization/Lemmas.lean:1) - 6 lines ⚠️ **STUB**
-- [`Morph/Specs/TerminologyStandardization/Examples.lean`](../Morph/Specs/TerminologyStandardization/Examples.lean:1) - 6 lines ⚠️ **STUB**
+- [`Morph/Specs/TerminologyStandardization/Lemmas.lean`](../Morph/Specs/TerminologyStandardization/Lemmas.lean:1) - 6 lines [WARNING] STUB
+- [`Morph/Specs/TerminologyStandardization/Examples.lean`](../Morph/Specs/TerminologyStandardization/Examples.lean:1) - 6 lines [WARNING] STUB
 - **Total:** 304 lines
 
 #### Description
@@ -848,7 +848,7 @@ The TypeSystem module specifies the core type system for Morph, including type d
 ### 22. UnidirectionalDataFlow Module
 
 **Files:**
-- [`Morph/Specs/UnidirectionalDataFlow/Spec.lean`](../Morph/Specs/UnidirectionalDataFlow/Spec.lean:1) - 9 lines ⚠️ **STUB**
+- [`Morph/Specs/UnidirectionalDataFlow/Spec.lean`](../Morph/Specs/UnidirectionalDataFlow/Spec.lean:1) - 9 lines [WARNING] STUB
 - [`Morph/Specs/UnidirectionalDataFlow/Lemmas.lean`](../Morph/Specs/UnidirectionalDataFlow/Lemmas.lean:1) - 34 lines
 - [`Morph/Specs/UnidirectionalDataFlow/Examples.lean`](../Morph/Specs/UnidirectionalDataFlow/Examples.lean:1) - 57 lines
 - **Total:** 100 lines

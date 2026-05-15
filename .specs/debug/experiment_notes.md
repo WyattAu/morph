@@ -143,9 +143,9 @@ move Morph\.backup_excluded Morph\.backup
 
 ## Deliverables
 
-1. ✅ `.specs/debug/evidence_log_baseline.txt` - Baseline build output
+1. [OK] `.specs/debug/evidence_log_baseline.txt` - Baseline build output
 2. ⏳ `.specs/debug/evidence_log_probe.txt` - Probe build output (pending)
-3. ✅ `.specs/debug/experiment_notes.md` - This documentation file
+3. [OK] `.specs/debug/experiment_notes.md` - This documentation file
 
 ## Conclusion
 

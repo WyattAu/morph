@@ -79,7 +79,7 @@ The AbiAlignmentAlgebra module defines an algebraic system for memory alignment 
 
 **Files:**
 - [`Morph/Specs/AbiDataRefinement/Spec.lean`](../Morph/Specs/AbiDataRefinement/Spec.lean:1) - 98 lines
-- [`Morph/Specs/AbiDataRefinement/Lemmas.lean`](../Morph/Specs/AbiDataRefinement/Lemmas.lean:1) - 0 lines ⚠️ **EMPTY**
+- [`Morph/Specs/AbiDataRefinement/Lemmas.lean`](../Morph/Specs/AbiDataRefinement/Lemmas.lean:1) - 0 lines [WARNING] EMPTY
 - [`Morph/Specs/AbiDataRefinement/Examples.lean`](../Morph/Specs/AbiDataRefinement/Examples.lean:1) - 126 lines
 - **Total:** 224 lines
 

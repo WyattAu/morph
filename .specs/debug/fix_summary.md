@@ -42,7 +42,7 @@ Build completed successfully.
 ```
 
 ### Syntax Check Result
-✅ **PASSED** - No syntax errors remain in [`Morph/Semantics.lean`](Morph/Semantics.lean)
+[OK] **PASSED** - No syntax errors remain in [`Morph/Semantics.lean`](Morph/Semantics.lean)
 
 ## Additional Notes
 

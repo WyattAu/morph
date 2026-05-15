@@ -65,10 +65,10 @@ This specification applies to:
 ### 1.4 References
 
 - [Semantic Versioning 2.0.0](https://semver.org/)
-- [`docs/conventions/specification_convention.md`](docs/conventions/specification_convention.md)
-- [`SPECIFICATION_INDEX.md`](SPECIFICATION_INDEX.md)
-- [`SPEC_INCONSISTENCIES.md`](SPEC_INCONSISTENCIES.md)
-- [`SPEC_FIX_PROPOSAL.md`](SPEC_FIX_PROPOSAL.md)
+- [`docs/conventions/specification_convention.md`](../../docs/conventions/specification_convention.md)
+- [`SPECIFICATION_INDEX.md`](../../SPECIFICATION_INDEX.md)
+- [`SPEC_INCONSISTENCIES.md`](../../SPEC_INCONSISTENCIES.md)
+- [`SPEC_FIX_PROPOSAL.md`](../../SPEC_FIX_PROPOSAL.md)
 
 ---
 

@@ -233,7 +233,7 @@ $$ \text{Pure} : (A \to B) \to \text{Type} $$
 - Pure functions cannot perform IO
 - Pure functions cannot be async
 
-* Note:* "Pure" is defined as an **effect** in the Effect System, not as a type modifier. See [`type_system_spec.md`](type_system_spec.md:2.6) for complete Effect System specification.
+* Note:* "Pure" is defined as an **effect** in the Effect System, not as a type modifier. See [`type_system_spec.md`](../type/type_system_spec.md) for complete Effect System specification.
 
 * SSUS-INV-004:* THE system SHALL enforce pure function type for `update` and `command` functions.
 

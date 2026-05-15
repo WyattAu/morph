@@ -65,18 +65,18 @@ The following multi-line comments in [`Morph/Semantics.lean`](Morph/Semantics.le
 
 | Line | Comment Block | Expected Closing | Status |
 |------|---------------|------------------|--------|
-| 295 | `/-!` Create an empty configuration | Before line 308 | ❌ **UNCLOSED** |
-| 320 | `/-!` Check if configuration is stuck in UB | Before line 325 | ❌ **UNCLOSED** |
-| 328 | `/-!` Get as current thread state | Before line 333 | ❌ **UNCLOSED** |
-| 336 | `/-!` Update as current thread state | Before line 341 | ❌ **UNCLOSED** |
-| 346 | `/-!` Get a thread state by ID | Before line 351 | ❌ **UNCLOSED** |
-| 354 | `/-!` Update a thread state by ID | Before line 359 | ❌ **UNCLOSED** |
-| 364 | `/-!` Check if a lock is owned | Before line 369 | ❌ **UNCLOSED** |
-| 374 | `/-!` Acquire a lock | Before line 379 | ❌ **UNCLOSED** |
-| 383 | `/-!` Release a lock | Before line 388 | ❌ **UNCLOSED** |
-| 624 | `/-!` Helper Functions | Before line 628 | ❌ **UNCLOSED** |
-| 630 | `/-!` Check if a configuration is terminal | Before line 638 | ❌ **UNCLOSED** |
-| 641 | `/-!` Get all possible next configurations | Before line 648 | ❌ **UNCLOSED** |
+| 295 | `/-!` Create an empty configuration | Before line 308 | [FAIL] UNCLOSED |
+| 320 | `/-!` Check if configuration is stuck in UB | Before line 325 | [FAIL] UNCLOSED |
+| 328 | `/-!` Get as current thread state | Before line 333 | [FAIL] UNCLOSED |
+| 336 | `/-!` Update as current thread state | Before line 341 | [FAIL] UNCLOSED |
+| 346 | `/-!` Get a thread state by ID | Before line 351 | [FAIL] UNCLOSED |
+| 354 | `/-!` Update a thread state by ID | Before line 359 | [FAIL] UNCLOSED |
+| 364 | `/-!` Check if a lock is owned | Before line 369 | [FAIL] UNCLOSED |
+| 374 | `/-!` Acquire a lock | Before line 379 | [FAIL] UNCLOSED |
+| 383 | `/-!` Release a lock | Before line 388 | [FAIL] UNCLOSED |
+| 624 | `/-!` Helper Functions | Before line 628 | [FAIL] UNCLOSED |
+| 630 | `/-!` Check if a configuration is terminal | Before line 638 | [FAIL] UNCLOSED |
+| 641 | `/-!` Get all possible next configurations | Before line 648 | [FAIL] UNCLOSED |
 
 **PATTERN:** All unclosed comments are in the `Config` namespace helper functions (lines 295-641). This is a **systematic pattern** affecting a specific code section, not random file corruption.
 
@@ -194,10 +194,10 @@ The following comments ARE properly closed in the current file:
 
 | Property | Value | Status |
 |----------|-------|--------|
-| BOM (Byte Order Mark) | Not present | ✅ Normal |
-| Encoding | UTF-8 (ASCII-compatible) | ✅ Normal |
-| First characters | `/- Copyright` | ✅ Expected |
-| Line endings | CRLF (Windows) | ✅ Normal for Windows |
+| BOM (Byte Order Mark) | Not present | [OK] Normal |
+| Encoding | UTF-8 (ASCII-compatible) | [OK] Normal |
+| First characters | `/- Copyright` | [OK] Expected |
+| Line endings | CRLF (Windows) | [OK] Normal for Windows |
 
 **Observation:** No encoding anomalies detected. The file uses standard UTF-8 encoding with no BOM.
 
@@ -304,17 +304,17 @@ files: \.md$  # Only markdown files
 
 **Evidence Supporting Theory B:**
 
-✅ **Systematic Pattern:** 12 unclosed comments in a specific code section  
-✅ **Backup Comparison:** Backup file has all comments properly closed  
-✅ **Non-Random:** Targeted corruption, not scattered  
-✅ **Consistent:** All affected comments follow the same pattern  
+[OK] **Systematic Pattern:** 12 unclosed comments in a specific code section  
+[OK] **Backup Comparison:** Backup file has all comments properly closed  
+[OK] **Non-Random:** Targeted corruption, not scattered  
+[OK] **Consistent:** All affected comments follow the same pattern  
 
 **Evidence Against Theory B:**
 
-❌ **No Generation Scripts:** No scripts found that generate `.lean` files  
-❌ **No Build Tools:** Lake build system doesn't generate code  
-❌ **Spec Tools Don't Target .lean:** Spec tools only process markdown files  
-❌ **No Pre-Commit Hooks:** Pre-commit hooks don't touch `.lean` files  
+[FAIL] **No Generation Scripts:** No scripts found that generate `.lean` files  
+[FAIL] **No Build Tools:** Lake build system doesn't generate code  
+[FAIL] **Spec Tools Don't Target .lean:** Spec tools only process markdown files  
+[FAIL] **No Pre-Commit Hooks:** Pre-commit hooks don't touch `.lean` files  
 
 ### 7.2 Alternative Theories
 
@@ -392,18 +392,18 @@ files: \.md$  # Only markdown files
 
 | Line Range | Current Status | Backup Status |
 |------------|----------------|---------------|
-| 295-307 | ❌ Unclosed | ✅ Closed |
-| 320-324 | ❌ Unclosed | ✅ Closed |
-| 328-332 | ❌ Unclosed | ✅ Closed |
-| 336-344 | ❌ Unclosed | ✅ Closed |
-| 346-352 | ❌ Unclosed | ✅ Closed |
-| 354-362 | ❌ Unclosed | ✅ Closed |
-| 364-372 | ❌ Unclosed | ✅ Closed |
-| 374-387 | ❌ Unclosed | ✅ Closed |
-| 383-390 | ❌ Unclosed | ✅ Closed |
-| 624-628 | ❌ Unclosed | ✅ Closed |
-| 630-637 | ❌ Unclosed | ✅ Closed |
-| 641-647 | ❌ Unclosed | ✅ Closed |
+| 295-307 | [FAIL] Unclosed | [OK] Closed |
+| 320-324 | [FAIL] Unclosed | [OK] Closed |
+| 328-332 | [FAIL] Unclosed | [OK] Closed |
+| 336-344 | [FAIL] Unclosed | [OK] Closed |
+| 346-352 | [FAIL] Unclosed | [OK] Closed |
+| 354-362 | [FAIL] Unclosed | [OK] Closed |
+| 364-372 | [FAIL] Unclosed | [OK] Closed |
+| 374-387 | [FAIL] Unclosed | [OK] Closed |
+| 383-390 | [FAIL] Unclosed | [OK] Closed |
+| 624-628 | [FAIL] Unclosed | [OK] Closed |
+| 630-637 | [FAIL] Unclosed | [OK] Closed |
+| 641-647 | [FAIL] Unclosed | [OK] Closed |
 
 ---
 

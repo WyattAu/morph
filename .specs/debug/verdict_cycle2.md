@@ -26,7 +26,7 @@ This verdict document analyzes evidence from two investigation cycles to determi
 **Hypothesis Statement (from verdict.md, Theory D):**
 The root cause is a systematic comment syntax error where multi-line comment blocks opened with `/-!` are incorrectly closed with `-/` (single-line closing) instead of `-!/` (multi-line closing). This causes the Lean 4 parser to treat these comment blocks as unterminated, resulting in the build error.
 
-**VERDICT: CONFIRMED ✅ (100% Confidence)**
+**VERDICT: CONFIRMED [OK] (100% Confidence)**
 
 **Evidence Supporting This Hypothesis:**
 
@@ -53,10 +53,10 @@ From [`fix_summary.md`](.specs/debug/fix_summary.md):
 5. The parser reports the error at line 693 (the line after the file ends)
 
 **Why This Hypothesis is Correct:**
-- ✅ Evidence log provides definitive proof with exact line counts
-- ✅ Fix was applied and build now passes
-- ✅ Mechanism is fully understood and documented
-- ✅ No alternative explanation fits the evidence
+- [OK] Evidence log provides definitive proof with exact line counts
+- [OK] Fix was applied and build now passes
+- [OK] Mechanism is fully understood and documented
+- [OK] No alternative explanation fits the evidence
 
 ---
 
@@ -65,7 +65,7 @@ From [`fix_summary.md`](.specs/debug/fix_summary.md):
 **Hypothesis Statement (from hypothesis_cycle2.md, Theory A):**
 An automated file generation process (e.g., code generator, scaffolding tool, or build script) is creating `.lean` files with malformed copyright headers due to a bug in the header generation logic.
 
-**VERDICT: DISPROVED ❌ (0% Confidence)**
+**VERDICT: DISPROVED [FAIL] (0% Confidence)**
 
 **Evidence Contradicting This Hypothesis:**
 
@@ -105,19 +105,19 @@ From [`evidence_probe_cycle2.md`](.specs/debug/evidence_probe_cycle2.md):
 
 | Tool/Location | Purpose | Evidence of `.lean` Generation | Verdict |
 |---------------|---------|-------------------------------|---------|
-| [`lakefile.lean`](lakefile.lean) | Build configuration | ❌ No generation targets | Not responsible |
-| [`lakefile.toml`](lakefile.toml) | Build configuration | ❌ No generation hooks | Not responsible |
-| [`scripts/spec_tools/`](scripts/spec_tools/) | Spec formatting/linting | ❌ Only processes `.md` files | Not responsible |
-| [`.pre-commit-config.yaml`](.pre-commit-config.yaml) | Pre-commit hooks | ❌ Only processes `.md` files | Not responsible |
-| `spec/` directory | Source documentation | ❌ Contains `.md` files only | Not responsible |
+| [`lakefile.lean`](lakefile.lean) | Build configuration | [FAIL] No generation targets | Not responsible |
+| [`lakefile.toml`](lakefile.toml) | Build configuration | [FAIL] No generation hooks | Not responsible |
+| [`scripts/spec_tools/`](scripts/spec_tools/) | Spec formatting/linting | [FAIL] Only processes `.md` files | Not responsible |
+| [`.pre-commit-config.yaml`](.pre-commit-config.yaml) | Pre-commit hooks | [FAIL] Only processes `.md` files | Not responsible |
+| `spec/` directory | Source documentation | [FAIL] Contains `.md` files only | Not responsible |
 
 **Why This Hypothesis is Incorrect:**
-- ❌ No automated file generation process was found
-- ❌ Build configuration contains no generation targets
-- ❌ Spec-tools only processes Markdown files
-- ❌ Pre-commit hooks only process Markdown files
-- ❌ No template or generation scripts were found in the project
-- ❌ Previous fix attempt was a manual repair script, not a generation process
+- [FAIL] No automated file generation process was found
+- [FAIL] Build configuration contains no generation targets
+- [FAIL] Spec-tools only processes Markdown files
+- [FAIL] Pre-commit hooks only process Markdown files
+- [FAIL] No template or generation scripts were found in the project
+- [FAIL] Previous fix attempt was a manual repair script, not a generation process
 
 **Actual Cause of Copyright Header Issues:**
 The evidence_probe_cycle2.md concludes that the malformed copyright headers are likely due to:
@@ -148,7 +148,7 @@ The evidence_probe_cycle2.md concludes that the malformed copyright headers are 
 **Fix Applied:**
 Changed 13 closing markers from `-/` to `-!/` (including an additional issue at line 307 discovered during verification).
 
-**Current Status:** ✅ FIXED - Build passes successfully
+**Current Status:** [OK] FIXED - Build passes successfully
 
 ---
 
@@ -183,7 +183,7 @@ import ...
 
 **Key Finding:** Lean 4 accepts both formats. The block comment syntax `/- ... -/` treats everything between the delimiters as a comment, regardless of whether individual lines have `--` markers.
 
-**Current Status:** ✅ FIXED - Build passes successfully
+**Current Status:** [OK] FIXED - Build passes successfully
 
 ---
 
@@ -209,11 +209,11 @@ Build completed successfully.
 
 | Criterion | Cycle 1 Hypothesis (Comment Syntax Mismatch) | Cycle 2 Hypothesis (Automated File Generation) |
 |-----------|-------------------------------------------|---------------------------------------------------|
-| **Explains Build Error** | ✅ Yes (unterminated comment) | ❌ No (no generator found) |
-| **Supported by Evidence** | ✅ Confirmed (100%) | ❌ Disproved (0%) |
-| **Mechanism Understood** | ✅ Fully documented | ❌ No mechanism exists |
-| **Fix Applied** | ✅ Yes (13 lines changed) | N/A (no generator to fix) |
-| **Build Status After Fix** | ✅ Passing | ✅ Passing (different fix) |
+| **Explains Build Error** | [OK] Yes (unterminated comment) | [FAIL] No (no generator found) |
+| **Supported by Evidence** | [OK] Confirmed (100%) | [FAIL] Disproved (0%) |
+| **Mechanism Understood** | [OK] Fully documented | [FAIL] No mechanism exists |
+| **Fix Applied** | [OK] Yes (13 lines changed) | N/A (no generator to fix) |
+| **Build Status After Fix** | [OK] Passing | [OK] Passing (different fix) |
 | **Overall Confidence** | **100% (CONFIRMED)** | **0% (DISPROVED)** |
 
 ---
@@ -269,24 +269,24 @@ There are no remaining build errors or issues. The project is in a healthy state
 ## Timeline
 
 ### Cycle 1 (Morph/Semantics.lean)
-- ✅ Build error reproduced
-- ✅ Root cause identified (Comment Syntax Mismatch)
-- ✅ Fix applied (13 lines changed)
-- ✅ Build verified (passing)
+- [OK] Build error reproduced
+- [OK] Root cause identified (Comment Syntax Mismatch)
+- [OK] Fix applied (13 lines changed)
+- [OK] Build verified (passing)
 
 ### Cycle 2 (Morph/Specs/ files)
-- ✅ Build error reproduced (original error in GLOSSARY.lean)
-- ✅ Hypothesis generated (Automated File Generation Error)
-- ✅ Evidence probe conducted
-- ✅ Hypothesis disproved (no automated generator found)
-- ✅ Actual cause identified (manual authoring/copy-paste errors)
-- ✅ Build verified (passing)
+- [OK] Build error reproduced (original error in GLOSSARY.lean)
+- [OK] Hypothesis generated (Automated File Generation Error)
+- [OK] Evidence probe conducted
+- [OK] Hypothesis disproved (no automated generator found)
+- [OK] Actual cause identified (manual authoring/copy-paste errors)
+- [OK] Build verified (passing)
 
 ### Cycle 2 Final Analysis
-- ✅ Evidence from both cycles analyzed
-- ✅ Hypotheses evaluated
-- ✅ Root causes confirmed
-- ✅ Verdict document created
+- [OK] Evidence from both cycles analyzed
+- [OK] Hypotheses evaluated
+- [OK] Root causes confirmed
+- [OK] Verdict document created
 
 ---
 

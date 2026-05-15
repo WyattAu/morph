@@ -1755,11 +1755,11 @@ Low     |  RISK-COMP-008
 
 | Metric | Current | Target | Status |
 |--------|---------|--------|--------|
-| Critical Risks | 3 | 0 | ⚠️ Action Required |
-| High Risks | 10 | 0 | ⚠️ Action Required |
-| Medium Risks | 16 | 0 | ⚠️ Monitor |
-| Low Risks | 5 | 0 | ✅ Acceptable |
-| Total Risks | 34 | 0 | ⚠️ Action Required |
+| Critical Risks | 3 | 0 | [WARNING] Action Required |
+| High Risks | 10 | 0 | [WARNING] Action Required |
+| Medium Risks | 16 | 0 | [WARNING] Monitor |
+| Low Risks | 5 | 0 | [OK] Acceptable |
+| Total Risks | 34 | 0 | [WARNING] Action Required |
 
 ### 7.2 Validation Checklist
 

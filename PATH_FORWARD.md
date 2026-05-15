@@ -4,70 +4,60 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 
 ---
 
-## Current Baseline (post-audit, 2026-05-12)
+## Current Baseline (post-audit, 2026-05-15)
 
 | Metric | Value | Status |
 |--------|-------|--------|
-| `lake build Morph` | 323 jobs, 0 errors, 1 warning (sorry) | PASS |
+| `lake build Morph` | 328 jobs, 0 errors, 4 sorry warnings | PASS |
 | `lake build Morph.Tests` | 186 jobs, 0 errors | PASS |
-| Python spec-tools | 405 tests, 71% coverage | PASS |
+| Python spec-tools | 636 tests, 87.5% coverage | PASS |
 | ruff lint | 0 errors, 0 warnings | PASS |
 | ruff format | 0 unformatted files | PASS |
 | mypy strict | 0 errors across 66 source files | PASS |
-| `.lean` files | 150 | -- |
-| Lines of Lean | 13,029 | -- |
+| `.lean` files | 155 | -- |
+| Lines of Lean | ~14,500 | -- |
 | Spec modules | 43 | -- |
-| Real theorems/lemmas (Specs/) | 376 | -- |
-| `sorry` declarations | 3 (`Preservation.lean:284,296,309`) | KNOWN |
-| `example : True := trivial` stubs | 15 across 12 directories | WARNING |
+| Real theorems/lemmas (Specs/) | 550 | -- |
+| `sorry` declarations | 10 (6 Preservation.lean + 4 Lemmas.lean) | KNOWN |
+| `example : True := trivial` stubs | 0 | PASS |
 | Lean test files | 6 (`Morph/Tests/`) | -- |
 | ADRs | 11 | -- |
-| CI workflows | 3 GitHub Actions + GitLab CI + Jenkins | -- |
-| Pre-commit hook | 7-step gate (lake build, sorry, stubs, tests, ruff, mypy, lint) | ACTIVE |
+| CI workflows | 4 GitHub Actions + GitLab CI + Jenkins | -- |
+| Pre-commit hook | 7-step gate (lake build, sorry, stubs, pytest, ruff, mypy, spec-tools) | ACTIVE |
 | Documentation emojis | 0 | CLEAN |
+| Documentation site | Landing page + 5 doc pages | COMPLETE |
 
 ---
 
 ## Phase 1: Formal Verification Completion [P0 -- 4-6 weeks]
 
-### 1.1 Eliminate 3 sorries in Preservation.lean
+### 1.1 Eliminate 10 sorries in Preservation.lean and Lemmas.lean
 
-**File:** `Morph/Proofs/TypeSoundness/Preservation.lean:284,296,309`
+**Preservation.lean (6 sorries):**
 
-All three sorries are in non-capture substitution cases (`lam_type`, `let_type`, `for_type`). Each requires a weakening lemma to extend the typing environment.
+| Line | Location | Required Lemma | Status |
+|------|----------|----------------|--------|
+| 116 | `HasType_subst` bvar_type | `lift_preserves_type` | Needs proof |
+| 156 | `HasType_subst` lam_type | Generalized subst lemma | Needs proof |
+| 171 | `HasType_subst` let_type | Generalized subst lemma | Needs proof |
+| 175 | `HasType_subst` for_type | Generalized subst lemma | Needs proof |
+| 288 | `preservation` for_exec | `substAll_preserves_type` | Needs proof |
+| 359 | `preservation` app_lam | `substAll_preserves_type` | Needs proof |
 
-**Approach:**
-1. Prove `theorem weakening : Gamma <= Gamma' -> HasType Gamma e tau -> HasType Gamma' e tau`
-2. In each sorry branch, derive `x'.name notin freeVars v` from the evaluation context
-3. Apply weakening to carry the type through the extended environment
+**Lemmas.lean (4 sorries):**
 
-**Effort:** 3-5 days | **Deps:** none | **Blocks:** sorry-free CI gate
+| Line | Location | Required Lemma | Status |
+|------|----------|----------------|--------|
+| 122 | `lookupTyp_shift` | List indexing equality | Simple arithmetic |
+| 170 | `lookupTyp_shift` | Environment lookup shift | Needs lemma |
+| 179 | `lookupTyp_shift` | Environment lookup shift | Related to above |
+| 187 | `lookupTyp_shift` | Environment lookup shift | Related to above |
 
-### 1.2 Eliminate 15 spec stubs
+**Effort:** 1-2 weeks | **Deps:** none | **Blocks:** sorry-free CI gate
 
-Current stubs across 12 directories. Each requires replacing `example : True := trivial` with real lemmas or examples that exercise the module's definitions.
+### 1.2 Eliminate remaining spec stubs
 
-| Module | Stubs | Target | Effort |
-|--------|-------|--------|--------|
-| AbiAlignmentAlgebra | 2 | Layout soundness lemmas | 3-5 days |
-| AbiDataRefinement | 2 | Refinement relation proofs | 3-5 days |
-| ArcAffineIntegration | 2 | Integration correctness | 5 days |
-| ASTGraph | 2 | Graph traversal properties | 3-5 days |
-| GLOSSARY | 2 | Well-formed glossary instances | 2-3 days |
-| LayeredConcurrency | 2 | Layer composition safety | 5 days |
-| LicenseDeonticLogic | 2 | Deontic logic properties | 2-3 days |
-| MemoryAcyclicity | 2 | Acyclicity preservation | 5 days |
-| MemoryAffineLogic | 2 | Affine reasoning lemmas | 5 days |
-| ModuleExistential | 2 | Existential packaging | 5 days |
-| ModuleSystem | 2 | Hash determinism, versioning | 1 week |
-| SchedulerRandomizedStealing | 2 | Stealing correctness | 5 days |
-| SchedulingModes | 2 | Mode transition safety | 3-5 days |
-| SecurityOCap | 2 | Capability non-interference | 1 week |
-| VersionCompatibility | 2 | Semver constraint soundness | 2-3 days |
-| SyntaxTranslation | 2 | Round-trip preservation | 3-5 days |
-| UnitGroupTheory | 2 | Group axiom verification | 2-3 days |
-
-**Total:** 6-9 weeks | **Deps:** none (parallelizable)
+All `example : True := trivial` stubs have been eliminated (0 remaining). This section is complete.
 
 ### 1.3 Add real proofs to Tier 2 modules with zero lemmas
 
@@ -379,16 +369,16 @@ Ongoing:   [7.x]                                -- research directions
 | Criterion | Current | Target | Priority |
 |-----------|---------|--------|----------|
 | `lake build Morph` errors | 0 | 0 | P0 |
-| `lake build Morph` warnings | 1 | 0 | P0 |
-| `sorry` in `Morph/` | 3 | 0 | P0 |
-| Spec stubs (all tiers) | 15 | 0 | P0 |
-| CI passes on every push | Partial | Yes | P1 |
+| `lake build Morph` warnings | 4 (sorry) | 0 | P0 |
+| `sorry` in `Morph/` | 10 | 0 | P0 |
+| Spec stubs (all tiers) | 0 | 0 | PASS |
+| CI passes on every push | Blocked by billing | Yes | P1 |
 | ruff lint errors | 0 | 0 | PASS |
 | ruff format issues | 0 | 0 | PASS |
 | mypy errors | 0 | 0 | PASS |
-| Python test count | 405 | 500+ | P1 |
-| Python coverage | 71% | 80%+ | P1 |
+| Python test count | 636 | 700+ | P1 |
+| Python coverage | 87.5% | 90%+ | P1 |
 | Pre-commit blocks on sorry | Warns | Blocks | P0 |
-| Regression snapshot tracking | None | Active | P1 |
-| Tier 4 empty modules | 16 | 0 | P1 |
+| Regression snapshot tracking | Script exists | Active | P1 |
+| Documentation site | Complete | Complete | PASS |
 | Documentation emojis | 0 | 0 | PASS |

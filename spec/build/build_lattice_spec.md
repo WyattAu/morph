@@ -61,7 +61,7 @@ The Build Lattice Specification is closely related to several other Morph specif
 - [`spec/build/backend_tiling_spec.md`](./backend_tiling_spec.md) - Backend tiling and code generation
 
 * Architecture Specifications:*
-- [`spec/architecture/build_system_architecture.md`](architecture/build_system_architecture.md) - Build system architecture and components
+- [`docs/architecture/build_system_architecture.md`](../../docs/architecture/build_system_architecture.md) - Build system architecture and components
 
 * Type System Specifications:*
 - [`spec/type/type_system_spec.md`](../type/type_system_spec.md) - Type system for build-time type checking

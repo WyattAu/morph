@@ -92,7 +92,7 @@ The evidence conclusively demonstrates that the regeneration script used to reco
 - **Automated generation** produces identical outputs when the same template or script is used
 - **Scale:** Making the same error 73 times manually without detection is statistically improbable
 
-**Conclusion:** ✅ **YES** - The systematic pattern strongly supports automated generation.
+**Conclusion:** [OK] **YES** - The systematic pattern strongly supports automated generation.
 
 ---
 
@@ -109,7 +109,7 @@ The evidence conclusively demonstrates that the regeneration script used to reco
 - The **2 core files** (Morph/Core.lean, Morph/Memory.lean) may have been regenerated as part of the recovery process or use the same generation tool
 - The **0 test files** confirms that test files were not part of the regeneration process
 
-**Conclusion:** ✅ **YES** - The file distribution matches the documented regeneration scope.
+**Conclusion:** [OK] **YES** - The file distribution matches the documented regeneration scope.
 
 ---
 
@@ -127,7 +127,7 @@ The evidence conclusively demonstrates that the regeneration script used to reco
 - The systematic errors in the regenerated files indicate the script **failed** to meet this requirement
 - The timeline provides a clear causal chain: Data Loss → Regeneration → Systematic Errors
 
-**Conclusion:** ✅ **YES** - The documented regeneration event provides a direct causal link.
+**Conclusion:** [OK] **YES** - The documented regeneration event provides a direct causal link.
 
 ---
 
@@ -135,13 +135,13 @@ The evidence conclusively demonstrates that the regeneration script used to reco
 
 | Validation Criterion | Evidence | Verdict |
 |----------------------|----------|---------|
-| Systematic Pattern | Identical error across 73 files | ✅ Confirmed |
-| File Distribution | 97% spec files match regeneration scope | ✅ Confirmed |
-| Causal Link | Documented regeneration event | ✅ Confirmed |
-| Alternative Theories | Theory B (15%), Theory C (25%) | ❌ Dismissed |
-| Confidence Level | Evidence supports Theory A | ✅ 95% |
+| Systematic Pattern | Identical error across 73 files | [OK] Confirmed |
+| File Distribution | 97% spec files match regeneration scope | [OK] Confirmed |
+| Causal Link | Documented regeneration event | [OK] Confirmed |
+| Alternative Theories | Theory B (15%), Theory C (25%) | [FAIL] Dismissed |
+| Confidence Level | Evidence supports Theory A | [OK] 95% |
 
-**Final Verdict:** ✅ **Theory A is CONFIRMED as the root cause.**
+**Final Verdict:** [OK] **Theory A is CONFIRMED as the root cause.**
 
 ---
 
@@ -448,9 +448,9 @@ The regeneration script used to recover from the Cycle 3 data loss event contain
 ### 5.3 Recommended Actions
 
 **Immediate Actions:**
-1. ✅ Fix all 73 affected files by replacing `-/` with `-!/` at the end of `/-!` blocks
-2. ✅ Verify the fix by running the build
-3. ✅ Locate and fix the regeneration script
+1. [OK] Fix all 73 affected files by replacing `-/` with `-!/` at the end of `/-!` blocks
+2. [OK] Verify the fix by running the build
+3. [OK] Locate and fix the regeneration script
 
 **Follow-up Actions:**
 1. Add syntax validation to the regeneration script

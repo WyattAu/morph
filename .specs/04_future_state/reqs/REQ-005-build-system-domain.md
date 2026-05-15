@@ -78,7 +78,7 @@ The BuildLattice module defines a lattice structure for build dependencies, prov
 ### 2. DependencySat Module
 
 **Files:**
-- [`Morph/Specs/DependencySat/Spec.lean`](../Morph/Specs/DependencySat/Spec.lean:1) - 9 lines ⚠️ **STUB**
+- [`Morph/Specs/DependencySat/Spec.lean`](../Morph/Specs/DependencySat/Spec.lean:1) - 9 lines [WARNING] STUB
 - [`Morph/Specs/DependencySat/Lemmas.lean`](../Morph/Specs/DependencySat/Lemmas.lean:1) - 78 lines
 - [`Morph/Specs/DependencySat/Examples.lean`](../Morph/Specs/DependencySat/Examples.lean:1) - 10 lines
 - **Total:** 97 lines

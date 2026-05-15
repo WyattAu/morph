@@ -123,7 +123,7 @@ where:
 
 Dynamic dispatch uses runtime type resolution:
 
-$$ \text{Dispatch}(f, v) = \text{VTable}[v.\text{type}](f) $$
+$$ \text{Dispatch}(f, v) = \text{VTable}\!\left[v.\text{type}\right]\!(f) $$
 
 where:
 - $f$: Generic function

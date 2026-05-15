@@ -67,9 +67,9 @@ The CommonTypes module defines shared type definitions, type aliases, and utilit
 ### 2. GLOSSARY Module
 
 **Files:** 
-- [`Morph/Specs/GLOSSARY/Spec.lean`](../Morph/Specs/GLOSSARY/Spec.lean:1) - 8 lines ⚠️ **STUB**
-- [`Morph/Specs/GLOSSARY/Lemmas.lean`](../Morph/Specs/GLOSSARY/Lemmas.lean:1) - 8 lines ⚠️ **STUB**
-- [`Morph/Specs/GLOSSARY/Examples.lean`](../Morph/Specs/GLOSSARY/Examples.lean:1) - 8 lines ⚠️ **STUB**
+- [`Morph/Specs/GLOSSARY/Spec.lean`](../Morph/Specs/GLOSSARY/Spec.lean:1) - 8 lines [WARNING] STUB
+- [`Morph/Specs/GLOSSARY/Lemmas.lean`](../Morph/Specs/GLOSSARY/Lemmas.lean:1) - 8 lines [WARNING] STUB
+- [`Morph/Specs/GLOSSARY/Examples.lean`](../Morph/Specs/GLOSSARY/Examples.lean:1) - 8 lines [WARNING] STUB
 - [`Morph/Specs/GLOSSARY.lean`](../Morph/Specs/GLOSSARY.lean:1) - 18 lines
 
 #### Description

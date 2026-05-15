@@ -8,10 +8,10 @@
 
 ## Executive Summary
 
-✅ **BUILD SUCCESSFUL** - The build completed successfully with exit code 0.  
-✅ **ORIGINAL ERROR FIXED** - The "unterminated comment" error in Morph/Semantics.lean is resolved.  
-✅ **NO REGRESSIONS** - No new errors were introduced by the fix.  
-✅ **ALL TARGETS COMPLETE** - All build targets completed without errors.
+[OK] **BUILD SUCCESSFUL** - The build completed successfully with exit code 0.  
+[OK] **ORIGINAL ERROR FIXED** - The "unterminated comment" error in Morph/Semantics.lean is resolved.  
+[OK] **NO REGRESSIONS** - No new errors were introduced by the fix.  
+[OK] **ALL TARGETS COMPLETE** - All build targets completed without errors.
 
 ---
 
@@ -28,12 +28,12 @@ Build completed successfully.
 
 | Check | Status | Notes |
 |-------|--------|-------|
-| Build completes without errors | ✅ PASS | Exit code: 0 |
-| "unterminated comment" error is gone | ✅ PASS | No syntax errors reported |
-| Morph.Semantics builds successfully | ✅ PASS | Part of successful build |
-| All build targets complete | ✅ PASS | Full build succeeded |
-| No new errors introduced | ✅ PASS | Clean build output |
-| No regressions detected | ✅ PASS | All modules build correctly |
+| Build completes without errors | [OK] PASS | Exit code: 0 |
+| "unterminated comment" error is gone | [OK] PASS | No syntax errors reported |
+| Morph.Semantics builds successfully | [OK] PASS | Part of successful build |
+| All build targets complete | [OK] PASS | Full build succeeded |
+| No new errors introduced | [OK] PASS | Clean build output |
+| No regressions detected | [OK] PASS | All modules build correctly |
 
 ---
 
@@ -59,7 +59,7 @@ Build completed successfully.
 
 The fix for the "unterminated comment" error in `Morph/Semantics.lean` has been verified as successful. The entire project builds cleanly with no errors or warnings. No regressions were introduced, and all modules compile correctly.
 
-**Verification Status:** ✅ **PASSED**
+**Verification Status:** [OK] **PASSED**
 
 ---
 

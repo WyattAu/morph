@@ -61,10 +61,10 @@ This specification applies to all specification documents in the `spec/` directo
 
 ### 1.4 References
 
-- [`SPEC_INCONSISTENCIES.md`](SPEC_INCONSISTENCIES.md) - Terminology conflicts identified
-- [`SPEC_FIX_PROPOSAL.md`](SPEC_FIX_PROPOSAL.md) - Standardization requirements
+- [`SPEC_INCONSISTENCIES.md`](../../SPEC_INCONSISTENCIES.md) - Terminology conflicts identified
+- [`SPEC_FIX_PROPOSAL.md`](../../SPEC_FIX_PROPOSAL.md) - Standardization requirements
 - [`GLOSSARY.md`](../GLOSSARY.md) - Existing glossary definitions
-- [`docs/conventions/specification_convention.md`](docs/conventions/specification_convention.md) - Specification formatting standards
+- [`docs/conventions/specification_convention.md`](../../docs/conventions/specification_convention.md) - Specification formatting standards
 
 ---
 
@@ -1161,12 +1161,12 @@ This specification is referenced by and references the following specifications:
 
 - All specification documents in `spec/` directory
 - [`GLOSSARY.md`](../GLOSSARY.md) - Glossary definitions
-- [`docs/conventions/specification_convention.md`](docs/conventions/specification_convention.md) - Specification formatting
+- [`docs/conventions/specification_convention.md`](../../docs/conventions/specification_convention.md) - Specification formatting
 
 #### 10.1.2 References
 
-- [`SPEC_INCONSISTENCIES.md`](SPEC_INCONSISTENCIES.md) - Terminology conflicts identified
-- [`SPEC_FIX_PROPOSAL.md`](SPEC_FIX_PROPOSAL.md) - Standardization requirements
+- [`SPEC_INCONSISTENCIES.md`](../../SPEC_INCONSISTENCIES.md) - Terminology conflicts identified
+- [`SPEC_FIX_PROPOSAL.md`](../../SPEC_FIX_PROPOSAL.md) - Standardization requirements
 - [`spec/tooling/reactive_frp_spec.md`](../tooling/reactive_frp_spec.md) - Signal usage
 - [`spec/language/unidirectional_data_flow_spec.md`](../language/unidirectional_data_flow_spec.md) - Stream usage
 - [`spec/language/ast_graph_spec.md`](../language/ast_graph_spec.md) - Reducer usage

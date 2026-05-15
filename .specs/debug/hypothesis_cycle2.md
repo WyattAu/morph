@@ -200,12 +200,12 @@ This theory is plausible given the project's use of build tools and the consiste
 
 | Factor | Theory A (Automated Generation) | Theory B (Manual Copy-Paste) | Theory C (Template/Script) |
 |--------|----------------------------------|-------------------------------|----------------------------|
-| **Consistency** | ✅ Perfectly consistent | ❌ Unlikely to be perfectly consistent | ✅ Consistent if template exists |
-| **EOF Closing Comment** | ✅ Explains this anomaly | ❌ Difficult to explain | ✅ Could explain if template bug |
-| **Specs-Only Distribution** | ✅ Explains isolation | ⚠️ Possible but unlikely | ✅ Explains isolation |
-| **Empty Headers (Pattern 3)** | ⚠️ Possible (different generator path) | ✅ Possible (placeholders) | ⚠️ Possible (different template) |
-| **Compiler Feedback** | ✅ Generator may not run compiler | ❌ Developer would see errors | ✅ Template may not be validated |
-| **Evidence in Project** | ⚠️ No generator identified | ⚠️ No manual process documented | ⚠️ Build tools exist but no template found |
+| **Consistency** | [OK] Perfectly consistent | [FAIL] Unlikely to be perfectly consistent | [OK] Consistent if template exists |
+| **EOF Closing Comment** | [OK] Explains this anomaly | [FAIL] Difficult to explain | [OK] Could explain if template bug |
+| **Specs-Only Distribution** | [OK] Explains isolation | [WARNING] Possible but unlikely | [OK] Explains isolation |
+| **Empty Headers (Pattern 3)** | [WARNING] Possible (different generator path) | [OK] Possible (placeholders) | [WARNING] Possible (different template) |
+| **Compiler Feedback** | [OK] Generator may not run compiler | [FAIL] Developer would see errors | [OK] Template may not be validated |
+| **Evidence in Project** | [WARNING] No generator identified | [WARNING] No manual process documented | [WARNING] Build tools exist but no template found |
 | **Overall Probability** | **70%** | **15%** | **15%** |
 
 ---

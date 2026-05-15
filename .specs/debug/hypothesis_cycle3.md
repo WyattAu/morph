@@ -162,13 +162,13 @@ A flawed template or script could:
 
 | Factor | Theory A | Theory B | Theory C |
 |--------|----------|----------|----------|
-| **Explains Systematic Pattern** | ✅ Excellent | ✅ Good | ✅ Good |
-| **Explains File Distribution** | ✅ Excellent | ⚠️ Moderate | ⚠️ Moderate |
-| **Explains Core Files Affected** | ⚠️ Moderate | ✅ Good | ✅ Good |
-| **Explains Test Files Unaffected** | ✅ Excellent | ⚠️ Moderate | ⚠️ Moderate |
-| **Consistent with Regeneration Event** | ✅ Excellent | ❌ Poor | ⚠️ Moderate |
-| **Consistent with Human Error Patterns** | ❌ Poor | ✅ Good | ❌ Poor |
-| **Consistent with Build Pipeline** | ⚠️ Moderate | ❌ Poor | ✅ Good |
+| **Explains Systematic Pattern** | [OK] Excellent | [OK] Good | [OK] Good |
+| **Explains File Distribution** | [OK] Excellent | [WARNING] Moderate | [WARNING] Moderate |
+| **Explains Core Files Affected** | [WARNING] Moderate | [OK] Good | [OK] Good |
+| **Explains Test Files Unaffected** | [OK] Excellent | [WARNING] Moderate | [WARNING] Moderate |
+| **Consistent with Regeneration Event** | [OK] Excellent | [FAIL] Poor | [WARNING] Moderate |
+| **Consistent with Human Error Patterns** | [FAIL] Poor | [OK] Good | [FAIL] Poor |
+| **Consistent with Build Pipeline** | [WARNING] Moderate | [FAIL] Poor | [OK] Good |
 | **Overall Confidence** | **85%** | **15%** | **25%** |
 
 ---

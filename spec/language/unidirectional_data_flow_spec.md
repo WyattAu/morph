@@ -289,7 +289,7 @@ where:
 
 By enforcing that $\delta$ is a **Pure Function** (via Effect System), we guarantee that given the same history of inputs, state is mathematically deterministic.
 
-* Note:* "Pure" is defined as an **effect** in the Effect System, not as a type modifier. See [`type_system_spec.md`](type_system_spec.md:2.6) for complete Effect System specification.
+* Note:* "Pure" is defined as an **effect** in the Effect System, not as a type modifier. See [`type_system_spec.md`](../type/type_system_spec.md) for complete Effect System specification.
 
 * UDF-THM-002:* THE system SHALL guarantee that reducers are pure functions.
 

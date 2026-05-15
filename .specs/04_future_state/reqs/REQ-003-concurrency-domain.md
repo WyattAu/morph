@@ -20,7 +20,7 @@ The Concurrency Domain modules specify the layered concurrency model, process al
 
 **Files:**
 - [`Morph/Specs/LayeredConcurrency/Spec.lean`](../Morph/Specs/LayeredConcurrency/Spec.lean:1) - 252 lines
-- [`Morph/Specs/LayeredConcurrency/Lemmas.lean`](../Morph/Specs/LayeredConcurrency/Lemmas.lean:1) - 6 lines ⚠️ **STUB**
+- [`Morph/Specs/LayeredConcurrency/Lemmas.lean`](../Morph/Specs/LayeredConcurrency/Lemmas.lean:1) - 6 lines [WARNING] STUB
 - [`Morph/Specs/LayeredConcurrency/Examples.lean`](../Morph/Specs/LayeredConcurrency/Examples.lean:1) - 149 lines
 - **Total:** 407 lines
 
@@ -197,7 +197,7 @@ The SchedulingModes module defines various scheduling strategies and modes for c
 ### 4. SchedulerRandomizedStealing Module
 
 **Files:**
-- [`Morph/Specs/SchedulerRandomizedStealing/Spec.lean`](../Morph/Specs/SchedulerRandomizedStealing/Spec.lean:1) - 8 lines ⚠️ **STUB**
+- [`Morph/Specs/SchedulerRandomizedStealing/Spec.lean`](../Morph/Specs/SchedulerRandomizedStealing/Spec.lean:1) - 8 lines [WARNING] STUB
 - [`Morph/Specs/SchedulerRandomizedStealing/Lemmas.lean`](../Morph/Specs/SchedulerRandomizedStealing/Lemmas.lean:1) - 1,307 lines
 - [`Morph/Specs/SchedulerRandomizedStealing/Examples.lean`](../Morph/Specs/SchedulerRandomizedStealing/Examples.lean:1) - 368 lines
 - **Total:** 1,683 lines

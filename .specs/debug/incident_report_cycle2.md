@@ -51,37 +51,37 @@ import ...
 
 | File | Line 1 | Line 2 | Closing Line | Status |
 |------|---------|---------|---------------|--------|
-| `Morph/Specs/AbiAlignmentAlgebra/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 207 | ❌ Error |
-| `Morph/Specs/AbiDataRefinement/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 99 | ❌ Error |
-| `Morph/Specs/ASTGraph/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 382 | ❌ Error |
-| `Morph/Specs/BuildLattice/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 334 | ❌ Error |
-| `Morph/Specs/ConcurrencyProcessAlgebra/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 1041 | ❌ Error |
-| `Morph/Specs/DialectProjection/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 380 | ❌ Error |
-| `Morph/Specs/DualOptimization/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 400 | ❌ Error |
-| `Morph/Specs/ExecutionModel/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 687 | ❌ Error |
-| `Morph/Specs/Financial/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 362 | ❌ Error |
-| `Morph/Specs/InfrastructureSafetyContracts/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 253 | ❌ Error |
-| `Morph/Specs/LayeredConcurrency/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 253 | ❌ Error |
-| `Morph/Specs/LexicalStructureSyntax/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 374 | ❌ Error |
-| `Morph/Specs/LicenseDeonticLogic/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 339 | ❌ Error |
-| `Morph/Specs/Licensing/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 216 | ❌ Error |
-| `Morph/Specs/LinkerLogic/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 212 | ❌ Error |
-| `Morph/Specs/Maths/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 308 | ❌ Error |
-| `Morph/Specs/ModuleExistential/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 364 | ❌ Error |
-| `Morph/Specs/ModuleSystem/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 317 | ❌ Error |
-| `Morph/Specs/MonadicEffect/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 356 | ❌ Error |
-| `Morph/Specs/MorphLanguage/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 266 | ❌ Error |
-| `Morph/Specs/OperatorNullCoalescing/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 230 | ❌ Error |
-| `Morph/Specs/SchedulingModes/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 299 | ❌ Error |
-| `Morph/Specs/ScopingLambdaCalculus/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 695 | ❌ Error |
-| `Morph/Specs/StorageDAWG/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 644 | ❌ Error |
-| `Morph/Specs/StrictStateUnidirectional/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 56 | ❌ Error |
-| `Morph/Specs/SyntaxTranslation/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 100 | ❌ Error |
-| `Morph/Specs/TerminologyStandardization/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 293 | ❌ Error |
-| `Morph/Specs/TypeSystem/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 854 | ❌ Error |
-| `Morph/Specs/UnitGroupTheory/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 290 | ❌ Error |
-| `Morph/Specs/UnidirectionalDataFlow/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 10 | ❌ Error |
-| `Morph/Specs/VersionCompatibility/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 261 | ❌ Error |
+| `Morph/Specs/AbiAlignmentAlgebra/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 207 | [FAIL] Error |
+| `Morph/Specs/AbiDataRefinement/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 99 | [FAIL] Error |
+| `Morph/Specs/ASTGraph/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 382 | [FAIL] Error |
+| `Morph/Specs/BuildLattice/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 334 | [FAIL] Error |
+| `Morph/Specs/ConcurrencyProcessAlgebra/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 1041 | [FAIL] Error |
+| `Morph/Specs/DialectProjection/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 380 | [FAIL] Error |
+| `Morph/Specs/DualOptimization/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 400 | [FAIL] Error |
+| `Morph/Specs/ExecutionModel/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 687 | [FAIL] Error |
+| `Morph/Specs/Financial/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 362 | [FAIL] Error |
+| `Morph/Specs/InfrastructureSafetyContracts/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 253 | [FAIL] Error |
+| `Morph/Specs/LayeredConcurrency/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 253 | [FAIL] Error |
+| `Morph/Specs/LexicalStructureSyntax/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 374 | [FAIL] Error |
+| `Morph/Specs/LicenseDeonticLogic/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 339 | [FAIL] Error |
+| `Morph/Specs/Licensing/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 216 | [FAIL] Error |
+| `Morph/Specs/LinkerLogic/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 212 | [FAIL] Error |
+| `Morph/Specs/Maths/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 308 | [FAIL] Error |
+| `Morph/Specs/ModuleExistential/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 364 | [FAIL] Error |
+| `Morph/Specs/ModuleSystem/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 317 | [FAIL] Error |
+| `Morph/Specs/MonadicEffect/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 356 | [FAIL] Error |
+| `Morph/Specs/MorphLanguage/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 266 | [FAIL] Error |
+| `Morph/Specs/OperatorNullCoalescing/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 230 | [FAIL] Error |
+| `Morph/Specs/SchedulingModes/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 299 | [FAIL] Error |
+| `Morph/Specs/ScopingLambdaCalculus/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 695 | [FAIL] Error |
+| `Morph/Specs/StorageDAWG/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 644 | [FAIL] Error |
+| `Morph/Specs/StrictStateUnidirectional/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 56 | [FAIL] Error |
+| `Morph/Specs/SyntaxTranslation/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 100 | [FAIL] Error |
+| `Morph/Specs/TerminologyStandardization/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 293 | [FAIL] Error |
+| `Morph/Specs/TypeSystem/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 854 | [FAIL] Error |
+| `Morph/Specs/UnitGroupTheory/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 290 | [FAIL] Error |
+| `Morph/Specs/UnidirectionalDataFlow/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 10 | [FAIL] Error |
+| `Morph/Specs/VersionCompatibility/Spec.lean` | `/- Copyright ...` | `SPDX-License-Identifier: ...` | 261 | [FAIL] Error |
 
 **Total Files with Error Pattern 1: 28**
 
@@ -110,11 +110,11 @@ Several files contain empty block comments or empty doc comments with no content
 
 | File | Lines | Type | Status |
 |------|-------|------|--------|
-| `Morph/Specs/CommonTypes.lean` | 1-2 | Empty block comment | ⚠️ Suspicious |
-| `Morph/Specs/GLOSSARY.lean` | 8-9 | Empty doc comment | ⚠️ Suspicious |
-| `Morph/Specs/BackendTiling/Spec.lean` | 6-7 | Empty block comment | ⚠️ Suspicious |
-| `Morph/Specs/DependencySat/Spec.lean` | 6-7 | Empty block comment | ⚠️ Suspicious |
-| `Morph/Specs/ArcAffineIntegration/Spec.lean` | 1-2 | Empty block comment | ⚠️ Suspicious |
+| `Morph/Specs/CommonTypes.lean` | 1-2 | Empty block comment | [WARNING] Suspicious |
+| `Morph/Specs/GLOSSARY.lean` | 8-9 | Empty doc comment | [WARNING] Suspicious |
+| `Morph/Specs/BackendTiling/Spec.lean` | 6-7 | Empty block comment | [WARNING] Suspicious |
+| `Morph/Specs/DependencySat/Spec.lean` | 6-7 | Empty block comment | [WARNING] Suspicious |
+| `Morph/Specs/ArcAffineIntegration/Spec.lean` | 1-2 | Empty block comment | [WARNING] Suspicious |
 
 ---
 
@@ -123,17 +123,17 @@ Several files contain empty block comments or empty doc comments with no content
 The following files were checked and found to have **NO** comment syntax errors:
 
 ### Main Morph/ Directory
-- `Morph/Core.lean` ✅
-- `Morph/Executable.lean` ✅
-- `Morph/HIR.lean` ✅
-- `Morph/Memory.lean` ✅
-- `Morph/MIR.lean` ✅
-- `Morph/Semantics.lean` ✅
-- `Morph/Syntax.lean` ✅
+- `Morph/Core.lean` [OK]
+- `Morph/Executable.lean` [OK]
+- `Morph/HIR.lean` [OK]
+- `Morph/Memory.lean` [OK]
+- `Morph/MIR.lean` [OK]
+- `Morph/Semantics.lean` [OK]
+- `Morph/Syntax.lean` [OK]
 
 ### Morph/Specs/ Directory
-- `Morph/Specs/CommonTypes.lean` (has empty comment but syntax is valid) ✅
-- `Morph/Specs/GLOSSARY.lean` (has empty comment but syntax is valid) ✅
+- `Morph/Specs/CommonTypes.lean` (has empty comment but syntax is valid) [OK]
+- `Morph/Specs/GLOSSARY.lean` (has empty comment but syntax is valid) [OK]
 
 ---
 
@@ -258,9 +258,9 @@ All `.lean` files in `Morph/Specs/` subdirectories have been systematically chec
 
 | File | Lines | Status |
 |------|-------|--------|
-| `Morph/Specs/MemoryModel/Spec.lean` | 1-2 | ❌ Empty header |
-| `Morph/Specs/MemoryAffineLogic/Spec.lean` | 1-2 | ❌ Empty header |
-| `Morph/Specs/MemoryAcyclicity/Spec.lean` | 1-2 | ❌ Empty header |
+| `Morph/Specs/MemoryModel/Spec.lean` | 1-2 | [FAIL] Empty header |
+| `Morph/Specs/MemoryAffineLogic/Spec.lean` | 1-2 | [FAIL] Empty header |
+| `Morph/Specs/MemoryAcyclicity/Spec.lean` | 1-2 | [FAIL] Empty header |
 
 **Total Files with Error Pattern 3: 3**
 
@@ -278,10 +278,10 @@ All `.lean` files in `Morph/Specs/` subdirectories have been systematically chec
 
 | File | Status |
 |------|--------|
-| `Morph/Specs/UnidirectionalDataFlow/Spec.lean` | ✅ Correct (line comments) |
-| `Morph/Specs/RegistryConsensus/Spec.lean` | ✅ Correct (line comments) |
-| `Morph/Specs/README/Spec.lean` | ✅ Correct (line comments) |
-| `Morph/Specs/SchedulerRandomizedStealing/Spec.lean` | ✅ Correct (line comments) |
+| `Morph/Specs/UnidirectionalDataFlow/Spec.lean` | [OK] Correct (line comments) |
+| `Morph/Specs/RegistryConsensus/Spec.lean` | [OK] Correct (line comments) |
+| `Morph/Specs/README/Spec.lean` | [OK] Correct (line comments) |
+| `Morph/Specs/SchedulerRandomizedStealing/Spec.lean` | [OK] Correct (line comments) |
 
 **Total Files with Correct Line Comment Format: 4**
 

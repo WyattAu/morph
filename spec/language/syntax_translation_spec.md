@@ -31,7 +31,7 @@ This specification covers:
 This specification does NOT cover:
 - AST node type definitions (see [`ast_graph_spec.md`](ast_graph_spec.md))
 - LSP protocol implementation (see [`dialect_projection_spec.md`](dialect_projection_spec.md))
-- Lexical analysis and tokenization (see [`lexical_strcutre_syntax_spec.md`](lexical_strcutre_syntax_spec.md))
+- Lexical analysis and tokenization (see [`lexical_structure_syntax_spec.md`](lexical_structure_syntax_spec.md))
 
 ### 1.3 Definitions, Acronyms, and Abbreviations
 
@@ -47,7 +47,7 @@ This specification does NOT cover:
 ### 1.4 References
 
 - [`dialect_projection_spec.md`](dialect_projection_spec.md) - Dialect system and isomorphism
-- [`lexical_strcutre_syntax_spec.md`](lexical_strcutre_syntax_spec.md) - Lexical structure and syntax
+- [`lexical_structure_syntax_spec.md`](lexical_structure_syntax_spec.md) - Lexical structure and syntax
 - [`ast_graph_spec.md`](ast_graph_spec.md) - AST graph structure
 - SPEC_GAPS_AND_BASIS.md - Gap analysis (Section 5.5)
 - SPEC_FIX_PROPOSAL.md - Fix proposal (Section 3.5)

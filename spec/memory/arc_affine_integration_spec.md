@@ -78,8 +78,8 @@ The ARC with Affine Types Integration Specification is closely related to severa
 - [`spec/concurrency/concurrency_process_algebra_spec.md`](../concurrency/concurrency_process_algebra_spec.md) - Process algebra formalization of concurrent communication
 
 * Contradiction Resolution:*
-- [`SPEC_CONTRADICTIONS.md`](SPEC_CONTRADICTIONS.md) - Contradiction #4: ARC vs Tracing GC analysis
-- [`SPEC_FIX_PROPOSAL.md`](SPEC_FIX_PROPOSAL.md) - Week 9-10 Medium Priority: Document ARC with affine types
+- [`SPEC_CONTRADICTIONS.md`](../../SPEC_CONTRADICTIONS.md) - Contradiction #4: ARC vs Tracing GC analysis
+- [`SPEC_FIX_PROPOSAL.md`](../../SPEC_FIX_PROPOSAL.md) - Week 9-10 Medium Priority: Document ARC with affine types
 
 * Note:* These cross-references help readers navigate the Morph specification ecosystem by providing links to related specifications that provide complementary or detailed information about concepts referenced in this document.
 
