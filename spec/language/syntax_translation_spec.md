@@ -49,8 +49,8 @@ This specification does NOT cover:
 - [`dialect_projection_spec.md`](dialect_projection_spec.md) - Dialect system and isomorphism
 - [`lexical_structure_syntax_spec.md`](lexical_structure_syntax_spec.md) - Lexical structure and syntax
 - [`ast_graph_spec.md`](ast_graph_spec.md) - AST graph structure
-- SPEC_GAPS_AND_BASIS.md - Gap analysis (Section 5.5)
-- SPEC_FIX_PROPOSAL.md - Fix proposal (Section 3.5)
+- [`SPEC_GAPS_AND_BASIS.md`](../../SPEC_GAPS_AND_BASIS.md) - Gap analysis (Section 5.5)
+- [`SPEC_FIX_PROPOSAL.md`](../../SPEC_FIX_PROPOSAL.md) - Fix proposal (Section 3.5)
 
 ---
 

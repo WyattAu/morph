@@ -75,6 +75,15 @@ class TestReadFileSafely:
             read_file_safely(f)
         assert "Encoding error" in str(exc.value)
 
+    def test_generic_exception(self, temp_dir):
+        f = temp_dir / "err.md"
+        f.write_text("hello", encoding="utf-8")
+        from unittest.mock import patch
+        with patch("builtins.open", side_effect=IOError("generic")):
+            with pytest.raises(SpecToolsError) as exc:
+                read_file_safely(f)
+            assert "Error reading file" in str(exc.value)
+
 
 class TestWriteFileSafely:
     def test_write_ok(self, temp_dir):
@@ -87,6 +96,66 @@ class TestWriteFileSafely:
         write_file_safely(f, "nested")
         assert f.read_text(encoding="utf-8") == "nested"
 
+    def test_permission_error(self, temp_dir):
+        import os
+        read_only = temp_dir / "readonly"
+        read_only.mkdir()
+        os.chmod(str(read_only), 0o555)
+        f = read_only / "out.md"
+        try:
+            with pytest.raises(SpecToolsError) as exc:
+                write_file_safely(f, "nope")
+            assert "Permission denied" in str(exc.value)
+        finally:
+            os.chmod(str(read_only), 0o755)
+
+    def test_os_error(self, temp_dir):
+        f = temp_dir / "err.md"
+        f.write_text("old", encoding="utf-8")
+        from unittest.mock import patch
+        with patch("builtins.open", side_effect=OSError("disk full")):
+            with pytest.raises(SpecToolsError) as exc:
+                write_file_safely(f, "new content")
+            assert "Error writing file" in str(exc.value)
+
+    def test_generic_exception(self, temp_dir):
+        f = temp_dir / "err2.md"
+        from unittest.mock import patch
+        with patch("pathlib.Path.mkdir", side_effect=RuntimeError("mkdir fail")):
+            with pytest.raises(SpecToolsError) as exc:
+                write_file_safely(f, "nope")
+            assert "Unexpected error writing file" in str(exc.value)
+
+    def test_permission_error(self, temp_dir):
+        import os
+        read_only = temp_dir / "readonly"
+        read_only.mkdir()
+        os.chmod(str(read_only), 0o555)
+        f = read_only / "out.md"
+        try:
+            with pytest.raises(SpecToolsError) as exc:
+                write_file_safely(f, "nope")
+            assert "Permission denied" in str(exc.value)
+        finally:
+            os.chmod(str(read_only), 0o755)
+
+    def test_os_error(self, temp_dir):
+        f = temp_dir / "err.md"
+        f.write_text("old", encoding="utf-8")
+        from unittest.mock import patch
+        with patch("builtins.open", side_effect=OSError("disk full")):
+            with pytest.raises(SpecToolsError) as exc:
+                write_file_safely(f, "new content")
+            assert "Error writing file" in str(exc.value)
+
+    def test_generic_exception(self, temp_dir):
+        f = temp_dir / "err2.md"
+        from unittest.mock import patch
+        with patch("pathlib.Path.mkdir", side_effect=RuntimeError("mkdir fail")):
+            with pytest.raises(SpecToolsError) as exc:
+                write_file_safely(f, "nope")
+            assert "Unexpected error writing file" in str(exc.value)
+
 
 class TestEnsureDirectoryExists:
     def test_creates_directory(self, temp_dir):
@@ -97,6 +166,33 @@ class TestEnsureDirectoryExists:
     def test_existing_directory(self, temp_dir):
         ensure_directory_exists(temp_dir)
         assert temp_dir.is_dir()
+
+    def test_permission_error(self, temp_dir):
+        import os
+        read_only = temp_dir / "readonly"
+        read_only.mkdir()
+        os.chmod(str(read_only), 0o555)
+        d = read_only / "sub"
+        try:
+            with pytest.raises(SpecToolsError) as exc:
+                ensure_directory_exists(d)
+            assert "Permission denied" in str(exc.value)
+        finally:
+            os.chmod(str(read_only), 0o755)
+
+    def test_os_error(self, temp_dir):
+        from unittest.mock import patch
+        with patch("pathlib.Path.mkdir", side_effect=OSError("os error")):
+            with pytest.raises(SpecToolsError) as exc:
+                ensure_directory_exists(temp_dir / "newdir")
+            assert "Error creating directory" in str(exc.value)
+
+    def test_generic_exception(self, temp_dir):
+        from unittest.mock import patch
+        with patch("pathlib.Path.mkdir", side_effect=RuntimeError("unexpected")):
+            with pytest.raises(SpecToolsError) as exc:
+                ensure_directory_exists(temp_dir / "newdir2")
+            assert "Unexpected error creating directory" in str(exc.value)
 
 
 class TestGetRelativePath:

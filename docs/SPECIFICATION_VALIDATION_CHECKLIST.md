@@ -65,12 +65,12 @@ This checklist applies to all specification documents in `spec/` directory, incl
 
 ### 1.4 References
 
-- [`docs/conventions/specification_convention.md`](docs/conventions/specification_convention.md) - Specification formatting standards
-- [`spec/conventions/terminology_standardization_spec.md`](spec/conventions/terminology_standardization_spec.md) - Terminology standards
-- [`SPEC_FIX_PROPOSAL.md`](SPEC_FIX_PROPOSAL.md) - Validation requirements (Week 13-14)
-- [`scripts/spec_linter.py`](scripts/spec_linter.py) - Automated linter
-- [`scripts/spec_link_checker.py`](scripts/spec_link_checker.py) - Link checker
-- [`scripts/spec_version_validator.py`](scripts/spec_version_validator.py) - Version validator
+- [`docs/conventions/specification_convention.md`](../docs/conventions/specification_convention.md) - Specification formatting standards
+- [`spec/conventions/terminology_standardization_spec.md`](../spec/conventions/terminology_standardization_spec.md) - Terminology standards
+- [`SPEC_FIX_PROPOSAL.md`](../SPEC_FIX_PROPOSAL.md) - Validation requirements (Week 13-14)
+- [`scripts/spec_tools/lint.py`](../scripts/spec_tools) - Automated linter (spec-tools package)
+- [`scripts/spec_tools/cli/commands/check_links.py`](../scripts/spec_tools/cli/commands/check_links.py) - Link checker
+- [`scripts/spec_tools/cli/commands/validate.py`](../scripts/spec_tools/cli/commands/validate.py) - Version validator
 
 ---
 
@@ -803,8 +803,8 @@ This checklist applies to all specification documents in `spec/` directory, incl
 **Checklist:**
 
 - [ ] **Link Syntax:** Links use correct markdown syntax
-  - **Validation:** Links follow `[text](url)` format
-  - **Example:** `[AST Graph Spec](spec/language/ast_graph_spec.md)`
+  - **Validation:** Links use the markdown format: bracket text followed by parenthesized URL
+  - **Example:** `[AST Graph Spec]` linking to `spec/language/ast_graph_spec.md`
   - **Severity:** High
 
 - [ ] **Link Text:** Link text is descriptive
@@ -823,12 +823,12 @@ This checklist applies to all specification documents in `spec/` directory, incl
 
 - [ ] **Repeated URLs:** Repeated URLs use reference-style links
   - **Validation:** Long URLs defined as references
-  - **Example:** `[AST Graph Spec][1]` and `[1]: spec/language/ast_graph_spec.md`
+  - **Example:** `` `[AST Graph Spec][1]` `` and `` `[1]: spec/language/ast_graph_spec.md` ``
   - **Severity:** Low
 
 - [ ] **One-Time URLs:** One-time URLs use inline links
   - **Validation:** URLs used once are inline
-  - **Example:** `[AST Graph Spec](spec/language/ast_graph_spec.md)`
+  - **Example:** `[AST Graph Spec]` linking to `spec/language/ast_graph_spec.md`
   - **Severity:** Low
 
 ### 5.2 Link Validity Validation
@@ -1156,12 +1156,12 @@ This checklist applies to all specification documents in `spec/` directory, incl
 
 - [ ] **Signal Usage:** Signal used for FRP contexts
   - **Validation:** Signal used for time-varying values in FRP
-  - **Context:** [`spec/tooling/reactive_frp_spec.md`](spec/tooling/reactive_frp_spec.md)
+  - **Context:** [`spec/tooling/reactive_frp_spec.md`](../spec/tooling/reactive_frp_spec.md)
   - **Severity:** High
 
 - [ ] **Stream Usage:** Stream used for data flow contexts
   - **Validation:** Stream used for discrete event sequences
-  - **Context:** [`spec/language/unidirectional_data_flow_spec.md`](spec/language/unidirectional_data_flow_spec.md)
+  - **Context:** [`spec/language/unidirectional_data_flow_spec.md`](../spec/language/unidirectional_data_flow_spec.md)
   - **Severity:** High
 
 - [ ] **No Interchangeable Use:** Signal and Stream not used interchangeably
@@ -1174,12 +1174,12 @@ This checklist applies to all specification documents in `spec/` directory, incl
 
 - [ ] **Reducer Usage:** Reducer used for state reduction
   - **Validation:** Reducer used for fold-like operations
-  - **Context:** [`spec/language/ast_graph_spec.md`](spec/language/ast_graph_spec.md)
+  - **Context:** [`spec/language/ast_graph_spec.md`](../spec/language/ast_graph_spec.md)
   - **Severity:** High
 
 - [ ] **Transducer Usage:** Transducer used for graph rewriting
   - **Validation:** Transducer used for structure transformations
-  - **Context:** [`spec/tooling/graph_rewriting_spec.md`](spec/tooling/graph_rewriting_spec.md)
+  - **Context:** [`spec/tooling/graph_rewriting_spec.md`](../spec/tooling/graph_rewriting_spec.md)
   - **Severity:** High
 
 - [ ] **No Interchangeable Use:** Reducer and Transducer not used interchangeably
@@ -1192,7 +1192,7 @@ This checklist applies to all specification documents in `spec/` directory, incl
 
 - [ ] **Canonical Definition:** Pure function uses canonical definition
   - **Validation:** Pure function defined with referential transparency, no side effects, no mutation, determinism
-  - **Context:** [`spec/conventions/terminology_standardization_spec.md`](spec/conventions/terminology_standardization_spec.md)
+  - **Context:** [`spec/conventions/terminology_standardization_spec.md`](../spec/conventions/terminology_standardization_spec.md)
   - **Severity:** Critical
 
 - [ ] **No Deprecated Definitions:** Deprecated pure function definitions not used
@@ -1356,7 +1356,7 @@ This checklist applies to all specification documents in `spec/` directory, incl
 
 - [ ] **Compatibility Matrix:** Version compatibility matrix exists
   - **Validation:** Matrix shows compatible version combinations
-  - **Context:** [`spec/clarifications/version_compatibility.md`](spec/clarifications/version_compatibility.md)
+  - **Context:** [`spec/clarifications/version_compatibility.md`](../spec/conventions/version_compatibility_spec.md)
   - **Severity:** High
 
 - [ ] **Breaking Changes:** Breaking changes are documented
@@ -1438,7 +1438,7 @@ This checklist applies to all specification documents in `spec/` directory, incl
 **Checklist:**
 
 - [ ] **Header Compliance:** Header follows specification convention
-  - **Validation:** Header matches [`docs/conventions/specification_convention.md`](docs/conventions/specification_convention.md) Section 2.1
+  - **Validation:** Header matches [`docs/conventions/specification_convention.md`](../docs/conventions/specification_convention.md) Section 2.1
   - **Severity:** Critical
 
 - [ ] **Section Compliance:** Sections follow specification convention
@@ -1488,7 +1488,7 @@ This checklist applies to all specification documents in `spec/` directory, incl
 **Checklist:**
 
 - [ ] **Signal vs Stream Compliance:** Signal and Stream used correctly
-  - **Validation:** Terminology follows [`spec/conventions/terminology_standardization_spec.md`](spec/conventions/terminology_standardization_spec.md) Section 3.1
+  - **Validation:** Terminology follows [`spec/conventions/terminology_standardization_spec.md`](../spec/conventions/terminology_standardization_spec.md) Section 3.1
   - **Severity:** High
 
 - [ ] **Reducer vs Transducer Compliance:** Reducer and Transducer used correctly
@@ -2313,8 +2313,12 @@ The system should maintain a single root node in the AST graph.
 #### 14.2.3 Example: Broken Cross-Reference
 
 **Invalid Reference:**
+
+    See [AST Graph Spec]&#40;spec/language/ast_graph_specx.md&#41; for details.
+
+**Corrected Reference:**
 ```markdown
-See [AST Graph Spec](spec/language/ast_graph_specx.md) for details.
+See [AST Graph Spec](../spec/language/ast_graph_spec.md) for details.
 ```
 
 **Issues:**
@@ -2325,7 +2329,7 @@ See [AST Graph Spec](spec/language/ast_graph_specx.md) for details.
 
 **Corrected Reference:**
 ```markdown
-See [AST Graph Spec](spec/language/ast_graph_spec.md) for details.
+See [AST Graph Spec](../spec/language/ast_graph_spec.md) for details.
 ```
 
 #### 14.2.4 Example: Inconsistent Terminology

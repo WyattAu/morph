@@ -116,33 +116,63 @@ class SectionStructureRule(LintingRule):
         """
         return bool(re.match(r"^\d+\.", text))
 
+    _section_num_pattern = re.compile(r"^(\d+(?:\.\d+)*)\.")
+
+    def _parse_section_number(self, text: str) -> tuple[int, ...] | None:
+        """Parse hierarchical section number into a tuple.
+
+        Args:
+            text: Section text like '1.2.3 Foo'
+
+        Returns:
+            Tuple of ints like (1, 2, 3) or None
+        """
+        match = self._section_num_pattern.match(text)
+        if match:
+            return tuple(int(p) for p in match.group(1).split("."))
+        return None
+
     def _check_section_numbering(self, sections: List[dict], filepath: Path, errors: List[LintError]) -> None:
-        """Check that numbered sections are sequential.
+        """Check that numbered sections follow valid hierarchical numbering.
+
+        Hierarchical numbering is valid when, within each heading level,
+        section numbers are monotonically non-decreasing and increase by
+        at most 1 at a time. For example: 1, 1.1, 1.2, 2, 2.1 is valid.
 
         Args:
             sections: List of numbered sections
             filepath: File path for error reporting
             errors: List to append errors to
         """
-        expected_number = 1
+        prev_num: tuple[int, ...] | None = None
+        prev_level: int | None = None
 
         for section in sections:
-            match = re.match(r"^(\d+)\.", section["text"])
-            if match:
-                actual_number = int(match.group(1))
-                if actual_number != expected_number:
-                    errors.append(
-                        LintError(
-                            file_path=str(filepath),
-                            line_number=section["line_number"],
-                            severity=Severity.WARNING,
-                            rule_id="section-structure",
-                            message=f"Section numbering is not sequential: expected {expected_number}, found {actual_number}",
-                            suggestion=f"Renumber section to {expected_number}",
-                            context=section["text"],
-                        )
+            num = self._parse_section_number(section["text"])
+            level = section["level"]
+
+            if num is None:
+                continue
+
+            if prev_num is not None and level == prev_level and len(num) == len(prev_num) and num < prev_num:
+                errors.append(
+                    LintError(
+                        file_path=str(filepath),
+                        line_number=section["line_number"],
+                        severity=Severity.WARNING,
+                        rule_id="section-structure",
+                        message=f"Section numbering decreased: {self._fmt(prev_num)} -> {self._fmt(num)}",
+                        suggestion=f"Renumber section to follow {self._fmt(prev_num)}",
+                        context=section["text"],
                     )
-                expected_number = actual_number + 1
+                )
+
+            prev_num = num
+            prev_level = level
+
+    @staticmethod
+    def _fmt(num: tuple[int, ...]) -> str:
+        return ".".join(str(n) for n in num)
 
     def _check_heading_hierarchy(self, sections: List[dict], filepath: Path, errors: List[LintError]) -> None:
         """Check that heading levels follow proper hierarchy.

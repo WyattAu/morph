@@ -28,7 +28,7 @@ This specification covers:
 - Perfect testability through pure functions
 
 * See Also:*
-- [`unidirectional_data_flow_spec.md`](unidirectional_data_flow_spec.md:2.1.3) - Signal vs Stream terminology
+- [`unidirectional_data_flow_spec.md`](unidirectional_data_flow_spec.md) - Signal vs Stream terminology
 
 This specification does not cover:
 - Concrete implementation of runtime executor

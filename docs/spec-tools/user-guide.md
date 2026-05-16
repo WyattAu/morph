@@ -725,7 +725,7 @@ spec-tools lint spec/ --fix
 ## Additional Resources
 
 - [Developer Guide](developer-guide.md)
-- [API Documentation](../api/)
+- [API Reference](../../scripts/spec_tools/)
 - [Specification Convention](../conventions/specification_convention.md)
 - [GitHub Repository](https://github.com/morph-project/spec-tools)
 - [Issue Tracker](https://github.com/morph-project/spec-tools/issues)

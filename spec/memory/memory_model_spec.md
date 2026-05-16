@@ -1165,7 +1165,7 @@ function break_cycle(obj):
 
 ### 4.4 Detailed Implementation Algorithms
 
-This section provides detailed implementation algorithms for the memory model, addressing the requirements from SPEC_FIX_PROPOSAL_REPORT.md Section 4.1.
+This section provides detailed implementation algorithms for the memory model, addressing the requirements from `SPEC_FIX_PROPOSAL.md` Section 4.1.
 
 #### 4.4.1 ARC Implementation Specification
 

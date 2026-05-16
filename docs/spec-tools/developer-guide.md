@@ -1106,7 +1106,7 @@ When reporting issues, include:
 ### Getting Help
 
 - **Documentation**: [User Guide](user-guide.md)
-- **API Reference**: [API Documentation](../api/)
+- **API Reference**: [spec-tools source](../../scripts/spec_tools/)
 - **Issues**: [GitHub Issues](https://github.com/morph-project/spec-tools/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/morph-project/spec-tools/discussions)
 

@@ -53,8 +53,8 @@ This specification does NOT cover:
 - [`spec/language/lexical_structure_syntax_spec.md`](./lexical_structure_syntax_spec.md) - Lexical structure and syntax
 - [`spec/tooling/hot_reload_projection_spec.md`](../tooling/hot_reload_projection_spec.md) - Projectional editing and hot reload
 - [`metaprogramming_spec.md`](../tooling/metaprogramming_spec.md) - Metaprogramming capabilities
-- SPEC_CONTRADICTIONS.md - Contradiction analysis (Contradiction #2)
-- SPEC_FIX_PROPOSAL.md - Fix proposal (Critical Fix #4)
+- [`SPEC_CONTRADICTIONS.md`](../../SPEC_CONTRADICTIONS.md) - Contradiction analysis (Contradiction #2)
+- [`SPEC_FIX_PROPOSAL.md`](../../SPEC_FIX_PROPOSAL.md) - Fix proposal (Critical Fix #4)
 
 ---
 

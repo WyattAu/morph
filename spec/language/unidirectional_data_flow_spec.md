@@ -197,7 +197,7 @@ flow FlowName {
 
 #### 2.2.2 Flow Structure (SSUS Pattern)
 
-For flows requiring explicit separation of state updates from effect commands, the SSUS pattern provides `update` and `command` functions. See [`strict_state_unidirectional_spec.md`](strict_state_unidirectional_spec.md:2.2) for complete specification.
+For flows requiring explicit separation of state updates from effect commands, the SSUS pattern provides `update` and `command` functions. See [`strict_state_unidirectional_spec.md`](strict_state_unidirectional_spec.md) for complete specification.
 
 ```morph
 flow FlowName {

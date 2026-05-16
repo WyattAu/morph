@@ -1294,8 +1294,8 @@ This specification does not cover:
 The [Specification Name] Specification is closely related to several other Morph specifications:
 
 * [Category 1] Specifications:**
-- [`spec/[path]/[spec1].md`](spec/[path]/[spec1].md) - [Description]
-- [`spec/[path]/[spec2].md`](spec/[path]/[spec2].md) - [Description]
+- `spec/[path]/[spec1].md` - [Description]
+- `spec/[path]/[spec2].md` - [Description]
 
 * Note:** This specification provides the authoritative definition of [feature] that supersedes all previous references in the listed specifications.
 
@@ -1838,13 +1838,13 @@ The effect lattice is: Pure -> IO -> Net -> Time -> System
 The Pure Type Specification is closely related to several other Morph specifications:
 
 * Type System Specifications:**
-- [`spec/type/type_system_spec.md`](spec/type/type_system_spec.md) - Overall type system architecture and effect categories
-- [`spec/type/type_category_spec.md`](spec/type/type_category_spec.md) - Category theory foundations for types
-- [`spec/type/type_unification_spec.md`](spec/type/type_unification_spec.md) - Type unification algorithm
+- [`spec/type/type_system_spec.md`](../spec/type/type_system_spec.md) - Overall type system architecture and effect categories
+- [`spec/type/type_category_spec.md`](../spec/type/type_category_spec.md) - Category theory foundations for types
+- [`spec/type/type_unification_spec.md`](../spec/type/type_unification_spec.md) - Type unification algorithm
 
 * Language Specifications:**
-- [`spec/language/scoping_lambda_calculus_spec.md`](spec/language/scoping_lambda_calculus_spec.md) - Lambda calculus and scoping rules
-- [`spec/language/morph_language_spec.md`](spec/language/morph_language_spec.md) - Core language syntax and semantics
+- [`spec/language/scoping_lambda_calculus_spec.md`](../spec/language/scoping_lambda_calculus_spec.md) - Lambda calculus and scoping rules
+- [`spec/language/morph_language_spec.md`](../spec/language/morph_language_spec.md) - Core language syntax and semantics
 
 * Note:** This specification provides the authoritative definition of Pure type that supersedes all previous references in the listed specifications.
 ```
@@ -2048,39 +2048,39 @@ let displayName = name ?? "Anonymous";
 
 | Feature | Specification | Key Concepts |
 |----------|-------------|---------------|
-| Pure Types | [`spec/type/pure_type_spec.md`](spec/type/pure_type_spec.md) | Referential transparency, no side effects, determinism |
-| Effect System | [`spec/type/effect_system_spec.md`](spec/type/effect_system_spec.md) | Effect lattice, effect algebra, effect polymorphism |
-| ?? Operator | [`spec/language/operator_null_coalescing_spec.md`](spec/language/operator_null_coalescing_spec.md) | Null-coalescing, short-circuit evaluation, type inference |
-| Capability Types | [`spec/type/type_system_spec.md`](spec/type/type_system_spec.md) | Resource access, effect-based security |
+| Pure Types | [`spec/type/pure_type_spec.md`](../spec/type/pure_type_spec.md) | Referential transparency, no side effects, determinism |
+| Effect System | [`spec/type/effect_system_spec.md`](../spec/type/effect_system_spec.md) | Effect lattice, effect algebra, effect polymorphism |
+| ?? Operator | [`spec/language/operator_null_coalescing_spec.md`](../spec/language/operator_null_coalescing_spec.md) | Null-coalescing, short-circuit evaluation, type inference |
+| Capability Types | [`spec/type/type_system_spec.md`](../spec/type/type_system_spec.md) | Resource access, effect-based security |
 
 ### A.2 Language Features Quick Reference
 
 | Feature | Specification | Key Concepts |
 |----------|-------------|---------------|
-| Dialects | [`spec/language/dialect_projection_spec.md`](spec/language/dialect_projection_spec.md) | Agent syntax, human syntax, projectional editing |
-| Syntax Translation | [`spec/language/syntax_translation_spec.md`](spec/language/syntax_translation_spec.md) | Bidirectional translation, round-trip properties |
-| Dual Optimization | [`spec/language/dual_optimization_spec.md`](spec/language/dual_optimization_spec.md) | Agent optimization, human optimization, dual projections |
+| Dialects | [`spec/language/dialect_projection_spec.md`](../spec/language/dialect_projection_spec.md) | Agent syntax, human syntax, projectional editing |
+| Syntax Translation | [`spec/language/syntax_translation_spec.md`](../spec/language/syntax_translation_spec.md) | Bidirectional translation, round-trip properties |
+| Dual Optimization | [`spec/language/dual_optimization_spec.md`](../spec/language/dual_optimization_spec.md) | Agent optimization, human optimization, dual projections |
 
 ### A.3 Concurrency Quick Reference
 
 | Feature | Specification | Key Concepts |
 |----------|-------------|---------------|
-| Scheduling Modes | [`spec/concurrency/scheduling_modes_spec.md`](spec/concurrency/scheduling_modes_spec.md) | Deterministic mode, randomized mode, mode transition |
-| Layered Concurrency | [`spec/architecture/layered_concurrency_spec.md`](spec/architecture/layered_concurrency_spec.md) | Intra-actor unidirectionality, inter-actor bidirectionality |
+| Scheduling Modes | [`spec/concurrency/scheduling_modes_spec.md`](../spec/concurrency/scheduling_modes_spec.md) | Deterministic mode, randomized mode, mode transition |
+| Layered Concurrency | [`spec/architecture/layered_concurrency_spec.md`](../spec/architecture/layered_concurrency_spec.md) | Intra-actor unidirectionality, inter-actor bidirectionality |
 
 ### A.4 Memory Management Quick Reference
 
 | Feature | Specification | Key Concepts |
 |----------|-------------|---------------|
-| ARC with Affine Types | [`spec/memory/arc_affine_integration_spec.md`](spec/memory/arc_affine_integration_spec.md) | Reference counting, affine typing, cycle prevention |
-| Cycle Prevention | [`spec/memory/memory_acyclicity_spec.md`](spec/memory/memory_acyclicity_spec.md) | Weak references, cycle detection, DAG structure |
+| ARC with Affine Types | [`spec/memory/arc_affine_integration_spec.md`](../spec/memory/arc_affine_integration_spec.md) | Reference counting, affine typing, cycle prevention |
+| Cycle Prevention | [`spec/memory/memory_acyclicity_spec.md`](../spec/memory/memory_acyclicity_spec.md) | Weak references, cycle detection, DAG structure |
 
 ### A.5 Optimization Quick Reference
 
 | Feature | Specification | Key Concepts |
 |----------|-------------|---------------|
-| Selective Monomorphization | [`spec/optimization/selective_monomorphization_spec.md`](spec/optimization/selective_monomorphization_spec.md) | Hot paths, cold paths, automatic detection |
-| Hot/Cold Path Detection | [`spec/optimization/optimization_manifold_spec.md`](spec/optimization/optimization_manifold_spec.md) | Performance optimization, code size optimization, balanced optimization |
+| Selective Monomorphization | [`spec/optimization/selective_monomorphization_spec.md`](../spec/optimization/selective_monomorphization_spec.md) | Hot paths, cold paths, automatic detection |
+| Hot/Cold Path Detection | [`spec/optimization/optimization_manifold_spec.md`](../spec/optimization/optimization_manifold_spec.md) | Performance optimization, code size optimization, balanced optimization |
 
 ---
 

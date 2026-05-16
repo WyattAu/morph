@@ -163,7 +163,7 @@ The Morph specification refinement project was initiated to address:
 - Resolved contradiction between projectional editing and multiple dialects
 
 **Deliverables:**
-- [`spec/tooling/projection_system_spec.md`](../spec/tooling/projection_system_spec.md)
+- [`spec/tooling/hot_reload_projection_spec.md`](../spec/tooling/hot_reload_projection_spec.md)
 - Projection type definition
 - Multiple projection examples (agent, human)
 - Projection composition rules
@@ -237,7 +237,7 @@ The Morph specification refinement project was initiated to address:
 - Resolved contradiction between unidirectionality and actor model
 
 **Deliverables:**
-- [`spec/concurrency/layered_architecture_spec.md`](../spec/concurrency/layered_architecture_spec.md)
+- [`spec/architecture/layered_concurrency_spec.md`](../spec/architecture/layered_concurrency_spec.md)
 - Layer definitions and boundaries
 - Actor internal state management rules
 - Inter-actor communication rules
@@ -393,7 +393,7 @@ The Morph specification refinement project was initiated to address:
    - Status: No references exist
 
 **Deliverables:**
-- [`docs/CROSS_REFERENCE_FIXES_SUMMARY.md`](CROSS_REFERENCE_FIXES_SUMMARY.md)
+- [`ROADMAP.md`](../ROADMAP.md)
 - Comprehensive audit report
 - Verification results
 
@@ -426,8 +426,8 @@ The Morph specification refinement project was initiated to address:
 - Documented trade-offs and use cases
 
 **Deliverables:**
-- [`spec/language/agent_syntax_spec.md`](../spec/language/agent_syntax_spec.md)
-- [`spec/language/human_syntax_spec.md`](../spec/language/human_syntax_spec.md)
+- [`spec/language/morph_language_spec.md`](../spec/language/morph_language_spec.md)
+- [`spec/language/dialect_projection_spec.md`](../spec/language/dialect_projection_spec.md)
 - Complete syntax definitions
 - Examples for both syntaxes
 - Use case documentation
@@ -591,7 +591,7 @@ The Morph specification refinement project was initiated to address:
 - Document limitations and edge cases
 
 **Deliverables:**
-- [`spec/clarifications/assumption_validations.md`](../spec/clarifications/assumption_validations.md)
+- [`spec/validation/unproven_assumptions_spec.md`](../spec/validation/unproven_assumptions_spec.md)
 - Formal proofs or revised claims
 - Limitations documentation
 - Edge case analysis
@@ -618,7 +618,7 @@ The Morph specification refinement project was initiated to address:
 - Generate reports with errors and warnings
 
 **Deliverables:**
-- [`scripts/spec_linter.py`](../scripts/spec_linter.py)
+- [`scripts/spec_tools/lint.py`](../scripts/spec_tools) (spec-tools package)
 - Linter with all checks implemented
 - Documentation and usage guide
 
@@ -643,7 +643,7 @@ The Morph specification refinement project was initiated to address:
 - Generate report of broken links
 
 **Deliverables:**
-- [`scripts/check_links.py`](../scripts/check_links.py)
+- [`scripts/spec_tools/cli/commands/check_links.py`](../scripts/spec_tools/cli/commands/check_links.py)
 - Link checker with validation
 - Documentation and usage guide
 
@@ -668,7 +668,7 @@ The Morph specification refinement project was initiated to address:
 - Support version comparison and validation
 
 **Deliverables:**
-- [`scripts/validate_versions.py`](../scripts/validate_versions.py)
+- [`scripts/spec_tools/cli/commands/validate.py`](../scripts/spec_tools/cli/commands/validate.py)
 - Version validator with compatibility checks
 - Documentation and usage guide
 
@@ -694,7 +694,7 @@ The Morph specification refinement project was initiated to address:
 - Ensure all tests pass
 
 **Deliverables:**
-- [`tests/spec_validation/`](../tests/spec_validation/) directory
+- [`scripts/tests/`](../scripts/tests/) directory
 - Test files for all validation criteria
 - Test documentation
 
@@ -724,7 +724,7 @@ The Morph specification refinement project was initiated to address:
 - Include final validation items
 
 **Deliverables:**
-- [`docs/specification_validation_checklist.md`](specification_validation_checklist.md)
+- [`docs/SPECIFICATION_VALIDATION_CHECKLIST.md`](SPECIFICATION_VALIDATION_CHECKLIST.md)
 - Comprehensive checklist
 - Usage instructions
 
@@ -751,7 +751,7 @@ The Morph specification refinement project was initiated to address:
 - Provide support information
 
 **Deliverables:**
-- [`docs/migration/`](migration/) directory
+- `docs/migration/` directory (pending creation)
 - Migration guides for all breaking changes
 - Testing and rollback procedures
 
@@ -777,8 +777,8 @@ The Morph specification refinement project was initiated to address:
 - Ensure tutorials are clear and comprehensive
 
 **Deliverables:**
-- [`docs/examples/`](examples/) directory
-- [`docs/tutorials/`](tutorials/) directory
+- `docs/examples/` directory (pending creation)
+- `docs/tutorials/` directory (pending creation)
 - Examples for all key concepts
 - Tutorials for all skill levels
 
@@ -1008,4 +1008,4 @@ With continued focus and resource allocation, the project is on track to complet
 
 ---
 
-**Next Steps:** See [`SPEC_MIGRATION_GUIDE.md`](SPEC_MIGRATION_GUIDE.md) for detailed guidance on completing remaining tasks.
+**Next Steps:** See [`ROADMAP.md`](../ROADMAP.md) for detailed guidance on completing remaining tasks.
