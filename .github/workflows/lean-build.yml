@@ -67,11 +67,11 @@ jobs:
 
       - name: Check for warnings in Morph source
         run: |
-        MORPH_WARNINGS=$(grep "Morph/.*warning:" build.log | grep -v "warning: declaration uses 'sorry'" || true)
-        if [ -n "$MORPH_WARNINGS" ]; then
-          echo "::warning::Build contains warnings in Morph source"
-          echo "$MORPH_WARNINGS"
-        fi
+          MORPH_WARNINGS=$(grep "Morph/.*warning:" build.log | grep -v "warning: declaration uses 'sorry'" || true)
+          if [ -n "$MORPH_WARNINGS" ]; then
+            echo "::warning::Build contains warnings in Morph source"
+            echo "$MORPH_WARNINGS"
+          fi
 
     - name: Check for sorry declarations
       run: |
