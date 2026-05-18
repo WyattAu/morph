@@ -8,14 +8,14 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 
 | Metric | Value |
 |---|---|
-| `lake build Morph` | 328 jobs, 0 errors, 4 sorry warnings |
+| `lake build Morph` | 328 jobs, 0 errors, 2 sorry warnings |
 | `lake build Morph.Tests` | 186 jobs, 0 errors |
-| Python spec-tools | 636 tests, 87.5% coverage |
+| Python spec-tools | 735 tests, 93.29% coverage |
 | `.lean` files | 155 |
-| Lines of Lean | ~14,500 |
+| Lines of Lean | ~16,165 |
 | Spec modules | 43 |
-| Real theorems/lemmas (Specs/) | 550 |
-| `sorry` declarations | 10 (6 Preservation.lean + 4 Lemmas.lean) |
+| Real theorems/lemmas | 787 total; 550+ in Specs/ |
+| `sorry` declarations | 6 (all Preservation.lean, 0 in Lemmas.lean) |
 | `example : True := trivial` stubs | 0 |
 | Pre-commit hook | 7-step gate |
 | CI/CD | 4 GitHub Actions + GitLab CI + Jenkins |
@@ -52,7 +52,7 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 
 ## Phase 1: Immediate (Weeks 1-2)
 
-### 1.1 Fix 10 sorry declarations
+### 1.1 Fix 6 sorry declarations
 
 **Preservation.lean (6 sorries):**
 
@@ -65,20 +65,12 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 | 288 | `preservation` for_exec | `substAll_preserves_type` | 3-5 days |
 | 359 | `preservation` app_lam | `substAll_preserves_type` | 2-3 days |
 
-**Lemmas.lean (4 sorries):**
-
-| Line | Context | Required Lemma | Effort |
-|---|---|---|---|
-| 122 | `lookupTyp_shift` | List indexing equality after cons | 2-4 hours |
-| 170 | `lookupTyp_shift` | `lookupTyp_extend_ne` | 4-6 hours |
-| 179 | `lookupTyp_shift` | Related to above | 2-4 hours |
-| 187 | `lookupTyp_shift` | Related to above | 2-4 hours |
+**Lemmas.lean:** All 4 sorries resolved -- no remaining work.
 
 **Proof strategy:**
 1. Prove `lift_preserves_type` (unblocks sorry #1)
 2. Prove `subst'_preserves_type` for arbitrary depth (unblocks sorries #2-4)
 3. Prove `substAll_preserves_type` (unblocks sorries #5-6)
-4. Fix 4 environment lookup lemmas via List index arithmetic
 
 | Attribute | Detail |
 |---|---|
@@ -522,12 +514,12 @@ Month 15-18: [6.1-6.5]                            -- Production readiness, beta
 | Criterion | Target | Current |
 |---|---|---|
 | `lake build Morph` errors | 0 | 0 |
-| `lake build Morph` warnings | 0 | 4 (sorry-related) |
-| `sorry` in `Morph/` | 0 | 10 |
+| `lake build Morph` warnings | 0 | 2 (sorry-related) |
+| `sorry` in `Morph/` | 0 | 6 (all in Preservation.lean) |
 | `example : True := trivial` stubs | 0 | 0 |
 | Broken cross-references | 0 | 26 |
 | CI passes on every push | Yes | Partial (billing was resolved) |
-| Python spec-tools coverage | >= 90% | 87.5% |
+| Python spec-tools coverage | >= 90% | 93.29% |
 | Pre-commit blocks on sorry | Yes | Warns only |
 | Regression snapshot tracking | Active | Script exists, not in CI |
 | Spec status page | Auto-generated | Manual |

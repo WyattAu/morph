@@ -108,7 +108,7 @@ morph/
 │   │   └── TypeSoundness/  # Progress & Preservation theorems
 │   └── Tests/           # Lean 4 test suite
 ├── scripts/             # Python tooling
-│   ├── spec_tools/      # Specification validation tools (636 tests)
+│   ├── spec_tools/      # Specification validation tools (735 tests, 93.29% coverage)
 │   └── tests/           # Python test suite
 ├── docs/                # Documentation
 ├── impl/                # Implementation documentation
@@ -161,7 +161,7 @@ Contributions are welcome! Please follow these guidelines:
 
 1. Read the [coding standards](.specs/01_standards/coding_standards.md)
 2. Follow the [three-file module pattern](.specs/02_adrs/ADR-001-three-file-module-pattern.md)
-3. Ensure proofs have no `sorry` placeholders where possible (known sorries exist in Preservation.lean and Lemmas.lean for weakening/substitution lemmas)
+3. Ensure proofs have no `sorry` placeholders where possible (known sorries exist in Preservation.lean (6 remaining; Lemmas.lean sorries resolved))
 4. Run the pre-commit hook locally before submitting (`lake build Morph` must pass)
 5. Update documentation for any changes
 

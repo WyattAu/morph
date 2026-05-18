@@ -42,7 +42,7 @@ Key specification areas include:
 The migration to Lean 4 was completed with the following outcomes:
 
 - All specification modules have been migrated to Lean 4 v4.27.0
-- Most proofs are complete; 1 known `sorry` in Preservation.lean (non-capture substitution -- see ROADMAP.md)
+- Most proofs are complete; 6 known `sorry`s in Preservation.lean (substitution lemmas -- see ROADMAP.md)
 - Build system configured for Lean 4 using Lake
 - CI/CD pipelines updated for Lean 4 compilation
 - Documentation updated to reflect Lean 4 usage

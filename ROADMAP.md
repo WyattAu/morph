@@ -8,14 +8,14 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 
 | Metric | Value |
 |---|---|
-| `lake build Morph` | 328 jobs, 0 errors, 4 sorry warnings |
+| `lake build Morph` | 328 jobs, 0 errors, 2 sorry warnings |
 | `lake build Morph.Tests` | 186 jobs, 0 errors |
-| Python spec-tools | 636 tests, 87.5% coverage |
+| Python spec-tools | 735 tests, 93.29% coverage |
 | `.lean` files | 155 |
-| Lines of Lean | ~14,500 |
+| Lines of Lean | ~16,165 |
 | Spec modules | 43 |
-| Real theorems/lemmas (Specs/) | 485 |
-| `sorry` declarations | 10 (6 Preservation.lean + 4 Lemmas.lean) |
+| Real theorems/lemmas (Specs/) | 787 |
+| `sorry` declarations | 6 (all Preservation.lean) |
 | `example : True := trivial` stubs | 0 |
 | Pre-commit hook | 7-step gate (lake build, sorry scan, stub detect, pytest, ruff, mypy, spec-tools lint) |
 | CI/CD | 4 GitHub Actions + GitLab CI + Jenkins |
@@ -37,7 +37,7 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 
 | Finding | Impact | Resolution Path |
 |---|---|---|
-| 10 `sorry` declarations | Blocks zero-warning CI gate | Section 1.1 |
+| 6 `sorry` declarations | Blocks zero-warning CI gate | Section 1.1 |
 | 26 broken links to nonexistent files | Spec integrity | Create missing files or remove links |
 | CI/CD not running (GitHub billing) | No automated verification | Resolve billing |
 | Section numbering warnings in specs (3868) | Lint noise | Normalize numbering or suppress |
@@ -48,7 +48,7 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 
 ## 1. Formal Verification Completion [P0]
 
-### 1.1 Fix 10 sorries in Preservation.lean and Lemmas.lean
+### 1.1 Fix 6 sorries in Preservation.lean
 
 **Preservation.lean (6 sorries):**
 
@@ -61,20 +61,12 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 | 288 | `preservation` for_exec | Simultaneous substitution for loop body | Needs `substAll_preserves_type` |
 | 359 | `preservation` app_lam | Simultaneous substitution for lambda args | Needs `substAll_preserves_type` |
 
-**Lemmas.lean (4 sorries):**
-
-| Line | Location | Required Lemma | Status |
-|---|---|---|---|
-| 122 | `lookupTyp_shift` | List indexing equality after cons | Simple arithmetic |
-| 170 | `lookupTyp_shift` | Environment lookup shift | Needs `lookupTyp_extend_ne` |
-| 179 | `lookupTyp_shift` | Environment lookup shift | Related to above |
-| 187 | `lookupTyp_shift` | Environment lookup shift | Related to above |
+**Lemmas.lean sorries resolved (all 4 fixed).**
 
 **Approach:**
 1. Prove `lift_preserves_type : HasType bvs Gamma v tau -> HasType bvs Gamma (lift k v) tau` (fixes sorry #1)
 2. Generalize `HasType_subst` to handle arbitrary depth: `subst'_preserves_type : HasType (tau1 :: bvs) Gamma e tau -> HasType bvs Gamma v tau1 -> HasType bvs Gamma (subst' k e v) tau` (fixes sorries #2-4)
 3. Prove `substAll_preserves_type` for simultaneous substitution (fixes sorries #5-6)
-4. Fix the 4 Lemmas.lean environment lookup lemmas (simple arithmetic on List indices)
 
 **Effort:** 1-2 weeks | **Deps:** none | **Blocks:** sorry-free CI gate
 
@@ -244,7 +236,7 @@ Add SlimCheck dependency and write property tests:
 
 ### 3.4 Python spec-tools coverage improvement
 
-Current: 87.5% coverage. Target: 90%.
+Current: 93.29% coverage. Target: 95%.
 
 Priority areas:
 - `spec_tools/validation/checks/` (70-73% each)
@@ -452,12 +444,12 @@ Ongoing:   [7.x]                               -- research directions
 | Criterion | Target | Current |
 |---|---|---|
 | `lake build Morph` errors | 0 | 0 |
-| `lake build Morph` warnings | 0 | 4 (sorry-related) |
-| `sorry` in `Morph/` | 0 | 10 |
+| `lake build Morph` warnings | 0 | 2 (sorry-related) |
+| `sorry` in `Morph/` | 0 | 6 |
 | `example : True := trivial` stubs | 0 | 0 |
 | Broken cross-references | 0 | 26 (nonexistent targets) |
 | CI passes on every push | Yes | Blocked by billing |
-| Python spec-tools coverage | >= 90% | 87.5% |
+| Python spec-tools coverage | >= 95% | 93.29% |
 | Lean tests pass | All | All |
 | Pre-commit blocks on sorry | Yes | Warns only |
 | Regression snapshot tracking | Active | None |

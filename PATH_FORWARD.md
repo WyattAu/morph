@@ -10,15 +10,16 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 |--------|-------|--------|
 | `lake build Morph` | 328 jobs, 0 errors, 4 sorry warnings | PASS |
 | `lake build Morph.Tests` | 186 jobs, 0 errors | PASS |
-| Python spec-tools | 636 tests, 87.5% coverage | PASS |
+| Python spec-tools | 735 tests, 93.29% coverage | PASS |
 | ruff lint | 0 errors, 0 warnings | PASS |
 | ruff format | 0 unformatted files | PASS |
 | mypy strict | 0 errors across 66 source files | PASS |
 | `.lean` files | 155 | -- |
-| Lines of Lean | ~14,500 | -- |
+| Lines of Lean | ~16,165 | -- |
 | Spec modules | 43 | -- |
-| Real theorems/lemmas (Specs/) | 550 | -- |
-| `sorry` declarations | 10 (6 Preservation.lean + 4 Lemmas.lean) | KNOWN |
+| Real theorems/lemmas (total) | 787 | -- |
+| Real theorems/lemmas (Specs/) | 550+ | -- |
+| `sorry` declarations | 6 (all in Preservation.lean, 0 in Lemmas.lean) | KNOWN |
 | `example : True := trivial` stubs | 0 | PASS |
 | Lean test files | 6 (`Morph/Tests/`) | -- |
 | ADRs | 11 | -- |
@@ -31,7 +32,7 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 
 ## Phase 1: Formal Verification Completion [P0 -- 4-6 weeks]
 
-### 1.1 Eliminate 10 sorries in Preservation.lean and Lemmas.lean
+### 1.1 Eliminate 6 sorries in Preservation.lean
 
 **Preservation.lean (6 sorries):**
 
@@ -44,14 +45,7 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 | 288 | `preservation` for_exec | `substAll_preserves_type` | Needs proof |
 | 359 | `preservation` app_lam | `substAll_preserves_type` | Needs proof |
 
-**Lemmas.lean (4 sorries):**
-
-| Line | Location | Required Lemma | Status |
-|------|----------|----------------|--------|
-| 122 | `lookupTyp_shift` | List indexing equality | Simple arithmetic |
-| 170 | `lookupTyp_shift` | Environment lookup shift | Needs lemma |
-| 179 | `lookupTyp_shift` | Environment lookup shift | Related to above |
-| 187 | `lookupTyp_shift` | Environment lookup shift | Related to above |
+**Lemmas.lean:** All 4 sorries resolved (was 4). No remaining sorries.
 
 **Effort:** 1-2 weeks | **Deps:** none | **Blocks:** sorry-free CI gate
 
@@ -76,7 +70,7 @@ All `example : True := trivial` stubs have been eliminated (0 remaining). This s
 
 ### 2.1 Zero-warning CI gate
 
-Once 1.1 resolves the 3 sorries, the single remaining warning disappears. Update `lean-build.yml` to fail on any warning:
+Once 1.1 resolves the 6 sorries, the remaining sorry warnings disappear. Update `lean-build.yml` to fail on any warning:
 
 ```yaml
 - name: Check for warnings
@@ -141,12 +135,12 @@ The `scripts/regression-snapshot.sh` script already exists. Integrate into CI:
 
 ### 3.3 Python spec-tools coverage improvement
 
-Current: 405 tests, 71% coverage (up from 48%). Target: 80%.
+Current: 735 tests, 93.29% coverage (up from 48%). Target: 95%+.
 
 Priority areas for new tests:
-- `scripts/spec_tools/cli/commands/` -- CLI integration tests (currently 13-19% coverage)
-- `scripts/spec_tools/verification/` -- Verification module tests (currently 0% coverage)
-- `scripts/spec_tools/utils/file_utils.py` -- Edge cases (currently 71%)
+- `scripts/spec_tools/cli/commands/` -- CLI integration tests
+- `scripts/spec_tools/verification/` -- Verification module tests
+- `scripts/spec_tools/utils/file_utils.py` -- Edge cases
 
 **Effort:** 1-2 weeks | **Deps:** none
 
@@ -327,12 +321,12 @@ Extend `Morph/Specs/DialectProjection/` with verified multi-stage compilation pi
 
 ```
 Week  1-2:  [1.1] [2.3] [3.4] [5.2]          -- sorries, stub detection, fix ghost CI, status script
-Week  3-4:  [1.2第一批] [2.1] [2.2] [3.2]     -- first stub batch, harden CI gates, snapshots
-Week  5-6:  [1.2第二批] [3.1] [3.3]            -- stub batch 2, SlimCheck, Python coverage
-Week  7-8:  [1.2第三批] [1.3] [4.1]            -- stub batch 3, Tier 2 lemmas, CI consolidation
-Week  9-10: [1.2第四批] [4.2] [4.3] [5.3]     -- remaining stubs, caching, nightly, cross-refs
-Week 11-14:[1.2第五批] [5.1第一批]             -- final stubs, Tier 4 modules begin
-Week 15-22:[5.1第二批]                          -- remaining Tier 4 modules
+Week  3-4:  [1.2 Batch 1] [2.1] [2.2] [3.2]     -- first stub batch, harden CI gates, snapshots
+Week  5-6:  [1.2 Batch 2] [3.1] [3.3]            -- stub batch 2, SlimCheck, Python coverage
+Week  7-8:  [1.2 Batch 3] [1.3] [4.1]            -- stub batch 3, Tier 2 lemmas, CI consolidation
+Week  9-10: [1.2 Batch 4] [4.2] [4.3] [5.3]     -- remaining stubs, caching, nightly, cross-refs
+Week 11-14:[1.2 Batch 5] [5.1 Batch 1]           -- final stubs, Tier 4 modules begin
+Week 15-22:[5.1 Batch 2]                         -- remaining Tier 4 modules
 Week 23+:  [6.1] [6.2] [6.3] [6.4]            -- implementation phase
 Ongoing:   [7.x]                                -- research directions
 ```
@@ -369,15 +363,15 @@ Ongoing:   [7.x]                                -- research directions
 | Criterion | Current | Target | Priority |
 |-----------|---------|--------|----------|
 | `lake build Morph` errors | 0 | 0 | P0 |
-| `lake build Morph` warnings | 4 (sorry) | 0 | P0 |
-| `sorry` in `Morph/` | 10 | 0 | P0 |
+| `lake build Morph` warnings | 6 (sorry) | 0 | P0 |
+| `sorry` in `Morph/` | 6 | 0 | P0 |
 | Spec stubs (all tiers) | 0 | 0 | PASS |
 | CI passes on every push | Blocked by billing | Yes | P1 |
 | ruff lint errors | 0 | 0 | PASS |
 | ruff format issues | 0 | 0 | PASS |
 | mypy errors | 0 | 0 | PASS |
-| Python test count | 636 | 700+ | P1 |
-| Python coverage | 87.5% | 90%+ | P1 |
+| Python test count | 735 | 800+ | P1 |
+| Python coverage | 93.29% | 95%+ | P1 |
 | Pre-commit blocks on sorry | Warns | Blocks | P0 |
 | Regression snapshot tracking | Script exists | Active | P1 |
 | Documentation site | Complete | Complete | PASS |

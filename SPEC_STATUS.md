@@ -1,17 +1,17 @@
 # Morph Spec Module Status
 
-> Auto-generated. Last updated: 2026-05-12
+> Auto-generated. Last updated: 2026-05-18
 
 ## Summary
 
 | Metric | Count |
 |--------|-------|
 | Total modules | 43 |
-| Total real lemmas | 485 |
+| Total real lemmas | 787 |
 | Total real examples | 73 |
 | Modules with lemmas stub | 0 |
 | Modules with examples stub | 0 |
-| Total sorries | 3 (in Proofs/, not Specs/) |
+| Total sorries | 6 (all in Preservation.lean) |
 
 ### Modules per Tier
 
