@@ -162,6 +162,12 @@ Complete index of all Morph specification documents organized by category.
 
 | Document | Description |
 |----------|-------------|
+| [`spec/distributed_vector_clock_spec.md`](spec/distributed_vector_clock_spec.md) | Distributed vector clock specification |
+| [`spec/scheduler_randomized_stealing_spec.md`](spec/scheduler_randomized_stealing_spec.md) | Randomized work-stealing scheduler |
+| [`spec/storage_dawg_spec.md`](spec/storage_dawg_spec.md) | DAWG storage specification |
+| [`spec/module_existential_spec.md`](spec/module_existential_spec.md) | Module existential specification |
+| [`spec/registry_consensus_spec.md`](spec/registry_consensus_spec.md) | Registry consensus specification |
+| [`spec/financial/financial_spec.md`](spec/financial/financial_spec.md) | Financial domain specification |
 | [`spec/GLOSSARY.md`](spec/GLOSSARY.md) | Unified glossary of terms |
 | [`spec/README.md`](spec/README.md) | Specification directory overview |
 | [`SPEC_STATUS.md`](SPEC_STATUS.md) | Spec module implementation status |

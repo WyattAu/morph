@@ -198,7 +198,7 @@ This glossary provides comprehensive definitions of terms, acronyms, and concept
 **Definition:** An unforgeable token that grants permission to perform an operation on a resource. In Morph, capabilities are enforced through the type system using sigils (^Iso, #Val, &Ref).
 
 **Context:** Type System, Security  
-**Related Specifications:** [`spec/type/type_system_spec.md`](./type/type_system_spec.md), [`spec/security/security_ocap_spec.md`](./security_ocap_spec.md)
+**Related Specifications:** [`spec/type/type_system_spec.md`](./type/type_system_spec.md), [`spec/security_ocap_spec.md`](./security_ocap_spec.md)
 
 **See Also:** Capability System, Reference Capability, Object Capability Model
 
@@ -208,7 +208,7 @@ This glossary provides comprehensive definitions of terms, acronyms, and concept
 **Definition:** A security model where access to resources is controlled through capabilities. Morph's capability system uses type-level sigils to enforce memory safety and access control.
 
 **Context:** Type System, Security  
-**Related Specifications:** [`spec/type/type_system_spec.md`](./type/type_system_spec.md), [`spec/security/security_ocap_spec.md`](./security_ocap_spec.md)
+**Related Specifications:** [`spec/type/type_system_spec.md`](./type/type_system_spec.md), [`spec/security_ocap_spec.md`](./security_ocap_spec.md)
 
 **See Also:** Capability, Reference Capability, Object Capability Model
 
@@ -964,7 +964,7 @@ This glossary provides comprehensive definitions of terms, acronyms, and concept
 **Definition:** A security model where access to resources is controlled through capabilities that are unforgeable and must be explicitly passed. Morph's capability system is based on the object capability model.
 
 **Context:** Security, Type System  
-**Related Specifications:** [`spec/security/security_ocap_spec.md`](./security_ocap_spec.md)
+**Related Specifications:** [`spec/security_ocap_spec.md`](./security_ocap_spec.md)
 
 **See Also:** Capability, Capability System, Security
 
