@@ -49,8 +49,9 @@ security:safety:
     - python -m pip install --upgrade pip
     - pip install -e scripts/
     - pip install safety
-    - safety check --file scripts/pyproject.toml --json --output safety-report.json || true
-    - safety check --file scripts/pyproject.toml --output safety-report.txt || true
+    - pip freeze > /tmp/requirements.txt
+    - safety check --file /tmp/requirements.txt --json --output safety-report.json || true
+    - safety check --file /tmp/requirements.txt --output safety-report.txt || true
   artifacts:
     paths:
       - safety-report.json

@@ -18,3 +18,16 @@ jobs:
             echo "::error::Nightly build has errors"
             exit 1
           fi
+      - name: Check for sorry declarations
+        run: |
+          SORRY_COUNT=$(grep -r "sorry" Morph/ --include="*.lean" | grep -v "no \`sorry\`" | grep -v "sorry placeholders" | grep -v "requires.*sorry" | wc -l)
+          echo "Sorry count: $SORRY_COUNT"
+          echo "sorry_count=$SORRY_COUNT" >> $GITHUB_OUTPUT
+        id: sorry
+      - name: Upload build log
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nightly-build-log
+          path: build.log
+          retention-days: 14

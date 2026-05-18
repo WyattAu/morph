@@ -6,7 +6,6 @@ on:
   push:
     branches:
       - main
-      - develop
     paths:
       - 'spec/**'
       - 'docs/conventions/**'
@@ -15,12 +14,15 @@ on:
   pull_request:
     branches:
       - main
-      - develop
     paths:
       - 'spec/**'
       - 'docs/conventions/**'
       - 'scripts/spec_tools/**'
       - '.github/workflows/spec-validation.yml'
+
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
   validate:
@@ -38,6 +40,7 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
+          cache-dependency-path: scripts/pyproject.toml
       
       - name: Install dependencies
         run: |

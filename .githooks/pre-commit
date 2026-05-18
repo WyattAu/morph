@@ -15,8 +15,9 @@ echo ""
 # Step 1: Lake build (compile all Lean 4 sources)
 echo "[1/7] Running lake build Morph..."
 BUILD_START=$(date +%s)
+BUILD_LOG=$(mktemp /tmp/morph_precommit_build_XXXXXX.log)
 
-if lake build Morph 2>&1 | tee /tmp/morph_precommit_build.log; then
+if lake build Morph 2>&1 | tee "$BUILD_LOG"; then
     BUILD_END=$(date +%s)
     BUILD_SECS=$((BUILD_END - BUILD_START))
     echo ""
@@ -27,24 +28,26 @@ else
     echo "[1/7] Lake build FAILED (${ERR_COUNT} errors)"
     echo ""
     echo "First 10 errors:"
-    grep "^error:" /tmp/morph_precommit_build.log | head -10
+    grep "^error:" "$BUILD_LOG" | head -10
     echo ""
     echo "Commit blocked. Fix the errors above before committing."
+    rm -f "$BUILD_LOG"
     exit 1
 fi
+rm -f "$BUILD_LOG"
 
 # Step 2: Check for sorry declarations (formal verification gaps)
 echo ""
 echo "[2/7] Checking for 'sorry' declarations..."
 
-SORRY_COUNT=$(grep -r "sorry" Morph/ --include="*.lean" 2>/dev/null | grep -v "\.olean" | grep -v "/--" | wc -l || true)
-SORRY_FILES=$(grep -rl "sorry" Morph/ --include="*.lean" 2>/dev/null | grep -v "\.olean" | wc -l || true)
+SORRY_COUNT=$(grep -rn "sorry" Morph/ --include="*.lean" 2>/dev/null | grep -v "^\s*--" | wc -l || true)
+SORRY_FILES=$(grep -rl "sorry" Morph/ --include="*.lean" 2>/dev/null | wc -l || true)
 
 if [ "$SORRY_COUNT" -gt 0 ]; then
     echo "[2/7] WARNING: Found ${SORRY_COUNT} 'sorry' declarations in ${SORRY_FILES} files."
     echo "       These represent gaps in formal verification."
     echo "       Listing affected files:"
-    grep -rn "sorry" Morph/ --include="*.lean" 2>/dev/null | grep -v "\.olean" | grep -v "/--" | head -20
+    grep -rn "sorry" Morph/ --include="*.lean" 2>/dev/null | grep -v "^\s*--" | head -20
     echo ""
     echo "Commit allowed (warnings only). Consider fixing 'sorry' declarations."
 else
@@ -68,8 +71,9 @@ fi
 # Step 4: Lake build Morph.Tests
 echo ""
 echo "[4/7] Running lake build Morph.Tests..."
+TESTS_LOG=$(mktemp /tmp/morph_precommit_tests_XXXXXX.log)
 
-if lake build Morph.Tests 2>&1 | tee /tmp/morph_precommit_tests_build.log; then
+if lake build Morph.Tests 2>&1 | tee "$TESTS_LOG"; then
     echo ""
     echo "[4/7] Morph.Tests build PASSED"
 else
@@ -77,11 +81,13 @@ else
     echo "[4/7] Morph.Tests build FAILED"
     echo ""
     echo "First 10 errors:"
-    grep "^error:" /tmp/morph_precommit_tests_build.log | head -10
+    grep "^error:" "$TESTS_LOG" | head -10
     echo ""
     echo "Commit blocked. Fix the test compilation errors above."
+    rm -f "$TESTS_LOG"
     exit 1
 fi
+rm -f "$TESTS_LOG"
 
 # Step 5: Python spec-tools tests (if available)
 echo ""

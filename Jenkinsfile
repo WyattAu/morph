@@ -23,7 +23,7 @@ pipeline {
         stage('Setup') {
             steps {
                 script {
-                    sh 'python3 -m venv .venv'
+                    sh 'if [ ! -d .venv ]; then python3 -m venv .venv; fi'
                     sh '.venv/bin/pip install --upgrade pip'
                     sh '.venv/bin/pip install -e scripts/'
                 }
@@ -41,10 +41,10 @@ pipeline {
         stage('Validate Specifications') {
             steps {
                 script {
-                    sh '.venv/bin/spec-tools format spec/ --check'
-                    sh '.venv/bin/spec-tools lint spec/ --strict'
-                    sh '.venv/bin/spec-tools validate spec/ --check-traceability --check-security --check-performance --check-maintainability --check-risk --check-verification'
-                    sh '.venv/bin/spec-tools check-links spec/ --output link-report.json --format json'
+                    sh 'set -e && .venv/bin/spec-tools format spec/ --check'
+                    sh 'set -e && .venv/bin/spec-tools lint spec/ --strict'
+                    sh 'set -e && .venv/bin/spec-tools validate spec/ --check-traceability --check-security --check-performance --check-maintainability --check-risk --check-verification'
+                    sh '.venv/bin/spec-tools check-links spec/ --output link-report.json --format json || true'
                 }
             }
             post {

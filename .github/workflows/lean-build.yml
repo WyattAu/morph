@@ -65,9 +65,9 @@ jobs:
           exit 1
         fi
 
-    - name: Check for warnings in Morph source
-      run: |
-        MORPH_WARNINGS=$(grep "warning: Morph/" build.log | grep -v "warning: declaration uses 'sorry'" || true)
+      - name: Check for warnings in Morph source
+        run: |
+        MORPH_WARNINGS=$(grep "Morph/.*warning:" build.log | grep -v "warning: declaration uses 'sorry'" || true)
         if [ -n "$MORPH_WARNINGS" ]; then
           echo "::warning::Build contains warnings in Morph source"
           echo "$MORPH_WARNINGS"
