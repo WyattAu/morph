@@ -14,16 +14,15 @@
 ## Table of Contents
 
 1. [Purpose and Scope](#1-purpose-and-scope)
-2. [Definitions, Acronyms, and Abbreviations](#2-definitions-acronyms-and-abbreviations)
-3. [Version Numbering Scheme](#3-version-numbering-scheme)
-4. [Version Compatibility Rules](#4-version-compatibility-rules)
-5. [Compatibility Matrix](#5-compatibility-matrix)
-6. [Upgrade Paths](#6-upgrade-paths)
-7. [Deprecation Policy](#7-deprecation-policy)
-8. [Version Synchronization Strategy](#8-version-synchronization-strategy)
-9. [Examples](#9-examples)
-10. [Correctness Properties](#10-correctness-properties)
-11. [Change Log](#11-change-log)
+2. [Version Numbering Scheme](#2-version-numbering-scheme)
+3. [Version Compatibility Rules](#3-version-compatibility-rules)
+4. [Compatibility Matrix](#4-compatibility-matrix)
+5. [Upgrade Paths](#5-upgrade-paths)
+6. [Deprecation Policy](#6-deprecation-policy)
+7. [Version Synchronization Strategy](#7-version-synchronization-strategy)
+8. [Examples](#8-examples)
+9. [Correctness Properties](#9-correctness-properties)
+10. [Change Log](#10-change-log)
 
 ---
 
