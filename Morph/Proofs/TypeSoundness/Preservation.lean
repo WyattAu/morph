@@ -16,6 +16,13 @@ open Step
 open Morph.Specs.TypeSystem
 open HasType
 
+private theorem getElem_cons_succ_of_pos {α : Type _} {a : α} {as : List α} {k : Nat}
+    (hk1 : k ≥ 1) (hk_as : k < (a :: as).length) (hk_pred : k - 1 < as.length) :
+    (a :: as)[k]'hk_as = as[k - 1]'hk_pred := by
+  cases k with
+  | zero => omega
+  | succ n => simp [List.getElem_cons_succ]
+
 private theorem HasTypeAll_cons_head {bvs : List Typ} {Γ : TypEnv} {e : Expr} {es : List Expr}
     {τ : Typ} {τs : List Typ} (h : HasTypeAll bvs Γ (e :: es) (τ :: τs)) : HasType bvs Γ e τ := by
   match h with
@@ -79,106 +86,196 @@ private theorem HasTypeAll_append {bvs : List Typ} {Γ : TypEnv} {es₁ es₂ : 
     exact HasTypeAll.cons _ _ e (es ++ es₂) τ (τs ++ τs₂) hE (HasTypeAll_append hRest h₂)
 
 /-!
+## Lift-Zero Preserves Type for Values
+
+`lift 0 e` has the same type as `e`. This follows from `lift_zero_eq : lift 0 e = e`.
+-/
+
+private theorem lift_zero_preserves_type (bvs : List Typ) (Γ : TypEnv) (e : Expr) (τ : Typ)
+    (h : HasType bvs Γ e τ) : HasType bvs Γ (lift 0 e) τ := by
+  rw [lift_zero_eq]; exact h
+
+private theorem HasTypeAll_lift_zero (bvs : List Typ) (Γ : TypEnv) (es : List Expr) (τs : List Typ)
+    (h : HasTypeAll bvs Γ es τs) : HasTypeAll bvs Γ (es.map (lift 0)) τs := by
+  rw [show es.map (lift 0) = es from liftUnder_zero_eq_list 0 es]; exact h
+
+/-!
 ## Substitution Lemma (de Bruijn)
 
 With de Bruijn indices, the substitution lemma is dramatically simpler.
 No freshness predicate is needed — capture-avoidance is guaranteed by construction.
 
-`HasType_subst`: If `e` has type `τ` in context `τ1 :: bvs`, and `v` has type `τ1` in `bvs`,
-then `subst e v` has type `τ` in `bvs`.
+We prove the generalized form: substitution at arbitrary depth `pfx.length`.
+`HasType_subst_depth`: If `e` has type `τ` in context `pfx ++ τ1 :: bvs`, and `v`
+has type `τ1` in `bvs`, then `subst' pfx.length e v` has type `τ` in `pfx ++ bvs`.
+
+The depth-0 specialization is `HasType_subst` (substituting the outermost binder).
 -/
 
 mutual
+
+private theorem HasTypeAll_subst_depth (pfx : List Typ) (bvs : List Typ) (Γ : TypEnv)
+    (es : List Expr) (v : Expr) (τ1 : Typ) (τs : List Typ)
+    (hArgs : HasTypeAll (pfx ++ τ1 :: bvs) Γ es τs)
+    (hV : HasType bvs Γ v τ1) :
+    HasTypeAll (pfx ++ bvs) Γ (es.map (fun e => subst' pfx.length e v)) τs := by
+  match hArgs with
+  | HasTypeAll.nil _ _ => exact HasTypeAll.nil _ _
+  | HasTypeAll.cons _ _ e es' τ τs' hE hRest =>
+    exact HasTypeAll.cons _ _ _ _ _ _
+      (HasType_subst_depth pfx bvs Γ e v τ1 τ hE hV)
+      (HasTypeAll_subst_depth pfx bvs Γ es' v τ1 τs' hRest hV)
+
+private theorem HasType_subst_depth (pfx : List Typ) (bvs : List Typ) (Γ : TypEnv)
+    (e v : Expr) (τ1 τ : Typ)
+    (hE : HasType (pfx ++ τ1 :: bvs) Γ e τ)
+    (hV : HasType bvs Γ v τ1) :
+    HasType (pfx ++ bvs) Γ (subst' pfx.length e v) τ := by
+  match hE with
+  | .bvar_type _ _ n hLen =>
+    unfold subst'
+    split
+    · -- n < pfx.length: unchanged .bvar n
+      next hNlt =>
+      have hLen' : n < (pfx ++ bvs).length := by simp [List.length_append]; omega
+      have hEq : (pfx ++ τ1 :: bvs)[n] = (pfx ++ bvs)[n] := by
+        have h1 := @List.getElem_append_left Typ n pfx (τ1 :: bvs) hNlt hLen
+        have h2 := @List.getElem_append_left Typ n pfx bvs hNlt hLen'
+        exact h1.trans h2.symm
+      exact hEq ▸ HasType.bvar_type _ _ n hLen'
+    · split
+      · -- n = pfx.length: substitute with lift pfx.length v
+        next hEq =>
+        subst hEq
+        have hIdx : (pfx ++ τ1 :: bvs)[pfx.length] = τ1 := by
+          rw [List.getElem_append_right (by omega)]; simp
+        rw [hIdx]
+        exact weaken_many_at_depth [] pfx bvs Γ v τ1 hV
+      · -- n > pfx.length: shift to .bvar (n - 1)
+        next hNeq =>
+        have hNMinus1 : n - 1 < (pfx ++ bvs).length := by
+          simp [List.length_append] at hLen ⊢; omega
+        have hTypeEq : (pfx ++ τ1 :: bvs)[n] = (pfx ++ bvs)[n - 1] := by
+          have hPfxLeN : pfx.length ≤ n := by omega
+          have hPfxLeN1 : pfx.length ≤ n - 1 := by omega
+          have h1 := @List.getElem_append_right Typ pfx (τ1 :: bvs) n hPfxLeN hLen
+          have h2 := @List.getElem_append_right Typ pfx bvs (n - 1) hPfxLeN1 hNMinus1
+          have hKPos : n - pfx.length ≥ 1 := by omega
+          have hKLt : n - pfx.length < (τ1 :: bvs).length := by
+            have : (τ1 :: bvs).length = bvs.length + 1 := rfl
+            simp [List.length_append] at hLen; omega
+          have hKPred : n - pfx.length - 1 < bvs.length := by
+            simp [List.length_append] at hLen; omega
+          have hSucc := getElem_cons_succ_of_pos hKPos hKLt hKPred
+          calc (pfx ++ τ1 :: bvs)[n]
+              = (τ1 :: bvs)[n - pfx.length] := h1
+            _ = bvs[n - pfx.length - 1] := hSucc
+            _ = bvs[n - 1 - pfx.length] := by congr 1; omega
+            _ = (pfx ++ bvs)[n - 1] := h2.symm
+        exact hTypeEq ▸ HasType.bvar_type _ _ (n - 1) hNMinus1
+  | .fvar_type _ _ name τ hLookup =>
+    simp only [subst']; exact HasType.fvar_type _ _ name τ hLookup
+  | .lit_int _ _ _ => simp only [subst']; exact HasType.lit_int _ _ _
+  | .lit_bool _ _ _ => simp only [subst']; exact HasType.lit_bool _ _ _
+  | .lit_string _ _ _ => simp only [subst']; exact HasType.lit_string _ _ _
+  | .lit_unit _ _ => simp only [subst']; exact HasType.lit_unit _ _
+  | .lit_pointer _ _ _ => simp only [subst']; exact HasType.lit_pointer _ _ _
+  | .unop_not _ _ e' hE' =>
+    simp only [subst']
+    exact HasType.unop_not _ _ _ (HasType_subst_depth pfx bvs Γ e' v τ1 .boolType hE' hV)
+  | .unop_notb _ _ e' hE' =>
+    simp only [subst']
+    exact HasType.unop_notb _ _ _ (HasType_subst_depth pfx bvs Γ e' v τ1 .intType hE' hV)
+  | .binop_arith _ _ op e1 e2 hArith hE1 hE2 =>
+    simp only [subst']
+    exact HasType.binop_arith _ _ op _ _ hArith
+      (HasType_subst_depth pfx bvs Γ e1 v τ1 .intType hE1 hV)
+      (HasType_subst_depth pfx bvs Γ e2 v τ1 .intType hE2 hV)
+  | .binop_comp _ _ op e1 e2 hComp hE1 hE2 =>
+    simp only [subst']
+    exact HasType.binop_comp _ _ op _ _ hComp
+      (HasType_subst_depth pfx bvs Γ e1 v τ1 .intType hE1 hV)
+      (HasType_subst_depth pfx bvs Γ e2 v τ1 .intType hE2 hV)
+  | .binop_logic _ _ op e1 e2 hLogic hE1 hE2 =>
+    simp only [subst']
+    exact HasType.binop_logic _ _ op _ _ hLogic
+      (HasType_subst_depth pfx bvs Γ e1 v τ1 .boolType hE1 hV)
+      (HasType_subst_depth pfx bvs Γ e2 v τ1 .boolType hE2 hV)
+  | .binop_bitwise _ _ op e1 e2 hBit hE1 hE2 =>
+    simp only [subst']
+    exact HasType.binop_bitwise _ _ op _ _ hBit
+      (HasType_subst_depth pfx bvs Γ e1 v τ1 .intType hE1 hV)
+      (HasType_subst_depth pfx bvs Γ e2 v τ1 .intType hE2 hV)
+  | .lam_type _ _ n body paramTys retTy hLen hBody =>
+    -- subst' pfx.length (.lam n body) v = .lam n (subst' (pfx.length + n) body v)
+    -- Body context: (paramTys.reverse ++ pfx) ++ τ1 :: bvs
+    -- New prefix: paramTys.reverse ++ pfx
+    -- Subst depth: (paramTys.reverse ++ pfx).length = n + pfx.length
+    simp only [subst']
+    have hBody' : HasType ((paramTys.reverse ++ pfx) ++ τ1 :: bvs) Γ body retTy := by
+      rw [List.append_assoc]; exact hBody
+    have hResult := HasType_subst_depth (paramTys.reverse ++ pfx) bvs Γ body v τ1 retTy hBody' hV
+    simp only [List.length_append] at hResult
+    have hLenEq : paramTys.reverse.length = n := by simp [← hLen]
+    rw [hLenEq, Nat.add_comm n pfx.length] at hResult
+    rw [List.append_assoc] at hResult
+    exact HasType.lam_type (pfx ++ bvs) Γ n (subst' (pfx.length + n) body v) paramTys retTy hLen hResult
+  | .app_type _ _ fn args τs τ hFn hArgs =>
+    simp only [subst']
+    exact HasType.app_type _ _ _ _ τs τ
+      (HasType_subst_depth pfx bvs Γ fn v τ1 (.functionType τs τ) hFn hV)
+      (HasTypeAll_subst_depth pfx bvs Γ args v τ1 τs hArgs hV)
+  | .if_type _ _ c t f τ hC hT hF =>
+    simp only [subst']
+    exact HasType.if_type _ _ _ _ _ τ
+      (HasType_subst_depth pfx bvs Γ c v τ1 .boolType hC hV)
+      (HasType_subst_depth pfx bvs Γ t v τ1 τ hT hV)
+      (HasType_subst_depth pfx bvs Γ f v τ1 τ hF hV)
+  | .let_type _ _ e1 e2 τ1' τ2' hE1 hE2 =>
+    -- subst' pfx (.let_ e1 e2) v = .let_ (subst' pfx e1 v) (subst' (pfx+1) e2 v)
+    -- e2 context: [τ1'] ++ pfx ++ τ1 :: bvs = (τ1' :: pfx) ++ τ1 :: bvs
+    simp only [subst']
+    have hE2' : HasType (τ1' :: pfx ++ τ1 :: bvs) Γ e2 τ2' := by
+      show HasType (τ1' :: pfx ++ τ1 :: bvs) Γ e2 τ2'; exact hE2
+    have hResult := HasType_subst_depth (τ1' :: pfx) bvs Γ e2 v τ1 τ2' hE2' hV
+    -- Depth: (τ1' :: pfx).length = 1 + pfx.length; simp normalizes to pfx.length + 1
+    simp only [List.length_cons, List.length_nil, List.length_append] at hResult
+    -- hResult : HasType (τ1' :: (pfx ++ bvs)) Γ (subst' (pfx.length + 1) e2 v) τ2'
+    exact HasType.let_type (pfx ++ bvs) Γ (subst' pfx.length e1 v) (subst' (pfx.length + 1) e2 v) τ1' τ2'
+      (HasType_subst_depth pfx bvs Γ e1 v τ1 τ1' hE1 hV)
+      hResult
+  | .for_type _ _ s e body hS hE hBody =>
+    -- body context: [.intType] ++ pfx ++ τ1 :: bvs = (.intType :: pfx) ++ τ1 :: bvs
+    simp only [subst']
+    have hBody' : HasTypeAll (.intType :: pfx ++ τ1 :: bvs) Γ body [.unitType] := by
+      show HasTypeAll (.intType :: pfx ++ τ1 :: bvs) Γ body [.unitType]; exact hBody
+    have hBodyResult := HasTypeAll_subst_depth (.intType :: pfx) bvs Γ body v τ1 [.unitType] hBody' hV
+    -- simp already normalizes the length to pfx.length + 1
+    simp only [List.length_cons, List.length_nil] at hBodyResult
+    exact HasType.for_type (pfx ++ bvs) Γ (subst' pfx.length s v) (subst' pfx.length e v) (List.map (fun x => subst' (pfx.length + 1) x v) body)
+      (HasType_subst_depth pfx bvs Γ s v τ1 .intType hS hV)
+      (HasType_subst_depth pfx bvs Γ e v τ1 .intType hE hV)
+      hBodyResult
+  | .block_type _ _ exprs τs τ hAll =>
+    simp only [subst']
+    exact HasType.block_type _ _ _ τs τ
+      (HasTypeAll_subst_depth pfx bvs Γ exprs v τ1 (τs ++ [τ]) hAll hV)
+
+end
+
+-- Depth-0 specialization: HasType_subst
+private theorem HasType_subst (bvs : List Typ) (Γ : TypEnv) (e v : Expr) (τ1 τ : Typ)
+    (hE : HasType (τ1 :: bvs) Γ e τ)
+    (hV : HasType bvs Γ v τ1) :
+    HasType bvs Γ (Morph.Syntax.subst e v) τ :=
+  HasType_subst_depth [] bvs Γ e v τ1 τ (by exact hE) hV
 
 private theorem HasTypeAll_subst_all (bvs : List Typ) (Γ : TypEnv) (es : List Expr)
     (v : Expr) (τ1 : Typ) (τs : List Typ)
     (hArgs : HasTypeAll (τ1 :: bvs) Γ es τs)
     (hV : HasType bvs Γ v τ1) :
-    HasTypeAll bvs Γ (es.map (fun e => Morph.Syntax.subst e v)) τs := by
-  match hArgs with
-  | HasTypeAll.nil _ _ => exact HasTypeAll.nil _ _
-  | HasTypeAll.cons _ _ e es' τ τs' hE hRest =>
-    exact HasTypeAll.cons _ _ (Morph.Syntax.subst e v) (es'.map (fun e => Morph.Syntax.subst e v)) τ τs'
-      (HasType_subst bvs Γ e v τ1 τ hE hV)
-      (HasTypeAll_subst_all bvs Γ es' v τ1 τs' hRest hV)
-
--- Main substitution lemma: if e has type τ in (τ1 :: bvs) Γ,
--- and v has type τ1 in bvs Γ, then subst e v has type τ in bvs Γ.
-private theorem HasType_subst (bvs : List Typ) (Γ : TypEnv) (e v : Expr) (τ1 τ : Typ)
-    (hE : HasType (τ1 :: bvs) Γ e τ)
-    (hV : HasType bvs Γ v τ1) :
-    HasType bvs Γ (Morph.Syntax.subst e v) τ := by
-  match hE with
-  | HasType.bvar_type _ _ n hLen =>
-    -- subst' 0 (.bvar n) v = if n = 0 then lift 0 v else .bvar (n - 1)
-    -- Case n=0: needs lift_preserves_type lemma (lift 0 v has same type as v)
-    -- Case n>0: (τ1::bvs)[n] = bvs[n-1], uses bvar_type with shifted index
-    sorry
-  | HasType.fvar_type _ _ name τ hLookup =>
-    simp [Morph.Syntax.subst, Morph.Syntax.subst']
-    exact HasType.fvar_type _ _ name τ hLookup
-  | HasType.lit_int _ _ n => simp [Morph.Syntax.subst, Morph.Syntax.subst']; exact HasType.lit_int _ _ _
-  | HasType.lit_bool _ _ b => simp [Morph.Syntax.subst, Morph.Syntax.subst']; exact HasType.lit_bool _ _ _
-  | HasType.lit_string _ _ s => simp [Morph.Syntax.subst, Morph.Syntax.subst']; exact HasType.lit_string _ _ _
-  | HasType.lit_unit _ _ => simp [Morph.Syntax.subst, Morph.Syntax.subst']; exact HasType.lit_unit _ _
-  | HasType.lit_pointer _ _ p => simp [Morph.Syntax.subst, Morph.Syntax.subst']; exact HasType.lit_pointer _ _ _
-  | HasType.unop_not _ _ e' hE' =>
-    simp [Morph.Syntax.subst, Morph.Syntax.subst']
-    exact HasType.unop_not _ _ (Morph.Syntax.subst e' v) (HasType_subst bvs Γ e' v τ1 .boolType hE' hV)
-  | HasType.unop_notb _ _ e' hE' =>
-    simp [Morph.Syntax.subst, Morph.Syntax.subst']
-    exact HasType.unop_notb _ _ (Morph.Syntax.subst e' v) (HasType_subst bvs Γ e' v τ1 .intType hE' hV)
-  | HasType.binop_arith _ _ op e1 e2 hArith hE1 hE2 =>
-    simp [Morph.Syntax.subst, Morph.Syntax.subst']
-    exact HasType.binop_arith _ _ op _ _ hArith
-      (HasType_subst bvs Γ e1 v τ1 .intType hE1 hV)
-      (HasType_subst bvs Γ e2 v τ1 .intType hE2 hV)
-  | HasType.binop_comp _ _ op e1 e2 hComp hE1 hE2 =>
-    simp [Morph.Syntax.subst, Morph.Syntax.subst']
-    exact HasType.binop_comp _ _ op _ _ hComp
-      (HasType_subst bvs Γ e1 v τ1 .intType hE1 hV)
-      (HasType_subst bvs Γ e2 v τ1 .intType hE2 hV)
-  | HasType.binop_logic _ _ op e1 e2 hLogic hE1 hE2 =>
-    simp [Morph.Syntax.subst, Morph.Syntax.subst']
-    exact HasType.binop_logic _ _ op _ _ hLogic
-      (HasType_subst bvs Γ e1 v τ1 .boolType hE1 hV)
-      (HasType_subst bvs Γ e2 v τ1 .boolType hE2 hV)
-  | HasType.binop_bitwise _ _ op e1 e2 hBit hE1 hE2 =>
-    simp [Morph.Syntax.subst, Morph.Syntax.subst']
-    exact HasType.binop_bitwise _ _ op _ _ hBit
-      (HasType_subst bvs Γ e1 v τ1 .intType hE1 hV)
-      (HasType_subst bvs Γ e2 v τ1 .intType hE2 hV)
-  | HasType.lam_type _ _ n body paramTys retTy _hLen hBody =>
-    -- subst' 0 (.lam n body) v = .lam n (subst' (1+n) body v)
-    -- hBody : HasType (paramTys.reverse ++ τ1 :: bvs) Γ body retTy
-    -- Need: HasType (paramTys.reverse ++ bvs) Γ (subst' (1+n) body v) retTy
-    -- Requires generalized substitution lemma for depth > 0
-    sorry
-  | HasType.app_type _ _ fn args τs τ hFn hArgs =>
-    simp [Morph.Syntax.subst, Morph.Syntax.subst']
-    exact HasType.app_type _ _ _ (args.map (fun e => Morph.Syntax.subst e v)) τs τ
-      (HasType_subst bvs Γ fn v τ1 (.functionType τs τ) hFn hV)
-      (HasTypeAll_subst_all bvs Γ args v τ1 τs hArgs hV)
-  | HasType.if_type _ _ c t f τ hC hT hF =>
-    simp [Morph.Syntax.subst, Morph.Syntax.subst']
-    exact HasType.if_type _ _ _ _ _ τ
-      (HasType_subst bvs Γ c v τ1 .boolType hC hV)
-      (HasType_subst bvs Γ t v τ1 τ hT hV)
-      (HasType_subst bvs Γ f v τ1 τ hF hV)
-  | HasType.let_type _ _ e1 e2 τ1' τ2 hE1 hE2 =>
-    -- subst' 0 (.let_ e1 e2) v = .let_ (subst e1 v) (subst' 1 e2 v)
-    -- Requires substitution at depth 1 for e2
-    sorry
-  | HasType.for_type _ _ s e body hS hE hBody =>
-    -- subst' 0 (.forLoop s e body) v = .forLoop (subst s v) (subst e v) (body.map (subst' 1 · v))
-    -- Requires substitution at depth 1 for body elements
-    sorry
-  | HasType.block_type _ _ exprs τs τ hAll =>
-    simp [Morph.Syntax.subst, Morph.Syntax.subst']
-    exact HasType.block_type _ _ (exprs.map (fun e => Morph.Syntax.subst e v)) τs τ
-      (HasTypeAll_subst_all bvs Γ exprs v τ1 (τs ++ [τ]) hAll hV)
-
-end
+    HasTypeAll bvs Γ (es.map (fun e => Morph.Syntax.subst e v)) τs :=
+  HasTypeAll_subst_depth [] bvs Γ es v τ1 τs (by exact hArgs) hV
 
 mutual
 

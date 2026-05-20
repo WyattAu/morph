@@ -103,6 +103,91 @@ the necessary equalities for use in rewriting.
     lift k (.block exprs) = .block (exprs.map (lift k)) := by
   simp [lift, liftUnder]
 
+/-! ## Lift-Zero Identity
+
+`liftUnder bound 0 e = e` for all `bound` and `e`.
+This is because lifting by 0 is a no-op: no variable index changes.
+Proven by mutual structural recursion since `Expr` is nested inductive.
+-/
+
+mutual
+
+theorem liftUnder_zero_eq_list : forall (bound : Nat) (es : List Expr),
+    List.map (liftUnder bound 0) es = es
+  | _, [] => rfl
+  | bound, head :: tail => by
+    simp [List.map, liftUnder_zero_eq bound head, liftUnder_zero_eq_list bound tail]
+
+theorem liftUnder_zero_eq : forall (bound : Nat) (e : Expr), liftUnder bound 0 e = e
+  | bound, .bvar n => by simp [liftUnder]
+  | bound, .fvar name => by simp [liftUnder]
+  | bound, .lit v => by simp [liftUnder]
+  | bound, .unop op e' => by simp [liftUnder, liftUnder_zero_eq bound e']
+  | bound, .binop op e1 e2 => by simp [liftUnder, liftUnder_zero_eq bound e1, liftUnder_zero_eq bound e2]
+  | bound, .lam n body => by simp [liftUnder, liftUnder_zero_eq (bound + n) body]
+  | bound, .app fn args => by
+    simp only [liftUnder, liftUnder_zero_eq bound fn, liftUnder_zero_eq_list bound args]
+  | bound, .let_ e1 e2 => by simp [liftUnder, liftUnder_zero_eq bound e1, liftUnder_zero_eq (bound + 1) e2]
+  | bound, .ifThenElse c t f => by
+    simp only [liftUnder, liftUnder_zero_eq bound c, liftUnder_zero_eq bound t, liftUnder_zero_eq bound f]
+  | bound, .forLoop s e' body => by
+    simp only [liftUnder, liftUnder_zero_eq bound s, liftUnder_zero_eq bound e',
+               liftUnder_zero_eq_list (bound + 1) body]
+  | bound, .block exprs => by
+    simp only [liftUnder, liftUnder_zero_eq_list bound exprs]
+
+end
+
+@[simp] theorem lift_zero_eq (e : Expr) : lift 0 e = e := liftUnder_zero_eq 0 e
+
+/-! ## Lift-Under Composition
+
+Composing two lifts with the same bound adds the lift amounts.
+`liftUnder bound k1 (liftUnder bound k2 e) = liftUnder bound (k1 + k2) e`.
+-/
+
+mutual
+
+theorem liftUnder_comp_list : forall (bound k1 k2 : Nat) (es : List Expr),
+    List.map (liftUnder bound k1) (List.map (liftUnder bound k2) es) =
+    List.map (liftUnder bound (k1 + k2)) es
+  | _, _, _, [] => rfl
+  | bound, k1, k2, head :: tail => by
+    simp [List.map, liftUnder_comp bound k1 k2 head, liftUnder_comp_list bound k1 k2 tail]
+
+theorem liftUnder_comp : forall (bound k1 k2 : Nat) (e : Expr),
+    liftUnder bound k1 (liftUnder bound k2 e) = liftUnder bound (k1 + k2) e
+  | bound, k1, k2, .bvar n => by
+    rw [liftUnder.eq_1, liftUnder.eq_1]
+    split
+    · next h => rw [liftUnder.eq_1]; split <;> (try rfl) <;> omega
+    · next h => rw [liftUnder.eq_1]; split <;> (try omega) <;> (next h2 => congr 1; omega)
+  | _, _, _, .fvar name => by simp [liftUnder]
+  | _, _, _, .lit v => by simp [liftUnder]
+  | bound, k1, k2, .unop op e' => by
+    simp [liftUnder, liftUnder_comp bound k1 k2 e']
+  | bound, k1, k2, .binop op e1 e2 => by
+    simp [liftUnder, liftUnder_comp bound k1 k2 e1, liftUnder_comp bound k1 k2 e2]
+  | bound, k1, k2, .lam n body => by
+    simp [liftUnder, liftUnder_comp (bound + n) k1 k2 body]
+  | bound, k1, k2, .app fn args => by
+    simp only [liftUnder, liftUnder_comp bound k1 k2 fn, liftUnder_comp_list bound k1 k2 args]
+  | bound, k1, k2, .let_ e1 e2 => by
+    simp [liftUnder, liftUnder_comp bound k1 k2 e1, liftUnder_comp (bound + 1) k1 k2 e2]
+  | bound, k1, k2, .ifThenElse c t f => by
+    simp [liftUnder, liftUnder_comp bound k1 k2 c,
+          liftUnder_comp bound k1 k2 t, liftUnder_comp bound k1 k2 f]
+  | bound, k1, k2, .forLoop s e body => by
+    simp only [liftUnder, liftUnder_comp bound k1 k2 s, liftUnder_comp bound k1 k2 e,
+               liftUnder_comp_list (bound + 1) k1 k2 body]
+  | bound, k1, k2, .block exprs => by
+    simp only [liftUnder, liftUnder_comp_list bound k1 k2 exprs]
+
+end
+
+theorem lift_comp (k1 k2 : Nat) (e : Expr) :
+    lift k1 (lift k2 e) = lift (k1 + k2) e := liftUnder_comp 0 k1 k2 e
+
 /-! ## Weakening (Trivial with de Bruijn)
 
 With de Bruijn indices, weakening is simply prepending a type to `bvs`.
@@ -133,7 +218,7 @@ private theorem omega_list_len_succ (as bs : List Typ) (n : Nat) (σ : Typ)
 
 mutual
 
-private theorem weakening_at_depth (xs : List Typ) (bvs : List Typ) (Γ : TypEnv)
+theorem weakening_at_depth (xs : List Typ) (bvs : List Typ) (Γ : TypEnv)
     (e : Expr) (τ σ : Typ) :
     HasType (xs ++ bvs) Γ e τ → HasType (xs ++ σ :: bvs) Γ (liftUnder xs.length 1 e) τ := by
   intro h
@@ -251,7 +336,7 @@ private theorem weakening_at_depth (xs : List Typ) (bvs : List Typ) (Γ : TypEnv
     exact HasType.block_type (xs ++ σ :: bvs) Γ (List.map (liftUnder xs.length 1) exprs) τs τ
       (weakening_at_depth_all xs bvs Γ exprs (τs ++ [τ]) σ hExprs)
 
-private theorem weakening_at_depth_all (xs : List Typ) (bvs : List Typ) (Γ : TypEnv)
+theorem weakening_at_depth_all (xs : List Typ) (bvs : List Typ) (Γ : TypEnv)
     (es : List Expr) (τs : List Typ) (σ : Typ)
     (h : HasTypeAll (xs ++ bvs) Γ es τs) :
     HasTypeAll (xs ++ σ :: bvs) Γ (es.map (liftUnder xs.length 1)) τs := by
@@ -263,6 +348,36 @@ private theorem weakening_at_depth_all (xs : List Typ) (bvs : List Typ) (Γ : Ty
       (weakening_at_depth_all xs bvs Γ es' τs' σ hRest)
 
 end
+
+/-! ## Multi-Type Weakening at Depth
+
+Weaken by prepending multiple types (`xs`) after a prefix in the context.
+`HasType (pfx ++ bvs) Γ e τ → HasType (pfx ++ xs ++ bvs) Γ (liftUnder pfx.length xs.length e) τ`
+Uses `weakening_at_depth` iterated `xs.length` times, with `liftUnder_comp` to compose lifts.
+-/
+
+theorem weaken_many_at_depth (pfx xs bvs : List Typ) (Γ : TypEnv)
+    (e : Expr) (τ : Typ)
+    (hE : HasType (pfx ++ bvs) Γ e τ)
+    : HasType (pfx ++ xs ++ bvs) Γ (liftUnder pfx.length xs.length e) τ := by
+  induction xs generalizing bvs with
+  | nil =>
+    simp [List.length_nil]
+    rw [liftUnder_zero_eq]
+    exact hE
+  | cons σ xs' ih =>
+    have hInner := ih bvs hE
+    simp only [List.length_cons]
+    have hAssoc : (pfx ++ xs') ++ bvs = pfx ++ (xs' ++ bvs) := List.append_assoc pfx xs' bvs
+    have hInner' := hAssoc ▸ hInner
+    have hStep := weakening_at_depth pfx (xs' ++ bvs) Γ
+      (liftUnder pfx.length xs'.length e) τ σ hInner'
+    rw [liftUnder_comp] at hStep
+    have hEq : (pfx ++ σ :: xs') ++ bvs = pfx ++ σ :: (xs' ++ bvs) := by
+      simp [List.append_assoc, List.cons_append]
+    have hResult := hEq.symm ▸ hStep
+    rw [Nat.add_comm 1] at hResult
+    exact hResult
 
 mutual
 

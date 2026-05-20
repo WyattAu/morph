@@ -42,6 +42,9 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 | Docs: Chinese characters | Replaced batch labels in PATH_FORWARD.md |
 | Docs: theorem count | Unified to 787 total across all files |
 | Docs: cross-refs | Added 6 missing specs to SPECIFICATION_INDEX, fixed GLOSSARY links |
+| Proofs: lift zero identity | Proved `liftUnder_zero_eq`, `liftUnder_zero_eq_list`, `lift_zero_eq` in Lemmas.lean |
+| Proofs: bvar substitution | Fixed sorry #1 (bvar n=0 case) in HasType_subst using lift_zero_eq |
+| Proofs: weakening visibility | Made `weakening_at_depth` and `weakening_at_depth_all` public in Lemmas.lean |
 
 ### Outstanding Issues
 
@@ -84,21 +87,23 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 
 ### 1.1 Fix 6 sorry declarations in Preservation.lean
 
-All 6 sorries are in `Morph/Proofs/TypeSoundness/Preservation.lean`:
+**Status: 1/6 fixed, 5 remaining.**
 
-| Line | Context | Required Lemma | Effort |
+| Line | Context | Required Lemma | Status |
 |---|---|---|---|
-| 116 | `HasType_subst` bvar_type | `lift_preserves_type`: lifting by 0 preserves typing | 2-3 days |
-| 156 | `HasType_subst` lam_type | Generalized subst at depth > 0 | 3-5 days |
-| 171 | `HasType_subst` let_type | Generalized subst at depth 1 | 2-3 days |
-| 175 | `HasType_subst` for_type | Generalized subst at depth 1 | 2-3 days |
-| 288 | `preservation` for_exec | `substAll_preserves_type` | 3-5 days |
-| 359 | `preservation` app_lam | `substAll_preserves_type` | 2-3 days |
+| ~185 | `HasType_subst` lam_type | Generalized subst at depth > 0 | Open |
+| ~200 | `HasType_subst` let_type | Generalized subst at depth 1 | Open |
+| ~204 | `HasType_subst` for_type | Generalized subst at depth 1 | Open |
+| ~317 | `preservation` for_exec | `substAll_preserves_type` | Open |
+| ~388 | `preservation` app_lam | `substAll_preserves_type` | Open |
 
-**Proof strategy:**
-1. Prove `lift_preserves_type` (unblocks sorry #1)
-2. Prove `subst'_preserves_type` for arbitrary depth (unblocks sorries #2-4)
-3. Prove `substAll_preserves_type` (unblocks sorries #5-6)
+**Completed:**
+- sorry #1 (bvar n=0 case): Fixed via `lift_zero_eq : lift 0 e = e` (proven as `liftUnder_zero_eq` in Lemmas.lean)
+
+**Proof strategy for remaining:**
+1. Prove `HasType_weaken_many` (weaken by multiple types) -- requires liftUnder composition
+2. Prove `HasType_subst_depth` (subst at arbitrary depth) -- unblocks sorries #2-4
+3. Prove `substAll_preserves_type` -- unblocks sorries #5-6
 
 | Attribute | Detail |
 |---|---|
