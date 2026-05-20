@@ -36,7 +36,7 @@
 | StrictStateUnidirectional | 109 lines | 29 lines | 25 lines | 10 | 0 | Complete |
 | SyntaxTranslation | 100 lines | 50 lines | 32 lines | 10 | 0 | Complete |
 | TerminologyStandardization | 129 lines | 48 lines | 54 lines | 8 | 0 | Complete |
-| TypeSystem | 251 lines | 230 lines | 138 lines | 13 | 4 | Partial |
+| TypeSystem | 251 lines | 500 lines | 138 lines | 21 | 0 | Complete |
 | UnidirectionalDataFlow | 16 lines | 40 lines | 23 lines | 9 | 0 | Complete |
 | UnitGroupTheory | 165 lines | 68 lines | 45 lines | 15 | 0 | Complete |
 | VersionCompatibility | 177 lines | 122 lines | 37 lines | 28 | 0 | Complete |

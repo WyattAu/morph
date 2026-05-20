@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-05-20T20:29:27",
+  "lean_version": "4.27.0",
+  "metrics": {
+    "build_errors": 0,
+    "build_warnings": 1,
+    "sorry_count": 2,
+    "stub_count": 0,
+    "python_tests_passed": 803,
+    "python_tests_failed": 0,
+    "python_coverage_pct": 96,
+    "lean_modules": 155,
+    "spec_modules": 132
+  }
+}
