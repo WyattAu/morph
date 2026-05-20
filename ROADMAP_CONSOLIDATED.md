@@ -15,7 +15,7 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 | Lines of Lean | ~16,165 |
 | Spec modules | 43 |
 | Theorems/lemmas (total) | 787 |
-| `sorry` declarations | 6 (all in Preservation.lean) |
+| `sorry` declarations | 2 (all in Preservation.lean) |
 | `example : True := trivial` stubs | 0 |
 | Pre-commit hook | 7-step gate (lake build, sorry scan, stub scan, tests, pytest, ruff/mypy, spec-tools lint) |
 | CI/CD | 4 GitHub Actions (lean-build, spec-validation, nightly, pages) + GitLab CI + Jenkins |
@@ -85,24 +85,35 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 
 ## Phase 1: Immediate (Weeks 1-2)
 
-### 1.1 Fix 6 sorry declarations in Preservation.lean
+### 1.1 Fix sorry declarations in Preservation.lean
 
-**Status: 1/6 fixed, 5 remaining.**
+**Status: 4/6 fixed, 2 remaining.**
 
 | Line | Context | Required Lemma | Status |
 |---|---|---|---|
-| ~185 | `HasType_subst` lam_type | Generalized subst at depth > 0 | Open |
-| ~200 | `HasType_subst` let_type | Generalized subst at depth 1 | Open |
-| ~204 | `HasType_subst` for_type | Generalized subst at depth 1 | Open |
-| ~317 | `preservation` for_exec | `substAll_preserves_type` | Open |
-| ~388 | `preservation` app_lam | `substAll_preserves_type` | Open |
+| ~385 | `preservation` for_exec | De Bruijn lift composition for forLoop body | Open |
+| ~456 | `preservation` app_lam | `substAll_preserves_type` | Open |
 
 **Completed:**
-- sorry #1 (bvar n=0 case): Fixed via `lift_zero_eq : lift 0 e = e` (proven as `liftUnder_zero_eq` in Lemmas.lean)
+- sorry #1 (bvar n=0 case): Fixed via `lift_zero_eq : lift 0 e = e`
+- sorry #2 (HasType_subst lam_type): Fixed via `HasType_subst_depth` mutual theorem
+- sorry #3 (HasType_subst let_type): Fixed via `HasType_subst_depth` mutual theorem
+- sorry #4 (HasType_subst for_type): Fixed via `HasType_subst_depth` mutual theorem
 
-**Proof strategy for remaining:**
-1. Prove `HasType_weaken_many` (weaken by multiple types) -- requires liftUnder composition
-2. Prove `HasType_subst_depth` (subst at arbitrary depth) -- unblocks sorries #2-4
+**Supporting lemmas proven:**
+- `liftUnder_zero_eq` / `liftUnder_zero_eq_list` (mutual): `liftUnder 0 e = e`
+- `lift_zero_eq`: `lift 0 e = e`
+- `liftUnder_comp` / `liftUnder_comp_list` (mutual): `liftUnder b k1 (liftUnder b k2 e) = liftUnder b (k1+k2) e`
+- `lift_comp`: `lift k1 (lift k2 e) = lift (k1+k2) e`
+- `weaken_many_at_depth`: repeated weakening at arbitrary prefix depth
+- `getElem_cons_succ_of_pos`: `(a::as)[k] = as[k-1]` when `k >= 1`
+- `HasType_subst_depth` / `HasTypeAll_subst_depth`: mutual theorem for substitution at arbitrary prefix depth (all 24 HasType constructors)
+- `HasTypeAll_append`: append two HasTypeAll proofs
+
+**Proof strategy for remaining 2:**
+1. Prove `substAll'_empty_id : substAll' k [] e = e`
+2. Prove `substAll_preserves_type` -- simultaneous substitution type preservation
+3. for_exec requires careful De Bruijn analysis (lift composition for nested forLoop context)
 3. Prove `substAll_preserves_type` -- unblocks sorries #5-6
 
 | Attribute | Detail |
@@ -133,12 +144,12 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 
 ### 2.1 CI hardening
 
-| Task | Effort | Deps | Gate |
-|---|---|---|---|
-| Zero-warning CI gate (Morph source) | 1 hour | 1.1 | Build log has 0 warnings in `Morph/` |
-| Sorry-free CI gate (hard failure) | 30 min | 1.1 | Exit 1 if `sorry` count > 0 |
-| Pre-commit: sorry as blocking | 15 min | 1.1 | Commit blocked if sorry present |
-| Remove `continue-on-error: true` from spec-validation | 1 hour | None | Validation failures block CI |
+| Task | Effort | Deps | Gate | Status |
+|---|---|---|---|---|
+| Zero-warning CI gate (Morph source) | 1 hour | 1.1 | Build log has 0 warnings in `Morph/` | Done (only sorry warnings remain) |
+| Sorry-free CI gate (hard failure) | 30 min | 1.1 | Exit 1 if `sorry` count > 0 | Deferred (2 sorries remain) |
+| Pre-commit: sorry as blocking | 15 min | 1.1 | Commit blocked if sorry present | Deferred (2 sorries remain) |
+| Remove `continue-on-error` from spec-validation | 1 hour | None | Validation failures block CI | Done (except check-links, pending 1.2) |
 
 ### 2.2 Tier 1 proof completion (runtime foundation)
 

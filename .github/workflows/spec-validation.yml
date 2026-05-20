@@ -52,7 +52,6 @@ jobs:
         run: |
           echo "Running format check..."
           spec-tools format spec/ --check
-        continue-on-error: true
       
       - name: Lint specifications
         run: |
@@ -63,21 +62,19 @@ jobs:
           WARNING_COUNT=$(grep -c "^\s*Line.*\[WARNING\]" lint-report.txt || echo "0")
           echo "Lint summary: $ERROR_COUNT errors, $WARNING_COUNT warnings"
           if [ "$ERROR_COUNT" -gt 0 ]; then
-            echo "::warning::$ERROR_COUNT lint error(s) found in specifications"
+            echo "::error::$ERROR_COUNT lint error(s) found in specifications"
+            exit 1
           fi
-        continue-on-error: true
       
       - name: Validate specifications
         run: |
           echo "Running validation check..."
           spec-tools validate spec/ --check-traceability --check-security --check-performance --check-maintainability --check-risk --check-verification
-        continue-on-error: true
       
       - name: Check links
         run: |
           echo "Running link check..."
           spec-tools check-links spec/ --output link-report.json --format json || true
-        continue-on-error: true
       
       - name: Upload validation reports
         uses: actions/upload-artifact@v4

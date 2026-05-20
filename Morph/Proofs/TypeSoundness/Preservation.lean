@@ -277,6 +277,19 @@ private theorem HasTypeAll_subst_all (bvs : List Typ) (Γ : TypEnv) (es : List E
     HasTypeAll bvs Γ (es.map (fun e => Morph.Syntax.subst e v)) τs :=
   HasTypeAll_subst_depth [] bvs Γ es v τ1 τs (by exact hArgs) hV
 
+/-!
+## Simultaneous Substitution Preserves Types
+
+TODO: Prove that `substAll'` preserves types when substituting correctly-typed values.
+This requires:
+1. `substAll'_empty_id : substAll' k [] e = e`
+2. `substAll'_cons : substAll' k (v :: vs) e = ...`
+3. Inductive composition with `HasType_subst_depth`
+
+The key lemma: if `HasType (τs.reverse ++ bvs) Γ body retTy` and
+`HasTypeAll bvs Γ vs τs`, then `HasType bvs Γ (substAll vs.reverse body) retTy`.
+-/
+
 mutual
 
 theorem preservation : forall {e e' : Expr} {τ : Typ} {bvs : List Typ} {Γ : TypEnv},
@@ -377,11 +390,6 @@ theorem preservation : forall {e e' : Expr} {τ : Typ} {bvs : List Typ} {Γ : Ty
   | for_exec n m body _ =>
     cases hType with
     | for_type _ _ _ _ _ hS hE hBody =>
-      -- After executing one loop iteration, we produce:
-      -- let n = n in block (body ++ [forLoop (n+1) m body])
-      -- The body needs simultaneous substitution of .lit (.int n) for index 1
-      -- (index 0 is the loop counter .intType, index 1 is the bound var being .intType)
-      -- This requires the simultaneous substitution lemma (substAll)
       sorry
     | _ => contradiction
   | for_done _ _ _ _ =>
