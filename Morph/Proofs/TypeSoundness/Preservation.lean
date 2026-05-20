@@ -239,7 +239,7 @@ private theorem HasType_subst_depth (pfx : List Typ) (bvs : List Typ) (Γ : TypE
       show HasType (τ1' :: pfx ++ τ1 :: bvs) Γ e2 τ2'; exact hE2
     have hResult := HasType_subst_depth (τ1' :: pfx) bvs Γ e2 v τ1 τ2' hE2' hV
     -- Depth: (τ1' :: pfx).length = 1 + pfx.length; simp normalizes to pfx.length + 1
-    simp only [List.length_cons, List.length_nil, List.length_append] at hResult
+    simp only [List.length_cons] at hResult
     -- hResult : HasType (τ1' :: (pfx ++ bvs)) Γ (subst' (pfx.length + 1) e2 v) τ2'
     exact HasType.let_type (pfx ++ bvs) Γ (subst' pfx.length e1 v) (subst' (pfx.length + 1) e2 v) τ1' τ2'
       (HasType_subst_depth pfx bvs Γ e1 v τ1 τ1' hE1 hV)
@@ -251,7 +251,7 @@ private theorem HasType_subst_depth (pfx : List Typ) (bvs : List Typ) (Γ : TypE
       show HasTypeAll (.intType :: pfx ++ τ1 :: bvs) Γ body [.unitType]; exact hBody
     have hBodyResult := HasTypeAll_subst_depth (.intType :: pfx) bvs Γ body v τ1 [.unitType] hBody' hV
     -- simp already normalizes the length to pfx.length + 1
-    simp only [List.length_cons, List.length_nil] at hBodyResult
+    simp only [List.length_cons] at hBodyResult
     exact HasType.for_type (pfx ++ bvs) Γ (subst' pfx.length s v) (subst' pfx.length e v) (List.map (fun x => subst' (pfx.length + 1) x v) body)
       (HasType_subst_depth pfx bvs Γ s v τ1 .intType hS hV)
       (HasType_subst_depth pfx bvs Γ e v τ1 .intType hE hV)
