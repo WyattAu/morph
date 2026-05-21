@@ -8,14 +8,14 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 
 | Metric | Value |
 |---|---|
-| `lake build Morph` | 328 jobs, 0 errors, 2 sorry warnings |
+| `lake build Morph` | 328 jobs, 0 errors, 0 sorry warnings |
 | `lake build Morph.Tests` | 186 jobs, 0 errors |
-| Python spec-tools | 735 tests, 93.29% coverage |
+| Python spec-tools | 803 tests, 96.04% coverage |
 | `.lean` files | 155 |
 | Lines of Lean | ~16,165 |
 | Spec modules | 43 |
 | Theorems/lemmas (total) | 787 |
-| `sorry` declarations | 2 (all in Preservation.lean) |
+| `sorry` declarations | 0 |
 | `example : True := trivial` stubs | 0 |
 | Pre-commit hook | 7-step gate (lake build, sorry scan, stub scan, tests, pytest, ruff/mypy, spec-tools lint) |
 | CI/CD | 4 GitHub Actions (lean-build, spec-validation, nightly, pages) + GitLab CI + Jenkins |
@@ -87,18 +87,20 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 
 ### 1.1 Fix sorry declarations in Preservation.lean
 
-**Status: 4/6 fixed, 2 remaining.**
+**Status: 6/6 fixed. ALL SORRIES RESOLVED.**
 
 | Line | Context | Required Lemma | Status |
 |---|---|---|---|
-| ~385 | `preservation` for_exec | De Bruijn lift composition for forLoop body | Open |
-| ~456 | `preservation` app_lam | `substAll_preserves_type` | Open |
+| ~385 | `preservation` for_exec | De Bruijn lift composition for forLoop body | Done |
+| ~456 | `preservation` app_lam | `HasType_substAll` mutual theorem | Done |
 
 **Completed:**
 - sorry #1 (bvar n=0 case): Fixed via `lift_zero_eq : lift 0 e = e`
 - sorry #2 (HasType_subst lam_type): Fixed via `HasType_subst_depth` mutual theorem
 - sorry #3 (HasType_subst let_type): Fixed via `HasType_subst_depth` mutual theorem
 - sorry #4 (HasType_subst for_type): Fixed via `HasType_subst_depth` mutual theorem
+- sorry #5 (for_exec): Fixed via `weakening_all` + `for_type` + `let_type` + `block_type`; also discovered and fixed genuine semantics bug in `for_exec` (inner forLoop body needed `body.map (lift 1)`)
+- sorry #6 (app_lam): Fixed via `HasType_substAll` / `HasTypeAll_substAll` mutual theorems -- direct mutual induction on HasType/HasTypeAll for simultaneous substitution `substAll'` with generalized prefix parameter `pfx`
 
 **Supporting lemmas proven:**
 - `liftUnder_zero_eq` / `liftUnder_zero_eq_list` (mutual): `liftUnder 0 e = e`
@@ -108,13 +110,13 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 - `weaken_many_at_depth`: repeated weakening at arbitrary prefix depth
 - `getElem_cons_succ_of_pos`: `(a::as)[k] = as[k-1]` when `k >= 1`
 - `HasType_subst_depth` / `HasTypeAll_subst_depth`: mutual theorem for substitution at arbitrary prefix depth (all 24 HasType constructors)
+- `HasType_subst` / `HasTypeAll_subst_all`: depth-0 specializations
 - `HasTypeAll_append`: append two HasTypeAll proofs
+- `HasTypeAll_reverse`: reverse both expr and type lists preserving HasTypeAll
+- `HasTypeAll_getElem`: extract i-th element type from HasTypeAll by index
+- `HasType_substAll` / `HasTypeAll_substAll`: simultaneous substitution type preservation via direct mutual induction with generalized prefix parameter
 
-**Proof strategy for remaining 2:**
-1. Prove `substAll'_empty_id : substAll' k [] e = e`
-2. Prove `substAll_preserves_type` -- simultaneous substitution type preservation
-3. for_exec requires careful De Bruijn analysis (lift composition for nested forLoop context)
-3. Prove `substAll_preserves_type` -- unblocks sorries #5-6
+**Key insight for sorry #5-6:** `substAll'` is genuinely simultaneous (not decomposable into sequential `subst'`), proven by direct mutual induction with a prefix parameter tracking binders crossed. Sequential `subst'` decomposition is WRONG when substituted values contain free bound-variable references.
 
 | Attribute | Detail |
 |---|---|
@@ -146,9 +148,9 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 
 | Task | Effort | Deps | Gate | Status |
 |---|---|---|---|---|
-| Zero-warning CI gate (Morph source) | 1 hour | 1.1 | Build log has 0 warnings in `Morph/` | Done (only sorry warnings remain) |
-| Sorry-free CI gate (hard failure) | 30 min | 1.1 | Exit 1 if `sorry` count > 0 | Deferred (2 sorries remain) |
-| Pre-commit: sorry as blocking | 15 min | 1.1 | Commit blocked if sorry present | Deferred (2 sorries remain) |
+| Zero-warning CI gate (Morph source) | 1 hour | 1.1 | Build log has 0 warnings in `Morph/` | Done |
+| Sorry-free CI gate (hard failure) | 30 min | 1.1 | Exit 1 if `sorry` count > 0 | Ready (0 sorries) |
+| Pre-commit: sorry as blocking | 15 min | 1.1 | Commit blocked if sorry present | Ready (0 sorries) |
 | Remove `continue-on-error` from spec-validation | 1 hour | None | Validation failures block CI | Done (except check-links, pending 1.2) |
 
 ### 2.2 Tier 1 proof completion (runtime foundation)

@@ -44,12 +44,13 @@ SORRY_COUNT=$(grep -rn "sorry" Morph/ --include="*.lean" 2>/dev/null | grep -v "
 SORRY_FILES=$(grep -rl "sorry" Morph/ --include="*.lean" 2>/dev/null | wc -l || true)
 
 if [ "$SORRY_COUNT" -gt 0 ]; then
-    echo "[2/7] WARNING: Found ${SORRY_COUNT} 'sorry' declarations in ${SORRY_FILES} files."
+    echo "[2/7] FAILED: Found ${SORRY_COUNT} 'sorry' declarations in ${SORRY_FILES} files."
     echo "       These represent gaps in formal verification."
     echo "       Listing affected files:"
     grep -rn "sorry" Morph/ --include="*.lean" 2>/dev/null | grep -v "^\s*--" | head -20
     echo ""
-    echo "Commit allowed (warnings only). Consider fixing 'sorry' declarations."
+    echo "Commit blocked. Fix all 'sorry' declarations before committing."
+    exit 1
 else
     echo "[2/7] No 'sorry' declarations found."
 fi

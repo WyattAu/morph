@@ -78,11 +78,13 @@ jobs:
         SORRY_COUNT=$(grep -r "sorry" Morph/ --include="*.lean" | grep -v "no \`sorry\`" | grep -v "sorry placeholders" | grep -v "requires.*sorry" | wc -l)
         echo "Sorry count: $SORRY_COUNT"
         if [ "$SORRY_COUNT" -gt 0 ]; then
-          echo "::warning::$SORRY_COUNT sorry declaration(s) found in Morph/"
+          echo "::error::$SORRY_COUNT sorry declaration(s) found in Morph/ -- blocking"
           grep -rn "sorry" Morph/ --include="*.lean" | grep -v "no \`sorry\`" | grep -v "sorry placeholders" | grep -v "requires.*sorry" | while read -r line; do
-            echo "::warning::$line"
+            echo "::error::$line"
           done
+          exit 1
         fi
+        echo "No sorry declarations found."
 
     - name: Check for spec stubs
       id: stubs
