@@ -516,8 +516,12 @@ section StepForLoopTests
   theorem step_for_exec :
     Step (.forLoop (.lit (.int 0)) (.lit (.int 3)) [.bvar 0])
       (.let_ (.lit (.int 0))
-        (.block ([.bvar 0] ++ [.forLoop (.lit (.int 1)) (.lit (.int 3)) [.bvar 0]]))) := by
-    apply Step.for_exec; decide
+        (.block ([.bvar 0] ++ [.forLoop (.lit (.int 1)) (.lit (.int 3)) [.bvar 1]]))) := by
+    have hMap : (List.map (lift 1) [.bvar 0]) = [.bvar 1] := by
+      simp only [List.map_cons, List.map_nil]; unfold lift liftUnder; simp
+    have hStep := Step.for_exec 0 3 [.bvar 0] (by decide)
+    rw [hMap] at hStep
+    exact hStep
 
   theorem step_for_done :
     Step (.forLoop (.lit (.int 5)) (.lit (.int 3)) []) (.lit .unit) := by

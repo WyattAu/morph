@@ -161,11 +161,17 @@ inductive Step : Expr → Expr → Prop where
       IsValue (.lit s) → Step e e' →
       Step (.forLoop (.lit s) e body) (.forLoop (.lit s) e' body)
 
+  /- When executing one iteration of a for-loop, the body appears twice:
+     1. In the first copy (under `let_`), the iterator is at index 0 — same context
+        as the original forLoop, so no lift needed.
+     2. In the recursive forLoop, the body is under BOTH `let_` (adds .intType)
+        AND the inner forLoop (adds another .intType). So the body needs `lift 1`
+        to shift outer-variable references past the let-binding layer. -/
   | for_exec : ∀ n m body,
       n < m →
       Step (.forLoop (.lit (.int n)) (.lit (.int m)) body)
         (.let_ (.lit (.int n))
-          (.block (body ++ [.forLoop (.lit (.int (n + 1))) (.lit (.int m)) body])))
+          (.block (body ++ [.forLoop (.lit (.int (n + 1))) (.lit (.int m)) (body.map (lift 1))])))
 
   | for_done : ∀ n m body,
       n ≥ m →

@@ -471,6 +471,68 @@ theorem weakening_all (bvs : List Typ) (Γ : TypEnv) (es : List Expr) (τs : Lis
 
 end
 
+/-!
+## HasTypeAll Append
+
+Append two HasTypeAll proofs.
+-/
+
+theorem HasTypeAll_append {bvs : List Typ} {Γ : TypEnv} {es₁ es₂ : List Expr} {τs₁ τs₂ : List Typ}
+    (h₁ : HasTypeAll bvs Γ es₁ τs₁) (h₂ : HasTypeAll bvs Γ es₂ τs₂) :
+    HasTypeAll bvs Γ (es₁ ++ es₂) (τs₁ ++ τs₂) := by
+  match h₁ with
+  | HasTypeAll.nil _ _ => exact h₂
+  | HasTypeAll.cons _ _ e es τ τs hE hRest =>
+    exact HasTypeAll.cons _ _ e (es ++ es₂) τ (τs ++ τs₂) hE (HasTypeAll_append hRest h₂)
+
+/-!
+## HasTypeAll Reverse
+
+Reversing both the expression list and the type list preserves HasTypeAll.
+-/
+
+theorem HasTypeAll_reverse (bvs : List Typ) (Γ : TypEnv) (es : List Expr) (τs : List Typ)
+    (h : HasTypeAll bvs Γ es τs) : HasTypeAll bvs Γ es.reverse τs.reverse := by
+  match h with
+  | HasTypeAll.nil _ _ => exact HasTypeAll.nil _ _
+  | HasTypeAll.cons _ _ e es' τ τs' hE hRest =>
+    have ih := HasTypeAll_reverse bvs Γ es' τs' hRest
+    show HasTypeAll bvs Γ (e :: es').reverse (τ :: τs').reverse
+    rw [List.reverse_cons, List.reverse_cons]
+    exact HasTypeAll_append ih (HasTypeAll.cons _ _ e [] τ [] hE (HasTypeAll.nil _ _))
+
+/-!
+## HasTypeAll Index Access
+
+Extract the i-th element type from a HasTypeAll proof.
+-/
+
+theorem HasTypeAll_getElem (bvs : List Typ) (Γ : TypEnv) (es : List Expr) (τs : List Typ)
+    (i : Nat) (h : HasTypeAll bvs Γ es τs)
+    (hi : i < es.length) (hiτ : i < τs.length) :
+    HasType bvs Γ es[i] τs[i] := by
+  cases i with
+  | zero =>
+    cases es with
+    | nil => simp at hi
+    | cons e es' =>
+      cases τs with
+      | nil => simp at hiτ
+      | cons τ τs' =>
+        simp only [List.getElem_cons_zero]
+        match h with | HasTypeAll.cons _ _ _ _ _ _ hE _ => exact hE
+  | succ n =>
+    cases es with
+    | nil => simp at hi
+    | cons e es' =>
+      cases τs with
+      | nil => simp at hiτ
+      | cons τ τs' =>
+        simp only [List.getElem_cons_succ]
+        match h with
+        | HasTypeAll.cons _ _ _ _ _ _ _ hRest =>
+          exact HasTypeAll_getElem bvs Γ es' τs' n hRest (by simp at hi; omega) (by simp at hiτ; omega)
+
 /-! ## Canonical Forms -/
 
 def isFunctionValue (e : Expr) : Prop :=

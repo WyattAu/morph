@@ -77,14 +77,6 @@ private theorem sem_isCompOp_not_spec_isBitwiseOp (op : Operator) :
   intro hc hb
   cases op <;> simp [Morph.Semantics.isCompOp, Morph.Specs.TypeSystem.isBitwiseOp] at * <;> contradiction
 
-private theorem HasTypeAll_append {bvs : List Typ} {Γ : TypEnv} {es₁ es₂ : List Expr} {τs₁ τs₂ : List Typ}
-    (h₁ : HasTypeAll bvs Γ es₁ τs₁) (h₂ : HasTypeAll bvs Γ es₂ τs₂) :
-    HasTypeAll bvs Γ (es₁ ++ es₂) (τs₁ ++ τs₂) := by
-  match h₁ with
-  | HasTypeAll.nil _ _ => exact h₂
-  | HasTypeAll.cons _ _ e es τ τs hE hRest =>
-    exact HasTypeAll.cons _ _ e (es ++ es₂) τ (τs ++ τs₂) hE (HasTypeAll_append hRest h₂)
-
 /-!
 ## Lift-Zero Preserves Type for Values
 
@@ -280,14 +272,236 @@ private theorem HasTypeAll_subst_all (bvs : List Typ) (Γ : TypEnv) (es : List E
 /-!
 ## Simultaneous Substitution Preserves Types
 
-TODO: Prove that `substAll'` preserves types when substituting correctly-typed values.
-This requires:
-1. `substAll'_empty_id : substAll' k [] e = e`
-2. `substAll'_cons : substAll' k (v :: vs) e = ...`
-3. Inductive composition with `HasType_subst_depth`
+Direct mutual induction on `HasType`/`HasTypeAll` for `substAll'`.
+`substAll'` is genuinely simultaneous (not decomposable into sequential `subst'`).
 
-The key lemma: if `HasType (τs.reverse ++ bvs) Γ body retTy` and
-`HasTypeAll bvs Γ vs τs`, then `HasType bvs Γ (substAll vs.reverse body) retTy`.
+We prove the generalized form with a prefix `pfx` that tracks binders crossed.
+When entering a `lam`/`let`/`for` binder, the prefix grows and the substitution
+depth increases accordingly.
+-/
+
+mutual
+
+private theorem HasTypeAll_substAll (pfx σs : List Typ) (bvs : List Typ) (Γ : TypEnv)
+    (vs : List Expr) (es : List Expr) (τs : List Typ)
+    (hEs : HasTypeAll (pfx ++ σs ++ bvs) Γ es τs)
+    (hVs : HasTypeAll bvs Γ vs σs.reverse)
+    (hLen : vs.length = σs.length) :
+    HasTypeAll (pfx ++ bvs) Γ (es.map (substAll' pfx.length vs.reverse)) τs := by
+  match hEs with
+  | HasTypeAll.nil _ _ => exact HasTypeAll.nil _ _
+  | HasTypeAll.cons _ _ e es' τ τs' hE hRest =>
+    exact HasTypeAll.cons _ _ _ _ _ _
+      (HasType_substAll pfx σs bvs Γ vs e τ hE hVs hLen)
+      (HasTypeAll_substAll pfx σs bvs Γ vs es' τs' hRest hVs hLen)
+
+private theorem HasType_substAll (pfx σs : List Typ) (bvs : List Typ) (Γ : TypEnv)
+    (vs : List Expr) (e : Expr) (τ : Typ)
+    (hE : HasType (pfx ++ σs ++ bvs) Γ e τ)
+    (hVs : HasTypeAll bvs Γ vs σs.reverse)
+    (hLen : vs.length = σs.length) :
+    HasType (pfx ++ bvs) Γ (substAll' pfx.length vs.reverse e) τ := by
+  match hE with
+  | .bvar_type _ _ n hLenCtx =>
+    unfold substAll'
+    split
+    · -- n < pfx.length: shadowed by prefix, unchanged .bvar n
+      next hNlt =>
+      have h1 := @List.length_append Typ pfx σs
+      have h2 := @List.length_append Typ (pfx ++ σs) bvs
+      have h3 := @List.length_append Typ pfx bvs
+      have hLen' : n < (pfx ++ bvs).length := by have := h1; have := h2; have := h3; omega
+      have hLenPfxσs' : n < (pfx ++ σs).length := by have := h1; have := h2; omega
+      have hEq : (pfx ++ σs ++ bvs)[n] = (pfx ++ bvs)[n] := by
+        calc (pfx ++ σs ++ bvs)[n]
+            = (pfx ++ σs)[n] := @List.getElem_append_left Typ n (pfx ++ σs) bvs hLenPfxσs' hLenCtx
+          _ = pfx[n] := @List.getElem_append_left Typ n pfx σs hNlt hLenPfxσs'
+          _ = (pfx ++ bvs)[n] := (@List.getElem_append_left Typ n pfx bvs hNlt hLen').symm
+      exact hEq ▸ HasType.bvar_type _ _ n hLen'
+    · split
+      · -- pfx.length ≤ n < pfx.length + σs.length: substitute
+        next hIn =>
+        have hRevLen : vs.reverse.length = σs.length := by
+          have := @List.length_reverse Expr vs; omega
+        have h1 := @List.length_append Typ pfx σs
+        have h2 := @List.length_append Typ σs bvs
+        have h3 := @List.length_append Typ (pfx ++ σs) bvs
+        have hNLePfx : pfx.length ≤ n := by have := hLenCtx; have := h1; have := h3; omega
+        have hNltσs : n - pfx.length < σs.length := by have := h1; have := h3; have := hLenCtx; omega
+        have hNltVs : n - pfx.length < vs.reverse.length := by omega
+        have hNlt2 : n - pfx.length < (σs ++ bvs).length := by have := h1; have := h2; have := h3; omega
+        have hVsRev : HasTypeAll bvs Γ vs.reverse σs := by
+          have h := HasTypeAll_reverse bvs Γ vs σs.reverse hVs
+          exact (List.reverse_reverse σs) ▸ h
+        have hVal : HasType bvs Γ (vs.reverse[n - pfx.length]) σs[n - pfx.length] :=
+          HasTypeAll_getElem bvs Γ vs.reverse σs (n - pfx.length) hVsRev hNltVs hNltσs
+        have hIdx : (pfx ++ σs ++ bvs)[n] = σs[n - pfx.length] := by
+          have hLenPfxσs := @List.length_append Typ pfx σs
+          have hLenσsBvs := @List.length_append Typ σs bvs
+          have hLenPfxσsBvs := @List.length_append Typ (pfx ++ σs) bvs
+          have hLenPfxσsBvs2 := @List.length_append Typ pfx (σs ++ bvs)
+          have hNltσsBvs : n - pfx.length < (σs ++ bvs).length := by
+            have := hLenPfxσs; have := hLenPfxσsBvs; have := hLenσsBvs; have := hLenPfxσsBvs2; omega
+          have hNltσs' : n - pfx.length < σs.length := hNltσs
+          have hLenCtx2 : n < (pfx ++ (σs ++ bvs)).length := by
+            have := hLenPfxσs; have := hLenPfxσsBvs; have := hLenPfxσsBvs2; omega
+          have hStep1 := @List.getElem_append_right Typ pfx (σs ++ bvs) n hNLePfx hLenCtx2
+          have hStep2 := @List.getElem_append_left Typ (n - pfx.length) σs bvs hNltσs' hNltσsBvs
+          have hAssoc : pfx ++ σs ++ bvs = pfx ++ (σs ++ bvs) := List.append_assoc pfx σs bvs
+          have hRw := @List.getElem_of_eq Typ (pfx ++ σs ++ bvs) (pfx ++ (σs ++ bvs)) hAssoc n hLenCtx
+          exact hRw.trans (hStep1.trans hStep2)
+        have hWeakened := weaken_many_at_depth [] pfx bvs Γ
+          (vs.reverse[n - pfx.length]) σs[n - pfx.length] hVal
+        exact hIdx.symm ▸ hWeakened
+      · -- n ≥ pfx.length + σs.length: free bvar, shift down by vs.reverse.length
+        next hGe =>
+        have hRevLen : vs.reverse.length = σs.length := by
+          have := @List.length_reverse Expr vs; omega
+        have h1 := @List.length_append Typ pfx σs
+        have h2 := @List.length_append Typ (pfx ++ σs) bvs
+        have h3 := @List.length_append Typ pfx bvs
+        have hNLe2 : (pfx ++ σs).length ≤ n := by have := h1; have := h2; omega
+        have hNFreeBvs : n - pfx.length - σs.length < bvs.length := by have := h1; have := h2; omega
+        have hIdx : (pfx ++ σs ++ bvs)[n] = bvs[n - pfx.length - σs.length] := by
+          calc (pfx ++ σs ++ bvs)[n]
+              = bvs[n - (pfx ++ σs).length] :=
+                @List.getElem_append_right Typ (pfx ++ σs) bvs n hNLe2 hLenCtx
+            _ = bvs[n - pfx.length - σs.length] := by congr 1; have := h1; omega
+        have hResLen : n - vs.reverse.length < (pfx ++ bvs).length := by
+          have := h1; have := h2; have := h3; have := hRevLen; have := hLen; have := hGe; omega
+        have hResIdx : (pfx ++ bvs)[n - vs.reverse.length] = bvs[n - pfx.length - σs.length] := by
+          have hNLeRes : pfx.length ≤ n - vs.reverse.length := by
+            have := hRevLen; have := hLen; have := hGe; omega
+          have hLenCtx' : n - vs.reverse.length < (pfx ++ bvs).length := by
+            have := h1; have := h2; have := h3; have := hRevLen; have := hLen; have := hGe; omega
+          have h3 := @List.getElem_append_right Typ pfx bvs (n - vs.reverse.length) hNLeRes hLenCtx'
+          calc (pfx ++ bvs)[n - vs.reverse.length]
+              = bvs[n - vs.reverse.length - pfx.length] := h3
+            _ = bvs[n - pfx.length - σs.length] := by
+              have := hRevLen; have := hLen; have := hGe
+              congr 1; omega
+        have hResType : (pfx ++ bvs)[n - vs.reverse.length] = (pfx ++ σs ++ bvs)[n] :=
+          hResIdx.trans hIdx.symm
+        exact hResType.symm ▸ HasType.bvar_type (pfx ++ bvs) Γ (n - vs.reverse.length) hResLen
+  | .fvar_type _ _ name τ hLookup =>
+    unfold substAll'; exact HasType.fvar_type _ _ name τ hLookup
+  | .lit_int _ _ _ => unfold substAll'; exact HasType.lit_int _ _ _
+  | .lit_bool _ _ _ => unfold substAll'; exact HasType.lit_bool _ _ _
+  | .lit_string _ _ _ => unfold substAll'; exact HasType.lit_string _ _ _
+  | .lit_unit _ _ => unfold substAll'; exact HasType.lit_unit _ _
+  | .lit_pointer _ _ _ => unfold substAll'; exact HasType.lit_pointer _ _ _
+  | .unop_not _ _ e' hE' =>
+    unfold substAll'
+    exact HasType.unop_not _ _ _ (HasType_substAll pfx σs bvs Γ vs e' .boolType hE' hVs hLen)
+  | .unop_notb _ _ e' hE' =>
+    unfold substAll'
+    exact HasType.unop_notb _ _ _ (HasType_substAll pfx σs bvs Γ vs e' .intType hE' hVs hLen)
+  | .binop_arith _ _ op e1 e2 hArith hE1 hE2 =>
+    unfold substAll'
+    exact HasType.binop_arith _ _ op _ _ hArith
+      (HasType_substAll pfx σs bvs Γ vs e1 .intType hE1 hVs hLen)
+      (HasType_substAll pfx σs bvs Γ vs e2 .intType hE2 hVs hLen)
+  | .binop_comp _ _ op e1 e2 hComp hE1 hE2 =>
+    unfold substAll'
+    exact HasType.binop_comp _ _ op _ _ hComp
+      (HasType_substAll pfx σs bvs Γ vs e1 .intType hE1 hVs hLen)
+      (HasType_substAll pfx σs bvs Γ vs e2 .intType hE2 hVs hLen)
+  | .binop_logic _ _ op e1 e2 hLogic hE1 hE2 =>
+    unfold substAll'
+    exact HasType.binop_logic _ _ op _ _ hLogic
+      (HasType_substAll pfx σs bvs Γ vs e1 .boolType hE1 hVs hLen)
+      (HasType_substAll pfx σs bvs Γ vs e2 .boolType hE2 hVs hLen)
+  | .binop_bitwise _ _ op e1 e2 hBit hE1 hE2 =>
+    unfold substAll'
+    exact HasType.binop_bitwise _ _ op _ _ hBit
+      (HasType_substAll pfx σs bvs Γ vs e1 .intType hE1 hVs hLen)
+      (HasType_substAll pfx σs bvs Γ vs e2 .intType hE2 hVs hLen)
+  | .lam_type _ _ m body paramTys retTy hLenM hBody =>
+    -- substAll' pfx.length vs.reverse (.lam m body) = .lam m (substAll' (pfx.length + m) vs.reverse body)
+    -- Body context: paramTys.reverse ++ pfx ++ σs ++ bvs = (paramTys.reverse ++ pfx) ++ σs ++ bvs
+    unfold substAll'
+    have hAssoc1 : paramTys.reverse ++ (pfx ++ σs ++ bvs) = paramTys.reverse ++ pfx ++ σs ++ bvs := by
+      rw [← List.append_assoc, ← List.append_assoc]
+    have hBody' : HasType (paramTys.reverse ++ pfx ++ σs ++ bvs) Γ body retTy :=
+      hAssoc1 ▸ hBody
+    have hResult := HasType_substAll (paramTys.reverse ++ pfx) σs bvs Γ vs body retTy
+      hBody' hVs hLen
+    have hDepth : pfx.length + m = (paramTys.reverse ++ pfx).length := by
+      have h1 : (paramTys.reverse ++ pfx).length = paramTys.reverse.length + pfx.length :=
+        @List.length_append Typ paramTys.reverse pfx
+      have h2 : paramTys.reverse.length = paramTys.length := @List.length_reverse Typ paramTys
+      omega
+    have hResult' : HasType (paramTys.reverse ++ (pfx ++ bvs)) Γ
+        (substAll' (pfx.length + m) vs.reverse body) retTy := by
+      have hAssoc : (paramTys.reverse ++ pfx) ++ bvs = paramTys.reverse ++ (pfx ++ bvs) :=
+        List.append_assoc paramTys.reverse pfx bvs
+      exact hAssoc ▸ hDepth.symm ▸ hResult
+    exact HasType.lam_type (pfx ++ bvs) Γ m (substAll' (pfx.length + m) vs.reverse body)
+      paramTys retTy hLenM hResult'
+  | .app_type _ _ fn args τs τ hFn hArgs =>
+    unfold substAll'
+    exact HasType.app_type _ _ _ _ τs τ
+      (HasType_substAll pfx σs bvs Γ vs fn (.functionType τs τ) hFn hVs hLen)
+      (HasTypeAll_substAll pfx σs bvs Γ vs args τs hArgs hVs hLen)
+  | .if_type _ _ c t f τ hC hT hF =>
+    unfold substAll'
+    exact HasType.if_type _ _ _ _ _ τ
+      (HasType_substAll pfx σs bvs Γ vs c .boolType hC hVs hLen)
+      (HasType_substAll pfx σs bvs Γ vs t τ hT hVs hLen)
+      (HasType_substAll pfx σs bvs Γ vs f τ hF hVs hLen)
+  | .let_type _ _ e1 e2 τ1' τ2' hE1 hE2 =>
+    -- e2 context: τ1' :: pfx ++ σs ++ bvs = (τ1' :: pfx) ++ σs ++ bvs
+    unfold substAll'
+    have hE2' : HasType ((τ1' :: pfx) ++ σs ++ bvs) Γ e2 τ2' := by
+      have hEq : τ1' :: (pfx ++ σs ++ bvs) = (τ1' :: pfx) ++ σs ++ bvs := by
+        simp [List.cons_append, List.append_assoc]
+      exact hEq ▸ hE2
+    have hResult := HasType_substAll (τ1' :: pfx) σs bvs Γ vs e2 τ2' hE2' hVs hLen
+    simp only [List.length_cons] at hResult
+    have hResult' : HasType (pfx ++ bvs) Γ
+        ((substAll' pfx.length vs.reverse e1).let_ (substAll' (pfx.length + 1) vs.reverse e2)) τ2' :=
+      HasType.let_type (pfx ++ bvs) Γ (substAll' pfx.length vs.reverse e1)
+        (substAll' (pfx.length + 1) vs.reverse e2) τ1' τ2'
+        (HasType_substAll pfx σs bvs Γ vs e1 τ1' hE1 hVs hLen)
+        hResult
+    exact hResult'
+  | .for_type _ _ s e body hS hE hBody =>
+    -- body context: .intType :: pfx ++ σs ++ bvs = (.intType :: pfx) ++ σs ++ bvs
+    unfold substAll'
+    have hBody' : HasTypeAll ((.intType :: pfx) ++ σs ++ bvs) Γ body [.unitType] := by
+      have hEq : .intType :: (pfx ++ σs ++ bvs) = (.intType :: pfx) ++ σs ++ bvs := by
+        simp [List.cons_append, List.append_assoc]
+      exact hEq ▸ hBody
+    have hBodyResult := HasTypeAll_substAll (.intType :: pfx) σs bvs Γ vs body [.unitType]
+      hBody' hVs hLen
+    simp only [List.length_cons] at hBodyResult
+    have hResult' : HasType (pfx ++ bvs) Γ
+        (.forLoop (substAll' pfx.length vs.reverse s) (substAll' pfx.length vs.reverse e)
+          (body.map (substAll' (pfx.length + 1) vs.reverse))) Typ.unitType :=
+      HasType.for_type (pfx ++ bvs) Γ (substAll' pfx.length vs.reverse s)
+        (substAll' pfx.length vs.reverse e) (body.map (substAll' (pfx.length + 1) vs.reverse))
+        (HasType_substAll pfx σs bvs Γ vs s .intType hS hVs hLen)
+        (HasType_substAll pfx σs bvs Γ vs e .intType hE hVs hLen)
+        hBodyResult
+    exact hResult'
+  | .block_type _ _ exprs τs' τ hAll =>
+    unfold substAll'
+    exact HasType.block_type _ _ _ τs' τ
+      (HasTypeAll_substAll pfx σs bvs Γ vs exprs (τs' ++ [τ]) hAll hVs hLen)
+
+end
+
+-- Depth-0 wrapper for app_lam
+private theorem HasType_iterSubst (σs : List Typ) (bvs : List Typ) (Γ : TypEnv)
+    (vs : List Expr) (e : Expr) (τ : Typ)
+    (hE : HasType (σs ++ bvs) Γ e τ)
+    (hVs : HasTypeAll bvs Γ vs σs.reverse)
+    (hLen : vs.length = σs.length) :
+    HasType bvs Γ (substAll' 0 vs.reverse e) τ :=
+  HasType_substAll [] σs bvs Γ vs e τ hE hVs hLen
+
+/-!
+## Type Preservation (Main Theorem)
 -/
 
 mutual
@@ -390,7 +604,30 @@ theorem preservation : forall {e e' : Expr} {τ : Typ} {bvs : List Typ} {Γ : Ty
   | for_exec n m body _ =>
     cases hType with
     | for_type _ _ _ _ _ hS hE hBody =>
-      sorry
+      -- Step produces: .let_ (.lit (.int n)) (.block (body ++ [forLoop ... (body.map (lift 1))]))
+      -- Under let_, context is (.intType :: bvs). Body was typed at (.intType :: bvs) — matches.
+      -- Inner forLoop body (body.map (lift 1)) needs type at (.intType :: .intType :: bvs):
+      -- use weakening_all to insert the extra .intType layer.
+      have hInnerBody : HasTypeAll (.intType :: .intType :: bvs) Γ (body.map (lift 1)) [.unitType] :=
+        weakening_all (.intType :: bvs) Γ body [.unitType] .intType hBody
+      have hInnerFor : HasType (.intType :: bvs) Γ
+          (.forLoop (.lit (.int (n + 1))) (.lit (.int m)) (body.map (lift 1))) .unitType :=
+        HasType.for_type (.intType :: bvs) Γ (.lit (.int (n + 1))) (.lit (.int m))
+          (body.map (lift 1))
+          (HasType.lit_int _ _ (n + 1))
+          (HasType.lit_int _ _ m)
+          hInnerBody
+      have hBlockAll : HasTypeAll (.intType :: bvs) Γ
+          (body ++ [.forLoop (.lit (.int (n + 1))) (.lit (.int m)) (body.map (lift 1))])
+          [.unitType, .unitType] :=
+        HasTypeAll_append hBody
+          (HasTypeAll.cons _ _ _ _ _ _ hInnerFor (HasTypeAll.nil _ _))
+      exact HasType.let_type bvs Γ (.lit (.int n))
+        (.block (body ++ [.forLoop (.lit (.int (n + 1))) (.lit (.int m)) (body.map (lift 1))]))
+        .intType .unitType hS
+        (HasType.block_type (.intType :: bvs) Γ
+          (body ++ [.forLoop (.lit (.int (n + 1))) (.lit (.int m)) (body.map (lift 1))])
+          [.unitType] .unitType hBlockAll)
     | _ => contradiction
   | for_done _ _ _ _ =>
     cases hType with
@@ -456,18 +693,14 @@ theorem preservation : forall {e e' : Expr} {τ : Typ} {bvs : List Typ} {Γ : Ty
   | app_lam n body args hLen =>
     match hType with
     | HasType.app_type _ _ _ _ _ _ hFn hAll =>
-      cases hFn with
-      | lam_type _ _ _ _ paramTys retTy hBodyP hLen' =>
-        -- body has type retTy in (paramTys.reverse ++ bvs)
-        -- We need to show substAll args.reverse body has type retTy in bvs
-        -- This requires simultaneous substitution lemma
-        sorry
-        -- The simultaneous substitution lemma for substAll' needs to be proven:
-        -- If HasType (paramTys.reverse ++ bvs) Γ body retTy
-        -- and HasTypeAll bvs Γ args paramTys
-        -- then HasType bvs Γ (substAll args.reverse body) retTy
-        -- This is provable by induction on hBodyP, using the fact that
-        -- args.reverse provides types for bvar 0..n-1
+      match hFn with
+      | HasType.lam_type _ _ _ _ paramTys retTy hLen' hBodyP =>
+        have hLenEq : args.length = paramTys.reverse.length := by
+          rw [List.length_reverse]; exact hLen ▸ hLen'
+        have hVs : HasTypeAll bvs Γ args (paramTys.reverse).reverse := by
+          simp [List.reverse_reverse]; exact hAll
+        exact HasType_iterSubst paramTys.reverse bvs Γ args body retTy
+          hBodyP hVs hLenEq
 
 end
 
