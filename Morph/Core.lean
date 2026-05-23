@@ -78,7 +78,7 @@ structure Pointer where
   block : BlockId
   offset : Int
   provenance : Option ProvenanceId
-deriving Repr, BEq
+ deriving Repr, BEq, Hashable
 
 /-!
 ## Value
@@ -93,8 +93,11 @@ Values can be:
 - `unit`: Unit value (for void functions)
 - `undef`: Undefined value (for uninitialized memory)
 
-The `undef` constructor is crucial for modeling uninitialized memory
-explicitly, as required by the memory model (see Coding Standards Section 1.2).
+The `undef` constructor models uninitialized memory explicitly, as required by the
+memory model (see Coding Standards Section 1.2). It is intentionally excluded from
+well-typed programs: `inferType` returns `none` for `.lit .undef`, and there is no
+`HasType` constructor for it. This ensures type safety by preventing undefined values
+from appearing in well-typed terms.
 
 See Coding Standards Section 1.2 for memory model details.
 -/
@@ -144,8 +147,9 @@ Arithmetic and logical operators for the Morph language.
 Operators are categorized by their purpose:
 - **Arithmetic:** `add`, `sub`, `mul`, `div`, `mod`
 - **Comparison:** `eq`, `neq`, `lt`, `leq`, `gt`, `geq`
-- **Logical:** `and`, `or`, `not`
-- **Bitwise:** `andb`, `orb`, `xorb`, `notb`, `shl`, `shr`
+ - **Logical (binary):** `and`, `or`
+ - **Logical (unary):** `not`
+ - **Bitwise:** `andb`, `orb`, `xorb`, `notb`, `shl`, `shr`
 - **Pointer:** `ptrAdd`, `ptrSub`, `ptrLoad`, `ptrStore`
 
 Pointer operators are crucial for sound verification of pointer arithmetic
@@ -194,6 +198,10 @@ Environment for variable bindings using List for variable bindings.
 The environment maps variable names (strings) to their runtime values.
 Using `List` for simplicity; can be optimized to HashMap later
 if needed for performance (see Coding Standards Section 10.1).
+
+This is a utility type used by tests and the future REPL interpreter.
+The core type system and semantics use de Bruijn indices and do not
+reference `Env`.
 
 Empty environment can be constructed using `[]`.
 Variables can be looked up using list operations.

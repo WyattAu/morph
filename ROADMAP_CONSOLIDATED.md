@@ -8,15 +8,15 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 
 | Metric | Value |
 |---|---|
-| `lake build Morph` | 328 jobs, 0 errors, 0 sorry warnings |
-| `lake build Morph.Tests` | 186 jobs, 0 errors |
+| `lake build Morph` | 329 jobs, 0 errors, 0 sorry warnings |
+| `lake build Morph.Tests` | 186+ jobs, 0 errors |
 | Python spec-tools | 803 tests, 96.04% coverage |
-| `.lean` files | 155 |
-| Lines of Lean | ~16,165 |
-| Spec modules | 43 |
-| Theorems/lemmas (total) | 787 |
+| `.lean` files | 156 |
+| Lines of Lean | ~17,500 |
+| Spec modules | 44 |
+| Theorems/lemmas (total) | ~800 |
 | `sorry` declarations | 0 |
-| `example : True := trivial` stubs | 0 |
+| `example : True := trivial` stubs | 8 (Executable.lean only, documented) |
 | Pre-commit hook | 7-step gate (lake build, sorry scan, stub scan, tests, pytest, ruff/mypy, spec-tools lint) |
 | CI/CD | 4 GitHub Actions (lean-build, spec-validation, nightly, pages) + GitLab CI + Jenkins |
 | Broken cross-refs (spec/) | 367 (mostly internal section anchors in spec markdown) |
@@ -24,7 +24,7 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 | ruff | 0 errors, 0 warnings, 66 files formatted |
 | mypy | 0 errors, 66 source files |
 
-### Issues Resolved This Audit
+### Issues Resolved This Audit (Updated 2026-05-23)
 
 | Category | Fix |
 |---|---|
@@ -45,6 +45,14 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 | Proofs: lift zero identity | Proved `liftUnder_zero_eq`, `liftUnder_zero_eq_list`, `lift_zero_eq` in Lemmas.lean |
 | Proofs: bvar substitution | Fixed sorry #1 (bvar n=0 case) in HasType_subst using lift_zero_eq |
 | Proofs: weakening visibility | Made `weakening_at_depth` and `weakening_at_depth_all` public in Lemmas.lean |
+| Spec: Pointer Hashable | Added `Hashable` derive to `Pointer` structure in Core.lean |
+| Spec: Operator comment | Fixed comment to separate unary logical (`not`) from binary logical (`and`/`or`) |
+| Spec: Value.undef docs | Clarified `undef` is intentionally excluded from well-typed programs |
+| Spec: Env docs | Clarified `Env` is a utility for tests/future REPL, not used by core |
+| Tests: HasType constructors | Added 32 direct HasType/HasTypeAll constructor tests (was 0/22) |
+| Tests: inferType coverage | Added 25 inferType tests covering literals, operators, blocks, for-loops |
+| Proofs: Type safety | Proved `type_safety`, `not_stuck`, `multi_step_preservation`, `value_is_well_typed`, `closed_no_bvar` in Soundness.lean |
+| Proofs: WellTypedValue | Defined inductive predicate connecting IsValue to well-typed values |
 
 ### Outstanding Issues
 
@@ -401,13 +409,15 @@ Month 15-18: [6.1-6.5]                    -- Production readiness, beta
 | Criterion | Target | Current |
 |---|---|---|
 | `lake build Morph` errors | 0 | 0 |
-| `lake build Morph` warnings | 0 | 2 (sorry-related) |
-| `sorry` in `Morph/` | 0 | 6 |
-| `example : True := trivial` stubs | 0 | 0 |
+| `lake build Morph` warnings | 0 | 0 |
+| `sorry` in `Morph/` | 0 | 0 |
+| `example : True := trivial` stubs | 0 | 8 (Executable.lean only) |
+| HasType constructor test coverage | 22/22 | 22/22 |
+| Type soundness theorems | Proven | type_safety, not_stuck, multi_step_preservation, value_is_well_typed |
 | Broken cross-references | < 10 | 367 |
 | CI passes on every push | Yes | Yes |
-| Python spec-tools coverage | >= 95% | 93.29% |
-| Pre-commit blocks on sorry | Yes | Warns only |
+| Python spec-tools coverage | >= 95% | 96.04% |
+| Pre-commit blocks on sorry | Yes | Yes |
 | Regression snapshot tracking | Active | Script exists, not in CI |
 | Spec status page | Auto-generated | Manual |
 | Tier 1-4 proofs complete | 43 modules | In progress |
