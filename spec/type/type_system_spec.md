@@ -1,6 +1,6 @@
 # Morph Type System Specification (TSS)
 
-- File: `spec/type/type_system_spec.md`
+- File: `type_system_spec.md`
 - Version: 2.1.0
 - Context: Layer 2 (Semantic Analysis) - Formalism
 - Status: Active

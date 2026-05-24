@@ -1,6 +1,6 @@
 # Morph Metaprogramming Specification (MPS)
 
-- File: `spec/tooling/metaprogramming_spec.md`
+- File: `metaprogramming_spec.md`
 - Version: 2.1.0
 - Context: Layer 2 (Compilation Phase) - Formalism
 - Status: Active

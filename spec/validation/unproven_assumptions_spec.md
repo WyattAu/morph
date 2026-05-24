@@ -20,7 +20,7 @@ This specification provides formal validation of unproven assumptions identified
 ### 1.2 Scope
 
 This specification covers:
-- Formal validation of each unproven assumption from SPEC_GAPS_AND_BASIS.md
+- Formal validation of each unproven assumption from [SPEC_GAPS_AND_BASIS.md](../../SPEC_GAPS_AND_BASIS.md)
 - Mathematical proofs for valid assumptions
 - Revised statements for partially valid assumptions
 - Counterexamples for invalid assumptions
@@ -634,7 +634,7 @@ $$
 
 #### 5.1.1 Validation Completeness Theorem
 
-**Theorem:* All unproven assumptions from SPEC_GAPS_AND_BASIS.md have been formally validated.
+**Theorem:* All unproven assumptions from [SPEC_GAPS_AND_BASIS.md](../../SPEC_GAPS_AND_BASIS.md) have been formally validated.
 
 **Formal Statement:*
 $$
@@ -904,7 +904,7 @@ Before marking an assumption as validated, verify:
 **Definition:* The validation specification provides complete formal analysis of all unproven assumptions.
 
 **Requirements:*
-- **UVA-REQ-001:* THE system SHALL validate all unproven assumptions from SPEC_GAPS_AND_BASIS.md.
+- **UVA-REQ-001:* THE system SHALL validate all unproven assumptions from [SPEC_GAPS_AND_BASIS.md](../../SPEC_GAPS_AND_BASIS.md).
 - **UVA-REQ-002:* THE system SHALL classify each assumption as VALID, PARTIALLY-VALID, or INVALID.
 - **UVA-REQ-003:* THE system SHALL provide formal proofs for valid assumptions.
 - **UVA-REQ-004:* THE system SHALL provide revised statements for partially valid assumptions.
@@ -974,7 +974,7 @@ Before marking an assumption as validated, verify:
 2. Classify as VALID, PARTIALLY-VALID, or INVALID
 3. Provide formal proof or counterexample
 4. Add to this validation specification
-5. Update SPEC_GAPS_AND_BASIS.md
+5. Update [SPEC_GAPS_AND_BASIS.md](../../SPEC_GAPS_AND_BASIS.md)
 
 **Conservative Extension:*
 - New assumptions must be isomorphic to existing validation methodology
@@ -1000,4 +1000,4 @@ Before marking an assumption as validated, verify:
 
 | Version | Date       | Author      | Changes                                                                 |
 |---------|------------|-------------|-------------------------------------------------------------------------|
-| 1.0.0   | 2026-01-02 | Kilo Code    | Initial version: Formal validation of all unproven assumptions from SPEC_GAPS_AND_BASIS.md |
+| 1.0.0   | 2026-01-02 | Kilo Code    | Initial version: Formal validation of all unproven assumptions from [SPEC_GAPS_AND_BASIS.md](../../SPEC_GAPS_AND_BASIS.md) |

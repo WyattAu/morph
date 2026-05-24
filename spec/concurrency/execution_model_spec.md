@@ -1,6 +1,6 @@
 # Morph Execution Model Specification (EMS)
 
-- File: `spec/concurrency/execution_model_spec.md`
+- File: `execution_model_spec.md`
 - Version: 2.2.0
 - Context: Layer 3 (Runtime) - Formalism
 - Status: Active

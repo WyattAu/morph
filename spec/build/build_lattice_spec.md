@@ -1,6 +1,6 @@
 # Morph Build Lattice Specification (BLS)
 
-- File: `spec/build/build_lattice_spec.md`
+- File: `build_lattice_spec.md`
 - Version: 2.0.0
 - Context: Layer 1 (Build System) - Formalism
 - Status: Active

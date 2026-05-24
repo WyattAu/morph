@@ -1,6 +1,6 @@
 # Morph Language Specification
 
-- File: `spec/language/morph_language_spec.md`
+- File: `morph_language_spec.md`
 - Version: 2.0.0
 - Context: Layer 2 (Compiler) - Formalism
 - Status: Active

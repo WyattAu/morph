@@ -1,6 +1,6 @@
 # Morph Optimization Manifold Specification (OMS)
 
-- File: `spec/optimization/optimization_manifold_spec.md`
+- File: `optimization_manifold_spec.md`
 - Version: 2.0.0
 - Context: Layer 2 (Compiler Backend) - Formalism
 - Status: Active

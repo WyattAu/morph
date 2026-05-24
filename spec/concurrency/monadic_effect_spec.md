@@ -1,6 +1,6 @@
 # Monadic Effect Specification
 
-- `File:* concurrency/monadic_effect_spec.md
+- `File:* monadic_effect_spec.md
 - `Version:* 1.0.0
 - `Context:* Layer 2 (Semantics) & Layer 4 (Infrastructure)
 - `Formalism:* Monads, Kleisli Categories

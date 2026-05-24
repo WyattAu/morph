@@ -1,6 +1,6 @@
 # Morph Standard Library Algebraic Specification (SAS)
 
-- File: `spec/stdlib/stdlib_algebraic_spec.md`
+- File: `stdlib_algebraic_spec.md`
 - Version: 2.0.0
 - Context: Layer 4 (Standard Library) - Formalism
 - Status: Active

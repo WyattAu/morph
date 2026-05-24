@@ -299,81 +299,81 @@ Current versions of all Morph specifications:
 
 | Specification | Version | Status | Layer | Domain |
 |---------------|----------|---------|--------|---------|
-| morph_language_spec.md | 2.0.0-MASTER | L1 | Core Language |
-| ast_graph_spec.md | 1.0.0 | L2 | Core Language |
-| lexical_structure_syntax_spec.md | 1.0.0 | L1 | Core Language |
-| module_system_spec.md | 1.0.0 | L1 | Core Language |
-| scoping_lambda_calculus_spec.md | 1.0.0 | L2 | Core Language |
-| strict_state_unidirectional_spec.md | 1.0.0 | L2 | Core Language |
-| unidirectional_data_flow_spec.md | 1.0.0 | L2 | Core Language |
-| type_system_spec.md | 2.0.0 | L2 | Type System |
-| type_category_spec.md | 1.0.0 | L2 | Type System |
-| type_unification_spec.md | 1.0.0 | L2 | Type System |
-| pure_type_spec.md | 1.0.0 | L2 | Type System |
-| effect_system_spec.md | 1.0.0 | L2 | Type System |
-| memory_model_spec.md | 2.0.0 | L3 | Memory Model |
-| memory_acyclicity_spec.md | 1.0.0 | L3 | Memory Model |
-| memory_affine_logic_spec.md | 1.0.0 | L3 | Memory Model |
-| memory_petri_net_spec.md | 1.0.0 | L3 | Memory Model |
-| execution_model_spec.md | 2.0.0 | L3 | Concurrency |
-| concurrency_process_algebra_spec.md | 1.0.0 | L3 | Concurrency |
-| monadic_effect_spec.md | 1.0.0 | L3 | Concurrency |
-| scheduling_modes_spec.md | 1.0.0 | L3 | Concurrency |
-| scheduler_randomized_stealing_spec.md | 1.0.0 | L3 | Concurrency |
-| build_lattice_spec.md | 1.0.0 | L2 | Build System |
-| abi_alignment_algebra_spec.md | 1.0.0 | L2 | Build System |
-| abi_data_refinement_spec.md | 1.0.0 | L2 | Build System |
-| backend_tiling_spec.md | 1.0.0 | L2 | Build System |
-| dependency_sat_spec.md | 1.0.0 | L2 | Build System |
-| linker_logic_spec.md | 1.0.0 | L2 | Build System |
-| security_flow_spec.md | 2.0.0 | L2 | Security |
-| security_ocap_spec.md | 1.0.0 | L2 | Security |
-| infrastructure_safety_contracts_spec.md | 1.0.0 | L2 | Security |
-| agent_planning_mdp_spec.md | 1.0.0 | L2 | Tooling |
-| analysis_abstract_interp_spec.md | 1.0.0 | L2 | Tooling |
-| compiler_bisimulation_spec.md | 1.0.0 | L2 | Tooling |
-| comptime_partial_eval_spec.md | 1.0.0 | L2 | Tooling |
-| context_comonad_spec.md | 1.0.0 | L2 | Tooling |
-| context_temporal_logic_spec.md | 1.0.0 | L2 | Tooling |
-| deterministic_time_spec.md | 1.0.0 | L2 | Tooling |
-| diagnose_protocol_spec.md | 1.0.0 | L2 | Tooling |
-| distributed_crdt_spec.md | 1.0.0 | L3 | Distributed |
-| fuzzing_combinatorial_spec.md | 1.0.0 | L2 | Tooling |
-| graph_rewriting_spec.md | 1.0.0 | L2 | Tooling |
-| history_persistent_tree_spec.md | 1.0.0 | L2 | Tooling |
-| hot_reload_projection_spec.md | 1.0.0 | L2 | Tooling |
-| learning_theory_spec.md | 1.0.0 | L2 | Tooling |
-| meta_modal_logic_spec.md | 1.0.0 | L2 | Tooling |
-| metaprogramming_spec.md | 1.0.0 | L2 | Tooling |
-| operational_semantics_spec.md | 1.0.0 | L2 | Tooling |
-| parsing_island_grammar_spec.md | 1.0.0 | L2 | Tooling |
-| pattern_coverage_matrix_spec.md | 1.0.0 | L2 | Tooling |
-| protocol_session_types_spec.md | 1.0.0 | L2 | Tooling |
-| reactive_frp_spec.md | 1.0.0 | L2 | Tooling |
-| realtime_mtl_spec.md | 1.0.0 | L2 | Tooling |
-| registry_merkle_spec.md | 1.0.0 | L1 | Registry |
-| semantic_trie_spec.md | 1.0.0 | L2 | Tooling |
-| semantic_vector_spec.md | 1.0.0 | L2 | Tooling |
-| serialization_isomorphism_spec.md | 1.0.0 | L2 | Tooling |
-| symbolic_execution_fuzz_spec.md | 1.0.0 | L2 | Tooling |
-| synthesis_inhabitation_spec.md | 1.0.0 | L2 | Tooling |
-| optimization_manifold_spec.md | 1.0.0 | L2 | Optimization |
-| optimization_bayesian_spec.md | 1.0.0 | L2 | Optimization |
-| optimization_search_engine_specification.md | 1.0.0 | L2 | Optimization |
-| distributed_vector_clock_spec.md | 1.0.0 | L3 | Distributed |
-| financial_spec.md | 1.0.0 | L4 | Financial |
-| maths_spec.md | 1.0.0 | L4 | Math |
-| unit_group_theory_spec.md | 1.0.0 | L4 | Math |
-| ui_constraint_algebra_spec.md | 1.0.0 | L4 | UI |
-| ui_event_topology_spec.md | 1.0.0 | L4 | UI |
-| semantic_accessibility_spec.md | 1.0.0 | L4 | UI |
-| licensing_spec.md | 1.0.0 | L5 | Licensing |
-| license_deontic_logic_spec.md | 1.0.0 | L5 | Licensing |
-| module_existential_spec.md | 1.0.0 | L1 | Module System |
-| registry_consensus_spec.md | 1.0.0 | L1 | Registry |
-| operator_null_coalescing_spec.md | 1.0.0 | L2 | Language |
-| dialect_projection_spec.md | 1.0.0 | L2 | Language |
-| layered_concurrency_spec.md | 1.0.0 | L3 | Concurrency |
+| ../language/morph_language_spec.md | 2.0.0-MASTER | L1 | Core Language |
+| ../language/ast_graph_spec.md | 1.0.0 | L2 | Core Language |
+| ../language/lexical_structure_syntax_spec.md | 1.0.0 | L1 | Core Language |
+| ../language/module_system_spec.md | 1.0.0 | L1 | Core Language |
+| ../language/scoping_lambda_calculus_spec.md | 1.0.0 | L2 | Core Language |
+| ../language/strict_state_unidirectional_spec.md | 1.0.0 | L2 | Core Language |
+| ../language/unidirectional_data_flow_spec.md | 1.0.0 | L2 | Core Language |
+| ../type/type_system_spec.md | 2.0.0 | L2 | Type System |
+| ../type/type_category_spec.md | 1.0.0 | L2 | Type System |
+| ../type/type_unification_spec.md | 1.0.0 | L2 | Type System |
+| ../type/pure_type_spec.md | 1.0.0 | L2 | Type System |
+| ../type/effect_system_spec.md | 1.0.0 | L2 | Type System |
+| ../memory/memory_model_spec.md | 2.0.0 | L3 | Memory Model |
+| ../memory/memory_acyclicity_spec.md | 1.0.0 | L3 | Memory Model |
+| ../memory/memory_affine_logic_spec.md | 1.0.0 | L3 | Memory Model |
+| ../memory/memory_petri_net_spec.md | 1.0.0 | L3 | Memory Model |
+| ../concurrency/execution_model_spec.md | 2.0.0 | L3 | Concurrency |
+| ../concurrency/concurrency_process_algebra_spec.md | 1.0.0 | L3 | Concurrency |
+| ../concurrency/monadic_effect_spec.md | 1.0.0 | L3 | Concurrency |
+| ../concurrency/scheduling_modes_spec.md | 1.0.0 | L3 | Concurrency |
+| ../scheduler_randomized_stealing_spec.md | 1.0.0 | L3 | Concurrency |
+| ../build/build_lattice_spec.md | 1.0.0 | L2 | Build System |
+| ../build/abi_alignment_algebra_spec.md | 1.0.0 | L2 | Build System |
+| ../build/abi_data_refinement_spec.md | 1.0.0 | L2 | Build System |
+| ../build/backend_tiling_spec.md | 1.0.0 | L2 | Build System |
+| ../build/dependency_sat_spec.md | 1.0.0 | L2 | Build System |
+| ../build/linker_logic_spec.md | 1.0.0 | L2 | Build System |
+| ../security/security_flow_spec.md | 2.0.0 | L2 | Security |
+| ../security_ocap_spec.md | 1.0.0 | L2 | Security |
+| ../security/infrastructure_safety_contracts_spec.md | 1.0.0 | L2 | Security |
+| ../tooling/agent_planning_mdp_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/analysis_abstract_interp_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/compiler_bisimulation_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/comptime_partial_eval_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/context_comonad_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/context_temporal_logic_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/deterministic_time_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/diagnose_protocol_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/distributed_crdt_spec.md | 1.0.0 | L3 | Distributed |
+| ../tooling/fuzzing_combinatorial_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/graph_rewriting_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/history_persistent_tree_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/hot_reload_projection_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/learning_theory_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/meta_modal_logic_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/metaprogramming_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/operational_semantics_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/parsing_island_grammar_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/pattern_coverage_matrix_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/protocol_session_types_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/reactive_frp_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/realtime_mtl_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/registry_merkle_spec.md | 1.0.0 | L1 | Registry |
+| ../tooling/semantic_trie_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/semantic_vector_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/serialization_isomorphism_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/symbolic_execution_fuzz_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/synthesis_inhabitation_spec.md | 1.0.0 | L2 | Tooling |
+| ../optimization/optimization_manifold_spec.md | 1.0.0 | L2 | Optimization |
+| ../optimization/optimization_bayesian_spec.md | 1.0.0 | L2 | Optimization |
+| ../optimization/optimization_search_engine_specification.md | 1.0.0 | L2 | Optimization |
+| ../distributed_vector_clock_spec.md | 1.0.0 | L3 | Distributed |
+| ../financial/financial_spec.md | 1.0.0 | L4 | Financial |
+| ../math/maths_spec.md | 1.0.0 | L4 | Math |
+| ../math/unit_group_theory_spec.md | 1.0.0 | L4 | Math |
+| ../ui/ui_constraint_algebra_spec.md | 1.0.0 | L4 | UI |
+| ../ui/ui_event_topology_spec.md | 1.0.0 | L4 | UI |
+| ../ui/semantic_accessibility_spec.md | 1.0.0 | L4 | UI |
+| ../licensing/licensing_spec.md | 1.0.0 | L5 | Licensing |
+| ../licensing/license_deontic_logic_spec.md | 1.0.0 | L5 | Licensing |
+| ../module_existential_spec.md | 1.0.0 | L1 | Module System |
+| ../registry_consensus_spec.md | 1.0.0 | L1 | Registry |
+| ../language/operator_null_coalescing_spec.md | 1.0.0 | L2 | Language |
+| ../language/dialect_projection_spec.md | 1.0.0 | L2 | Language |
+| ../architecture/layered_concurrency_spec.md | 1.0.0 | L3 | Concurrency |
 | terminology_standardization_spec.md | 1.0.0 | L5 | Conventions |
 | version_compatibility_spec.md | 1.0.0 | L5 | Conventions |
 
@@ -383,16 +383,16 @@ Compatibility between core specifications:
 
 | Spec A | Spec B | Compatible? | Reason |
 |---------|---------|-------------|--------|
-| morph_language_spec.md (2.0.0) | type_system_spec.md (2.0.0) | Yes | Same MAJOR version |
-| morph_language_spec.md (2.0.0) | memory_model_spec.md (2.0.0) | Yes | Same MAJOR version |
-| morph_language_spec.md (2.0.0) | execution_model_spec.md (2.0.0) | Yes | Same MAJOR version |
-| morph_language_spec.md (2.0.0) | security_flow_spec.md (2.0.0) | Yes | Same MAJOR version |
-| type_system_spec.md (2.0.0) | memory_model_spec.md (2.0.0) | Yes | Same MAJOR version |
-| type_system_spec.md (2.0.0) | execution_model_spec.md (2.0.0) | Yes | Same MAJOR version |
-| type_system_spec.md (2.0.0) | security_flow_spec.md (2.0.0) | Yes | Same MAJOR version |
-| memory_model_spec.md (2.0.0) | execution_model_spec.md (2.0.0) | Yes | Same MAJOR version |
-| memory_model_spec.md (2.0.0) | security_flow_spec.md (2.0.0) | Yes | Same MAJOR version |
-| execution_model_spec.md (2.0.0) | security_flow_spec.md (2.0.0) | Yes | Same MAJOR version |
+| ../language/morph_language_spec.md (2.0.0) | ../type/type_system_spec.md (2.0.0) | Yes | Same MAJOR version |
+| ../language/morph_language_spec.md (2.0.0) | ../memory/memory_model_spec.md (2.0.0) | Yes | Same MAJOR version |
+| ../language/morph_language_spec.md (2.0.0) | ../concurrency/execution_model_spec.md (2.0.0) | Yes | Same MAJOR version |
+| ../language/morph_language_spec.md (2.0.0) | ../security/security_flow_spec.md (2.0.0) | Yes | Same MAJOR version |
+| ../type/type_system_spec.md (2.0.0) | ../memory/memory_model_spec.md (2.0.0) | Yes | Same MAJOR version |
+| ../type/type_system_spec.md (2.0.0) | ../concurrency/execution_model_spec.md (2.0.0) | Yes | Same MAJOR version |
+| ../type/type_system_spec.md (2.0.0) | ../security/security_flow_spec.md (2.0.0) | Yes | Same MAJOR version |
+| ../memory/memory_model_spec.md (2.0.0) | ../concurrency/execution_model_spec.md (2.0.0) | Yes | Same MAJOR version |
+| ../memory/memory_model_spec.md (2.0.0) | ../security/security_flow_spec.md (2.0.0) | Yes | Same MAJOR version |
+| ../concurrency/execution_model_spec.md (2.0.0) | ../security/security_flow_spec.md (2.0.0) | Yes | Same MAJOR version |
 
 **VCOMP-REQ-012:* THE system SHALL maintain a compatibility matrix for all specification pairs.
 
@@ -410,10 +410,10 @@ Specifications depending on type system:
 
 | Dependent Spec | Type System Version | Compatible? | Required Version |
 |----------------|-------------------|---------------|------------------|
-| morph_language_spec.md | 2.0.0 | Yes | ≥ 2.0.0 |
-| memory_model_spec.md | 2.0.0 | Yes | ≥ 2.0.0 |
-| execution_model_spec.md | 2.0.0 | Yes | ≥ 2.0.0 |
-| security_flow_spec.md | 2.0.0 | Yes | ≥ 2.0.0 |
+| ../language/morph_language_spec.md | 2.0.0 | Yes | ≥ 2.0.0 |
+| ../memory/memory_model_spec.md | 2.0.0 | Yes | ≥ 2.0.0 |
+| ../concurrency/execution_model_spec.md | 2.0.0 | Yes | ≥ 2.0.0 |
+| ../security/security_flow_spec.md | 2.0.0 | Yes | ≥ 2.0.0 |
 | All other specs | 1.0.0 | Yes | ≥ 1.0.0 |
 
 **VCOMP-REQ-013:* THE system SHALL validate that dependent specifications meet minimum version requirements.
@@ -430,7 +430,7 @@ Specifications depending on language:
 
 | Dependent Spec | Language Version | Compatible? | Required Version |
 |----------------|------------------|---------------|------------------|
-| type_system_spec.md | 2.0.0-MASTER | Yes | ≥ 2.0.0 |
+| ../type/type_system_spec.md | 2.0.0-MASTER | Yes | ≥ 2.0.0 |
 | All other specs | 1.0.0 | Yes | ≥ 1.0.0 |
 
 **VCOMP-REQ-014:* THE system SHALL validate language version dependencies before compilation.
@@ -447,9 +447,9 @@ Specifications depending on memory model:
 
 | Dependent Spec | Memory Model Version | Compatible? | Required Version |
 |----------------|----------------------|---------------|------------------|
-| execution_model_spec.md | 2.0.0 | Yes | ≥ 2.0.0 |
-| distributed_vector_clock_spec.md | 1.0.0 | Yes | ≥ 1.0.0 |
-| distributed_crdt_spec.md | 1.0.0 | Yes | ≥ 1.0.0 |
+| ../concurrency/execution_model_spec.md | 2.0.0 | Yes | ≥ 2.0.0 |
+| ../distributed_vector_clock_spec.md | 1.0.0 | Yes | ≥ 1.0.0 |
+| ../tooling/distributed_crdt_spec.md | 1.0.0 | Yes | ≥ 1.0.0 |
 
 **VCOMP-REQ-015:* THE system SHALL validate memory model version dependencies.
 
@@ -684,11 +684,11 @@ Specifications are grouped for synchronization:
 
 #### 7.2.1 Core Group
 
-- morph_language_spec.md
-- type_system_spec.md
-- memory_model_spec.md
-- execution_model_spec.md
-- security_flow_spec.md
+- ../language/morph_language_spec.md
+- ../type/type_system_spec.md
+- ../memory/memory_model_spec.md
+- ../concurrency/execution_model_spec.md
+- ../security/security_flow_spec.md
 
 **Synchronization Rule:* All core specs release together with same MAJOR version.
 
@@ -702,11 +702,11 @@ Specifications are grouped for synchronization:
 
 #### 7.2.2 Type System Group
 
-- type_system_spec.md
-- type_category_spec.md
-- type_unification_spec.md
-- pure_type_spec.md
-- effect_system_spec.md
+- ../type/type_system_spec.md
+- ../type/type_category_spec.md
+- ../type/type_unification_spec.md
+- ../type/pure_type_spec.md
+- ../type/effect_system_spec.md
 
 **Synchronization Rule:* Type system specs release together with same MAJOR version.
 
@@ -720,12 +720,12 @@ Specifications are grouped for synchronization:
 
 #### 7.2.3 Concurrency Group
 
-- execution_model_spec.md
-- concurrency_process_algebra_spec.md
-- monadic_effect_spec.md
-- scheduling_modes_spec.md
-- scheduler_randomized_stealing_spec.md
-- layered_concurrency_spec.md
+- ../concurrency/execution_model_spec.md
+- ../concurrency/concurrency_process_algebra_spec.md
+- ../concurrency/monadic_effect_spec.md
+- ../concurrency/scheduling_modes_spec.md
+- ../scheduler_randomized_stealing_spec.md
+- ../architecture/layered_concurrency_spec.md
 
 **Synchronization Rule:* Concurrency specs release together with same MAJOR version.
 

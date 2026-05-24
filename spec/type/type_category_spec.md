@@ -1,6 +1,6 @@
 # Category Theoretic Type Specification
 
-- `File:* type/type_category_spec.md
+- `File:* type_category_spec.md
 - `Version:* 1.0.0
 - `Context:* Layer 2 (Type Checker)
 - `Formalism:* Category Theory
