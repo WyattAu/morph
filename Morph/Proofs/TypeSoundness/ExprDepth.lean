@@ -23,6 +23,7 @@ def exprDepth : Morph.Syntax.Expr → Nat
   | .ifThenElse c t f => Nat.max (exprDepth c) (Nat.max (exprDepth t) (exprDepth f)) + 1
   | .forLoop s e body => Nat.max (exprDepth s) (Nat.max (exprDepth e) (listExprDepth body)) + 1
   | .block exprs => listExprDepth exprs + 1
+  | .match_ scrut _ => exprDepth scrut + 1
 end
 
 end Morph.Proofs.TypeSoundness

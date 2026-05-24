@@ -306,16 +306,16 @@ Current versions of all Morph specifications:
 | ../language/scoping_lambda_calculus_spec.md | 1.0.0 | L2 | Core Language |
 | ../language/strict_state_unidirectional_spec.md | 1.0.0 | L2 | Core Language |
 | ../language/unidirectional_data_flow_spec.md | 1.0.0 | L2 | Core Language |
-| ../type/type_system_spec.md | 2.0.0 | L2 | Type System |
+| ../type/type_system_spec.md | 2.1.0 | L2 | Type System |
 | ../type/type_category_spec.md | 1.0.0 | L2 | Type System |
 | ../type/type_unification_spec.md | 1.0.0 | L2 | Type System |
 | ../type/pure_type_spec.md | 1.0.0 | L2 | Type System |
 | ../type/effect_system_spec.md | 1.0.0 | L2 | Type System |
-| ../memory/memory_model_spec.md | 2.0.0 | L3 | Memory Model |
+| ../memory/memory_model_spec.md | 3.3.0 | L3 | Memory Model |
 | ../memory/memory_acyclicity_spec.md | 1.0.0 | L3 | Memory Model |
 | ../memory/memory_affine_logic_spec.md | 1.0.0 | L3 | Memory Model |
 | ../memory/memory_petri_net_spec.md | 1.0.0 | L3 | Memory Model |
-| ../concurrency/execution_model_spec.md | 2.0.0 | L3 | Concurrency |
+| ../concurrency/execution_model_spec.md | 2.2.0 | L3 | Concurrency |
 | ../concurrency/concurrency_process_algebra_spec.md | 1.0.0 | L3 | Concurrency |
 | ../concurrency/monadic_effect_spec.md | 1.0.0 | L3 | Concurrency |
 | ../concurrency/scheduling_modes_spec.md | 1.0.0 | L3 | Concurrency |
@@ -383,16 +383,16 @@ Compatibility between core specifications:
 
 | Spec A | Spec B | Compatible? | Reason |
 |---------|---------|-------------|--------|
-| ../language/morph_language_spec.md (2.0.0) | ../type/type_system_spec.md (2.0.0) | Yes | Same MAJOR version |
-| ../language/morph_language_spec.md (2.0.0) | ../memory/memory_model_spec.md (2.0.0) | Yes | Same MAJOR version |
-| ../language/morph_language_spec.md (2.0.0) | ../concurrency/execution_model_spec.md (2.0.0) | Yes | Same MAJOR version |
+| ../language/morph_language_spec.md (2.0.0) | ../type/type_system_spec.md (2.1.0) | Yes | Same MAJOR version |
+| ../language/morph_language_spec.md (2.0.0) | ../memory/memory_model_spec.md (3.3.0) | No | Different MAJOR version |
+| ../language/morph_language_spec.md (2.0.0) | ../concurrency/execution_model_spec.md (2.2.0) | Yes | Same MAJOR version |
 | ../language/morph_language_spec.md (2.0.0) | ../security/security_flow_spec.md (2.0.0) | Yes | Same MAJOR version |
-| ../type/type_system_spec.md (2.0.0) | ../memory/memory_model_spec.md (2.0.0) | Yes | Same MAJOR version |
-| ../type/type_system_spec.md (2.0.0) | ../concurrency/execution_model_spec.md (2.0.0) | Yes | Same MAJOR version |
-| ../type/type_system_spec.md (2.0.0) | ../security/security_flow_spec.md (2.0.0) | Yes | Same MAJOR version |
-| ../memory/memory_model_spec.md (2.0.0) | ../concurrency/execution_model_spec.md (2.0.0) | Yes | Same MAJOR version |
-| ../memory/memory_model_spec.md (2.0.0) | ../security/security_flow_spec.md (2.0.0) | Yes | Same MAJOR version |
-| ../concurrency/execution_model_spec.md (2.0.0) | ../security/security_flow_spec.md (2.0.0) | Yes | Same MAJOR version |
+| ../type/type_system_spec.md (2.1.0) | ../memory/memory_model_spec.md (3.3.0) | No | Different MAJOR version |
+| ../type/type_system_spec.md (2.1.0) | ../concurrency/execution_model_spec.md (2.2.0) | Yes | Same MAJOR version |
+| ../type/type_system_spec.md (2.1.0) | ../security/security_flow_spec.md (2.0.0) | Yes | Same MAJOR version |
+| ../memory/memory_model_spec.md (3.3.0) | ../concurrency/execution_model_spec.md (2.2.0) | No | Different MAJOR version |
+| ../memory/memory_model_spec.md (3.3.0) | ../security/security_flow_spec.md (2.0.0) | No | Different MAJOR version |
+| ../concurrency/execution_model_spec.md (2.2.0) | ../security/security_flow_spec.md (2.0.0) | Yes | Same MAJOR version |
 
 **VCOMP-REQ-012:* THE system SHALL maintain a compatibility matrix for all specification pairs.
 
@@ -410,9 +410,9 @@ Specifications depending on type system:
 
 | Dependent Spec | Type System Version | Compatible? | Required Version |
 |----------------|-------------------|---------------|------------------|
-| ../language/morph_language_spec.md | 2.0.0 | Yes | ≥ 2.0.0 |
-| ../memory/memory_model_spec.md | 2.0.0 | Yes | ≥ 2.0.0 |
-| ../concurrency/execution_model_spec.md | 2.0.0 | Yes | ≥ 2.0.0 |
+| ../language/morph_language_spec.md | 2.1.0 | Yes | ≥ 2.0.0 |
+| ../memory/memory_model_spec.md | 3.3.0 | No | ≥ 2.0.0 (MAJOR mismatch) |
+| ../concurrency/execution_model_spec.md | 2.2.0 | Yes | ≥ 2.0.0 |
 | ../security/security_flow_spec.md | 2.0.0 | Yes | ≥ 2.0.0 |
 | All other specs | 1.0.0 | Yes | ≥ 1.0.0 |
 
@@ -430,7 +430,7 @@ Specifications depending on language:
 
 | Dependent Spec | Language Version | Compatible? | Required Version |
 |----------------|------------------|---------------|------------------|
-| ../type/type_system_spec.md | 2.0.0-MASTER | Yes | ≥ 2.0.0 |
+| ../type/type_system_spec.md | 2.1.0 | Yes | ≥ 2.0.0 |
 | All other specs | 1.0.0 | Yes | ≥ 1.0.0 |
 
 **VCOMP-REQ-014:* THE system SHALL validate language version dependencies before compilation.
@@ -447,7 +447,7 @@ Specifications depending on memory model:
 
 | Dependent Spec | Memory Model Version | Compatible? | Required Version |
 |----------------|----------------------|---------------|------------------|
-| ../concurrency/execution_model_spec.md | 2.0.0 | Yes | ≥ 2.0.0 |
+| ../concurrency/execution_model_spec.md | 2.2.0 | Yes | ≥ 2.0.0 |
 | ../distributed_vector_clock_spec.md | 1.0.0 | Yes | ≥ 1.0.0 |
 | ../tooling/distributed_crdt_spec.md | 1.0.0 | Yes | ≥ 1.0.0 |
 
@@ -523,7 +523,8 @@ $$
 | From | To | Path | Breaking Changes |
 |------|-----|-------|----------------|
 | 1.0.0 | 2.0.0 | 1.0.0 → 2.0.0 | ARC integration, affine types |
-| 2.0.0 | 2.1.0 | 2.0.0 → 2.1.0 | None (backward compatible) |
+| 2.0.0 | 3.0.0 | 2.0.0 → 3.0.0 | Memory model redesign |
+| 3.0.0 | 3.3.0 | 3.0.0 → 3.3.0 | None (backward compatible) |
 
 **VCOMP-REQ-019:* THE system SHALL validate memory model compatibility during upgrades.
 
@@ -836,12 +837,12 @@ fn resolveDependencies(specs: List<Spec>): Version {
 
 // Example
 specs = [
-  { name: "type_system", version: "2.0.0" },
-  { name: "memory_model", version: "2.0.0" },
-  { name: "execution_model", version: "2.0.0" }
+  { name: "type_system", version: "2.1.0" },
+  { name: "memory_model", version: "3.3.0" },
+  { name: "execution_model", version: "2.2.0" }
 ]
 
-// Result: 2.0.0 (all compatible)
+// Result: Incompatible (memory_model MAJOR=3 differs from others MAJOR=2)
 ```
 
 ### 8.3 Upgrade Path Examples

@@ -138,19 +138,13 @@ theorem inv_edges_valid_references
   : AccessGraph.edges_valid g := by
   exact h_access_graph.right
 
-theorem inv_authority_subset_reachable
-  {_g : AccessGraph}
-  {ctx : CapabilityRoot}
-  {f : Function}
-  (_h_ctx_root : spec_authority_inheritance ctx f f)
-  : True := trivial
+-- TODO: Prove authority subset is reachable
+-- Blocked on: Authority function is a stub (always returns []),
+-- authority_inheritance is a stub (always returns True).
+-- Requires proper implementation of capability propagation semantics.
 
-theorem inv_authority_well_formed
-  (_g : AccessGraph)
-  (_ctx : CapabilityRoot)
-  (_f : Function)
-  (_h_ctx_root : spec_authority_inheritance ctx f f)
-  (_h_access_graph : spec_access_graph g)
-  : True := trivial
+-- TODO: Prove authority set is well-formed
+-- Blocked on: Same as inv_authority_subset_reachable.
+-- Requires proper Authority computation and well-formedness predicate.
 
 end Morph.Specs.SecurityOCap

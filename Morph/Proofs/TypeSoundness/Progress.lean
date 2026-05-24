@@ -286,6 +286,88 @@ private theorem progress_strong :
       | inr hStep1 =>
         obtain ⟨e1', hs⟩ := hStep1
         right; exact ⟨.binop op e1' e2, Step.binop_left op e1 e1' e2 hs⟩
+    | binop_ptr_arith _ _ op e1 e2 hPtr hSub1 hSub2 =>
+      have h1 := ih e1 (Nat.lt_of_lt_of_le (depth_binop_l op) (Nat.le_of_lt_succ hDepth)) .pointerType hSub1
+      have h2 := ih e2 (Nat.lt_of_lt_of_le (depth_binop_r op) (Nat.le_of_lt_succ hDepth)) .intType hSub2
+      cases h1 with
+      | inl hv1 =>
+        cases hv1 with
+        | lit v =>
+          cases v with
+          | pointer p =>
+            cases h2 with
+            | inl hv2 =>
+              obtain ⟨k2, hk2⟩ := canonical_int hv2 hSub2
+              rw [hk2]
+              match hRes : evalPtrArithOp op p k2 with
+              | some r =>
+                right; exact ⟨.lit (.pointer r), Step.binop_ptr_arith op p k2 r hPtr hRes⟩
+              | none =>
+                exfalso
+                cases op with
+                | ptrAdd =>
+                  unfold evalPtrArithOp at hRes; contradiction
+                | ptrSub =>
+                  unfold evalPtrArithOp at hRes; contradiction
+                | _ => unfold Morph.Specs.TypeSystem.isPtrArithOp at hPtr; exact hPtr.elim
+            | inr hStep2 =>
+              obtain ⟨e2', hs⟩ := hStep2
+              right; exact ⟨.binop op (.lit (.pointer p)) e2',
+                Step.binop_right op (.pointer p) e2 e2' (IsValue.lit (.pointer p)) hs⟩
+          | _ => exfalso; cases hSub1
+        | lam _ _ => exfalso; cases hSub1
+      | inr hStep1 =>
+        obtain ⟨e1', hs⟩ := hStep1
+        right; exact ⟨.binop op e1' e2, Step.binop_left op e1 e1' e2 hs⟩
+    | binop_ptr_load _ _ e1 e2 hSub1 hSub2 =>
+      have h1 := ih e1 (Nat.lt_of_lt_of_le (depth_binop_l .ptrLoad) (Nat.le_of_lt_succ hDepth)) .pointerType hSub1
+      cases h1 with
+      | inl hv1 =>
+        cases hv1 with
+        | lit v =>
+          cases v with
+          | pointer p =>
+            have h2 := ih e2 (Nat.lt_of_lt_of_le (depth_binop_r .ptrLoad) (Nat.le_of_lt_succ hDepth)) .unitType hSub2
+            cases h2 with
+            | inl hv2 =>
+              cases hv2 with
+              | lit v2 =>
+                cases hSub2 with
+                | lit_unit => right; exact ⟨.lit .unit, Step.binop_ptr_load p⟩
+                | _ => contradiction
+              | lam _ _ => exfalso; cases hSub2
+            | inr hStep2 =>
+              obtain ⟨e2', hs⟩ := hStep2
+              right; exact ⟨.binop .ptrLoad (.lit (.pointer p)) e2',
+                Step.binop_right .ptrLoad (.pointer p) e2 e2' (IsValue.lit (.pointer p)) hs⟩
+          | _ => exfalso; cases hSub1
+        | lam _ _ => exfalso; cases hSub1
+      | inr hStep1 =>
+        obtain ⟨e1', hs⟩ := hStep1
+        right; exact ⟨.binop .ptrLoad e1' e2, Step.binop_left .ptrLoad e1 e1' e2 hs⟩
+    | binop_ptr_store _ _ e1 e2 hSub1 hSub2 =>
+      have h1 := ih e1 (Nat.lt_of_lt_of_le (depth_binop_l .ptrStore) (Nat.le_of_lt_succ hDepth)) .pointerType hSub1
+      cases h1 with
+      | inl hv1 =>
+        cases hv1 with
+        | lit v =>
+          cases v with
+          | pointer p =>
+            have h2 := ih e2 (Nat.lt_of_lt_of_le (depth_binop_r .ptrStore) (Nat.le_of_lt_succ hDepth)) .intType hSub2
+            cases h2 with
+            | inl hv2 =>
+              obtain ⟨k2, hk2⟩ := canonical_int hv2 hSub2
+              rw [hk2]
+              right; exact ⟨.lit .unit, Step.binop_ptr_store p (Value.int k2)⟩
+            | inr hStep2 =>
+              obtain ⟨e2', hs⟩ := hStep2
+              right; exact ⟨.binop .ptrStore (.lit (.pointer p)) e2',
+                Step.binop_right .ptrStore (.pointer p) e2 e2' (IsValue.lit (.pointer p)) hs⟩
+          | _ => exfalso; cases hSub1
+        | lam _ _ => exfalso; cases hSub1
+      | inr hStep1 =>
+        obtain ⟨e1', hs⟩ := hStep1
+        right; exact ⟨.binop .ptrStore e1' e2, Step.binop_left .ptrStore e1 e1' e2 hs⟩
     | lam_type _ _ n body paramTys retTy hLen hBody =>
       left; exact IsValue.lam n body
     | app_type _ _ fnE argsE τs _ hFnE hArgsE =>

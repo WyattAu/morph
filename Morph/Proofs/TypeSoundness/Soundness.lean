@@ -121,6 +121,7 @@ theorem value_is_well_typed : forall {e : Expr} {τ : Typ},
       | lit_unit => exact WellTypedValue.lit_unit
     | pointer p => cases ht with
       | lit_pointer => exact WellTypedValue.lit_pointer p
+    | float _ => cases ht
     | undef => cases ht
   | lam n body =>
     cases ht with

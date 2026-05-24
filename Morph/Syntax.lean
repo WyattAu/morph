@@ -74,7 +74,8 @@ inductive Expr : Type where
   | ifThenElse : Expr → Expr → Expr → Expr
   | forLoop : Expr → Expr → List Expr → Expr
   | block : List Expr → Expr
- deriving Repr
+  | match_ : Expr → List (List String × Expr) → Expr
+ deriving Repr, BEq
 
 /-!
 ## Stmt
@@ -134,6 +135,7 @@ def liftUnder (bound : Nat) (k : Nat) : Expr → Expr
   | .forLoop s e body =>
     .forLoop (liftUnder bound k s) (liftUnder bound k e) (body.map (liftUnder (bound + 1) k))
   | .block exprs => .block (exprs.map (liftUnder bound k))
+  | .match_ scrut cases => .match_ (liftUnder bound k scrut) cases
 
 /-- Lift all free bound-variable indices in `e` by `k`. -/
 abbrev lift (k : Nat) (e : Expr) : Expr := liftUnder 0 k e
@@ -165,6 +167,7 @@ def subst' (bound : Nat) (e : Expr) (v : Expr) : Expr :=
   | .forLoop s e body =>
     .forLoop (subst' bound s v) (subst' bound e v) (body.map (subst' (bound + 1) · v))
   | .block exprs => .block (exprs.map (subst' bound · v))
+  | .match_ scrut cases => .match_ (subst' bound scrut v) cases
 
 /-- Substitute the bound variable at index 0 with `v`. -/
 abbrev subst (e : Expr) (v : Expr) : Expr := subst' 0 e v
@@ -204,6 +207,7 @@ def substAll' (k : Nat) (vs : List Expr) (e : Expr) : Expr :=
   | .forLoop s e body =>
     .forLoop (substAll' k vs s) (substAll' k vs e) (body.map (substAll' (k + 1) vs))
   | .block exprs => .block (exprs.map (substAll' k vs))
+  | .match_ scrut cases => .match_ (substAll' k vs scrut) cases
 
 /-- Simultaneously substitute bound variables at indices 0, 1, ..., |vs|-1. -/
 abbrev substAll (vs : List Expr) (e : Expr) : Expr := substAll' 0 vs e
@@ -227,5 +231,6 @@ def freeVars : Expr → List String
   | .ifThenElse c t f => freeVars c ++ freeVars t ++ freeVars f
   | .forLoop s e body => freeVars s ++ freeVars e ++ body.flatMap freeVars
   | .block exprs => exprs.flatMap freeVars
+  | .match_ scrut _ => freeVars scrut
 
 end Morph.Syntax

@@ -852,7 +852,7 @@ By structural induction on the syntax of expressions, if $\vdash e : T$, then $\
 - `Theorem:* If a program type-checks with capability system, then it is memory-safe (no use-after-free, no double-free, no data races).
 
 - Proof Sketch:*
-1. By definition of affine logic, each resource is used exactly once
+1. By definition of affine logic, each resource is used at most once
 2. Capability system prevents concurrent access to same resource
 3. Therefore, type-checked programs are memory-safe
 

@@ -185,15 +185,25 @@ def loadModuleFromWorkspace (workspace : Workspace) (name : String) : Option Mod
 theorem moduleHashDeterministic (content : String) :
   computeModuleHash content = computeModuleHash content := rfl
 
-theorem moduleIdUnique : True := trivial
+-- TODO: Prove module ID uniqueness in well-formed link tables
+-- Requires: ∀ (t : LinkTable), wellFormed t → (m1 m2 : Module) →
+--   (m1.id, m1) ∈ t → (m2.id, m2) ∈ t → m1.id = m2.id → m1 = m2
 
-theorem linkTableConsistent : True := trivial
+-- TODO: Prove link table consistency (all referenced dependencies exist)
+-- Requires: ∀ (t : LinkTable), wellFormed t →
+--   ∀ (m : Module), m ∈ t.map Prod.snd →
+--     m.dependencies.all (fun dep => t.any (fun (id, _) => id = dep))
 
-theorem workspaceRootValid : True := trivial
+-- TODO: Prove workspace root validity
+-- Requires proper Workspace.wellFormed definition
 
-theorem registrySearchCorrect : True := trivial
+/-- Registry search by name is definitional equality with filter. -/
+theorem registrySearchCorrect (registry : Registry) (name : String) :
+    searchRegistryByName registry name = registry.filter (fun entry => entry.name == name) := rfl
 
-theorem registryTagSearchCorrect : True := trivial
+/-- Registry search by tag is definitional equality with filter. -/
+theorem registryTagSearchCorrect (registry : Registry) (tag : String) :
+    searchRegistryByTag registry tag = registry.filter (fun entry => tag ∈ entry.tags) := rfl
 
 theorem versionConstraintSatisfactionCorrect (version : Nat) (constraint : VersionConstraint) :
   satisfiesConstraint version constraint = match constraint with
@@ -203,8 +213,9 @@ theorem versionConstraintSatisfactionCorrect (version : Nat) (constraint : Versi
   | VersionConstraint.range lo hi => lo <= version && version <= hi := by
   cases constraint <;> rfl
 
-theorem symbolManglingInjective : True := trivial
-
-theorem functionManglingInjective : True := trivial
+-- TODO: Prove symbol mangling injectivity
+-- Requires: ∀ (mid1 mid2 : ModuleId) (s1 s2 : String),
+--   mangleSymbol mid1 s1 = mangleSymbol mid2 s2 → mid1 = mid2 ∧ s1 = s2
+-- Blocked on: String reasoning in Lean 4 (string concatenation injectivity)
 
 end Morph.Specs.ModuleSystem

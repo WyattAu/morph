@@ -54,7 +54,15 @@ instance : Shrinkable Pointer where
       fun (b, o, pr) => ⟨b, o, pr⟩
 
 -- Value: simple recursive inductive
-deriving instance Arbitrary for Value
+instance : Arbitrary Value where
+  arbitrary := Gen.oneOf #[
+    Value.int <$> Arbitrary.arbitrary,
+    Value.bool <$> Arbitrary.arbitrary,
+    Value.string <$> Arbitrary.arbitrary,
+    Value.pointer <$> Arbitrary.arbitrary,
+    pure .unit,
+    pure .undef
+  ]
 
 instance : Shrinkable Value where
   shrink := fun v => match v with
@@ -62,6 +70,7 @@ instance : Shrinkable Value where
     | .bool _ => []
     | .string s => (Shrinkable.shrink s).map .string
     | .pointer p => (Shrinkable.shrink p).map .pointer
+    | .float _ => []
     | .unit => []
     | .undef => []
 

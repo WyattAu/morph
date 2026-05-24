@@ -80,6 +80,15 @@ structure Pointer where
   provenance : Option ProvenanceId
  deriving Repr, BEq, Hashable
 
+inductive IntWidth where
+  | i8 | i16 | i32 | i64
+  | u8 | u16 | u32 | u64
+  deriving Repr, BEq, Hashable
+
+inductive FloatWidth where
+  | f32 | f64
+  deriving Repr, BEq, Hashable
+
 /-!
 ## Value
 
@@ -90,6 +99,7 @@ Values can be:
 - `bool`: Boolean values (true/false)
 - `string`: String values
 - `pointer`: Pointer values (block-offset with provenance)
+- `float`: Floating-point values
 - `unit`: Unit value (for void functions)
 - `undef`: Undefined value (for uninitialized memory)
 
@@ -106,6 +116,7 @@ inductive Value where
   | bool : Bool -> Value
   | string : String -> Value
   | pointer : Pointer -> Value
+  | float : Float -> Value
   | unit : Value
   | undef : Value
 deriving Repr, BEq
@@ -137,7 +148,9 @@ inductive Typ where
   | unitType : Typ
   | arrayType : Typ -> Nat -> Typ
   | functionType : List Typ -> Typ -> Typ
-deriving Repr, BEq, Hashable
+  | intWidthType : IntWidth → Typ
+  | floatType : FloatWidth → Typ
+  deriving Repr, BEq, Hashable
 
 /-!
 ## Operator

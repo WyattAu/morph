@@ -75,6 +75,7 @@ def inferType (bvs : List Morph.Core.Typ) (env : TypEnv) : Morph.Syntax.Expr -> 
   | .lit (.string _) => some .stringType
   | .lit .unit => some .unitType
   | .lit (.pointer _) => some .pointerType
+  | .lit (.float _) => some (.floatType .f64)
   | .lit .undef => none
   | .unop op e =>
     match op with
@@ -100,6 +101,18 @@ def inferType (bvs : List Morph.Core.Typ) (env : TypEnv) : Morph.Syntax.Expr -> 
     | some .boolType, some .boolType =>
       match op with
       | .and | .or => some .boolType
+      | _ => none
+    | some .pointerType, some .intType =>
+      match op with
+      | .ptrAdd | .ptrSub => some .pointerType
+      | _ => none
+    | some .pointerType, some .unitType =>
+      match op with
+      | .ptrLoad => some .unitType
+      | _ => none
+    | some .pointerType, some _ =>
+      match op with
+      | .ptrStore => some .unitType
       | _ => none
     | _, _ => none
   | .app fn args =>
@@ -132,6 +145,7 @@ def inferType (bvs : List Morph.Core.Typ) (env : TypEnv) : Morph.Syntax.Expr -> 
   | .block [] => some .unitType
   | .block [e] => inferType bvs env e
   | .block (_ :: es) => inferType bvs env (.block es)
+  | .match_ _ _ => none
 termination_by e => sizeOf e
 
 def typeCheck (bvs : List Morph.Core.Typ) (env : TypEnv) (e : Morph.Syntax.Expr) (expected : Morph.Core.Typ) : Prop :=
@@ -167,6 +181,11 @@ def isLogicOp (op : Morph.Core.Operator) : Prop :=
 def isBitwiseOp (op : Morph.Core.Operator) : Prop :=
   match op with
   | .andb | .orb | .xorb | .shl | .shr => True
+  | _ => False
+
+def isPtrArithOp (op : Morph.Core.Operator) : Prop :=
+  match op with
+  | .ptrAdd | .ptrSub => True
   | _ => False
 
 /-! ## Typing Judgments
@@ -215,6 +234,16 @@ inductive HasType : List Morph.Core.Typ → TypEnv → Morph.Syntax.Expr → Mor
       isBitwiseOp op →
       HasType bvs Γ e1 .intType → HasType bvs Γ e2 .intType →
       HasType bvs Γ (.binop op e1 e2) .intType
+  | binop_ptr_arith : ∀ bvs Γ op e1 e2,
+      isPtrArithOp op →
+      HasType bvs Γ e1 .pointerType → HasType bvs Γ e2 .intType →
+      HasType bvs Γ (.binop op e1 e2) .pointerType
+  | binop_ptr_load : ∀ bvs Γ e1 e2,
+      HasType bvs Γ e1 .pointerType → HasType bvs Γ e2 .unitType →
+      HasType bvs Γ (.binop .ptrLoad e1 e2) .unitType
+  | binop_ptr_store : ∀ bvs Γ e1 e2,
+      HasType bvs Γ e1 .pointerType → HasType bvs Γ e2 .intType →
+      HasType bvs Γ (.binop .ptrStore e1 e2) .unitType
   | lam_type : ∀ bvs Γ n body paramTys retTy,
       n = paramTys.length →
       HasType (paramTys.reverse ++ bvs) Γ body retTy →

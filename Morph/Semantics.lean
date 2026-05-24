@@ -47,6 +47,11 @@ def isBitwiseOp (op : Operator) : Prop :=
   | .andb | .orb | .xorb | .shl | .shr => True
   | _ => False
 
+def isPtrArithOp (op : Operator) : Prop :=
+  match op with
+  | .ptrAdd | .ptrSub => True
+  | _ => False
+
 /-! ## Evaluation Helpers -/
 
 def evalArithOp : Operator → Int → Int → Option Int
@@ -81,6 +86,11 @@ def evalBitwiseOp : Operator → Int → Int → Option Int
   | .shr,  n1, n2 => some (Int.shiftRight n1 n2.toNat)
   | _,     _,   _ => none
 
+def evalPtrArithOp : Operator → Pointer → Int → Option Pointer
+  | .ptrAdd, p, n => some { p with offset := p.offset + n }
+  | .ptrSub, p, n => some { p with offset := p.offset - n }
+  | _,        _, _ => none
+
 /-! ## Small-Step Relation -/
 
 inductive Step : Expr → Expr → Prop where
@@ -112,6 +122,17 @@ inductive Step : Expr → Expr → Prop where
       isBitwiseOp op →
       evalBitwiseOp op n1 n2 = some r →
       Step (.binop op (.lit (.int n1)) (.lit (.int n2))) (.lit (.int r))
+
+  | binop_ptr_arith : ∀ op p n r,
+      isPtrArithOp op →
+      evalPtrArithOp op p n = some r →
+      Step (.binop op (.lit (.pointer p)) (.lit (.int n))) (.lit (.pointer r))
+
+  | binop_ptr_load : ∀ p,
+      Step (.binop .ptrLoad (.lit (.pointer p)) (.lit (.unit))) (.lit (.unit))
+
+  | binop_ptr_store : ∀ p v,
+      Step (.binop .ptrStore (.lit (.pointer p)) (.lit v)) (.lit .unit)
 
   /- ## Unary Operations -/
 

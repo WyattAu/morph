@@ -105,7 +105,7 @@ The specification may appear contradictory when claiming both "Agent-First" (com
 
 ### 2.2 Compressed Keyword Set
 
-- **LANG-REQ-006 (Token Density):* The language reserves a compressed set of 22 keywords to maximize context window usage. Mappings include:
+- **LANG-REQ-006 (Token Density):* The language reserves a compressed set of 22 keywords (including `async` as a contextual keyword used only as a `let` modifier) to maximize context window usage. Mappings include:
   - `function` $\rightarrow$ `fn`
   - `return` $\rightarrow$ `ret`
   - `import` $\rightarrow$ `use`
@@ -252,7 +252,7 @@ The specification may appear contradictory when claiming both "Agent-First" (com
 **Dependencies:** LANG-REQ-018
 **Traceability:** Section 4.1 (Concurrency)
 
-- **LANG-REQ-023 (Implicit Suspension):* There are no `async`/`await` keywords. I/O functions marked `performs IO` automatically yield the Green Thread (Fiber).
+- **LANG-REQ-023 (Implicit Suspension):* There are no standalone `async`/`await` keywords. The `async` modifier may be used exclusively with `let` bindings to denote dataflow computation. I/O functions marked `performs IO` automatically yield the Green Thread (Fiber).
 
 **Priority:** High
 **Verification Method:** Test
@@ -523,7 +523,7 @@ flowchart TD
 
 ### 6.2 Effect System
 
-- **LANG-REQ-040 (Taxonomy):* Defined effects: `Pure`, `IO`, `Net`, `Sys`.
+- **LANG-REQ-040 (Taxonomy):* Defined effects: `Pure`, `IO`, `Net`, `Time`, `System`.
 
 **Priority:** Critical
 **Verification Method:** Test
@@ -1220,7 +1220,7 @@ classDiagram
 
 #### 15.1.2 Complete Error Type Enumeration
 
-**LANG-REQ-071 (Error Type Enumeration):* The language SHALL provide the following error types:
+**LANG-REQ-114 (Error Type Enumeration):* The language SHALL provide the following error types:
 
 | Error Type | Description | Recoverable | Phase |
 |------------|-------------|-------------|-------|
@@ -1255,7 +1255,7 @@ classDiagram
 
 #### 15.1.3 Error Code System
 
-**LANG-REQ-072 (Error Codes):* Each error type SHALL have a unique error code following the pattern `ERR_CATEGORY_SPECIFIC`:
+**LANG-REQ-115 (Error Codes):* Each error type SHALL have a unique error code following the pattern `ERR_CATEGORY_SPECIFIC`:
 
 | Category | Prefix | Example |
 |----------|--------|---------|
@@ -1271,14 +1271,14 @@ classDiagram
 **Priority:** High
 **Verification Method:** Test
 **Rationale:** Enables programmatic error handling and categorization
-**Dependencies:** LANG-REQ-071
+**Dependencies:** LANG-REQ-114
 **Traceability:** Section 15.1.3 (Error Code System)
 
 ### 15.2 Error Propagation Rules
 
 #### 15.2.1 Propagation Mechanisms
 
-**LANG-REQ-073 (Propagation Operator):* The `?` operator SHALL propagate `Result::Err` values up the call stack:
+**LANG-REQ-116 (Propagation Operator):* The `?` operator SHALL propagate `Result::Err` values up the call stack:
 
 ```morph
 fn read_config(path: str) -> Result<Config, IOError> {
@@ -1306,7 +1306,7 @@ fn read_config(path: str) -> Result<Config, IOError> {
 **Priority:** Critical
 **Verification Method:** Test
 **Rationale:** Ensures predictable and safe error propagation
-**Dependencies:** LANG-REQ-073
+**Dependencies:** LANG-REQ-116
 **Traceability:** Section 15.2.2 (Propagation Rules)
 
 #### 15.2.3 Error Conversion
@@ -1487,7 +1487,7 @@ struct ErrorContext {
 **Priority:** High
 **Verification Method:** Test
 **Rationale:** Enables rich error context for debugging and logging
-**Dependencies:** LANG-REQ-071
+**Dependencies:** LANG-REQ-114
 **Traceability:** Section 15.5.1 (Error Context)
 
 #### 15.5.2 Backtrace Capture
@@ -1839,7 +1839,7 @@ nn |  code_line
 **Priority:** High
 **Verification Method:** Test
 **Rationale:** Provides consistent and informative error messages
-**Dependencies:** LANG-REQ-072
+**Dependencies:** LANG-REQ-115
 **Traceability:** Section 15.10.1 (Error Message Structure)
 
 #### 15.10.2 Error Message Components

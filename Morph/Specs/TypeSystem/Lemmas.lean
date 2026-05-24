@@ -135,6 +135,8 @@ theorem liftUnder_zero_eq : forall (bound : Nat) (e : Expr), liftUnder bound 0 e
                liftUnder_zero_eq_list (bound + 1) body]
   | bound, .block exprs => by
     simp only [liftUnder, liftUnder_zero_eq_list bound exprs]
+  | bound, .match_ scrut cases => by
+    simp only [liftUnder, liftUnder_zero_eq bound scrut]
 
 end
 
@@ -182,6 +184,8 @@ theorem liftUnder_comp : forall (bound k1 k2 : Nat) (e : Expr),
                liftUnder_comp_list (bound + 1) k1 k2 body]
   | bound, k1, k2, .block exprs => by
     simp only [liftUnder, liftUnder_comp_list bound k1 k2 exprs]
+  | bound, k1, k2, .match_ scrut cases => by
+    simp only [liftUnder, liftUnder_comp bound k1 k2 scrut]
 
 end
 
@@ -291,6 +295,24 @@ theorem weakening_at_depth (xs : List Typ) (bvs : List Typ) (Γ : TypEnv)
     exact HasType.binop_bitwise (xs ++ σ :: bvs) Γ op (liftUnder xs.length 1 e1)
       (liftUnder xs.length 1 e2) hBit
       (weakening_at_depth xs bvs Γ e1 .intType σ hE1)
+      (weakening_at_depth xs bvs Γ e2 .intType σ hE2)
+  | binop_ptr_arith _ _ op e1 e2 hPtr hE1 hE2 =>
+    simp only [liftUnder]
+    exact HasType.binop_ptr_arith (xs ++ σ :: bvs) Γ op (liftUnder xs.length 1 e1)
+      (liftUnder xs.length 1 e2) hPtr
+      (weakening_at_depth xs bvs Γ e1 .pointerType σ hE1)
+      (weakening_at_depth xs bvs Γ e2 .intType σ hE2)
+  | binop_ptr_load _ _ e1 e2 hE1 hE2 =>
+    simp only [liftUnder]
+    exact HasType.binop_ptr_load (xs ++ σ :: bvs) Γ (liftUnder xs.length 1 e1)
+      (liftUnder xs.length 1 e2)
+      (weakening_at_depth xs bvs Γ e1 .pointerType σ hE1)
+      (weakening_at_depth xs bvs Γ e2 .unitType σ hE2)
+  | binop_ptr_store _ _ e1 e2 hE1 hE2 =>
+    simp only [liftUnder]
+    exact HasType.binop_ptr_store (xs ++ σ :: bvs) Γ (liftUnder xs.length 1 e1)
+      (liftUnder xs.length 1 e2)
+      (weakening_at_depth xs bvs Γ e1 .pointerType σ hE1)
       (weakening_at_depth xs bvs Γ e2 .intType σ hE2)
   | lam_type _ _ n body paramTys retTy hLen hBody =>
     simp only [liftUnder, liftUnder]
@@ -430,6 +452,18 @@ theorem weakening (bvs : List Typ) (Γ : TypEnv) (e : Expr) (τ : Typ) (σ : Typ
   | HasType.binop_bitwise bvs Γ op e1 e2 hBit hE1 hE2 =>
     rw [lift_binop]
     exact HasType.binop_bitwise (σ :: bvs) Γ op (lift 1 e1) (lift 1 e2) hBit
+      (weakening _ _ _ _ σ hE1) (weakening _ _ _ _ σ hE2)
+  | HasType.binop_ptr_arith bvs Γ op e1 e2 hPtr hE1 hE2 =>
+    rw [lift_binop]
+    exact HasType.binop_ptr_arith (σ :: bvs) Γ op (lift 1 e1) (lift 1 e2) hPtr
+      (weakening _ _ _ _ σ hE1) (weakening _ _ _ _ σ hE2)
+  | HasType.binop_ptr_load bvs Γ e1 e2 hE1 hE2 =>
+    rw [lift_binop]
+    exact HasType.binop_ptr_load (σ :: bvs) Γ (lift 1 e1) (lift 1 e2)
+      (weakening _ _ _ _ σ hE1) (weakening _ _ _ _ σ hE2)
+  | HasType.binop_ptr_store bvs Γ e1 e2 hE1 hE2 =>
+    rw [lift_binop]
+    exact HasType.binop_ptr_store (σ :: bvs) Γ (lift 1 e1) (lift 1 e2)
       (weakening _ _ _ _ σ hE1) (weakening _ _ _ _ σ hE2)
   | HasType.lam_type bvs Γ n body paramTys retTy hLen hBody =>
     rw [lift_lam]

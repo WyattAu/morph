@@ -22,13 +22,25 @@ See ADR-012 for standard library design decisions.
 
 /-! ## Core Type Utilities -/
 
-/-- Type-safe integer operations with overflow checking. -/
+/-- Type-safe integer addition with overflow checking.
+    Checks against 64-bit signed integer bounds (i64).
+    Returns `none` if the result would overflow. -/
 def checkedAdd (a b : Int) : Option Int :=
-  some (a + b)
+  let result := a + b
+  if result > 9223372036854775807 ∨ result < -9223372036854775808 then
+    none
+  else
+    some result
 
-/-- Checked subtraction. Returns `none` on overflow. -/
+/-- Checked subtraction with overflow checking.
+    Checks against 64-bit signed integer bounds (i64).
+    Returns `none` if the result would overflow. -/
 def checkedSub (a b : Int) : Option Int :=
-  some (a - b)
+  let result := a - b
+  if result > 9223372036854775807 ∨ result < -9223372036854775808 then
+    none
+  else
+    some result
 
 /-- Integer division with division-by-zero check. -/
 def safeDiv (a b : Int) : Option Int :=

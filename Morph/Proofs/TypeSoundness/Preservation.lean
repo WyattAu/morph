@@ -77,6 +77,26 @@ private theorem sem_isCompOp_not_spec_isBitwiseOp (op : Operator) :
   intro hc hb
   cases op <;> simp [Morph.Semantics.isCompOp, Morph.Specs.TypeSystem.isBitwiseOp] at * <;> contradiction
 
+private theorem sem_isArithOp_not_spec_isPtrArithOp (op : Operator) :
+    Morph.Semantics.isArithOp op -> ¬Morph.Specs.TypeSystem.isPtrArithOp op := by
+  intro ha hp
+  cases op <;> simp [Morph.Semantics.isArithOp, Morph.Specs.TypeSystem.isPtrArithOp] at * <;> contradiction
+
+private theorem sem_isCompOp_not_spec_isPtrArithOp (op : Operator) :
+    Morph.Semantics.isCompOp op -> ¬Morph.Specs.TypeSystem.isPtrArithOp op := by
+  intro hc hp
+  cases op <;> simp [Morph.Semantics.isCompOp, Morph.Specs.TypeSystem.isPtrArithOp] at * <;> contradiction
+
+private theorem sem_isLogicOp_not_spec_isPtrArithOp (op : Operator) :
+    Morph.Semantics.isLogicOp op -> ¬Morph.Specs.TypeSystem.isPtrArithOp op := by
+  intro hl hp
+  cases op <;> simp [Morph.Semantics.isLogicOp, Morph.Specs.TypeSystem.isPtrArithOp] at * <;> contradiction
+
+private theorem sem_isBitwiseOp_not_spec_isPtrArithOp (op : Operator) :
+    Morph.Semantics.isBitwiseOp op -> ¬Morph.Specs.TypeSystem.isPtrArithOp op := by
+  intro hb hp
+  cases op <;> simp [Morph.Semantics.isBitwiseOp, Morph.Specs.TypeSystem.isPtrArithOp] at * <;> contradiction
+
 /-!
 ## Lift-Zero Preserves Type for Values
 
@@ -197,6 +217,21 @@ private theorem HasType_subst_depth (pfx : List Typ) (bvs : List Typ) (Γ : TypE
     simp only [subst']
     exact HasType.binop_bitwise _ _ op _ _ hBit
       (HasType_subst_depth pfx bvs Γ e1 v τ1 .intType hE1 hV)
+      (HasType_subst_depth pfx bvs Γ e2 v τ1 .intType hE2 hV)
+  | .binop_ptr_arith _ _ op e1 e2 hPtr hE1 hE2 =>
+    simp only [subst']
+    exact HasType.binop_ptr_arith _ _ op _ _ hPtr
+      (HasType_subst_depth pfx bvs Γ e1 v τ1 .pointerType hE1 hV)
+      (HasType_subst_depth pfx bvs Γ e2 v τ1 .intType hE2 hV)
+  | .binop_ptr_load _ _ e1 e2 hE1 hE2 =>
+    simp only [subst']
+    exact HasType.binop_ptr_load _ _ _ _
+      (HasType_subst_depth pfx bvs Γ e1 v τ1 .pointerType hE1 hV)
+      (HasType_subst_depth pfx bvs Γ e2 v τ1 .unitType hE2 hV)
+  | .binop_ptr_store _ _ e1 e2 hE1 hE2 =>
+    simp only [subst']
+    exact HasType.binop_ptr_store _ _ _ _
+      (HasType_subst_depth pfx bvs Γ e1 v τ1 .pointerType hE1 hV)
       (HasType_subst_depth pfx bvs Γ e2 v τ1 .intType hE2 hV)
   | .lam_type _ _ n body paramTys retTy hLen hBody =>
     -- subst' pfx.length (.lam n body) v = .lam n (subst' (pfx.length + n) body v)
@@ -416,6 +451,21 @@ private theorem HasType_substAll (pfx σs : List Typ) (bvs : List Typ) (Γ : Typ
     exact HasType.binop_bitwise _ _ op _ _ hBit
       (HasType_substAll pfx σs bvs Γ vs e1 .intType hE1 hVs hLen)
       (HasType_substAll pfx σs bvs Γ vs e2 .intType hE2 hVs hLen)
+  | .binop_ptr_arith _ _ op e1 e2 hPtr hE1 hE2 =>
+    unfold substAll'
+    exact HasType.binop_ptr_arith _ _ op _ _ hPtr
+      (HasType_substAll pfx σs bvs Γ vs e1 .pointerType hE1 hVs hLen)
+      (HasType_substAll pfx σs bvs Γ vs e2 .intType hE2 hVs hLen)
+  | .binop_ptr_load _ _ e1 e2 hE1 hE2 =>
+    unfold substAll'
+    exact HasType.binop_ptr_load _ _ _ _
+      (HasType_substAll pfx σs bvs Γ vs e1 .pointerType hE1 hVs hLen)
+      (HasType_substAll pfx σs bvs Γ vs e2 .unitType hE2 hVs hLen)
+  | .binop_ptr_store _ _ e1 e2 hE1 hE2 =>
+    unfold substAll'
+    exact HasType.binop_ptr_store _ _ _ _
+      (HasType_substAll pfx σs bvs Γ vs e1 .pointerType hE1 hVs hLen)
+      (HasType_substAll pfx σs bvs Γ vs e2 .intType hE2 hVs hLen)
   | .lam_type _ _ m body paramTys retTy hLenM hBody =>
     -- substAll' pfx.length vs.reverse (.lam m body) = .lam m (substAll' (pfx.length + m) vs.reverse body)
     -- Body context: paramTys.reverse ++ pfx ++ σs ++ bvs = (paramTys.reverse ++ pfx) ++ σs ++ bvs
@@ -516,6 +566,9 @@ theorem preservation : forall {e e' : Expr} {τ : Typ} {bvs : List Typ} {Γ : Ty
     | binop_comp => exact HasType.binop_comp _ _ op e1' e2 (by assumption) (preservation (by assumption) hStep1) (by assumption)
     | binop_logic => exact HasType.binop_logic _ _ op e1' e2 (by assumption) (preservation (by assumption) hStep1) (by assumption)
     | binop_bitwise => exact HasType.binop_bitwise _ _ op e1' e2 (by assumption) (preservation (by assumption) hStep1) (by assumption)
+    | binop_ptr_arith => exact HasType.binop_ptr_arith _ _ op e1' e2 (by assumption) (preservation (by assumption) hStep1) (by assumption)
+    | binop_ptr_load => exact HasType.binop_ptr_load _ _ e1' e2 (preservation (by assumption) hStep1) (by assumption)
+    | binop_ptr_store => exact HasType.binop_ptr_store _ _ e1' e2 (preservation (by assumption) hStep1) (by assumption)
     | _ => contradiction
   | binop_right op v1 e2 e2' _ hStep2 =>
     cases hType with
@@ -523,42 +576,63 @@ theorem preservation : forall {e e' : Expr} {τ : Typ} {bvs : List Typ} {Γ : Ty
     | binop_comp => exact HasType.binop_comp _ _ op (.lit v1) e2' (by assumption) (by assumption) (preservation (by assumption) hStep2)
     | binop_logic => exact HasType.binop_logic _ _ op (.lit v1) e2' (by assumption) (by assumption) (preservation (by assumption) hStep2)
     | binop_bitwise => exact HasType.binop_bitwise _ _ op (.lit v1) e2' (by assumption) (by assumption) (preservation (by assumption) hStep2)
+    | binop_ptr_arith => exact HasType.binop_ptr_arith _ _ op (.lit v1) e2' (by assumption) (by assumption) (preservation (by assumption) hStep2)
+    | binop_ptr_load => exact HasType.binop_ptr_load _ _ (.lit v1) e2' (by assumption) (preservation (by assumption) hStep2)
+    | binop_ptr_store => exact HasType.binop_ptr_store _ _ (.lit v1) e2' (by assumption) (preservation (by assumption) hStep2)
     | _ => contradiction
   | binop_arith _ _ _ r hArith _ =>
     cases hType with
     | binop_arith => exact HasType.lit_int _ _ r
     | binop_comp => exfalso; exact sem_isArithOp_not_spec_isCompOp _ hArith (by assumption)
-    | binop_logic => cases (by assumption)
     | binop_bitwise => exact HasType.lit_int _ _ r
+    | binop_ptr_arith _ _ _ _ _ hOp _ _ => exfalso; exact sem_isArithOp_not_spec_isPtrArithOp _ hArith hOp
+    | binop_ptr_load _ _ _ _ hE1 _ => cases hE1
+    | binop_ptr_store _ _ _ _ hE1 _ => cases hE1
     | _ => contradiction
   | binop_comp _ _ _ hComp =>
     cases hType with
     | binop_arith => exfalso; exact sem_isCompOp_not_spec_isArithOp _ hComp (by assumption)
     | binop_comp => exact HasType.lit_bool _ _ (evalCompOp _ _ _)
-    | binop_logic => cases (by assumption)
     | binop_bitwise => exfalso; exact sem_isCompOp_not_spec_isBitwiseOp _ hComp (by assumption)
+    | binop_ptr_arith _ _ _ _ _ hOp _ _ => exfalso; exact sem_isCompOp_not_spec_isPtrArithOp _ hComp hOp
+    | binop_ptr_load _ _ _ _ hE1 _ => cases hE1
+    | binop_ptr_store _ _ _ _ hE1 _ => cases hE1
     | _ => contradiction
   | binop_logic _ _ _ _ _ =>
     cases hType with
     | binop_logic => exact HasType.lit_bool _ _ (by assumption)
-    | binop_arith => cases (by assumption)
-    | binop_comp => cases (by assumption)
-    | binop_bitwise => cases (by assumption)
+    | binop_ptr_arith _ _ _ _ _ hOp _ _ => exfalso; exact sem_isLogicOp_not_spec_isPtrArithOp _ (by assumption) hOp
     | _ => contradiction
   | binop_bitwise _ _ _ r hBit _ =>
     cases hType with
     | binop_arith => exact HasType.lit_int _ _ r
     | binop_comp => exfalso; exact sem_isBitwiseOp_not_spec_isCompOp _ hBit (by assumption)
-    | binop_logic => cases (by assumption)
     | binop_bitwise => exact HasType.lit_int _ _ r
+    | binop_ptr_arith _ _ _ _ _ hOp _ _ => exfalso; exact sem_isBitwiseOp_not_spec_isPtrArithOp _ hBit hOp
+    | binop_ptr_load _ _ _ _ hE1 _ => cases hE1
+    | binop_ptr_store _ _ _ _ hE1 _ => cases hE1
+    | _ => contradiction
+  | binop_ptr_arith _ _ _ r hPtr _ =>
+    cases hType with
+    | binop_ptr_arith => exact HasType.lit_pointer _ _ r
+    | _ => contradiction
+  | binop_ptr_load _ =>
+    cases hType with
+    | binop_ptr_load => exact HasType.lit_unit _ _
+    | _ => contradiction
+  | binop_ptr_store _ _ =>
+    cases hType with
+    | binop_ptr_store => exact HasType.lit_unit _ _
     | _ => contradiction
   | binop_div_zero _ =>
     cases hType with
     | binop_arith => exact HasType.lit_int _ _ 0
+    | binop_ptr_arith _ _ _ _ _ hOp _ _ => exfalso; cases hOp
     | _ => contradiction
   | binop_mod_zero _ =>
     cases hType with
     | binop_arith => exact HasType.lit_int _ _ 0
+    | binop_ptr_arith _ _ _ _ _ hOp _ _ => exfalso; cases hOp
     | _ => contradiction
   | unop_step op e e' hStep1 =>
     cases hType with

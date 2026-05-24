@@ -513,6 +513,8 @@ section SafetyTheoremTests
         ∃ (fn : Value), v = fn ∧
           ∃ (paramTypes : List Typ), paramTypes = params ∧
             ∃ (retType : Typ), retType = ret
+    | Typ.intWidthType _ => ∃ (n : Int), v = Value.int n
+    | Typ.floatType _ => ∃ (f : Float), v = Value.float f
 
   /-- Value.int values have intType -/
   theorem value_int_has_int_type (_n : Int) : ∃ (t : Typ), t = Typ.intType :=
@@ -566,6 +568,7 @@ section SafetyTheoremTests
     | bool b => exact ⟨Typ.boolType, b, rfl⟩
     | string s => exact ⟨Typ.stringType, s, rfl⟩
     | pointer p => exact ⟨Typ.pointerType, p, rfl⟩
+    | float f => exact ⟨Typ.floatType .f64, f, rfl⟩
     | unit => exact ⟨Typ.unitType, Or.inl rfl⟩
     | undef => exact ⟨Typ.unitType, Or.inr rfl⟩
 
