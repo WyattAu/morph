@@ -1,0 +1,23 @@
+type Point = { x: f64, y: f64 }
+
+type Color = {
+    Red,
+    Green,
+    Blue,
+}
+
+type Age = i64
+
+const MAX_AGE: i64 = 150
+
+fn make_point(x: f64, y: f64) -> Point {
+    Point { x, y }
+}
+
+fn is_adult(age: i64) -> bool {
+    age >= 18
+}
+
+fn clamp(val: i64, lo: i64, hi: i64) -> i64 {
+    val
+}

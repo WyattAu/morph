@@ -1,0 +1,13 @@
+fn describe(n: i64) -> str {
+    fix n {
+        0 => "zero",
+        1 => "one",
+        _ => "many",
+    }
+}
+
+fn classify(x: i64) -> i64 {
+    fix x {
+        _ => x
+    }
+}

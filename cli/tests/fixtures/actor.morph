@@ -1,0 +1,11 @@
+act Counter {
+    state count: i64 = 0
+    event Increment(by: i64)
+    event Decrement(by: i64)
+    on Increment {
+        0
+    }
+    fn get() -> i64 {
+        0
+    }
+}

@@ -2,15 +2,41 @@ pub mod visit;
 
 use crate::lexer::token::Span;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct NodeId(pub u32);
+
+impl NodeId {
+    pub const DUMMY: NodeId = NodeId(0);
+
+    pub fn as_u32(self) -> u32 {
+        self.0
+    }
+}
+
+impl Default for NodeId {
+    fn default() -> Self {
+        Self::DUMMY
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Node<T> {
+    pub id: NodeId,
     pub kind: T,
     pub span: Span,
 }
 
 impl<T> Node<T> {
     pub fn new(kind: T, span: Span) -> Self {
-        Self { kind, span }
+        Self {
+            id: NodeId::DUMMY,
+            kind,
+            span,
+        }
+    }
+
+    pub fn with_id(id: NodeId, kind: T, span: Span) -> Self {
+        Self { id, kind, span }
     }
 }
 

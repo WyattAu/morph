@@ -1,0 +1,14 @@
+[package]
+name = "morph"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Morph language compiler and runner"
+
+[[bin]]
+name = "morph"
+path = "src/main.rs"
+
+[dependencies]
+morph-compiler = { path = "../compiler" }
+morph-runtime = { path = "../runtime" }
