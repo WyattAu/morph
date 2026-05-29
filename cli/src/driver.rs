@@ -3,35 +3,25 @@ use std::path::Path;
 use morph_compiler::ast::{Item, Node};
 use morph_compiler::codegen::{CodeGen, MorphIRModule};
 use morph_compiler::diagnostic::Diagnostic;
-use morph_compiler::lexer::{LexError, Lexer};
 use morph_compiler::lexer::token::{Span, Token};
+use morph_compiler::lexer::{LexError, Lexer};
 use morph_compiler::parser::{self, ParseError};
 use morph_compiler::typeck::{TypeCheckResult, TypeChecker};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum Dialect {
     Min,
+    #[default]
     Hum,
 }
 
-impl Default for Dialect {
-    fn default() -> Self {
-        Dialect::Hum
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum EmitTarget {
+    #[default]
     MorphIR,
     Ast,
     Types,
     Run,
-}
-
-impl Default for EmitTarget {
-    fn default() -> Self {
-        EmitTarget::MorphIR
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -184,7 +174,7 @@ impl Driver {
                 .collect());
         }
 
-        let type_check = TypeChecker::check_program(&items).map_err(|diags| diags)?;
+        let type_check = TypeChecker::check_program(&items)?;
 
         let module = CodeGen::compile_with_effects(
             &items,

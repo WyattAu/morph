@@ -227,7 +227,7 @@ impl<'a> LexerState<'a> {
                                     pos: escape_pos,
                                 }
                             })?;
-                            let c = char::from_u32(code_point).ok_or_else(|| {
+                            let c = char::from_u32(code_point).ok_or({
                                 LexError::InvalidUnicodeEscape {
                                     line: self.line,
                                     col: self.column,
@@ -350,12 +350,14 @@ impl<'a> LexerState<'a> {
         }
 
         let cleaned: String = digits.chars().filter(|c| *c != '_').collect();
-        let value = cleaned.parse::<i64>().map_err(|_| LexError::InvalidNumber {
-            text: cleaned,
-            line: start_line,
-            col: start_col,
-            pos: start_pos,
-        })?;
+        let value = cleaned
+            .parse::<i64>()
+            .map_err(|_| LexError::InvalidNumber {
+                text: cleaned,
+                line: start_line,
+                col: start_col,
+                pos: start_pos,
+            })?;
         Ok(TokenKind::IntLiteral(value))
     }
 

@@ -1,7 +1,10 @@
 use std::env;
 use std::process;
 
-use morph::{driver::{Config, Driver, Dialect, EmitTarget}, diagnostic_printer};
+use morph::{
+    diagnostic_printer,
+    driver::{Config, Dialect, Driver, EmitTarget},
+};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -50,7 +53,7 @@ fn main() {
         }
     };
 
-    let driver = match Driver::from_file(&std::path::Path::new(&source_path), config.clone()) {
+    let driver = match Driver::from_file(std::path::Path::new(&source_path), config.clone()) {
         Ok(d) => d,
         Err(e) => {
             eprintln!("Error reading '{}': {}", source_path, e);
@@ -97,10 +100,8 @@ fn cmd_build(driver: &Driver) -> ! {
             process::exit(0);
         }
         Err(diagnostics) => {
-            let printer = diagnostic_printer::DiagnosticPrinter::new(
-                driver.source(),
-                driver.filename(),
-            );
+            let printer =
+                diagnostic_printer::DiagnosticPrinter::new(driver.source(), driver.filename());
             printer.print_all(&diagnostics);
             process::exit(1);
         }
@@ -122,10 +123,8 @@ fn cmd_run(driver: &Driver) -> ! {
             process::exit(0);
         }
         Err(diagnostics) => {
-            let printer = diagnostic_printer::DiagnosticPrinter::new(
-                driver.source(),
-                driver.filename(),
-            );
+            let printer =
+                diagnostic_printer::DiagnosticPrinter::new(driver.source(), driver.filename());
             printer.print_all(&diagnostics);
             process::exit(1);
         }
@@ -137,10 +136,8 @@ fn cmd_check(driver: &Driver) -> ! {
         Ok(result) => {
             println!("Type check passed for '{}'", driver.filename());
             if !result.warnings.is_empty() {
-                let printer = diagnostic_printer::DiagnosticPrinter::new(
-                    driver.source(),
-                    driver.filename(),
-                );
+                let printer =
+                    diagnostic_printer::DiagnosticPrinter::new(driver.source(), driver.filename());
                 for w in &result.warnings {
                     let output = printer.format_diagnostic(w);
                     eprint!("{}", output);
@@ -149,10 +146,8 @@ fn cmd_check(driver: &Driver) -> ! {
             process::exit(0);
         }
         Err(diagnostics) => {
-            let printer = diagnostic_printer::DiagnosticPrinter::new(
-                driver.source(),
-                driver.filename(),
-            );
+            let printer =
+                diagnostic_printer::DiagnosticPrinter::new(driver.source(), driver.filename());
             printer.print_all(&diagnostics);
             process::exit(1);
         }
@@ -183,10 +178,8 @@ fn cmd_doc(driver: &Driver) -> ! {
             process::exit(0);
         }
         Err(diagnostics) => {
-            let printer = diagnostic_printer::DiagnosticPrinter::new(
-                driver.source(),
-                driver.filename(),
-            );
+            let printer =
+                diagnostic_printer::DiagnosticPrinter::new(driver.source(), driver.filename());
             printer.print_all(&diagnostics);
             process::exit(1);
         }

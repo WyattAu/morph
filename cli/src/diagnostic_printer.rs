@@ -1,5 +1,5 @@
-use morph_compiler::diagnostic::{Diagnostic, DiagnosticLevel};
 use morph_compiler::diagnostic::emitter::Emitter;
+use morph_compiler::diagnostic::{Diagnostic, DiagnosticLevel};
 
 pub struct DiagnosticPrinter<'a> {
     emitter: Emitter<'a>,
@@ -41,10 +41,18 @@ impl<'a> DiagnosticPrinter<'a> {
             eprintln!();
             let mut parts = Vec::new();
             if error_count > 0 {
-                parts.push(format!("{} error{}", error_count, if error_count == 1 { "" } else { "s" }));
+                parts.push(format!(
+                    "{} error{}",
+                    error_count,
+                    if error_count == 1 { "" } else { "s" }
+                ));
             }
             if warning_count > 0 {
-                parts.push(format!("{} warning{}", warning_count, if warning_count == 1 { "" } else { "s" }));
+                parts.push(format!(
+                    "{} warning{}",
+                    warning_count,
+                    if warning_count == 1 { "" } else { "s" }
+                ));
             }
             eprintln!("{} found", parts.join(", "));
         }

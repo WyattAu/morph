@@ -23,10 +23,7 @@ impl<'a> Emitter<'a> {
             DiagnosticLevel::Help => "help",
         };
 
-        out.push_str(&format!(
-            "{}[{}]: {}\n",
-            level_str, diag.code, diag.message
-        ));
+        out.push_str(&format!("{}[{}]: {}\n", level_str, diag.code, diag.message));
         out.push_str(&format!(
             "  --> {}:{}:{}\n",
             self.source_name, diag.span.line, diag.span.col
@@ -82,11 +79,7 @@ mod tests {
     fn test_emit_error() {
         let source = "fn foo() { }";
         let emitter = Emitter::new(source, "test.morph");
-        let diag = Diagnostic::error(
-            "ERR_COMPILE_001",
-            "unexpected token",
-            Span::new(0, 2, 1, 1),
-        );
+        let diag = Diagnostic::error("ERR_COMPILE_001", "unexpected token", Span::new(0, 2, 1, 1));
         let output = emitter.emit(&diag);
         assert!(output.contains("error"));
         assert!(output.contains("ERR_COMPILE_001"));

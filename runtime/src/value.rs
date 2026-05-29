@@ -239,7 +239,7 @@ mod tests {
     fn test_value_type_names() {
         assert_eq!(MorphValue::Bool(true).type_name(), "bool");
         assert_eq!(MorphValue::Int32(42).type_name(), "i32");
-        assert_eq!(MorphValue::Float64(3.14).type_name(), "f64");
+        assert_eq!(MorphValue::Float64(3.15).type_name(), "f64");
         assert_eq!(MorphValue::Unit.type_name(), "void");
         assert_eq!(
             MorphValue::String(MorphString::new("hi")).type_name(),

@@ -319,10 +319,7 @@ mod tests {
 
     #[test]
     fn test_walk_literal() {
-        let expr = Node::new(
-            Expr::Literal(Literal::Int(42)),
-            Span::dummy(),
-        );
+        let expr = Node::new(Expr::Literal(Literal::Int(42)), Span::dummy());
         let mut collector = ExprCollector { count: 0 };
         collector.visit_expr(&expr);
         assert_eq!(collector.count, 1);

@@ -36,6 +36,7 @@ pub struct Fiber {
     state: FiberState,
     stack: Vec<u8>,
     stack_ptr: usize,
+    #[allow(clippy::type_complexity)]
     executor: Option<Box<dyn FnMut(&mut FiberContext) -> FiberYield + Send>>,
     result: Option<Result<(), RuntimeError>>,
 }
@@ -64,9 +65,7 @@ impl Fiber {
         match self.state {
             FiberState::Ready | FiberState::Suspended(_) => {
                 self.state = FiberState::Running;
-                let mut ctx = FiberContext {
-                    fiber_id: self.id,
-                };
+                let mut ctx = FiberContext { fiber_id: self.id };
                 if let Some(exec) = self.executor.as_mut() {
                     match exec(&mut ctx) {
                         FiberYield::Complete(res) => {

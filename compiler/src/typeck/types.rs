@@ -129,25 +129,19 @@ impl EffectSet {
 impl Ty {
     pub fn is_sendable(&self) -> bool {
         match self {
-            Ty::Bool
-            | Ty::Int(_)
-            | Ty::Float(_)
-            | Ty::Str
-            | Ty::Void
-            | Ty::Never
-            | Ty::Error => true,
+            Ty::Bool | Ty::Int(_) | Ty::Float(_) | Ty::Str | Ty::Void | Ty::Never | Ty::Error => {
+                true
+            }
             Ty::Tuple(elements) => elements.iter().all(|t| t.is_sendable()),
             Ty::Array(inner) => inner.is_sendable(),
             Ty::Optional(inner) => inner.is_sendable(),
             Ty::Result { ok, err } => ok.is_sendable() && err.is_sendable(),
             Ty::Named { args, .. } => args.iter().all(|t| t.is_sendable()),
-            Ty::Ref { cap, inner } => {
-                match cap {
-                    Capability::Iso => true,
-                    Capability::Val => inner.is_sendable(),
-                    Capability::Ref => false,
-                }
-            }
+            Ty::Ref { cap, inner } => match cap {
+                Capability::Iso => true,
+                Capability::Val => inner.is_sendable(),
+                Capability::Ref => false,
+            },
             Ty::Fn { .. } => false,
             Ty::Actor(_) => true,
             Ty::TypeVar(_) => true,
@@ -208,7 +202,11 @@ impl fmt::Display for Ty {
                 Capability::Val => write!(f, "#{}", inner),
                 Capability::Ref => write!(f, "&{}", inner),
             },
-            Ty::Fn { params, ret, effects } => {
+            Ty::Fn {
+                params,
+                ret,
+                effects,
+            } => {
                 write!(f, "fn(")?;
                 for (i, p) in params.iter().enumerate() {
                     if i > 0 {

@@ -10,6 +10,12 @@ pub struct TypeEnv {
     consumed: HashSet<String>,
 }
 
+impl Default for TypeEnv {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TypeEnv {
     pub fn new() -> Self {
         Self {
@@ -52,19 +58,12 @@ impl TypeEnv {
         }
     }
 
-    pub fn insert(
-        &mut self,
-        name: String,
-        ty: Ty,
-        visibility: Visibility,
-        span: Option<Span>,
-    ) {
+    pub fn insert(&mut self, name: String, ty: Ty, visibility: Visibility, span: Option<Span>) {
         self.bindings.insert(name, (ty, visibility, span));
     }
 
     pub fn insert_var(&mut self, name: String, ty: Ty) {
-        self.bindings
-            .insert(name, (ty, Visibility::Private, None));
+        self.bindings.insert(name, (ty, Visibility::Private, None));
     }
 
     pub fn consume_var(&mut self, name: &str) -> bool {
@@ -90,8 +89,7 @@ impl TypeEnv {
     }
 
     pub fn shadow(&mut self, name: String, ty: Ty) {
-        self.bindings
-            .insert(name, (ty, Visibility::Private, None));
+        self.bindings.insert(name, (ty, Visibility::Private, None));
     }
 
     pub fn lookup_binding(&self, name: &str) -> Option<(&Ty, Visibility)> {

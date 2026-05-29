@@ -41,7 +41,9 @@ impl Parser {
 
     fn current(&self) -> &Token {
         self.tokens.get(self.pos).unwrap_or_else(|| {
-            self.tokens.last().expect("tokens should contain at least EOF")
+            self.tokens
+                .last()
+                .expect("tokens should contain at least EOF")
         })
     }
 
@@ -266,7 +268,10 @@ impl Parser {
         }
         self.advance();
         let mut params = Vec::new();
-        while !self.matches(&TokenKind::Gt) && !self.matches(&TokenKind::GtGeneric) && !self.matches(&TokenKind::GtEq) {
+        while !self.matches(&TokenKind::Gt)
+            && !self.matches(&TokenKind::GtGeneric)
+            && !self.matches(&TokenKind::GtEq)
+        {
             let (name, _) = self.expect_identifier()?;
             let constraint = if self.matches(&TokenKind::Colon) {
                 self.advance();
@@ -293,7 +298,10 @@ impl Parser {
         }
         self.advance();
         let mut args = Vec::new();
-        while !self.matches(&TokenKind::Gt) && !self.matches(&TokenKind::GtGeneric) && !self.matches(&TokenKind::GtEq) {
+        while !self.matches(&TokenKind::Gt)
+            && !self.matches(&TokenKind::GtGeneric)
+            && !self.matches(&TokenKind::GtEq)
+        {
             args.push(self.parse_type()?);
             if self.matches(&TokenKind::Comma) {
                 self.advance();
@@ -318,10 +326,7 @@ impl Parser {
             } else {
                 None
             };
-            params.push(Node::new(
-                Param { name, type_ann },
-                self.span_from(&start),
-            ));
+            params.push(Node::new(Param { name, type_ann }, self.span_from(&start)));
             if self.matches(&TokenKind::Comma) {
                 self.advance();
             } else {
@@ -365,7 +370,10 @@ impl Parser {
                 self.advance();
                 let inner = self.parse_type()?;
                 self.expect(&TokenKind::RBracket)?;
-                Ok(Node::new(Type::Array(Box::new(inner)), self.span_from(&start)))
+                Ok(Node::new(
+                    Type::Array(Box::new(inner)),
+                    self.span_from(&start),
+                ))
             }
             TokenKind::Caret => {
                 self.advance();
@@ -419,7 +427,10 @@ impl Parser {
             }
             TokenKind::Void => {
                 self.advance();
-                Ok(Node::new(Type::Named("void".to_string()), self.span_from(&start)))
+                Ok(Node::new(
+                    Type::Named("void".to_string()),
+                    self.span_from(&start),
+                ))
             }
             _ => {
                 let span = self.current().span;
@@ -464,7 +475,9 @@ impl Parser {
         self.expect(&TokenKind::Assign)?;
         let body = if self.matches(&TokenKind::LBrace) {
             self.advance();
-            if matches!(self.peek_at(0), TokenKind::Identifier(_)) && self.peek_at(1) == &TokenKind::Colon {
+            if matches!(self.peek_at(0), TokenKind::Identifier(_))
+                && self.peek_at(1) == &TokenKind::Colon
+            {
                 let fields = self.parse_struct_fields()?;
                 self.expect(&TokenKind::RBrace)?;
                 TypeBody::Struct(fields)
@@ -494,10 +507,7 @@ impl Parser {
             let (name, _) = self.expect_identifier()?;
             self.expect(&TokenKind::Colon)?;
             let type_ann = self.parse_type()?;
-            fields.push(Node::new(
-                Field { name, type_ann },
-                self.span_from(&start),
-            ));
+            fields.push(Node::new(Field { name, type_ann }, self.span_from(&start)));
             if self.matches(&TokenKind::Comma) {
                 self.advance();
             } else {
@@ -537,11 +547,7 @@ impl Parser {
                 None
             };
             variants.push(Node::new(
-                Variant {
-                    name,
-                    fields,
-                    data,
-                },
+                Variant { name, fields, data },
                 self.span_from(&start),
             ));
             if self.matches(&TokenKind::Comma) {
@@ -647,19 +653,13 @@ impl Parser {
                     let (hname, _) = self.expect_identifier()?;
                     let body = self.parse_block_expr()?;
                     members.push(Node::new(
-                        ActorMember::OnHandler {
-                            name: hname,
-                            body,
-                        },
+                        ActorMember::OnHandler { name: hname, body },
                         self.span_from(&start),
                     ));
                 }
                 TokenKind::Fn => {
                     let f = self.parse_fn_decl(Visibility::Private)?;
-                    members.push(Node::new(
-                        ActorMember::FnMember(f),
-                        self.span_from(&start),
-                    ));
+                    members.push(Node::new(ActorMember::FnMember(f), self.span_from(&start)));
                 }
                 _ => {
                     let span = self.current().span;
@@ -1066,7 +1066,8 @@ impl Parser {
                         } else {
                             None
                         };
-                        param_names.push(Node::new(Param { name, type_ann }, self.span_from(&pstart)));
+                        param_names
+                            .push(Node::new(Param { name, type_ann }, self.span_from(&pstart)));
                         if self.matches(&TokenKind::Comma) {
                             self.advance();
                         } else {
@@ -1327,10 +1328,7 @@ impl Parser {
                 self.advance();
                 alternatives.push(self.parse_pattern_primary()?);
             }
-            return Ok(Node::new(
-                Pattern::Or(alternatives),
-                self.span_from(&start),
-            ));
+            return Ok(Node::new(Pattern::Or(alternatives), self.span_from(&start)));
         }
         Ok(pat)
     }
@@ -1529,7 +1527,10 @@ impl Parser {
                     Node::new(Expr::Literal(Literal::Bool(true)), Span::dummy())
                 });
                 Ok(Node::new(
-                    Stmt::While { condition: cond, body },
+                    Stmt::While {
+                        condition: cond,
+                        body,
+                    },
                     self.span_from(&start),
                 ))
             }
@@ -1563,7 +1564,17 @@ pub fn parse(tokens: Vec<Token>) -> (Vec<Node<Item>>, Vec<ParseError>) {
     parser.parse_program()
 }
 
-pub fn parse_source(source: &str) -> Result<(Vec<Node<Item>>, Vec<crate::lexer::LexError>, Vec<ParseError>), ()> {
+#[allow(clippy::type_complexity, clippy::result_unit_err)]
+pub fn parse_source(
+    source: &str,
+) -> Result<
+    (
+        Vec<Node<Item>>,
+        Vec<crate::lexer::LexError>,
+        Vec<ParseError>,
+    ),
+    (),
+> {
     let token_results = crate::lexer::Lexer::tokenize(source);
     let mut tokens = Vec::new();
     let mut lex_errors = Vec::new();
@@ -1645,13 +1656,7 @@ mod tests {
                 rhs,
                 ..
             } => {
-                assert!(matches!(
-                    rhs.kind,
-                    Expr::BinaryOp {
-                        op: BinOp::Mul,
-                        ..
-                    }
-                ));
+                assert!(matches!(rhs.kind, Expr::BinaryOp { op: BinOp::Mul, .. }));
             }
             _ => panic!("expected addition at top level"),
         }
@@ -1975,10 +1980,7 @@ mod tests {
         match &items[0].kind {
             Item::FnDecl(f) => match &f.body.kind {
                 Expr::Block { stmts, .. } => {
-                    assert!(matches!(
-                        stmts[0].kind,
-                        Stmt::Return(Some(_))
-                    ));
+                    assert!(matches!(stmts[0].kind, Stmt::Return(Some(_))));
                 }
                 _ => panic!("expected block"),
             },
@@ -2055,6 +2057,6 @@ mod tests {
             .iter()
             .filter(|i| matches!(i.kind, Item::FnDecl(_)))
             .collect();
-        assert!(fn_items.len() >= 1, "should recover and parse 'fn foo'");
+        assert!(!fn_items.is_empty(), "should recover and parse 'fn foo'");
     }
 }

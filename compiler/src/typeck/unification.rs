@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use crate::lexer::token::Span;
-use crate::typeck::types::Ty;
 use crate::typeck::errors::TypeError;
+use crate::typeck::types::Ty;
 
 pub type Substitution = HashMap<u32, Ty>;
 
@@ -15,9 +15,7 @@ pub fn occurs(var: u32, ty: &Ty) -> bool {
         Ty::Result { ok, err } => occurs(var, ok) || occurs(var, err),
         Ty::Named { args, .. } => args.iter().any(|t| occurs(var, t)),
         Ty::Ref { inner, .. } => occurs(var, inner),
-        Ty::Fn { params, ret, .. } => {
-            params.iter().any(|t| occurs(var, t)) || occurs(var, ret)
-        }
+        Ty::Fn { params, ret, .. } => params.iter().any(|t| occurs(var, t)) || occurs(var, ret),
         Ty::Bool
         | Ty::Int(_)
         | Ty::Float(_)
@@ -35,9 +33,7 @@ pub fn apply_subst(subst: &Substitution, ty: &Ty) -> Ty {
             Some(resolved) => apply_subst(subst, resolved),
             None => Ty::TypeVar(*v),
         },
-        Ty::Tuple(elements) => {
-            Ty::Tuple(elements.iter().map(|t| apply_subst(subst, t)).collect())
-        }
+        Ty::Tuple(elements) => Ty::Tuple(elements.iter().map(|t| apply_subst(subst, t)).collect()),
         Ty::Array(inner) => Ty::Array(Box::new(apply_subst(subst, inner))),
         Ty::Optional(inner) => Ty::Optional(Box::new(apply_subst(subst, inner))),
         Ty::Result { ok, err } => Ty::Result {
@@ -52,7 +48,11 @@ pub fn apply_subst(subst: &Substitution, ty: &Ty) -> Ty {
             cap: *cap,
             inner: Box::new(apply_subst(subst, inner)),
         },
-        Ty::Fn { params, ret, effects } => Ty::Fn {
+        Ty::Fn {
+            params,
+            ret,
+            effects,
+        } => Ty::Fn {
             params: params.iter().map(|t| apply_subst(subst, t)).collect(),
             ret: Box::new(apply_subst(subst, ret)),
             effects: effects.clone(),
@@ -61,6 +61,7 @@ pub fn apply_subst(subst: &Substitution, ty: &Ty) -> Ty {
     }
 }
 
+#[allow(clippy::result_large_err)]
 pub fn unify(t1: &Ty, t2: &Ty, subst: &mut Substitution, span: Span) -> Result<(), TypeError> {
     let t1 = apply_subst(subst, t1);
     let t2 = apply_subst(subst, t2);
@@ -104,30 +105,12 @@ pub fn unify(t1: &Ty, t2: &Ty, subst: &mut Substitution, span: Span) -> Result<(
 
         (Ty::Optional(i1), Ty::Optional(i2)) => unify(i1, i2, subst, span),
 
-        (
-            Ty::Result {
-                ok: ok1,
-                err: err1,
-            },
-            Ty::Result {
-                ok: ok2,
-                err: err2,
-            },
-        ) => {
+        (Ty::Result { ok: ok1, err: err1 }, Ty::Result { ok: ok2, err: err2 }) => {
             unify(ok1, ok2, subst, span)?;
             unify(err1, err2, subst, span)
         }
 
-        (
-            Ty::Named {
-                name: n1,
-                args: a1,
-            },
-            Ty::Named {
-                name: n2,
-                args: a2,
-            },
-        ) => {
+        (Ty::Named { name: n1, args: a1 }, Ty::Named { name: n2, args: a2 }) => {
             if n1 != n2 || a1.len() != a2.len() {
                 return Err(TypeError::Mismatch {
                     expected: t1.clone(),
@@ -200,10 +183,7 @@ pub fn unify(t1: &Ty, t2: &Ty, subst: &mut Substitution, span: Span) -> Result<(
 }
 
 pub fn compose_subst(s1: &Substitution, s2: &Substitution) -> Substitution {
-    let mut result: Substitution = s2
-        .iter()
-        .map(|(k, v)| (*k, apply_subst(s1, v)))
-        .collect();
+    let mut result: Substitution = s2.iter().map(|(k, v)| (*k, apply_subst(s1, v))).collect();
     for (k, v) in s1 {
         result.entry(*k).or_insert_with(|| v.clone());
     }
@@ -213,7 +193,7 @@ pub fn compose_subst(s1: &Substitution, s2: &Substitution) -> Substitution {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::typeck::types::{IntKind, FloatKind, EffectSet};
+    use crate::typeck::types::{EffectSet, IntKind};
 
     fn dummy_span() -> Span {
         Span::dummy()

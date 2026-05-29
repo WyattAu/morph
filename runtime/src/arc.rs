@@ -25,11 +25,13 @@ impl<T> MorphArc<T> {
         StdArc::into_raw(this.inner)
     }
 
-    pub fn from_raw(ptr: *const T) -> Self {
+    /// # Safety
+    /// See [`std::sync::Arc::from_raw`].
+    pub unsafe fn from_raw(ptr: *const T) -> Self {
         MorphArc {
             // SAFETY: Caller must guarantee ptr was returned by MorphArc::into_raw,
             // the underlying Arc has exactly 1 strong reference, and no weak references.
-            inner: unsafe { StdArc::from_raw(ptr) },
+            inner: StdArc::from_raw(ptr),
         }
     }
 
@@ -201,7 +203,7 @@ mod tests {
     fn test_into_raw_from_raw() {
         let arc = MorphArc::new(String::from("hello"));
         let ptr = MorphArc::into_raw(arc);
-        let arc2 = MorphArc::from_raw(ptr);
+        let arc2 = unsafe { MorphArc::from_raw(ptr) };
         assert_eq!(&*arc2, "hello");
     }
 

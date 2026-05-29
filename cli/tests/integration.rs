@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use morph::driver::{Config, Driver, Dialect, EmitTarget};
+use morph::driver::{Config, Dialect, Driver, EmitTarget};
 
 fn fixture_path(name: &str) -> String {
     let base = env!("CARGO_MANIFEST_DIR");
@@ -14,15 +14,21 @@ fn load_fixture(name: &str) -> Driver {
 }
 
 fn invalid_driver(source: &str) -> Driver {
-    Driver::new(source.to_string(), "invalid.morph".to_string(), Config::default())
+    Driver::new(
+        source.to_string(),
+        "invalid.morph".to_string(),
+        Config::default(),
+    )
 }
 
 #[test]
 fn test_lex_hello() {
     let driver = load_fixture("hello.morph");
     let tokens = driver.lex().expect("lex should succeed");
-    assert!(tokens.len() > 0, "should have tokens");
-    assert!(tokens.iter().any(|t| matches!(&t.kind, morph_compiler::lexer::token::TokenKind::Fn)));
+    assert!(!tokens.is_empty(), "should have tokens");
+    assert!(tokens
+        .iter()
+        .any(|t| matches!(&t.kind, morph_compiler::lexer::token::TokenKind::Fn)));
     assert!(tokens.iter().any(|t| matches!(&t.kind, morph_compiler::lexer::token::TokenKind::Identifier(ref s) if s == "main")));
 }
 
@@ -30,24 +36,30 @@ fn test_lex_hello() {
 fn test_lex_types() {
     let driver = load_fixture("types.morph");
     let tokens = driver.lex().expect("lex should succeed");
-    assert!(tokens.len() > 0);
-    assert!(tokens.iter().any(|t| matches!(&t.kind, morph_compiler::lexer::token::TokenKind::Type)));
+    assert!(!tokens.is_empty());
+    assert!(tokens
+        .iter()
+        .any(|t| matches!(&t.kind, morph_compiler::lexer::token::TokenKind::Type)));
 }
 
 #[test]
 fn test_lex_actor() {
     let driver = load_fixture("actor.morph");
     let tokens = driver.lex().expect("lex should succeed");
-    assert!(tokens.len() > 0);
-    assert!(tokens.iter().any(|t| matches!(&t.kind, morph_compiler::lexer::token::TokenKind::Act)));
+    assert!(!tokens.is_empty());
+    assert!(tokens
+        .iter()
+        .any(|t| matches!(&t.kind, morph_compiler::lexer::token::TokenKind::Act)));
 }
 
 #[test]
 fn test_lex_match() {
     let driver = load_fixture("match.morph");
     let tokens = driver.lex().expect("lex should succeed");
-    assert!(tokens.len() > 0);
-    assert!(tokens.iter().any(|t| matches!(&t.kind, morph_compiler::lexer::token::TokenKind::Fix)));
+    assert!(!tokens.is_empty());
+    assert!(tokens
+        .iter()
+        .any(|t| matches!(&t.kind, morph_compiler::lexer::token::TokenKind::Fix)));
 }
 
 #[test]
@@ -110,38 +122,66 @@ fn test_parse_match() {
 fn test_type_check_hello() {
     let driver = load_fixture("hello.morph");
     let result = driver.type_check();
-    assert!(result.is_ok(), "type check should pass for hello.morph: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "type check should pass for hello.morph: {:?}",
+        result.err()
+    );
 }
 
 #[test]
 fn test_type_check_types() {
     let driver = load_fixture("types.morph");
     let result = driver.type_check();
-    assert!(result.is_ok(), "type check should pass for types.morph: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "type check should pass for types.morph: {:?}",
+        result.err()
+    );
 }
 
 #[test]
 fn test_type_check_actor() {
     let driver = load_fixture("actor.morph");
     let result = driver.type_check();
-    assert!(result.is_ok(), "type check should pass for actor.morph: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "type check should pass for actor.morph: {:?}",
+        result.err()
+    );
 }
 
 #[test]
 fn test_type_check_match() {
     let driver = load_fixture("match.morph");
     let result = driver.type_check();
-    assert!(result.is_ok(), "type check should pass for match.morph: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "type check should pass for match.morph: {:?}",
+        result.err()
+    );
 }
 
 #[test]
 fn test_compile_hello() {
     let driver = load_fixture("hello.morph");
     let result = driver.compile();
-    assert!(result.is_ok(), "compile should succeed for hello.morph: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "compile should succeed for hello.morph: {:?}",
+        result.err()
+    );
     let compiled = result.unwrap();
-    assert!(compiled.module.functions.len() >= 3, "should have at least 3 functions");
-    let fn_names: Vec<&str> = compiled.module.functions.iter().map(|f| f.name.as_str()).collect();
+    assert!(
+        compiled.module.functions.len() >= 3,
+        "should have at least 3 functions"
+    );
+    let fn_names: Vec<&str> = compiled
+        .module
+        .functions
+        .iter()
+        .map(|f| f.name.as_str())
+        .collect();
     assert!(fn_names.contains(&"main"));
     assert!(fn_names.contains(&"add"));
     assert!(fn_names.contains(&"greet"));
@@ -151,28 +191,52 @@ fn test_compile_hello() {
 fn test_compile_types() {
     let driver = load_fixture("types.morph");
     let result = driver.compile();
-    assert!(result.is_ok(), "compile should succeed for types.morph: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "compile should succeed for types.morph: {:?}",
+        result.err()
+    );
     let compiled = result.unwrap();
-    assert!(compiled.module.functions.len() >= 3, "should have at least 3 functions");
-    assert!(compiled.module.type_info.len() >= 2, "should have at least 2 type infos");
+    assert!(
+        compiled.module.functions.len() >= 3,
+        "should have at least 3 functions"
+    );
+    assert!(
+        compiled.module.type_info.len() >= 2,
+        "should have at least 2 type infos"
+    );
 }
 
 #[test]
 fn test_compile_actor() {
     let driver = load_fixture("actor.morph");
     let result = driver.compile();
-    assert!(result.is_ok(), "compile should succeed for actor.morph: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "compile should succeed for actor.morph: {:?}",
+        result.err()
+    );
     let compiled = result.unwrap();
-    assert!(compiled.module.functions.len() >= 1, "actor should have at least one compiled function");
+    assert!(
+        !compiled.module.functions.is_empty(),
+        "actor should have at least one compiled function"
+    );
 }
 
 #[test]
 fn test_compile_match() {
     let driver = load_fixture("match.morph");
     let result = driver.compile();
-    assert!(result.is_ok(), "compile should succeed for match.morph: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "compile should succeed for match.morph: {:?}",
+        result.err()
+    );
     let compiled = result.unwrap();
-    assert!(compiled.module.functions.len() >= 2, "should have at least 2 functions");
+    assert!(
+        compiled.module.functions.len() >= 2,
+        "should have at least 2 functions"
+    );
 }
 
 #[test]
@@ -246,19 +310,30 @@ fn test_empty_source() {
 fn test_simple_arithmetic() {
     let driver = invalid_driver("fn add(a: i64, b: i64) -> i64 { a + b }");
     let result = driver.compile();
-    assert!(result.is_ok(), "simple arithmetic should compile: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "simple arithmetic should compile: {:?}",
+        result.err()
+    );
     let compiled = result.unwrap();
     assert_eq!(compiled.module.functions.len(), 1);
     let func = &compiled.module.functions[0];
     use morph_compiler::codegen::Instruction;
-    assert!(func.instructions.iter().any(|i| matches!(i, Instruction::Add)));
+    assert!(func
+        .instructions
+        .iter()
+        .any(|i| matches!(i, Instruction::Add)));
 }
 
 #[test]
 fn test_string_literal() {
     let driver = invalid_driver("fn greet() -> str { \"hello world\" }");
     let result = driver.compile();
-    assert!(result.is_ok(), "string literal should compile: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "string literal should compile: {:?}",
+        result.err()
+    );
     let compiled = result.unwrap();
     assert!(compiled.module.strings.contains(&"hello world".to_string()));
 }
@@ -271,7 +346,10 @@ fn test_if_else_compilation() {
     let compiled = result.unwrap();
     use morph_compiler::codegen::Instruction;
     let func = &compiled.module.functions[0];
-    assert!(func.instructions.iter().any(|i| matches!(i, Instruction::JumpIfNot(_))));
+    assert!(func
+        .instructions
+        .iter()
+        .any(|i| matches!(i, Instruction::JumpIfNot(_))));
 }
 
 #[test]
@@ -294,7 +372,11 @@ fn test_dialect_config() {
         debug: true,
         emit: EmitTarget::Ast,
     };
-    let driver = Driver::new("fn main() { 1 }".to_string(), "test.morph".to_string(), config);
+    let driver = Driver::new(
+        "fn main() { 1 }".to_string(),
+        "test.morph".to_string(),
+        config,
+    );
     let result = driver.compile();
     assert!(result.is_ok());
 }

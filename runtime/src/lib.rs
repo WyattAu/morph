@@ -22,4 +22,4 @@ pub use memory::{Allocator, ArenaAllocator, GlobalAllocator};
 pub use mpsc::MpscQueue;
 pub use scheduler::{DeterministicScheduler, Scheduler, WorkStealingScheduler, WorkerThread};
 pub use sync::{Once, RwLock, WaitGroup};
-pub use value::{MessagePayload, MorphValue, MorphString, SignalType};
+pub use value::{MessagePayload, MorphString, MorphValue, SignalType};

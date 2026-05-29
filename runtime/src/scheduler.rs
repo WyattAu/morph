@@ -153,7 +153,7 @@ impl Scheduler for WorkStealingScheduler {
     }
 
     fn current_fiber_id(&self) -> Option<FiberId> {
-        self.current_fiber.lock().unwrap().clone()
+        *self.current_fiber.lock().unwrap()
     }
 }
 
@@ -184,6 +184,7 @@ impl DeterministicScheduler {
         self.queue.lock().unwrap().len()
     }
 
+    #[allow(dead_code)]
     fn drain_queue(&self) -> Result<(), RuntimeError> {
         loop {
             let fiber = {
@@ -199,11 +200,9 @@ impl DeterministicScheduler {
                                 break;
                             }
                             FiberState::Panicked => {
-                                return f.result().cloned().unwrap_or(Err(
-                                    RuntimeError::Panic {
-                                        message: "fiber panicked".into(),
-                                    },
-                                ));
+                                return f.result().cloned().unwrap_or(Err(RuntimeError::Panic {
+                                    message: "fiber panicked".into(),
+                                }));
                             }
                             FiberState::Suspended(_) => {
                                 self.queue.lock().unwrap().push_back(f);

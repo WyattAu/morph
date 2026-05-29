@@ -78,12 +78,14 @@ impl Allocator for GlobalAllocator {
         }
     }
 
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
     fn dealloc(&self, ptr: *mut u8, size: usize, align: usize) {
         if ptr.is_null() || size == 0 {
             return;
         }
         let align = align.max(1);
         if let Ok(layout) = Layout::from_size_align(size, align) {
+            // SAFETY: ptr was allocated by GlobalAllocator::alloc with the same size/align.
             unsafe { alloc::dealloc(ptr, layout) }
         }
     }

@@ -73,7 +73,7 @@ pub fn compute_layout(ty: &Ty, registry: &TypeRegistry) -> TypeLayout {
         }
         Ty::Array(inner) => {
             let element = compute_layout(inner, registry);
-            let size = element.size * 1; // single element base; real array needs count
+            let size = element.size; // single element base; real array needs count
             let align = element.alignment;
             TypeLayout::new(size.max(align), align)
         }
@@ -106,7 +106,7 @@ pub fn compute_layout(ty: &Ty, registry: &TypeRegistry) -> TypeLayout {
         }
         Ty::Ref { .. } => TypeLayout::new(8, 8), // pointer-sized
         Ty::Fn { .. } => TypeLayout::new(8, 8),  // function pointer
-        Ty::Actor(_) => TypeLayout::new(8, 8),    // actor reference
+        Ty::Actor(_) => TypeLayout::new(8, 8),   // actor reference
         Ty::TypeVar(_) => TypeLayout::new(8, 8),
         Ty::Error => TypeLayout::new(0, 1),
     }
@@ -224,14 +224,18 @@ pub fn build_type_info(name: &str, ty: &Ty, registry: &TypeRegistry) -> Option<T
                 kind: TypeInfoKind::Primitive,
             })
         }
-        Ty::Named { name: type_name, .. } => {
+        Ty::Named {
+            name: type_name, ..
+        } => {
             if let Some(fields) = registry.lookup_struct(type_name) {
                 let (size, align, field_infos) = compute_struct_layout(fields, registry);
                 Some(TypeInfo {
                     name: name.to_string(),
                     size,
                     alignment: align,
-                    kind: TypeInfoKind::Struct { fields: field_infos },
+                    kind: TypeInfoKind::Struct {
+                        fields: field_infos,
+                    },
                 })
             } else if let Some(variants) = registry.lookup_enum(type_name) {
                 let (size, align, variant_infos) =

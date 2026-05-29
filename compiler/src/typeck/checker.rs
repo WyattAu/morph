@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use crate::ast::{
-    self, ActorDecl, ActorMember, BinOp, Capability, ConstDecl, EffectSet as AstEffectSet,
-    Expr, FnDecl, ImplBlock, Item, Literal, MatchArm, Node, NodeId, Pattern, Stmt, TraitDecl,
-    Type, TypeBody, TypeDecl, UnOp, Visibility,
+    self, ActorDecl, ActorMember, BinOp, Capability, ConstDecl, EffectSet as AstEffectSet, Expr,
+    FnDecl, ImplBlock, Item, Literal, MatchArm, Node, NodeId, Pattern, Stmt, TraitDecl, Type,
+    TypeBody, TypeDecl, UnOp, Visibility,
 };
 use crate::diagnostic::Diagnostic;
 use crate::lexer::token::Span;
@@ -30,6 +30,7 @@ pub struct TypeChecker {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct TypeDefInfo {
     name: String,
     visibility: Visibility,
@@ -40,14 +41,21 @@ struct TypeDefInfo {
 enum TypeDefBody {
     Struct(Vec<(String, Ty)>),
     Enum(Vec<(String, Vec<Ty>)>),
-    Alias(Ty),
+    Alias(()),
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct FnSigInfo {
     params: Vec<(String, Ty)>,
     ret: Ty,
     effects: EffectSet,
+}
+
+impl Default for TypeChecker {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TypeChecker {
@@ -155,18 +163,14 @@ impl TypeChecker {
                 let resolved: Vec<(String, Vec<Ty>)> = variants
                     .iter()
                     .map(|v| {
-                        let field_tys: Vec<Ty> = v
-                            .kind
-                            .fields
-                            .iter()
-                            .map(|t| self.resolve_type(t))
-                            .collect();
+                        let field_tys: Vec<Ty> =
+                            v.kind.fields.iter().map(|t| self.resolve_type(t)).collect();
                         (v.kind.name.clone(), field_tys)
                     })
                     .collect();
                 TypeDefBody::Enum(resolved)
             }
-            TypeBody::Alias(ty) => TypeDefBody::Alias(self.resolve_type(ty)),
+            TypeBody::Alias(_) => TypeDefBody::Alias(()),
         };
         self.type_defs.insert(
             decl.name.clone(),
@@ -347,11 +351,7 @@ impl TypeChecker {
                 } else if let Some(ty) = self.env.lookup(name) {
                     ty.clone()
                 } else {
-                    self.emit_error(
-                        "E001",
-                        format!("undefined variable: {}", name),
-                        expr.span,
-                    );
+                    self.emit_error("E001", format!("undefined variable: {}", name), expr.span);
                     Ty::Error
                 }
             }
@@ -366,10 +366,7 @@ impl TypeChecker {
                 self.infer_field_access(object, field, expr.span)
             }
 
-            Expr::Index {
-                object,
-                index,
-            } => self.infer_index(object, index, expr.span),
+            Expr::Index { object, index } => self.infer_index(object, index, expr.span),
 
             Expr::Lambda { params, body } => self.infer_lambda(params, body),
 
@@ -389,28 +386,21 @@ impl TypeChecker {
 
             Expr::NullCoalesce { lhs, rhs } => self.infer_null_coalesce(lhs, rhs),
 
-            Expr::Async { expr: inner } => {
-                let inner_ty = self.infer_expr(inner);
-                inner_ty
-            }
+            Expr::Async { expr: inner } => self.infer_expr(inner),
 
             Expr::Spawn { expr: inner } => {
                 let inner_ty = self.infer_expr(inner);
-                if self.current_actor.is_some() {
-                    if !inner_ty.is_sendable() {
-                        self.emit_error(
-                            "E004",
-                            format!("cannot send {} across actor boundary", inner_ty),
-                            expr.span,
-                        );
-                    }
+                if self.current_actor.is_some() && !inner_ty.is_sendable() {
+                    self.emit_error(
+                        "E004",
+                        format!("cannot send {} across actor boundary", inner_ty),
+                        expr.span,
+                    );
                 }
                 inner_ty
             }
 
-            Expr::StructInit { name, fields } => {
-                self.infer_struct_init(name, fields, expr.span)
-            }
+            Expr::StructInit { name, fields } => self.infer_struct_init(name, fields, expr.span),
 
             Expr::Walrus {
                 name,
@@ -423,6 +413,7 @@ impl TypeChecker {
         ty
     }
 
+    #[allow(dead_code)]
     fn check_expr(&mut self, expr: &Node<Expr>, expected: &Ty) -> Ty {
         let inferred = match &expr.kind {
             Expr::Literal(lit) => self.infer_literal(lit, Some(expected)),
@@ -469,8 +460,7 @@ impl TypeChecker {
                 let target_ty = self.infer_expr(target);
                 let value_ty = self.infer_expr(value);
                 let mut subst = Substitution::new();
-                if let Err(err) =
-                    unification::unify(&value_ty, &target_ty, &mut subst, target.span)
+                if let Err(err) = unification::unify(&value_ty, &target_ty, &mut subst, target.span)
                 {
                     self.emit_type_error(err);
                 }
@@ -553,11 +543,7 @@ impl TypeChecker {
             Literal::String(_) => Ty::Str,
             Literal::Null => {
                 if let Some(expected) = expected {
-                    if matches!(expected, Ty::Optional(_)) {
-                        expected.clone()
-                    } else {
-                        expected.clone()
-                    }
+                    expected.clone()
                 } else {
                     Ty::Optional(Box::new(Ty::Error))
                 }
@@ -670,9 +656,7 @@ impl TypeChecker {
                 for (arg, param_ty) in args.iter().zip(params.iter()) {
                     let arg_ty = self.infer_expr(arg);
                     let mut subst = Substitution::new();
-                    if let Err(err) =
-                        unification::unify(&arg_ty, param_ty, &mut subst, arg.span)
-                    {
+                    if let Err(err) = unification::unify(&arg_ty, param_ty, &mut subst, arg.span) {
                         self.emit_type_error(err);
                     }
                 }
@@ -695,11 +679,7 @@ impl TypeChecker {
             }
             Ty::Error => Ty::Error,
             _ => {
-                self.emit_error(
-                    "E011",
-                    format!("not a function: {}", callee_ty),
-                    span,
-                );
+                self.emit_error("E011", format!("not a function: {}", callee_ty), span);
                 Ty::Error
             }
         }
@@ -767,11 +747,7 @@ impl TypeChecker {
             }
             Ty::Error => Ty::Error,
             _ => {
-                self.emit_error(
-                    "E003",
-                    format!("cannot index into type {}", obj_ty),
-                    span,
-                );
+                self.emit_error("E003", format!("cannot index into type {}", obj_ty), span);
                 Ty::Error
             }
         }
@@ -829,16 +805,15 @@ impl TypeChecker {
         }
     }
 
-    fn infer_match(
-        &mut self,
-        scrutinee: &Node<Expr>,
-        arms: &[Node<MatchArm>],
-        span: Span,
-    ) -> Ty {
+    fn infer_match(&mut self, scrutinee: &Node<Expr>, arms: &[Node<MatchArm>], span: Span) -> Ty {
         let scrut_ty = self.infer_expr(scrutinee);
 
         if arms.is_empty() {
-            self.emit_error("E008", "non-exhaustive match: missing patterns".to_string(), span);
+            self.emit_error(
+                "E008",
+                "non-exhaustive match: missing patterns".to_string(),
+                span,
+            );
             return Ty::Error;
         }
 
@@ -848,9 +823,7 @@ impl TypeChecker {
             if let Some(guard) = &arm.kind.guard {
                 let guard_ty = self.infer_expr(guard);
                 let mut subst = Substitution::new();
-                if let Err(err) =
-                    unification::unify(&guard_ty, &Ty::Bool, &mut subst, guard.span)
-                {
+                if let Err(err) = unification::unify(&guard_ty, &Ty::Bool, &mut subst, guard.span) {
                     self.emit_type_error(err);
                 }
             }
@@ -878,8 +851,7 @@ impl TypeChecker {
             Pattern::Literal(lit) => {
                 let lit_ty = self.infer_literal(lit, Some(expected));
                 let mut subst = Substitution::new();
-                if let Err(err) = unification::unify(&lit_ty, expected, &mut subst, pattern.span)
-                {
+                if let Err(err) = unification::unify(&lit_ty, expected, &mut subst, pattern.span) {
                     self.emit_type_error(err);
                 }
             }
@@ -944,9 +916,7 @@ impl TypeChecker {
                         .map(|t| self.resolve_type(t))
                         .unwrap_or_else(|| self.fresh_var());
                     let mut subst = Substitution::new();
-                    if let Err(err) =
-                        unification::unify(&lhs_ty, &param_ty, &mut subst, lhs.span)
-                    {
+                    if let Err(err) = unification::unify(&lhs_ty, &param_ty, &mut subst, lhs.span) {
                         self.emit_type_error(err);
                     }
                 }
@@ -956,12 +926,9 @@ impl TypeChecker {
                 if let Some(sig) = self.fn_sigs.get(name).cloned() {
                     if sig.params.len() == 1 {
                         let mut subst = Substitution::new();
-                        if let Err(err) = unification::unify(
-                            &lhs_ty,
-                            &sig.params[0].1,
-                            &mut subst,
-                            lhs.span,
-                        ) {
+                        if let Err(err) =
+                            unification::unify(&lhs_ty, &sig.params[0].1, &mut subst, lhs.span)
+                        {
                             self.emit_type_error(err);
                         }
                         sig.ret
@@ -997,10 +964,7 @@ impl TypeChecker {
             _ => {
                 self.emit_error(
                     "E003",
-                    format!(
-                        "? operator requires Result or Optional, found {}",
-                        inner_ty
-                    ),
+                    format!("? operator requires Result or Optional, found {}", inner_ty),
                     span,
                 );
                 Ty::Error
@@ -1025,19 +989,11 @@ impl TypeChecker {
         unification::apply_subst(&subst, &inner)
     }
 
-    fn infer_struct_init(
-        &mut self,
-        name: &str,
-        fields: &[(String, Node<Expr>)],
-        span: Span,
-    ) -> Ty {
-        let struct_fields = self
-            .type_defs
-            .get(name)
-            .and_then(|td| match &td.body {
-                TypeDefBody::Struct(fields) => Some(fields.clone()),
-                _ => None,
-            });
+    fn infer_struct_init(&mut self, name: &str, fields: &[(String, Node<Expr>)], span: Span) -> Ty {
+        let struct_fields = self.type_defs.get(name).and_then(|td| match &td.body {
+            TypeDefBody::Struct(fields) => Some(fields.clone()),
+            _ => None,
+        });
 
         if let Some(struct_fields) = struct_fields {
             for (fname, fexpr) in fields {
@@ -1049,9 +1005,7 @@ impl TypeChecker {
                     Some(exp) => {
                         let found = self.infer_expr(fexpr);
                         let mut subst = Substitution::new();
-                        if let Err(err) =
-                            unification::unify(&found, &exp, &mut subst, fexpr.span)
-                        {
+                        if let Err(err) = unification::unify(&found, &exp, &mut subst, fexpr.span) {
                             self.emit_type_error(err);
                         }
                     }
@@ -1098,9 +1052,7 @@ impl TypeChecker {
         let ty = if let Some(ann) = type_ann {
             let expected = self.resolve_type(ann);
             let mut subst = Substitution::new();
-            if let Err(err) =
-                unification::unify(&value_ty, &expected, &mut subst, value.span)
-            {
+            if let Err(err) = unification::unify(&value_ty, &expected, &mut subst, value.span) {
                 self.emit_type_error(err);
             }
             unification::apply_subst(&subst, &expected)
@@ -1203,14 +1155,14 @@ impl TypeChecker {
         to: types::Capability,
         span: Span,
     ) -> bool {
-        let valid = match (from, to) {
-            (types::Capability::Iso, types::Capability::Iso) => true,
-            (types::Capability::Iso, types::Capability::Val) => true,
-            (types::Capability::Iso, types::Capability::Ref) => true,
-            (types::Capability::Val, types::Capability::Val) => true,
-            (types::Capability::Ref, types::Capability::Ref) => true,
-            _ => false,
-        };
+        let valid = matches!(
+            (from, to),
+            (types::Capability::Iso, types::Capability::Iso)
+                | (types::Capability::Iso, types::Capability::Val)
+                | (types::Capability::Iso, types::Capability::Ref)
+                | (types::Capability::Val, types::Capability::Val)
+                | (types::Capability::Ref, types::Capability::Ref)
+        );
         if !valid {
             self.emit_error(
                 "E005",
@@ -1238,10 +1190,7 @@ impl TypeChecker {
                 if !caller.contains(eff) {
                     self.emit_error(
                         "E006",
-                        format!(
-                            "effect violation: calling {:?} from {:?}",
-                            callee, caller
-                        ),
+                        format!("effect violation: calling {:?} from {:?}", callee, caller),
                         span,
                     );
                 }
@@ -1572,11 +1521,7 @@ mod tests {
     fn test_check_program_fn_with_params() {
         let body = make_block(
             vec![],
-            Some(make_binop(
-                BinOp::Add,
-                make_var("a"),
-                make_var("b"),
-            )),
+            Some(make_binop(BinOp::Add, make_var("a"), make_var("b"))),
         );
         let item = make_fn_item(
             "add",

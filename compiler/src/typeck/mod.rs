@@ -8,4 +8,4 @@ pub mod unification;
 pub use checker::TypeChecker;
 pub use errors::TypeError;
 pub use result::TypeCheckResult;
-pub use types::{Capability, Effect, EffectSet, IntKind, FloatKind, Ty};
+pub use types::{Capability, Effect, EffectSet, FloatKind, IntKind, Ty};

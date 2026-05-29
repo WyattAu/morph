@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 
-use crate::ast::{
-    self, ActorDecl, BinOp, Expr, FnDecl, Item, Literal, Stmt, TypeBody, UnOp,
-};
+use crate::ast::{self, ActorDecl, BinOp, Expr, FnDecl, Item, Literal, Stmt, TypeBody, UnOp};
 use crate::lexer::token::Span;
 use crate::typeck::types::{Capability, Effect, EffectSet, Ty};
 
@@ -52,6 +50,7 @@ pub struct CodeGen {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct FnSig {
     param_count: usize,
     return_ty: Ty,
@@ -218,7 +217,7 @@ impl CodeGen {
             }
             Item::ActorDecl(decl) => self.compile_actor_decl(decl, item.span),
             Item::ConstDecl(decl) => {
-                let mut func = CompiledFunction::new(format!("const_{}", decl.name));
+                let func = CompiledFunction::new(format!("const_{}", decl.name));
                 self.current_function = Some(func);
                 self.push_scope();
                 self.compile_expr(&decl.value)?;
@@ -246,18 +245,21 @@ impl CodeGen {
         let return_ty = decl
             .return_type
             .as_ref()
-            .map(|t| resolve_ast_type(t))
+            .map(resolve_ast_type)
             .unwrap_or(Ty::Void);
         func.return_type = Some(return_ty);
 
         for param in &decl.params {
-            let slot = self.scope_stack.last_mut().map(|s| s.alloc(param.kind.name.clone()));
+            let slot = self
+                .scope_stack
+                .last_mut()
+                .map(|s| s.alloc(param.kind.name.clone()));
             if let Some(slot) = slot {
                 let ty = param
                     .kind
                     .type_ann
                     .as_ref()
-                    .map(|t| resolve_ast_type(t))
+                    .map(resolve_ast_type)
                     .unwrap_or(Ty::Error);
                 func.params.push(ParamInfo {
                     name: param.kind.name.clone(),
@@ -269,17 +271,12 @@ impl CodeGen {
 
         self.current_function = Some(func);
 
-        let effects = decl
+        let _effects = decl
             .effects
             .as_ref()
             .map(|e| self.convert_ast_effects(e))
             .unwrap_or_else(EffectSet::empty);
-        let has_io = effects.contains(Effect::IO) || effects.contains(Effect::Net);
-        if has_io {
-            self.emit_yield_checkpoint(decl.body.span);
-        } else {
-            self.emit_yield_checkpoint(decl.body.span);
-        }
+        self.emit_yield_checkpoint(decl.body.span);
 
         self.compile_expr(&decl.body)?;
 
@@ -304,19 +301,17 @@ impl CodeGen {
                     name: decl.name.clone(),
                     size,
                     alignment: align,
-                    kind: TypeInfoKind::Struct { fields: field_infos },
+                    kind: TypeInfoKind::Struct {
+                        fields: field_infos,
+                    },
                 });
             }
             TypeBody::Enum(variants) => {
                 let variant_tys: Vec<(String, Vec<Ty>)> = variants
                     .iter()
                     .map(|v| {
-                        let field_tys: Vec<Ty> = v
-                            .kind
-                            .fields
-                            .iter()
-                            .map(|t| resolve_ast_type(t))
-                            .collect();
+                        let field_tys: Vec<Ty> =
+                            v.kind.fields.iter().map(resolve_ast_type).collect();
                         (v.kind.name.clone(), field_tys)
                     })
                     .collect();
@@ -376,9 +371,7 @@ impl CodeGen {
                 self.emit(Instruction::SpawnFiber, expr.span);
                 Ok(())
             }
-            Expr::StructInit { name, fields } => {
-                self.compile_struct_init(name, fields, expr.span)
-            }
+            Expr::StructInit { name, fields } => self.compile_struct_init(name, fields, expr.span),
             Expr::Walrus {
                 name,
                 value,
@@ -528,14 +521,12 @@ impl CodeGen {
         let arg_count = args.len() as u32;
         self.emit(Instruction::Call(arg_count), span);
 
-        if let Some(ty) = self.type_map.get(&callee.id) {
-            if let Ty::Ref {
-                cap: Capability::Val,
-                ..
-            } = ty
-            {
-                self.emit(Instruction::ArcRelease, span);
-            }
+        if let Some(Ty::Ref {
+            cap: Capability::Val,
+            ..
+        }) = self.type_map.get(&callee.id)
+        {
+            self.emit(Instruction::ArcRelease, span);
         }
 
         Ok(())
@@ -769,7 +760,10 @@ impl CodeGen {
                 if let Expr::FieldAccess { object, field } = &target.kind {
                     self.compile_expr(object)?;
                     let obj_ty = self.type_map.get(&object.id);
-                    if let Some(Ty::Named { name: type_name, .. }) = obj_ty {
+                    if let Some(Ty::Named {
+                        name: type_name, ..
+                    }) = obj_ty
+                    {
                         if let Some(fields) = self.registry.lookup_struct(type_name) {
                             for (idx, (fname, _)) in fields.iter().enumerate() {
                                 if fname == field {
@@ -932,14 +926,12 @@ impl CodeGen {
         self.emit(Instruction::MakeStruct(field_count), span);
 
         for (_, fexpr) in fields {
-            if let Some(t) = self.type_map.get(&fexpr.id) {
-                if let Ty::Ref {
-                    cap: Capability::Val,
-                    ..
-                } = t
-                {
-                    self.emit(Instruction::ArcRetain, span);
-                }
+            if let Some(Ty::Ref {
+                cap: Capability::Val,
+                ..
+            }) = self.type_map.get(&fexpr.id)
+            {
+                self.emit(Instruction::ArcRetain, span);
             }
         }
 
@@ -1014,11 +1006,7 @@ impl CodeGen {
 
     fn finish_function(&mut self) {
         if let Some(mut func) = self.current_function.take() {
-            func.locals = self
-                .scope_stack
-                .last()
-                .map(|s| s.next_slot)
-                .unwrap_or(0);
+            func.locals = self.scope_stack.last().map(|s| s.next_slot).unwrap_or(0);
             self.module.functions.push(func);
         }
     }
@@ -1100,7 +1088,6 @@ mod tests {
         Type as AstType, Visibility,
     };
     use crate::lexer::token::Span;
-    use crate::typeck::types::{FloatKind, IntKind};
 
     fn dummy_span() -> Span {
         Span::dummy()
@@ -1114,6 +1101,7 @@ mod tests {
         Node::new(AstExpr::Literal(Literal::Bool(val)), dummy_span())
     }
 
+    #[allow(dead_code)]
     fn make_lit_float(val: &str) -> Node<AstExpr> {
         Node::new(
             AstExpr::Literal(Literal::Float(val.to_string())),
@@ -1170,7 +1158,10 @@ mod tests {
         Node::new(
             crate::ast::Param {
                 name: name.to_string(),
-                type_ann: Some(Node::new(AstType::Named(type_name.to_string()), dummy_span())),
+                type_ann: Some(Node::new(
+                    AstType::Named(type_name.to_string()),
+                    dummy_span(),
+                )),
             },
             dummy_span(),
         )
@@ -1180,6 +1171,7 @@ mod tests {
         Node::new(AstType::Named(name.to_string()), dummy_span())
     }
 
+    #[allow(dead_code)]
     fn make_stmt_expr(expr: Node<AstExpr>) -> Node<AstStmt> {
         Node::new(AstStmt::ExprStmt(expr), dummy_span())
     }
@@ -1302,7 +1294,7 @@ mod tests {
         assert!(func
             .instructions
             .first()
-            .map_or(false, |i| matches!(i, Instruction::YieldFiber)));
+            .is_some_and(|i| matches!(i, Instruction::YieldFiber)));
     }
 
     #[test]

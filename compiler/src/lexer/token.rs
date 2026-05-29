@@ -27,7 +27,11 @@ impl Span {
             start: self.start.min(other.start),
             end: self.end.max(other.end),
             line: self.line.min(other.line),
-            col: if self.line <= other.line { self.col } else { other.col },
+            col: if self.line <= other.line {
+                self.col
+            } else {
+                other.col
+            },
         }
     }
 }
