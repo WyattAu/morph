@@ -21,9 +21,18 @@ This semantics is call-by-value: arguments are evaluated before function applica
 
 /-! ## Value Predicate -/
 
+mutual
+
 inductive IsValue : Expr → Prop where
   | lit : ∀ v, IsValue (.lit v)
   | lam : ∀ n body, IsValue (.lam n body)
+  | none_ : IsValue .none_
+  | err_ : ∀ e, IsValue e → IsValue (.err_ e)
+  | ok_ : ∀ e, IsValue e → IsValue (.ok_ e)
+  | some_ : ∀ e, IsValue e → IsValue (.some_ e)
+  | tuple_ : ∀ (elems : List Expr) (hvs : ∀ e ∈ elems, IsValue e), IsValue (.tuple_ elems)
+
+end
 
 /-! ## Operator Classifications -/
 
@@ -209,8 +218,26 @@ inductive Step : Expr → Expr → Prop where
   | block_lam_singleton : ∀ n body,
       Step (.block [.lam n body]) (.lam n body)
 
+  | block_none_singleton :
+      Step (.block [.none_]) .none_
+
+  | block_err_singleton : ∀ e,
+      IsValue e → Step (.block [.err_ e]) (.err_ e)
+
+  | block_ok_singleton : ∀ e,
+      IsValue e → Step (.block [.ok_ e]) (.ok_ e)
+
+  | block_some_singleton : ∀ e,
+      IsValue e → Step (.block [.some_ e]) (.some_ e)
+
+  | block_tuple_singleton : ∀ (elems : List Expr) (hvs : ∀ e ∈ elems, IsValue e),
+      Step (.block [.tuple_ elems]) (.tuple_ elems)
+
   | block_pop : ∀ e head rest,
       IsValue e → Step (.block (e :: head :: rest)) (.block (head :: rest))
+
+  | binop_string_concat : ∀ s1 s2,
+      Step (.binop .add (.lit (.string s1)) (.lit (.string s2))) (.lit (.string (s1 ++ s2)))
 
   | binop_div_zero : ∀ n1,
       Step (.binop .div (.lit (.int n1)) (.lit (.int 0))) (.lit (.int 0))
@@ -237,5 +264,118 @@ inductive Step : Expr → Expr → Prop where
       args.length = n →
       Step (.app (.lam n body) args) (substAll args.reverse body)
 
+  /- ## Field Access
+  Step the base expression. No final reduction without struct values. -/
 
-end Morph.Semantics
+  | field_step : ∀ e e' name,
+      Step e e' →
+      Step (.field_ e name) (.field_ e' name)
+
+  /- ## Pipeline (e |> f) -/
+
+  | pipe_left : ∀ e e' f,
+      Step e e' →
+      Step (.pipe e f) (.pipe e' f)
+
+  | pipe_right : ∀ v f f',
+      IsValue v → Step f f' →
+      Step (.pipe v f) (.pipe v f')
+
+  | pipe_done : ∀ v f,
+      IsValue v →
+      Step (.pipe v f) (.app f [v])
+
+  /- ## Type Ascription (e : τ) -/
+
+  | typeAsc_step : ∀ e e' τ,
+      Step e e' →
+      Step (.typeAsc e τ) (.typeAsc e' τ)
+
+  | typeAsc_done : ∀ v τ,
+      IsValue v →
+      Step (.typeAsc v τ) v
+
+  /- ## Option Constructors -/
+
+  | some_step : ∀ e e',
+      Step e e' →
+      Step (.some_ e) (.some_ e')
+
+  | some_done : ∀ v,
+      Step (.some_ (.lit v)) (.lit (.some v))
+
+  | some_none_done :
+      Step (.some_ .none_) (.lit (.some Value.none))
+
+  | none_step :
+      Step .none_ (.lit Value.none)
+
+  /- ## Result Constructors -/
+
+  | ok_step : ∀ e e',
+      Step e e' →
+      Step (.ok_ e) (.ok_ e')
+
+  | ok_done : ∀ v,
+      Step (.ok_ (.lit v)) (.lit (.ok v))
+
+  | ok_none_done :
+      Step (.ok_ .none_) (.lit (.ok Value.none))
+
+  | err_step : ∀ e e',
+      Step e e' →
+      Step (.err_ e) (.err_ e')
+
+  | err_done : ∀ v,
+      Step (.err_ (.lit v)) (.lit (.err v))
+
+  | err_none_done :
+      Step (.err_ .none_) (.lit (.err Value.none))
+
+  /- ## Match -/
+
+  | match_scrut_step : ∀ scrut scrut' arms,
+      Step scrut scrut' →
+      Step (.match_ scrut arms) (.match_ scrut' arms)
+
+  | match_arm : ∀ v vars body rest,
+      Step (.match_ (.lit v) ((vars, body) :: rest))
+        (substAll (List.replicate vars.length (.lit v)) body)
+
+  | match_empty : ∀ v,
+      Step (.match_ (.lit v) []) (.lit .unit)
+
+  /- ## Null Coalesce (e1 ?? e2) -/
+
+  | null_coalesce_step_e1 : ∀ e1 e1' e2,
+      Step e1 e1' →
+      Step (.nullCoalesce e1 e2) (.nullCoalesce e1' e2)
+
+  | null_coalesce_some : ∀ v e2,
+      Step (.nullCoalesce (.some_ v) e2) (.some_ v)
+
+  | null_coalesce_none : ∀ e2,
+      Step (.nullCoalesce .none_ e2) e2
+
+  | null_coalesce_lit_some : ∀ v e2,
+      Step (.nullCoalesce (.lit (.some v)) e2) (.lit (.some v))
+
+  | null_coalesce_lit_none : ∀ e2,
+      Step (.nullCoalesce (.lit .none) e2) e2
+
+  /- ## Tuple
+
+  Tuples step by evaluating their elements left-to-right.
+  `tuple_step_head` steps the first element.
+  `tuple_step_rest` skips the first value element and steps the rest. -/
+
+  | tuple_step_head : ∀ head head' rest,
+      Step head head' →
+      Step (.tuple_ (head :: rest)) (.tuple_ (head' :: rest))
+
+  | tuple_step_rest : ∀ head rest rest',
+      IsValue head →
+      Step (.tuple_ rest) (.tuple_ rest') →
+      Step (.tuple_ (head :: rest)) (.tuple_ (head :: rest'))
+
+  end Morph.Semantics

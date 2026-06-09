@@ -119,6 +119,10 @@ def evalBinop (op : Operator) (v1 v2 : Expr) : Option Expr :=
     | .gt => some (.lit (.bool (f1 > f2)))
     | .geq => some (.lit (.bool (f1 >= f2)))
     | _ => none
+  | .lit (.string s1), .lit (.string s2) =>
+    match op with
+    | .add => some (.lit (.string (s1 ++ s2)))
+    | _ => none
   | _, _ => none
 
 /-! ## Main Evaluator -/
@@ -168,7 +172,48 @@ partial def eval (ctx : Context) : Expr → Option Expr
   | .match_ scrut branches => do
     let sv ← eval ctx scrut
     evalMatch ctx sv branches
-where
+  | .field_ e _ => eval ctx e
+  | .pipe e f => do
+    let v ← eval ctx e
+    eval ctx (.app f [v])
+  | .typeAsc e _ => eval ctx e
+  | .none_ => some (.lit Value.none)
+  | .some_ e => do
+    let v ← eval ctx e
+    match v with
+    | .lit inner => some (.lit (.some inner))
+    | .none_ => some (.lit (.some Value.none))
+    | .lam n body => none
+    | _ => none
+  | .ok_ e => do
+    let v ← eval ctx e
+    match v with
+    | .lit inner => some (.lit (.ok inner))
+    | .none_ => some (.lit (.ok Value.none))
+    | .lam n body => none
+    | _ => none
+   | .err_ e => do
+     let v ← eval ctx e
+     match v with
+     | .lit inner => some (.lit (.err inner))
+     | .none_ => some (.lit (.err Value.none))
+     | .lam n body => none
+     | _ => none
+   | .nullCoalesce e1 e2 => do
+     let v1 ← eval ctx e1
+     match v1 with
+     | .lit (.some _) => some v1
+     | .lit .none => eval ctx e2
+     | .some_ _ => some v1
+     | .none_ => eval ctx e2
+     | _ => none
+   | .tuple_ elems => do
+     let vals ← elems.mapM (eval ctx)
+     if vals.length = elems.length then
+       some (.lit (.tuple_ (vals.filterMap fun v => match v with | .lit inner => some inner | _ => none)))
+     else
+       none
+  where
   evalBlock (ctx : Context) : List Expr → Option Expr
     | [] => some (.lit .unit)
     | [e] => eval ctx e

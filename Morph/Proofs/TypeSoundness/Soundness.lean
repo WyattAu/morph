@@ -43,8 +43,28 @@ inductive WellTypedValue : Expr → Typ → Prop where
   | lit_string : forall s, WellTypedValue (.lit (.string s)) .stringType
   | lit_unit : WellTypedValue (.lit .unit) .unitType
   | lit_pointer : forall p, WellTypedValue (.lit (.pointer p)) .pointerType
+  | lit_float : forall w f, WellTypedValue (.lit (.float f)) (.floatType w)
+  | lit_int_width : forall w n, WellTypedValue (.lit (.int n)) (.intWidthType w)
   | lam : forall n body paramTys retTy,
       WellTypedValue (.lam n body) (.functionType paramTys retTy)
+  | lit_none : forall τ,
+      WellTypedValue (.lit Value.none) (.optionType τ)
+  | lit_some : forall v τ,
+      WellTypedValue (.lit (.some v)) (.optionType τ)
+  | lit_ok : forall v τ_ok τ_err,
+      WellTypedValue (.lit (.ok v)) (.resultType τ_ok τ_err)
+   | lit_err : forall v τ_ok τ_err,
+       WellTypedValue (.lit (.err v)) (.resultType τ_ok τ_err)
+   | none_val : forall τ,
+      WellTypedValue .none_ (.optionType τ)
+  | err_val : forall e τ_ok τ_err,
+      IsValue e -> WellTypedValue (.err_ e) (.resultType τ_ok τ_err)
+  | ok_val : forall e τ_ok τ_err,
+      IsValue e -> WellTypedValue (.ok_ e) (.resultType τ_ok τ_err)
+   | some_val : forall e τ,
+       IsValue e -> WellTypedValue (.some_ e) (.optionType τ)
+   | tuple_val : forall elems tys,
+       HasTypeAll [] [] elems tys -> WellTypedValue (.tuple_ elems) (.tupleType tys)
 
 /-! ## Progress-Preservation Combination
 
@@ -113,6 +133,7 @@ theorem value_is_well_typed : forall {e : Expr} {τ : Typ},
     cases v with
     | int n => cases ht with
       | lit_int => exact WellTypedValue.lit_int n
+      | lit_int_width => exact WellTypedValue.lit_int_width _ _
     | bool b => cases ht with
       | lit_bool => exact WellTypedValue.lit_bool b
     | string s => cases ht with
@@ -121,11 +142,43 @@ theorem value_is_well_typed : forall {e : Expr} {τ : Typ},
       | lit_unit => exact WellTypedValue.lit_unit
     | pointer p => cases ht with
       | lit_pointer => exact WellTypedValue.lit_pointer p
-    | float _ => cases ht
-    | undef => cases ht
+    | float f => cases ht with
+      | lit_float => exact WellTypedValue.lit_float _ _
+      | _ => contradiction
+    | undef => cases ht with
+      | _ => contradiction
+    | some v' => cases ht with
+      | lit_some _ _ _ τ_inner => exact WellTypedValue.lit_some v' τ_inner
+      | _ => contradiction
+    | none => cases ht with
+      | lit_none _ _ τ_inner => exact WellTypedValue.lit_none τ_inner
+      | _ => contradiction
+    | ok v' => cases ht with
+      | lit_ok _ _ _ τ_ok τ_err => exact WellTypedValue.lit_ok v' τ_ok τ_err
+      | _ => contradiction
+     | err v' => cases ht with
+       | lit_err _ _ _ τ_err τ_ok => exact WellTypedValue.lit_err v' τ_ok τ_err
+       | _ => contradiction
+    | tuple_ vs => contradiction
   | lam n body =>
     cases ht with
     | lam_type => exact WellTypedValue.lam n body _ _
+    | _ => contradiction
+  | none_ => cases ht with
+    | none_type _ _ τ_inner => exact WellTypedValue.none_val τ_inner
+    | _ => contradiction
+  | err_ e hv' => cases ht with
+    | err_type _ _ _ τ_err τ_ok _ => exact WellTypedValue.err_val e τ_ok τ_err hv'
+    | _ => contradiction
+  | ok_ e hv' => cases ht with
+    | ok_type _ _ _ τ_ok τ_err _ => exact WellTypedValue.ok_val e τ_ok τ_err hv'
+    | _ => contradiction
+  | some_ e hv' => cases ht with
+    | some_type _ _ _ τ_inner _ => exact WellTypedValue.some_val e τ_inner hv'
+    | _ => contradiction
+  | tuple_ elems hvs => cases ht with
+    | tuple_type _ _ _ tys hAll => exact WellTypedValue.tuple_val elems tys hAll
+    | _ => contradiction
 
 /-! ## Closed Term Typing Inversion
 

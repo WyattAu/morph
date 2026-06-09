@@ -229,7 +229,7 @@ $$ \forall v \in \text{Val}, \neg \exists \text{type\_level\_cycle}(v) \text{ af
 * MMS-THM-001:* THE system SHALL guarantee that strong references form a type-level DAG.
 
 * Proof Sketch:*
-1. By definition of affine logic, Iso types are used exactly once
+1. By definition of affine logic, Iso types are used at most once
 2. By definition of Val types, they are immutable
 3. By definition of Ref types, they are borrowed with bounded lifetimes
 4. Therefore, no type-level cycles can form through strong references alone

@@ -34,7 +34,7 @@ This specification does not cover:
 
 | Term | Definition |
 |-------|------------|
-| **Affine Logic** | A substructural logic where each assumption must be used exactly once |
+| **Affine Logic** | A substructural logic where each assumption must be used at most once |
 | **Linear Logic** | A substructural logic where each assumption must be used exactly once and cannot be discarded |
 | **Context Splitting** | Dividing available variables into disjoint sets for parallel operations |
 | **Capability** | A type modifier that specifies how a value can be used (Iso, Val, Ref) |
@@ -329,7 +329,7 @@ flowchart TD
 - `Theorem:* If a program type-checks under affine logic, then it is memory-safe (no use-after-free, no double-free, no data races).
 
 - Proof Sketch:*
-1. By definition of affine logic, each resource is used exactly once
+1. By definition of affine logic, each resource is used at most once
 2. Use-after-free would require using a resource after it's consumed (violates affine rule)
 3. Double-free would require consuming a resource twice (violates affine rule)
 4. Data races require concurrent access to same resource (violates uniqueness of `^Iso`)

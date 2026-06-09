@@ -33,6 +33,11 @@ theorem canonical_bool : forall {e : Expr},
     | bool b => exact ⟨b, rfl⟩
     | _ => cases ht
   | lam _ _ => cases ht
+  | none_ => cases ht
+  | err_ _ _ => cases ht
+  | ok_ _ _ => cases ht
+  | some_ _ _ => cases ht
+  | tuple_ _ _ => cases ht
 
 theorem canonical_int : forall {e : Expr},
     IsValue e -> HasType [] [] e .intType -> exists n, e = .lit (.int n) := by
@@ -42,6 +47,53 @@ theorem canonical_int : forall {e : Expr},
     | int n => exact ⟨n, rfl⟩
     | _ => cases ht
   | lam _ _ => cases ht
+  | none_ => cases ht
+  | err_ _ _ => cases ht
+  | ok_ _ _ => cases ht
+  | some_ _ _ => cases ht
+  | tuple_ _ _ => cases ht
+
+theorem canonical_string : forall {e : Expr},
+    IsValue e -> HasType [] [] e .stringType -> exists s, e = .lit (.string s) := by
+  intro e hv ht
+  cases hv with
+  | lit v => cases v with
+    | string s => exact ⟨s, rfl⟩
+    | _ => cases ht
+  | lam _ _ => cases ht
+  | none_ => cases ht
+  | err_ _ _ => cases ht
+  | ok_ _ _ => cases ht
+  | some_ _ _ => cases ht
+  | tuple_ _ _ => cases ht
+
+theorem canonical_float : forall {e : Expr} {w : FloatWidth},
+    IsValue e -> HasType [] [] e (.floatType w) -> exists f, e = .lit (.float f) := by
+  intro e w hv ht
+  cases hv with
+  | lit v => cases v with
+    | float f => exact ⟨f, rfl⟩
+    | _ => cases ht
+  | lam _ _ => cases ht
+  | none_ => cases ht
+  | err_ _ _ => cases ht
+  | ok_ _ _ => cases ht
+  | some_ _ _ => cases ht
+  | tuple_ _ _ => cases ht
+
+theorem canonical_intWidth : forall {e : Expr} {w : IntWidth},
+    IsValue e -> HasType [] [] e (.intWidthType w) -> exists n, e = .lit (.int n) := by
+  intro e w hv ht
+  cases hv with
+  | lit v => cases v with
+    | int n => exact ⟨n, rfl⟩
+    | _ => cases ht
+  | lam _ _ => cases ht
+  | none_ => cases ht
+  | err_ _ _ => cases ht
+  | ok_ _ _ => cases ht
+  | some_ _ _ => cases ht
+  | tuple_ _ _ => cases ht
 
 /-! ## Helpers -/
 
@@ -92,6 +144,42 @@ private theorem depth_app_fn {fn : Expr} {args : List Expr} :
   simp only [exprDepth]
   exact Nat.lt_of_le_of_lt (Nat.le_max_left _ _) (Nat.lt_succ_self _)
 
+private theorem depth_field {e : Expr} {name : String} :
+    exprDepth e < exprDepth (.field_ e name) := by
+  simp only [exprDepth]; exact Nat.lt_succ_self _
+
+private theorem depth_pipe_l {e : Expr} {f : Expr} :
+    exprDepth e < exprDepth (.pipe e f) := by
+  simp only [exprDepth]
+  exact Nat.lt_of_le_of_lt (Nat.le_max_left _ _) (Nat.lt_succ_self _)
+
+private theorem depth_pipe_r {e : Expr} {f : Expr} :
+    exprDepth f < exprDepth (.pipe e f) := by
+  simp only [exprDepth]
+  exact Nat.lt_of_le_of_lt (Nat.le_max_right _ _) (Nat.lt_succ_self _)
+
+private theorem depth_typeAsc {e : Expr} {τ : Typ} :
+    exprDepth e < exprDepth (.typeAsc e τ) := by
+  simp only [exprDepth]; exact Nat.lt_succ_self _
+
+private theorem depth_some {e : Expr} :
+    exprDepth e < exprDepth (.some_ e) := by
+  simp only [exprDepth]; exact Nat.lt_succ_self _
+
+private theorem depth_none : exprDepth .none_ = 0 := by simp only [exprDepth]
+
+private theorem depth_ok {e : Expr} :
+    exprDepth e < exprDepth (.ok_ e) := by
+  simp only [exprDepth]; exact Nat.lt_succ_self _
+
+private theorem depth_err {e : Expr} :
+    exprDepth e < exprDepth (.err_ e) := by
+  simp only [exprDepth]; exact Nat.lt_succ_self _
+
+private theorem depth_null_coalesce_e1 {e1 e2 : Expr} :
+    exprDepth e1 < exprDepth (.nullCoalesce e1 e2) := by
+  simp only [exprDepth]; exact Nat.lt_of_le_of_lt (Nat.le_max_left _ _) (Nat.lt_succ_self _)
+
 private theorem HasTypeAll_nil_types {bvs : List Typ} {Γ : TypEnv} {tys : List Typ} :
     HasTypeAll bvs Γ [] tys → tys = [] := by
   intro h
@@ -128,9 +216,98 @@ private theorem HasTypeAll_append_cons_head {bvs : List Typ} {Γ : TypEnv} {e : 
   | cons τ' τs' =>
     change HasTypeAll bvs Γ (e :: es) (τ' :: (τs' ++ [τ])) at h
     cases h with
-    | cons _ _ _ _ _ _ hE _ => exact ⟨_, hE⟩
+     | cons _ _ _ _ _ _ hE _ => exact ⟨_, hE⟩
 
-/-! ## Progress (strong induction on depth) -/
+private theorem HasTypeAll_mem {bvs : List Typ} {Γ : TypEnv} {es : List Expr}
+    {τs : List Typ} (hAll : HasTypeAll bvs Γ es τs) (e : Expr) (he : e ∈ es) :
+    ∃ τ, HasType bvs Γ e τ := by
+  cases es with
+  | nil => cases he
+  | cons head rest =>
+    match hAll with
+    | HasTypeAll.cons _ _ _ _ _ _ hE hRest =>
+      cases he with
+      | head _ => exact ⟨_, hE⟩
+      | tail _ h => exact HasTypeAll_mem hRest e h
+
+private theorem tuple_find_step_rest {rest : List Expr} {e e' : Expr}
+    (he : e ∈ rest) (hs : Step e e') :
+    ∃ (n : Nat) (hn : n < rest.length), Step (rest.get ⟨n, hn⟩) e' := by
+  induction rest with
+  | nil => cases he
+  | cons head rest ih =>
+    cases he with
+    | head _ =>
+      exact ⟨0, Nat.zero_lt_succ _, hs⟩
+    | tail _ h =>
+      obtain ⟨n, hn, hget⟩ := ih h
+      exact ⟨n + 1, Nat.succ_lt_succ hn, hget⟩
+
+private theorem list_exists_step_or_all_values {rest : List Expr}
+    (h : ∀ e ∈ rest, IsValue e ∨ ∃ e', Step e e') :
+    (∀ e ∈ rest, IsValue e) ∨ ∃ e e', e ∈ rest ∧ Step e e' := by
+  induction rest with
+  | nil => left; intro _ h; cases h
+  | cons head rest ih =>
+    have hh : IsValue head ∨ ∃ e', Step head e' := h head (List.Mem.head rest)
+    have hRest : ∀ x ∈ rest, IsValue x ∨ ∃ e', Step x e' := fun x hx => h x (List.Mem.tail head hx)
+    cases hh with
+    | inl hv =>
+      cases ih hRest with
+      | inl hAll =>
+        left; intro x hx
+        cases hx with
+        | head _ => exact hv
+        | tail _ h => exact hAll x h
+      | inr hStep2 =>
+        obtain ⟨e, e', he, hs⟩ := hStep2
+        right; exact ⟨e, e', List.Mem.tail head he, hs⟩
+    | inr hStep =>
+      obtain ⟨e', hs⟩ := hStep
+      right; exact ⟨head, e', List.Mem.head rest, hs⟩
+
+private theorem listExprDepth_mem {e : Expr} {rest : List Expr} (he : e ∈ rest) :
+    exprDepth e ≤ listExprDepth rest := by
+  induction rest with
+  | nil => cases he
+  | cons head rest ih =>
+    cases he with
+    | head _ => simp only [listExprDepth]; exact Nat.le_max_left _ _
+    | tail _ h => simp only [listExprDepth]; exact Nat.le_trans (ih h) (Nat.le_max_right (exprDepth head) (listExprDepth rest))
+
+private theorem tuple_progress_list {d : Nat}
+    (ih : ∀ (e : Expr), exprDepth e < d → ∀ (τ : Typ), HasType [] [] e τ → IsValue e ∨ (∃ e', Step e e'))
+    (elems : List Expr) (τs : List Typ)
+    (hAll : HasTypeAll [] [] elems τs)
+    (hd : ∀ e ∈ elems, exprDepth e < d) :
+    (∃ elems', Step (.tuple_ elems) (.tuple_ elems')) ∨ (∀ e ∈ elems, IsValue e) := by
+  revert τs hAll hd
+  induction elems with
+  | nil => intro τs hAll _; right; intro _ h; cases h
+  | cons head rest ih_elems =>
+    intro τs hAll hd
+    cases hAll with
+    | cons _ _ _ _ τ_h τs' hE_head hAll_rest =>
+      have hRes := ih head (hd head (List.Mem.head rest)) τ_h hE_head
+      cases hRes with
+      | inr hStep =>
+        left
+        obtain ⟨head', hs⟩ := hStep
+        exact ⟨head' :: rest, Step.tuple_step_head head head' rest hs⟩
+      | inl hv =>
+        have hd_rest : ∀ e ∈ rest, exprDepth e < d := fun e' he' => hd e' (List.Mem.tail head he')
+        have hRest := ih_elems τs' hAll_rest hd_rest
+        cases hRest with
+        | inl hStepRest =>
+          left
+          obtain ⟨elems'', hs⟩ := hStepRest
+          exact ⟨head :: elems'', Step.tuple_step_rest head rest elems'' hv hs⟩
+        | inr hVals =>
+          right
+          intro x hx
+          cases hx with
+          | head _ => exact hv
+          | tail _ h => exact hVals x h
 
 private theorem progress_strong :
     forall (d : Nat) (e : Expr), exprDepth e < d ->
@@ -156,6 +333,8 @@ private theorem progress_strong :
     | lit_string _ _ s => left; exact IsValue.lit (Value.string s)
     | lit_unit _ _ => left; exact IsValue.lit Value.unit
     | lit_pointer _ _ p => left; exact IsValue.lit (Value.pointer p)
+    | lit_float _ _ w f => left; exact IsValue.lit (Value.float f)
+    | lit_int_width _ _ w n => left; exact IsValue.lit (Value.int n)
     | unop_not _ _ eSub hSub =>
       have hRes := ih eSub (Nat.lt_of_lt_of_le (depth_unop .not) (Nat.le_of_lt_succ hDepth)) .boolType hSub
       cases hRes with
@@ -316,10 +495,15 @@ private theorem progress_strong :
                 Step.binop_right op (.pointer p) e2 e2' (IsValue.lit (.pointer p)) hs⟩
           | _ => exfalso; cases hSub1
         | lam _ _ => exfalso; cases hSub1
-      | inr hStep1 =>
-        obtain ⟨e1', hs⟩ := hStep1
-        right; exact ⟨.binop op e1' e2, Step.binop_left op e1 e1' e2 hs⟩
-    | binop_ptr_load _ _ e1 e2 hSub1 hSub2 =>
+        | none_ => exfalso; cases hSub1
+        | err_ _ _ => exfalso; cases hSub1
+        | ok_ _ _ => exfalso; cases hSub1
+         | some_ _ _ => exfalso; cases hSub1
+        | tuple_ _ _ => exfalso; cases hSub1
+       | inr hStep1 =>
+         obtain ⟨e1', hs⟩ := hStep1
+         right; exact ⟨.binop op e1' e2, Step.binop_left op e1 e1' e2 hs⟩
+     | binop_ptr_load _ _ e1 e2 hSub1 hSub2 =>
       have h1 := ih e1 (Nat.lt_of_lt_of_le (depth_binop_l .ptrLoad) (Nat.le_of_lt_succ hDepth)) .pointerType hSub1
       cases h1 with
       | inl hv1 =>
@@ -336,16 +520,26 @@ private theorem progress_strong :
                 | lit_unit => right; exact ⟨.lit .unit, Step.binop_ptr_load p⟩
                 | _ => contradiction
               | lam _ _ => exfalso; cases hSub2
+              | none_ => exfalso; cases hSub2
+              | err_ _ _ => exfalso; cases hSub2
+              | ok_ _ _ => exfalso; cases hSub2
+              | some_ _ _ => exfalso; cases hSub2
+              | tuple_ _ _ => exfalso; cases hSub2
             | inr hStep2 =>
               obtain ⟨e2', hs⟩ := hStep2
               right; exact ⟨.binop .ptrLoad (.lit (.pointer p)) e2',
                 Step.binop_right .ptrLoad (.pointer p) e2 e2' (IsValue.lit (.pointer p)) hs⟩
           | _ => exfalso; cases hSub1
         | lam _ _ => exfalso; cases hSub1
-      | inr hStep1 =>
-        obtain ⟨e1', hs⟩ := hStep1
-        right; exact ⟨.binop .ptrLoad e1' e2, Step.binop_left .ptrLoad e1 e1' e2 hs⟩
-    | binop_ptr_store _ _ e1 e2 hSub1 hSub2 =>
+        | none_ => exfalso; cases hSub1
+        | err_ _ _ => exfalso; cases hSub1
+        | ok_ _ _ => exfalso; cases hSub1
+         | some_ _ _ => exfalso; cases hSub1
+        | tuple_ _ _ => exfalso; cases hSub1
+       | inr hStep1 =>
+         obtain ⟨e1', hs⟩ := hStep1
+         right; exact ⟨.binop .ptrLoad e1' e2, Step.binop_left .ptrLoad e1 e1' e2 hs⟩
+     | binop_ptr_store _ _ e1 e2 hSub1 hSub2 =>
       have h1 := ih e1 (Nat.lt_of_lt_of_le (depth_binop_l .ptrStore) (Nat.le_of_lt_succ hDepth)) .pointerType hSub1
       cases h1 with
       | inl hv1 =>
@@ -365,10 +559,34 @@ private theorem progress_strong :
                 Step.binop_right .ptrStore (.pointer p) e2 e2' (IsValue.lit (.pointer p)) hs⟩
           | _ => exfalso; cases hSub1
         | lam _ _ => exfalso; cases hSub1
+        | none_ => exfalso; cases hSub1
+        | err_ _ _ => exfalso; cases hSub1
+        | ok_ _ _ => exfalso; cases hSub1
+         | some_ _ _ => exfalso; cases hSub1
+                 | tuple_ _ _ => exfalso; cases hSub1
+       | inr hStep1 =>
+         obtain ⟨e1', hs⟩ := hStep1
+         right; exact ⟨.binop .ptrStore e1' e2, Step.binop_left .ptrStore e1 e1' e2 hs⟩
+     | binop_string_concat _ _ op e1 e2 hOp hSub1 hSub2 =>
+      have h1 := ih e1 (Nat.lt_of_lt_of_le (depth_binop_l op) (Nat.le_of_lt_succ hDepth)) .stringType hSub1
+      have h2 := ih e2 (Nat.lt_of_lt_of_le (depth_binop_r op) (Nat.le_of_lt_succ hDepth)) .stringType hSub2
+      subst hOp
+      cases h1 with
+      | inl hv1 =>
+        obtain ⟨s1, hs1⟩ := canonical_string hv1 hSub1
+        rw [hs1]
+        cases h2 with
+        | inl hv2 =>
+          obtain ⟨s2, hs2⟩ := canonical_string hv2 hSub2
+          rw [hs2]
+          right; exact ⟨.lit (.string (s1 ++ s2)), Step.binop_string_concat s1 s2⟩
+        | inr hStep2 =>
+          obtain ⟨e2', hs⟩ := hStep2
+          right; exact ⟨.binop .add (.lit (.string s1)) e2', Step.binop_right .add (.string s1) e2 e2' (IsValue.lit _) hs⟩
       | inr hStep1 =>
         obtain ⟨e1', hs⟩ := hStep1
-        right; exact ⟨.binop .ptrStore e1' e2, Step.binop_left .ptrStore e1 e1' e2 hs⟩
-    | lam_type _ _ n body paramTys retTy hLen hBody =>
+        right; exact ⟨.binop .add e1' e2, Step.binop_left .add e1 e1' e2 hs⟩
+     | lam_type _ _ n body paramTys retTy hLen hBody =>
       left; exact IsValue.lam n body
     | app_type _ _ fnE argsE τs _ hFnE hArgsE =>
       have ih_fn := ih fnE (Nat.lt_of_lt_of_le depth_app_fn (Nat.le_of_lt_succ hDepth)) (.functionType τs τ) hFnE
@@ -388,6 +606,11 @@ private theorem progress_strong :
             | _ => contradiction
           right
           exact ⟨substAll argsE.reverse body, Step.app_lam n body argsE hArgsLen⟩
+        | none_ => exfalso; cases hFnE with <;> contradiction
+        | err_ _ _ => exfalso; cases hFnE with <;> contradiction
+        | ok_ _ _ => exfalso; cases hFnE with <;> contradiction
+        | some_ _ _ => exfalso; cases hFnE with <;> contradiction
+        | tuple_ _ _ => exfalso; cases hFnE with <;> contradiction
       | inr hStep_fn =>
         obtain ⟨fnE', hs⟩ := hStep_fn
         right; exact ⟨.app fnE' argsE, Step.app_fn fnE fnE' argsE hs⟩
@@ -400,7 +623,17 @@ private theorem progress_strong :
           right; exact ⟨subst e2 (.lit v), Step.let_subst (.lit v) e2 (IsValue.lit v)⟩
         | lam n body =>
           right; exact ⟨subst e2 (.lam n body), Step.let_subst (.lam n body) e2 (IsValue.lam n body)⟩
-      | inr hStep1 =>
+        | none_ =>
+          right; exact ⟨subst e2 .none_, Step.let_subst .none_ e2 IsValue.none_⟩
+        | err_ e hv =>
+          right; exact ⟨subst e2 (.err_ e), Step.let_subst (.err_ e) e2 (IsValue.err_ e hv)⟩
+        | ok_ e hv =>
+          right; exact ⟨subst e2 (.ok_ e), Step.let_subst (.ok_ e) e2 (IsValue.ok_ e hv)⟩
+         | some_ e hv =>
+            right; exact ⟨subst e2 (.some_ e), Step.let_subst (.some_ e) e2 (IsValue.some_ e hv)⟩
+         | tuple_ elems hvs =>
+           right; exact ⟨subst e2 (.tuple_ elems), Step.let_subst (.tuple_ elems) e2 (IsValue.tuple_ elems hvs)⟩
+       | inr hStep1 =>
         obtain ⟨e1', hs⟩ := hStep1
         right; exact ⟨.let_ e1' e2, Step.let_step e1 e1' e2 hs⟩
     | if_type _ _ c t f τ_if hCond hT hF =>
@@ -435,6 +668,26 @@ private theorem progress_strong :
       | inr hStep1 =>
         obtain ⟨s', hs⟩ := hStep1
         right; exact ⟨_, Step.for_start s s' e body hs⟩
+    | pipe_type _ _ ePipe fPipe τArg _ hE1 hE2 =>
+      have hResE := ih ePipe (Nat.lt_of_lt_of_le depth_pipe_l (Nat.le_of_lt_succ hDepth)) τArg hE1
+      match hResE with
+      | Or.inr ⟨e', hs⟩ =>
+        right; exact ⟨.pipe e' fPipe, Step.pipe_left ePipe e' fPipe hs⟩
+      | Or.inl hvE =>
+        have hResF := ih fPipe (Nat.lt_of_lt_of_le depth_pipe_r (Nat.le_of_lt_succ hDepth)) (.functionType [τArg] τ) hE2
+        match hResF with
+        | Or.inr ⟨f', hs⟩ =>
+          right; exact ⟨.pipe ePipe f', Step.pipe_right ePipe fPipe f' hvE hs⟩
+        | Or.inl _ =>
+          right; exact ⟨.app fPipe [ePipe], Step.pipe_done ePipe fPipe hvE⟩
+    | typeAsc_type _ _ eAsc _ hE =>
+      have hRes := ih eAsc (Nat.lt_of_lt_of_le depth_typeAsc (Nat.le_of_lt_succ hDepth)) τ hE
+      cases hRes with
+      | inl hv =>
+        right; exact ⟨eAsc, Step.typeAsc_done eAsc τ hv⟩
+      | inr hStep =>
+        obtain ⟨e', hs⟩ := hStep
+        right; exact ⟨.typeAsc e' τ, Step.typeAsc_step eAsc e' τ hs⟩
     | block_type _ _ exprs τs τ hAll =>
       cases exprs with
       | nil =>
@@ -455,8 +708,113 @@ private theorem progress_strong :
             cases hv with
             | lit v => right; exact ⟨_, Step.block_singleton v (IsValue.lit v)⟩
             | lam n body => right; exact ⟨_, Step.block_lam_singleton n body⟩
-          | cons head2 rest2 =>
+            | none_ => right; exact ⟨_, Step.block_none_singleton⟩
+            | err_ e hv' => right; exact ⟨_, Step.block_err_singleton e hv'⟩
+            | ok_ e hv' => right; exact ⟨_, Step.block_ok_singleton e hv'⟩
+             | some_ e hv' => right; exact ⟨_, Step.block_some_singleton e hv'⟩
+             | tuple_ elems hvs => right; exact ⟨_, Step.block_tuple_singleton elems hvs⟩
+           | cons head2 rest2 =>
             right; exact ⟨_, Step.block_pop head head2 rest2 hv⟩
+    | some_type _ _ eSome τ_inner hE =>
+      have hRes := ih eSome (Nat.lt_of_lt_of_le depth_some (Nat.le_of_lt_succ hDepth)) τ_inner hE
+      cases hRes with
+      | inl hv =>
+         cases hv with
+        | lit v => right; exact ⟨.lit (.some v), Step.some_done v⟩
+        | none_ => right; exact ⟨.lit (.some Value.none), Step.some_none_done⟩
+        | lam n body => left; exact IsValue.some_ (.lam n body) (IsValue.lam n body)
+        | err_ e2 hv2 => left; exact IsValue.some_ (.err_ e2) (IsValue.err_ e2 hv2)
+        | ok_ e2 hv2 => left; exact IsValue.some_ (.ok_ e2) (IsValue.ok_ e2 hv2)
+         | some_ e2 hv2 => left; exact IsValue.some_ (.some_ e2) (IsValue.some_ e2 hv2)
+         | tuple_ elems hvs => left; exact IsValue.some_ (.tuple_ elems) (IsValue.tuple_ elems hvs)
+       | inr hStep =>
+         obtain ⟨e', hs⟩ := hStep
+         right; exact ⟨.some_ e', Step.some_step eSome e' hs⟩
+     | none_type _ _ _ => right; exact ⟨.lit Value.none, Step.none_step⟩
+     | ok_type _ _ eOk τ_ok _ hE =>
+      have hRes := ih eOk (Nat.lt_of_lt_of_le depth_ok (Nat.le_of_lt_succ hDepth)) τ_ok hE
+      cases hRes with
+      | inl hv =>
+         cases hv with
+        | lit v => right; exact ⟨.lit (.ok v), Step.ok_done v⟩
+        | none_ => right; exact ⟨.lit (.ok Value.none), Step.ok_none_done⟩
+        | lam n body => left; exact IsValue.ok_ (.lam n body) (IsValue.lam n body)
+        | err_ e2 hv2 => left; exact IsValue.ok_ (.err_ e2) (IsValue.err_ e2 hv2)
+          | ok_ e2 hv2 => left; exact IsValue.ok_ (.ok_ e2) (IsValue.ok_ e2 hv2)
+          | some_ e2 hv2 => left; exact IsValue.ok_ (.some_ e2) (IsValue.some_ e2 hv2)
+          | tuple_ elems hvs => left; exact IsValue.ok_ (.tuple_ elems) (IsValue.tuple_ elems hvs)
+      | inr hStep =>
+        obtain ⟨e', hs⟩ := hStep
+        right; exact ⟨.ok_ e', Step.ok_step eOk e' hs⟩
+    | err_type _ _ eErr τ_err _ hE =>
+      have hRes := ih eErr (Nat.lt_of_lt_of_le depth_err (Nat.le_of_lt_succ hDepth)) τ_err hE
+      cases hRes with
+      | inl hv =>
+         cases hv with
+        | lit v => right; exact ⟨.lit (.err v), Step.err_done v⟩
+        | none_ => right; exact ⟨.lit (.err Value.none), Step.err_none_done⟩
+        | lam n body => left; exact IsValue.err_ (.lam n body) (IsValue.lam n body)
+        | err_ e2 hv2 => left; exact IsValue.err_ (.err_ e2) (IsValue.err_ e2 hv2)
+        | ok_ e2 hv2 => left; exact IsValue.err_ (.ok_ e2) (IsValue.ok_ e2 hv2)
+          | some_ e2 hv2 => left; exact IsValue.err_ (.some_ e2) (IsValue.some_ e2 hv2)
+          | tuple_ elems hvs => left; exact IsValue.err_ (.tuple_ elems) (IsValue.tuple_ elems hvs)
+       | inr hStep =>
+         obtain ⟨e', hs⟩ := hStep
+         right; exact ⟨.err_ e', Step.err_step eErr e' hs⟩
+    | lit_some _ _ _ _ => left; exact IsValue.lit _
+    | lit_none _ _ _ => left; exact IsValue.lit _
+    | lit_ok _ _ _ τ_ok _ => left; exact IsValue.lit _
+    | lit_err _ _ _ τ_err _ => left; exact IsValue.lit _
+    | null_coalesce_type _ _ e1 e2 τ hE1 hE2 =>
+      have hRes := ih e1 (Nat.lt_of_lt_of_le depth_null_coalesce_e1 (Nat.le_of_lt_succ hDepth)) (.optionType τ) hE1
+      cases hRes with
+      | inl hv =>
+        right
+        cases e1 with
+        | lit v =>
+          cases v with
+          | some inner => exact ⟨.lit (.some inner), Step.null_coalesce_lit_some inner e2⟩
+          | none => exact ⟨e2, Step.null_coalesce_lit_none e2⟩
+          | _ => contradiction
+        | some_ e => exact ⟨.some_ e, Step.null_coalesce_some e e2⟩
+        | none_ => exact ⟨e2, Step.null_coalesce_none e2⟩
+        | _ => contradiction
+      | inr hStep =>
+        obtain ⟨e1', hs⟩ := hStep
+        right; exact ⟨.nullCoalesce e1' e2, Step.null_coalesce_step_e1 e1 e1' e2 hs⟩
+    | tuple_type _ _ elems τs hAll =>
+      have hd : ∀ e ∈ elems, exprDepth e < d := by
+        intro e he
+        have h₁ : exprDepth e ≤ listExprDepth elems := listExprDepth_mem he
+        have h₂ : listExprDepth elems + 1 < d + 1 := hDepth
+        omega
+      have hTuple := tuple_progress_list ih elems τs hAll hd
+      cases hTuple with
+      | inl hStep =>
+        obtain ⟨elems', hs⟩ := hStep
+        right; exact ⟨.tuple_ elems', hs⟩
+      | inr hVals => left; exact IsValue.tuple_ elems hVals
+    | field_access_type _ _ e_base fname sname fields τ hE_base hField =>
+      -- Field access: step the base expression.
+      -- Since Option C has no struct values in Expr, a closed term with structType
+      -- can never be a value — it must always be able to step (or is unreachable).
+      have hRes := ih e_base (Nat.lt_of_lt_of_le depth_field (Nat.le_of_lt_succ hDepth))
+        (.structType sname fields) hE_base
+      cases hRes with
+      | inr hStep =>
+        obtain ⟨e_base', hs⟩ := hStep
+        right; exact ⟨.field_ e_base' fname, Step.field_step e_base e_base' fname hs⟩
+      | inl hv =>
+        -- No value can have structType in closed terms (Option C: no structInit in Expr).
+        exfalso
+        cases hv with
+        | lit _ => cases hE_base
+        | lam _ _ => cases hE_base
+        | none_ => cases hE_base
+        | err_ _ _ => cases hE_base
+        | ok_ _ _ => cases hE_base
+        | some_ _ _ => cases hE_base
+        | tuple_ _ _ => cases hE_base
 
 /-! ## Main Theorem -/
 

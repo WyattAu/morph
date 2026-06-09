@@ -24,6 +24,15 @@ def exprDepth : Morph.Syntax.Expr → Nat
   | .forLoop s e body => Nat.max (exprDepth s) (Nat.max (exprDepth e) (listExprDepth body)) + 1
   | .block exprs => listExprDepth exprs + 1
   | .match_ scrut _ => exprDepth scrut + 1
+  | .field_ e _ => exprDepth e + 1
+  | .pipe e f => Nat.max (exprDepth e) (exprDepth f) + 1
+  | .typeAsc e _ => exprDepth e + 1
+  | .some_ e => exprDepth e + 1
+  | .none_ => 0
+  | .ok_ e => exprDepth e + 1
+  | .err_ e => exprDepth e + 1
+  | .nullCoalesce e1 e2 => Nat.max (exprDepth e1) (exprDepth e2) + 1
+  | .tuple_ elems => listExprDepth elems + 1
 end
 
 end Morph.Proofs.TypeSoundness

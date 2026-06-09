@@ -265,7 +265,77 @@ impl TypeChecker {
         self.return_type = saved_return;
     }
 
-    fn check_type_decl(&mut self, _decl: &TypeDecl) {}
+    fn check_type_decl(&mut self, decl: &TypeDecl) {
+        let info = match self.type_defs.get(&decl.name) {
+            Some(info) => info.clone(),
+            None => {
+                self.emit_error(
+                    "E020",
+                    format!("type {} not found in definitions", decl.name),
+                    Span::dummy(),
+                );
+                return;
+            }
+        };
+
+        if let Some(first_span) = decl.generic_params.first() {
+            let mut seen = std::collections::HashSet::new();
+            for param in &decl.generic_params {
+                if !seen.insert(&param.name) {
+                    self.emit_error(
+                        "E021",
+                        format!("duplicate generic parameter: {}", param.name),
+                        Span::dummy(),
+                    );
+                }
+            }
+            let _ = first_span;
+        }
+
+        match &info.body {
+            TypeDefBody::Struct(fields) => {
+                let mut seen = std::collections::HashSet::new();
+                for (fname, fty) in fields {
+                    if !seen.insert(fname.as_str()) {
+                        self.emit_error(
+                            "E021",
+                            format!("duplicate field name: {}", fname),
+                            Span::dummy(),
+                        );
+                    }
+                    if matches!(fty, Ty::Error) {
+                        self.emit_error(
+                            "E022",
+                            format!("field {} has unresolvable type", fname),
+                            Span::dummy(),
+                        );
+                    }
+                }
+            }
+            TypeDefBody::Enum(variants) => {
+                let mut seen = std::collections::HashSet::new();
+                for (vname, field_tys) in variants {
+                    if !seen.insert(vname.as_str()) {
+                        self.emit_error(
+                            "E021",
+                            format!("duplicate variant name: {}", vname),
+                            Span::dummy(),
+                        );
+                    }
+                    for fty in field_tys {
+                        if matches!(fty, Ty::Error) {
+                            self.emit_error(
+                                "E022",
+                                format!("variant {} has unresolvable field type", vname),
+                                Span::dummy(),
+                            );
+                        }
+                    }
+                }
+            }
+            TypeDefBody::Alias(()) => {}
+        }
+    }
 
     fn check_const_decl(&mut self, decl: &ConstDecl) {
         let expected = self.resolve_type(&decl.type_ann);
@@ -459,6 +529,7 @@ impl TypeChecker {
             Stmt::Assign { target, value } => {
                 let target_ty = self.infer_expr(target);
                 let value_ty = self.infer_expr(value);
+                self.check_cap_transition_between(&value_ty, &target_ty, target.span);
                 let mut subst = Substitution::new();
                 if let Err(err) = unification::unify(&value_ty, &target_ty, &mut subst, target.span)
                 {
@@ -468,10 +539,11 @@ impl TypeChecker {
             Stmt::Return(expr) => {
                 if let Some(ret_expr) = expr {
                     let ret_ty = self.infer_expr(ret_expr);
-                    if let Some(ref expected) = self.return_type {
+                    if let Some(expected) = self.return_type.clone() {
+                        self.check_cap_transition_between(&ret_ty, &expected, ret_expr.span);
                         let mut subst = Substitution::new();
                         if let Err(err) =
-                            unification::unify(&ret_ty, expected, &mut subst, ret_expr.span)
+                            unification::unify(&ret_ty, &expected, &mut subst, ret_expr.span)
                         {
                             self.emit_type_error(err);
                         }
@@ -655,6 +727,7 @@ impl TypeChecker {
                 }
                 for (arg, param_ty) in args.iter().zip(params.iter()) {
                     let arg_ty = self.infer_expr(arg);
+                    self.check_cap_transition_between(&arg_ty, param_ty, arg.span);
                     let mut subst = Substitution::new();
                     if let Err(err) = unification::unify(&arg_ty, param_ty, &mut subst, arg.span) {
                         self.emit_type_error(err);
@@ -856,12 +929,47 @@ impl TypeChecker {
                 }
             }
             Pattern::Constructor { name, fields } => {
-                if let Some(type_def) = self.type_defs.get(name) {
-                    if let TypeDefBody::Enum(_variants) = &type_def.body {
-                        // Check constructor pattern against enum
+                let enum_name = match expected {
+                    Ty::Named { name: e, .. } => e.clone(),
+                    _ => {
+                        self.emit_error(
+                            "E008",
+                            format!("constructor pattern '{}' used against non-enum type", name),
+                            pattern.span,
+                        );
+                        return;
+                    }
+                };
+                if let Some(type_def) = self.type_defs.get(&enum_name).cloned() {
+                    if let TypeDefBody::Enum(variants) = &type_def.body {
+                        if let Some((_, variant_tys)) = variants.iter().find(|(v, _)| v == name) {
+                            let variant_tys = variant_tys.clone();
+                            if fields.len() != variant_tys.len() {
+                                self.emit_error(
+                                    "E008",
+                                    format!(
+                                        "constructor '{}' expects {} fields, got {}",
+                                        name,
+                                        variant_tys.len(),
+                                        fields.len()
+                                    ),
+                                    pattern.span,
+                                );
+                            }
+                            for ((_field_name, field_pat), field_ty) in
+                                fields.iter().zip(variant_tys.iter())
+                            {
+                                self.check_pattern(field_pat, field_ty);
+                            }
+                        } else {
+                            self.emit_error(
+                                "E008",
+                                format!("unknown variant '{}' in enum '{}'", name, enum_name),
+                                pattern.span,
+                            );
+                        }
                     }
                 }
-                let _ = fields;
             }
             Pattern::Tuple(elements) => {
                 if let Ty::Tuple(tys) = expected {
@@ -1063,7 +1171,7 @@ impl TypeChecker {
         ty
     }
 
-    fn resolve_type(&self, ty: &Node<Type>) -> Ty {
+    fn resolve_type(&mut self, ty: &Node<Type>) -> Ty {
         match &ty.kind {
             Type::Named(name) => {
                 if let Some(kind) = int_kind_from_name(name) {
@@ -1126,7 +1234,7 @@ impl TypeChecker {
                 effects: EffectSet::empty(),
             },
             Type::Never => Ty::Never,
-            Type::Wildcard => Ty::TypeVar(0),
+            Type::Wildcard => self.fresh_var(),
         }
     }
 
@@ -1146,6 +1254,12 @@ impl TypeChecker {
                 span,
             );
             false
+        }
+    }
+
+    fn check_cap_transition_between(&mut self, from_ty: &Ty, to_ty: &Ty, span: Span) {
+        if let (Ty::Ref { cap: from_cap, .. }, Ty::Ref { cap: to_cap, .. }) = (from_ty, to_ty) {
+            self.check_capability_transition(*from_cap, *to_cap, span);
         }
     }
 
@@ -1492,7 +1606,7 @@ mod tests {
 
     #[test]
     fn test_resolve_types() {
-        let checker = TypeChecker::new();
+        let mut checker = TypeChecker::new();
         assert_eq!(
             checker.resolve_type(&make_named_type("i32")),
             Ty::Int(IntKind::I32)

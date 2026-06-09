@@ -396,7 +396,7 @@ section HasTypeConstructorTests
   example : HasType [] [] (.lit (.int 42)) .intType :=
     HasType.lit_int [] [] 42
 
-  example (h : HasType [] [] (.lit (.int 42)) τ) : τ = .intType := by
+  example (h : HasType [] [] (.lit (.int 42)) τ) : τ = .intType ∨ (exists w, τ = .intWidthType w) := by
     exact HasType_lit_int_inv [] [] 42 τ h
 
   example (h : HasType [] [] (.lit (.bool true)) τ) : τ = .boolType := by

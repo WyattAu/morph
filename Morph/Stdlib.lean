@@ -26,21 +26,27 @@ See ADR-012 for standard library design decisions.
     Checks against 64-bit signed integer bounds (i64).
     Returns `none` if the result would overflow. -/
 def checkedAdd (a b : Int) : Option Int :=
-  let result := a + b
-  if result > 9223372036854775807 ∨ result < -9223372036854775808 then
-    none
+  let maxVal := 9223372036854775807
+  let minVal := -9223372036854775808
+  if b >= 0 then
+    if a > maxVal - b then none
+    else some (a + b)
   else
-    some result
+    if a < minVal - b then none
+    else some (a + b)
 
 /-- Checked subtraction with overflow checking.
     Checks against 64-bit signed integer bounds (i64).
     Returns `none` if the result would overflow. -/
 def checkedSub (a b : Int) : Option Int :=
-  let result := a - b
-  if result > 9223372036854775807 ∨ result < -9223372036854775808 then
-    none
+  let maxVal := 9223372036854775807
+  let minVal := -9223372036854775808
+  if b >= 0 then
+    if a < minVal + b then none
+    else some (a - b)
   else
-    some result
+    if a > maxVal + b then none
+    else some (a - b)
 
 /-- Integer division with division-by-zero check. -/
 def safeDiv (a b : Int) : Option Int :=

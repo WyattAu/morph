@@ -6,6 +6,7 @@ import Morph.Syntax
 import Morph.Semantics
 import Morph.Specs.TypeSystem.Spec
 import Morph.Specs.TypeSystem.Lemmas
+import Morph.Proofs.TypeSoundness.ExprDepth
 
 namespace Morph.Proofs.TypeSoundness
 
@@ -191,8 +192,14 @@ private theorem HasType_subst_depth (pfx : List Typ) (bvs : List Typ) (Γ : TypE
   | .lit_bool _ _ _ => simp only [subst']; exact HasType.lit_bool _ _ _
   | .lit_string _ _ _ => simp only [subst']; exact HasType.lit_string _ _ _
   | .lit_unit _ _ => simp only [subst']; exact HasType.lit_unit _ _
-  | .lit_pointer _ _ _ => simp only [subst']; exact HasType.lit_pointer _ _ _
-  | .unop_not _ _ e' hE' =>
+   | .lit_pointer _ _ _ => simp only [subst']; exact HasType.lit_pointer _ _ _
+   | .lit_float _ _ _ _ => simp only [subst']; exact HasType.lit_float _ _ _ _
+   | .lit_int_width _ _ _ _ => simp only [subst']; exact HasType.lit_int_width _ _ _ _
+   | .lit_some _ _ _ τ => simp only [subst']; exact HasType.lit_some _ _ _ τ
+   | .lit_none _ _ τ => simp only [subst']; exact HasType.lit_none _ _ τ
+   | .lit_ok _ _ _ τ_ok τ_err => simp only [subst']; exact HasType.lit_ok _ _ _ τ_ok τ_err
+   | .lit_err _ _ _ τ_err τ_ok => simp only [subst']; exact HasType.lit_err _ _ _ τ_err τ_ok
+   | .unop_not _ _ e' hE' =>
     simp only [subst']
     exact HasType.unop_not _ _ _ (HasType_subst_depth pfx bvs Γ e' v τ1 .boolType hE' hV)
   | .unop_notb _ _ e' hE' =>
@@ -233,6 +240,13 @@ private theorem HasType_subst_depth (pfx : List Typ) (bvs : List Typ) (Γ : TypE
     exact HasType.binop_ptr_store _ _ _ _
       (HasType_subst_depth pfx bvs Γ e1 v τ1 .pointerType hE1 hV)
       (HasType_subst_depth pfx bvs Γ e2 v τ1 .intType hE2 hV)
+  | .binop_string_concat _ _ op e1 e2 hOp hE1 hE2 =>
+    simp only [subst']
+    exact HasType.binop_string_concat (pfx ++ bvs) Γ op
+      (subst' pfx.length e1 v) (subst' pfx.length e2 v)
+      hOp
+      (HasType_subst_depth pfx bvs Γ e1 v τ1 .stringType hE1 hV)
+      (HasType_subst_depth pfx bvs Γ e2 v τ1 .stringType hE2 hV)
   | .lam_type _ _ n body paramTys retTy hLen hBody =>
     -- subst' pfx.length (.lam n body) v = .lam n (subst' (pfx.length + n) body v)
     -- Body context: (paramTys.reverse ++ pfx) ++ τ1 :: bvs
@@ -283,7 +297,44 @@ private theorem HasType_subst_depth (pfx : List Typ) (bvs : List Typ) (Γ : TypE
       (HasType_subst_depth pfx bvs Γ s v τ1 .intType hS hV)
       (HasType_subst_depth pfx bvs Γ e v τ1 .intType hE hV)
       hBodyResult
-  | .block_type _ _ exprs τs τ hAll =>
+   | .pipe_type _ _ e f τ_arg _ hE hF =>
+    simp only [subst']
+    exact HasType.pipe_type _ _ (subst' pfx.length e v) (subst' pfx.length f v) τ_arg _
+      (HasType_subst_depth pfx bvs Γ e v τ1 τ_arg hE hV)
+      (HasType_subst_depth pfx bvs Γ f v τ1 (.functionType [τ_arg] _ ) hF hV)
+   | .typeAsc_type _ _ e τ hE =>
+    simp only [subst']
+    exact HasType.typeAsc_type _ _ (subst' pfx.length e v) τ
+      (HasType_subst_depth pfx bvs Γ e v τ1 τ hE hV)
+   | .some_type _ _ e τ_inner hE =>
+    simp only [subst']
+    exact HasType.some_type _ _ (subst' pfx.length e v) τ_inner
+      (HasType_subst_depth pfx bvs Γ e v τ1 τ_inner hE hV)
+   | .none_type _ _ τ =>
+    simp only [subst']; exact HasType.none_type _ _ τ
+   | .ok_type _ _ e τ_ok τ_err hE =>
+    simp only [subst']
+    exact HasType.ok_type _ _ (subst' pfx.length e v) τ_ok τ_err
+      (HasType_subst_depth pfx bvs Γ e v τ1 τ_ok hE hV)
+   | .err_type _ _ e τ_err τ_ok hE =>
+    simp only [subst']
+    exact HasType.err_type _ _ (subst' pfx.length e v) τ_err τ_ok
+      (HasType_subst_depth pfx bvs Γ e v τ1 τ_err hE hV)
+   | .null_coalesce_type _ _ e1 e2 τ hE1 hE2 =>
+    simp only [subst']
+    exact HasType.null_coalesce_type _ _ (subst' pfx.length e1 v) (subst' pfx.length e2 v) τ
+      (HasType_subst_depth pfx bvs Γ e1 v τ1 (.optionType τ) hE1 hV)
+      (HasType_subst_depth pfx bvs Γ e2 v τ1 (.optionType τ) hE2 hV)
+   | .tuple_type _ _ elems tys hTys =>
+     simp only [subst']
+     exact HasType.tuple_type _ _ (elems.map (subst' pfx.length · v)) tys
+       (HasTypeAll_subst_depth pfx bvs Γ elems v τ1 tys hTys hV)
+   | .field_access_type _ _ e fname sname fields τ hE hField =>
+     simp only [subst']
+     exact HasType.field_access_type (pfx ++ bvs) Γ (subst' pfx.length e v) fname sname fields τ
+       (HasType_subst_depth pfx bvs Γ e v τ1 (.structType sname fields) hE hV)
+       hField
+   | .block_type _ _ exprs τs τ hAll =>
     simp only [subst']
     exact HasType.block_type _ _ _ τs τ
       (HasTypeAll_subst_depth pfx bvs Γ exprs v τ1 (τs ++ [τ]) hAll hV)
@@ -425,6 +476,12 @@ private theorem HasType_substAll (pfx σs : List Typ) (bvs : List Typ) (Γ : Typ
   | .lit_string _ _ _ => unfold substAll'; exact HasType.lit_string _ _ _
   | .lit_unit _ _ => unfold substAll'; exact HasType.lit_unit _ _
   | .lit_pointer _ _ _ => unfold substAll'; exact HasType.lit_pointer _ _ _
+  | .lit_float _ _ _ _ => unfold substAll'; exact HasType.lit_float _ _ _ _
+  | .lit_int_width _ _ _ _ => unfold substAll'; exact HasType.lit_int_width _ _ _ _
+  | .lit_some _ _ _ τ => unfold substAll'; exact HasType.lit_some _ _ _ τ
+  | .lit_none _ _ τ => unfold substAll'; exact HasType.lit_none _ _ τ
+  | .lit_ok _ _ _ τ_ok τ_err => unfold substAll'; exact HasType.lit_ok _ _ _ τ_ok τ_err
+  | .lit_err _ _ _ τ_err τ_ok => unfold substAll'; exact HasType.lit_err _ _ _ τ_err τ_ok
   | .unop_not _ _ e' hE' =>
     unfold substAll'
     exact HasType.unop_not _ _ _ (HasType_substAll pfx σs bvs Γ vs e' .boolType hE' hVs hLen)
@@ -466,6 +523,13 @@ private theorem HasType_substAll (pfx σs : List Typ) (bvs : List Typ) (Γ : Typ
     exact HasType.binop_ptr_store _ _ _ _
       (HasType_substAll pfx σs bvs Γ vs e1 .pointerType hE1 hVs hLen)
       (HasType_substAll pfx σs bvs Γ vs e2 .intType hE2 hVs hLen)
+  | .binop_string_concat _ _ op e1 e2 hOp hE1 hE2 =>
+    unfold substAll'
+    exact HasType.binop_string_concat (pfx ++ bvs) Γ op
+      (substAll' pfx.length vs.reverse e1) (substAll' pfx.length vs.reverse e2)
+      hOp
+      (HasType_substAll pfx σs bvs Γ vs e1 .stringType hE1 hVs hLen)
+      (HasType_substAll pfx σs bvs Γ vs e2 .stringType hE2 hVs hLen)
   | .lam_type _ _ m body paramTys retTy hLenM hBody =>
     -- substAll' pfx.length vs.reverse (.lam m body) = .lam m (substAll' (pfx.length + m) vs.reverse body)
     -- Body context: paramTys.reverse ++ pfx ++ σs ++ bvs = (paramTys.reverse ++ pfx) ++ σs ++ bvs
@@ -534,7 +598,45 @@ private theorem HasType_substAll (pfx σs : List Typ) (bvs : List Typ) (Γ : Typ
         (HasType_substAll pfx σs bvs Γ vs e .intType hE hVs hLen)
         hBodyResult
     exact hResult'
-  | .block_type _ _ exprs τs' τ hAll =>
+  | .pipe_type _ _ e f τ_arg _ hE hF =>
+    unfold substAll'
+    exact HasType.pipe_type _ _ (substAll' pfx.length vs.reverse e) (substAll' pfx.length vs.reverse f) τ_arg _
+      (HasType_substAll pfx σs bvs Γ vs e τ_arg hE hVs hLen)
+      (HasType_substAll pfx σs bvs Γ vs f (.functionType [τ_arg] _ ) hF hVs hLen)
+  | .typeAsc_type _ _ e τ hE =>
+    unfold substAll'
+    exact HasType.typeAsc_type _ _ (substAll' pfx.length vs.reverse e) τ
+      (HasType_substAll pfx σs bvs Γ vs e τ hE hVs hLen)
+  | .some_type _ _ e τ_inner hE =>
+    unfold substAll'
+    exact HasType.some_type _ _ (substAll' pfx.length vs.reverse e) τ_inner
+      (HasType_substAll pfx σs bvs Γ vs e τ_inner hE hVs hLen)
+  | .none_type _ _ τ =>
+    unfold substAll'; exact HasType.none_type _ _ τ
+  | .ok_type _ _ e τ_ok τ_err hE =>
+    unfold substAll'
+    exact HasType.ok_type _ _ (substAll' pfx.length vs.reverse e) τ_ok τ_err
+      (HasType_substAll pfx σs bvs Γ vs e τ_ok hE hVs hLen)
+  | .err_type _ _ e τ_err τ_ok hE =>
+    unfold substAll'
+    exact HasType.err_type _ _ (substAll' pfx.length vs.reverse e) τ_err τ_ok
+      (HasType_substAll pfx σs bvs Γ vs e τ_err hE hVs hLen)
+  | .null_coalesce_type _ _ e1 e2 τ hE1 hE2 =>
+    unfold substAll'
+    exact HasType.null_coalesce_type _ _
+      (substAll' pfx.length vs.reverse e1) (substAll' pfx.length vs.reverse e2) τ
+      (HasType_substAll pfx σs bvs Γ vs e1 (.optionType τ) hE1 hVs hLen)
+      (HasType_substAll pfx σs bvs Γ vs e2 (.optionType τ) hE2 hVs hLen)
+   | .tuple_type _ _ elems tys hTys =>
+     unfold substAll'
+     exact HasType.tuple_type _ _ (elems.map (substAll' pfx.length vs.reverse)) tys
+       (HasTypeAll_substAll pfx σs bvs Γ vs elems tys hTys hVs hLen)
+   | .field_access_type _ _ e fname sname fields τ hE hField =>
+     unfold substAll'
+     exact HasType.field_access_type (pfx ++ bvs) Γ (substAll' pfx.length vs.reverse e) fname sname fields τ
+       (HasType_substAll pfx σs bvs Γ vs e (.structType sname fields) hE hVs hLen)
+       hField
+   | .block_type _ _ exprs τs' τ hAll =>
     unfold substAll'
     exact HasType.block_type _ _ _ τs' τ
       (HasTypeAll_substAll pfx σs bvs Γ vs exprs (τs' ++ [τ]) hAll hVs hLen)
@@ -554,6 +656,14 @@ private theorem HasType_iterSubst (σs : List Typ) (bvs : List Typ) (Γ : TypEnv
 ## Type Preservation (Main Theorem)
 -/
 
+private theorem HasType_tuple_inv {bvs : List Typ} {Γ : TypEnv} {rest : List Expr} {τs : List Typ} :
+    HasType bvs Γ (.tuple_ rest) (.tupleType τs) → HasTypeAll bvs Γ rest τs := by
+  intro h
+  cases h with
+  | tuple_type _ _ _ _ hAll => exact hAll
+  | _ => contradiction
+
+set_option maxHeartbeats 1000000 in
 mutual
 
 theorem preservation : forall {e e' : Expr} {τ : Typ} {bvs : List Typ} {Γ : TypEnv},
@@ -569,6 +679,7 @@ theorem preservation : forall {e e' : Expr} {τ : Typ} {bvs : List Typ} {Γ : Ty
     | binop_ptr_arith => exact HasType.binop_ptr_arith _ _ op e1' e2 (by assumption) (preservation (by assumption) hStep1) (by assumption)
     | binop_ptr_load => exact HasType.binop_ptr_load _ _ e1' e2 (preservation (by assumption) hStep1) (by assumption)
     | binop_ptr_store => exact HasType.binop_ptr_store _ _ e1' e2 (preservation (by assumption) hStep1) (by assumption)
+    | binop_string_concat => exact HasType.binop_string_concat _ _ op e1' e2 (by assumption) (preservation (by assumption) hStep1) (by assumption)
     | _ => contradiction
   | binop_right op v1 e2 e2' _ hStep2 =>
     cases hType with
@@ -579,6 +690,7 @@ theorem preservation : forall {e e' : Expr} {τ : Typ} {bvs : List Typ} {Γ : Ty
     | binop_ptr_arith => exact HasType.binop_ptr_arith _ _ op (.lit v1) e2' (by assumption) (by assumption) (preservation (by assumption) hStep2)
     | binop_ptr_load => exact HasType.binop_ptr_load _ _ (.lit v1) e2' (by assumption) (preservation (by assumption) hStep2)
     | binop_ptr_store => exact HasType.binop_ptr_store _ _ (.lit v1) e2' (by assumption) (preservation (by assumption) hStep2)
+    | binop_string_concat => exact HasType.binop_string_concat _ _ op (.lit v1) e2' (by assumption) (by assumption) (preservation (by assumption) hStep2)
     | _ => contradiction
   | binop_arith _ _ _ r hArith _ =>
     cases hType with
@@ -623,6 +735,10 @@ theorem preservation : forall {e e' : Expr} {τ : Typ} {bvs : List Typ} {Γ : Ty
   | binop_ptr_store _ _ =>
     cases hType with
     | binop_ptr_store => exact HasType.lit_unit _ _
+    | _ => contradiction
+  | binop_string_concat s1 s2 =>
+    cases hType with
+    | binop_string_concat => exact HasType.lit_string _ _ (s1 ++ s2)
     | _ => contradiction
   | binop_div_zero _ =>
     cases hType with
@@ -775,6 +891,168 @@ theorem preservation : forall {e e' : Expr} {τ : Typ} {bvs : List Typ} {Γ : Ty
           simp [List.reverse_reverse]; exact hAll
         exact HasType_iterSubst paramTys.reverse bvs Γ args body retTy
           hBodyP hVs hLenEq
+  | block_none_singleton =>
+    cases hType with
+    | block_type _ _ _ τs _ hAll =>
+      cases τs with
+      | nil => exact HasTypeAll_cons_head hAll
+      | cons τ' τs' =>
+        exfalso
+        exact append_singleton_ne_nil τs' τ (HasTypeAll_nil_types (HasTypeAll_cons_tail hAll))
+    | _ => contradiction
+  | block_err_singleton e _ =>
+    cases hType with
+    | block_type _ _ _ τs _ hAll =>
+      cases τs with
+      | nil => exact HasTypeAll_cons_head hAll
+      | cons τ' τs' =>
+        exfalso
+        exact append_singleton_ne_nil τs' τ (HasTypeAll_nil_types (HasTypeAll_cons_tail hAll))
+    | _ => contradiction
+  | block_ok_singleton e _ =>
+    cases hType with
+    | block_type _ _ _ τs _ hAll =>
+      cases τs with
+      | nil => exact HasTypeAll_cons_head hAll
+      | cons τ' τs' =>
+        exfalso
+        exact append_singleton_ne_nil τs' τ (HasTypeAll_nil_types (HasTypeAll_cons_tail hAll))
+    | _ => contradiction
+  | block_some_singleton e _ =>
+    cases hType with
+    | block_type _ _ _ τs _ hAll =>
+      cases τs with
+      | nil => exact HasTypeAll_cons_head hAll
+      | cons τ' τs' =>
+        exfalso
+        exact append_singleton_ne_nil τs' τ (HasTypeAll_nil_types (HasTypeAll_cons_tail hAll))
+    | _ => contradiction
+  | block_tuple_singleton elems =>
+    cases hType with
+    | block_type _ _ _ τs _ hAll =>
+      cases τs with
+      | nil => exact HasTypeAll_cons_head hAll
+      | cons τ' τs' =>
+        exfalso
+        exact append_singleton_ne_nil τs' τ (HasTypeAll_nil_types (HasTypeAll_cons_tail hAll))
+    | _ => contradiction
+  | pipe_left e e' f hStep1 =>
+    cases hType with
+    | pipe_type => exact HasType.pipe_type _ _ e' f _ _ (preservation (by assumption) hStep1) (by assumption)
+    | _ => contradiction
+  | pipe_right v f f' hIsVal hStep2 =>
+    cases hType with
+    | pipe_type => exact HasType.pipe_type _ _ v f' _ _ (by assumption) (preservation (by assumption) hStep2)
+    | _ => contradiction
+  | pipe_done v f hIsVal =>
+    cases hType with
+    | pipe_type =>
+      exact HasType.app_type _ _ f [v] [_] _ (by assumption)
+        (HasTypeAll.cons _ _ _ _ _ _ (by assumption) (HasTypeAll.nil _ _))
+    | _ => contradiction
+  | typeAsc_step e e' τ hStep1 =>
+    cases hType with
+    | typeAsc_type => exact HasType.typeAsc_type _ _ e' _ (preservation (by assumption) hStep1)
+    | _ => contradiction
+  | typeAsc_done v τ =>
+    cases hType with
+    | typeAsc_type => exact (by assumption)
+    | _ => contradiction
+  | match_scrut_step scrut scrut' arms hStep1 =>
+    cases hType with
+    | _ => contradiction
+  | match_arm v vars body rest =>
+    cases hType with
+    | _ => contradiction
+  | match_empty v =>
+    cases hType with
+    | _ => contradiction
+  | some_step e e' hStep1 =>
+    cases hType with
+    | some_type _ _ _ τ_inner hE =>
+      exact HasType.some_type _ _ e' τ_inner (preservation hE hStep1)
+    | _ => contradiction
+  | some_done v =>
+    cases hType with
+    | some_type _ _ _ τ_inner hE => exact HasType.lit_some _ _ v τ_inner
+    | _ => contradiction
+  | some_none_done =>
+    cases hType with
+    | some_type bvs Γ _ τ_inner hE => exact HasType.lit_some bvs Γ Value.none τ_inner
+    | _ => contradiction
+  | none_step =>
+    cases hType with
+    | none_type _ _ τ => exact HasType.lit_none _ _ τ
+    | _ => contradiction
+  | ok_step e e' hStep1 =>
+    cases hType with
+    | ok_type _ _ _ τ_ok _ hE =>
+      exact HasType.ok_type _ _ e' τ_ok _ (preservation hE hStep1)
+    | _ => contradiction
+  | ok_done v =>
+    cases hType with
+    | ok_type _ _ _ τ_ok τ_err hE => exact HasType.lit_ok _ _ v τ_ok τ_err
+    | _ => contradiction
+  | ok_none_done =>
+    cases hType with
+    | ok_type bvs Γ _ τ_ok τ_err hE => exact HasType.lit_ok bvs Γ Value.none τ_ok τ_err
+    | _ => contradiction
+  | err_step e e' hStep1 =>
+    cases hType with
+    | err_type _ _ _ τ_err _ hE =>
+      exact HasType.err_type _ _ e' τ_err _ (preservation hE hStep1)
+    | _ => contradiction
+  | err_done v =>
+    cases hType with
+    | err_type _ _ _ τ_err τ_ok hE => exact HasType.lit_err _ _ v τ_err τ_ok
+    | _ => contradiction
+  | err_none_done =>
+    cases hType with
+    | err_type bvs Γ _ τ_err τ_ok hE => exact HasType.lit_err bvs Γ Value.none τ_err τ_ok
+    | _ => contradiction
+  | null_coalesce_step_e1 e1 e1' e2 hStep1 =>
+    cases hType with
+    | null_coalesce_type _ _ _ _ _ hE1 hE2 =>
+      exact HasType.null_coalesce_type _ _ e1' e2 _ (preservation hE1 hStep1) hE2
+    | _ => contradiction
+  | null_coalesce_some v e2 =>
+    cases hType with
+    | null_coalesce_type _ _ _ _ _ hE1 _ => exact hE1
+    | _ => contradiction
+  | null_coalesce_none e2 =>
+    cases hType with
+    | null_coalesce_type _ _ _ _ _ _ hE2 => exact hE2
+    | _ => contradiction
+  | null_coalesce_lit_some v e2 =>
+    cases hType with
+    | null_coalesce_type _ _ _ _ _ hE1 _ => exact hE1
+    | _ => contradiction
+   | null_coalesce_lit_none e2 =>
+     cases hType with
+     | null_coalesce_type _ _ _ _ _ _ hE2 => exact hE2
+     | _ => contradiction
+    | field_step e e' name hs =>
+      cases hType with
+      | field_access_type _ _ _ _ _ _ _ hE hField =>
+        exact HasType.field_access_type _ _ e' name _ _ _ (preservation hE hs) hField
+      | _ => contradiction
+    | tuple_step_head head head' rest hs =>
+      cases hType with
+      | tuple_type _ _ _ _ hAll =>
+        cases hAll with
+        | cons _ _ _ _ _ _ hE_head hAll_rest =>
+          exact HasType.tuple_type _ _ _ _
+            (HasTypeAll.cons _ _ _ _ _ _ (preservation hE_head hs) hAll_rest)
+      | _ => contradiction
+    | tuple_step_rest head rest rest' hv hs =>
+      cases hType with
+      | tuple_type _ _ _ _ hAll =>
+        cases hAll with
+        | cons _ _ _ _ _ _ hE_head hAll_rest =>
+          have hAll_rest' := HasType_tuple_inv (preservation (HasType.tuple_type _ _ _ _ hAll_rest) hs)
+          exact HasType.tuple_type _ _ _ _
+            (HasTypeAll.cons _ _ _ _ _ _ hE_head hAll_rest')
+      | _ => contradiction
 
 end
 

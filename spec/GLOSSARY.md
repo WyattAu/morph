@@ -463,7 +463,7 @@ This glossary provides comprehensive definitions of terms, acronyms, and concept
 ### E
 
 #### Effect
-**Definition:** A side effect or observable behavior of a computation. Morph's effect system tracks effects (Pure, IO, Net, Time, System) to enable reasoning about program behavior.
+**Definition:** A side effect or observable behavior of a computation. Morph's effect system tracks effects (IO, Net, Time, System) to enable reasoning about program behavior. Pure is a type capability, not an effect.
 
 **Context:** Type System, Concurrency  
 **Related Specifications:** [`spec/type/type_system_spec.md`](./type/type_system_spec.md), [`spec/concurrency/monadic_effect_spec.md`](./concurrency/monadic_effect_spec.md)
@@ -473,7 +473,7 @@ This glossary provides comprehensive definitions of terms, acronyms, and concept
 ---
 
 #### Effect System
-**Definition:** A type system extension that tracks and controls side effects. Morph's effect system categorizes effects (Pure, IO, Net, Time, System) and enforces effect constraints.
+**Definition:** A type system extension that tracks and controls side effects. Morph's effect system categorizes effects (IO, Net, Time, System) and enforces effect constraints. Pure is a type capability, not an effect.
 
 **Context:** Type System, Concurrency  
 **Related Specifications:** [`spec/type/type_system_spec.md`](./type/type_system_spec.md), [`spec/concurrency/monadic_effect_spec.md`](./concurrency/monadic_effect_spec.md)

@@ -2,6 +2,24 @@
 
 This document identifies gaps in the Morph specification suite and the foundational basis (axioms, assumptions, and dependencies) on which specifications rest.
 
+**Last updated:** 2026-05-29  
+**Phase 0 status:** Spec integrity audit complete; 9 contradictions investigated (3 real, 6 false positives); 29 aspirational specs frozen.
+
+---
+
+## Resolved Contradictions (Phase 0)
+
+| ID | Contradiction | Resolution | Date |
+|----|--------------|-----------|------|
+| C-001 | Duplicate LANG-REQ-071 | FALSE POSITIVE — both refer to Input Normalization | 2026-05-29 |
+| C-002 | `async fn` in code examples violates LANG-REQ-023 | Fixed — all examples updated to `fn ... performs IO` | 2026-05-29 |
+| C-003 | Effect category mismatch (4 vs 5) | Fixed — canonicalized to 4 effects {IO, Net, Time, System}; Pure is capability | 2026-05-29 |
+| C-004 | Affine vs Linear semantics | Fixed — 3 occurrences of "exactly once" corrected to "at most once" | 2026-05-29 |
+| C-005 | Keyword count off-by-one | FALSE POSITIVE — 22 is correct including `async` as contextual | 2026-05-29 |
+| C-006 | Version drift in examples | FALSE POSITIVE — versions already correct | 2026-05-29 |
+
+See `SPEC_CONTRADICTIONS.md` for full details.
+
 ---
 
 ## Unproven Assumptions
@@ -14,7 +32,7 @@ The following assumptions were identified as needing formal validation. See `spe
 | GA-002 | SSUS pattern preserves referential transparency | Validated | See `spec/language/strict_state_unidirectional_spec.md` |
 | GA-003 | Projectional editing can express all syntactic forms | Under Review | See `spec/language/dialect_projection_spec.md` |
 | GA-004 | Actor message ordering is deterministic | Validated | See `spec/architecture/layered_concurrency_spec.md` |
-| GA-005 | Type system is decidable for all Morph programs | Assumed | Requires formal proof |
+| GA-005 | Type system is decidable for all Morph programs | Assumed | Requires formal proof — **target for Phase 1.7 of roadmap** |
 
 ---
 
@@ -24,13 +42,19 @@ The following assumptions were identified as needing formal validation. See `spe
 
 *Referenced by:* `spec/language/syntax_translation_spec.md`
 
-| Gap ID | Area | Description | Priority |
-|--------|------|-------------|----------|
-| SG-001 | Syntax Translation | Formal semantics for cross-dialect translation | Medium |
-| SG-002 | Memory Model | Formal bounds on heap allocation growth | High |
-| SG-003 | Security Flow | Taint tracking across dialect boundaries | High |
-| SG-004 | Concurrency | Deadlock-freedom proof for actor system | Medium |
-| SG-005 | Type System | Decidability proof for subtyping | High |
+| Gap ID | Area | Description | Priority | Roadmap Phase |
+|--------|------|-------------|----------|--------------|
+| SG-001 | Syntax Translation | Formal semantics for cross-dialect translation | Medium | Phase 1 |
+| SG-002 | Memory Model | Formal bounds on heap allocation growth | High | Phase 1.5 |
+| SG-003 | Security Flow | Taint tracking across dialect boundaries | High | Phase 1.6 |
+| SG-004 | Concurrency | Deadlock-freedom proof for actor system | Medium | Phase 4.4 |
+| SG-005 | Type System | Decidability proof for subtyping | High | Phase 1.7 |
+
+---
+
+## Frozen Aspirational Specs
+
+29 specs moved to `spec/tooling/_future_research/` on 2026-05-29. These are excluded from the critical path and will be revisited after v1.0.0.
 
 ---
 

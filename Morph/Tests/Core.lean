@@ -515,6 +515,16 @@ section SafetyTheoremTests
             ∃ (retType : Typ), retType = ret
     | Typ.intWidthType _ => ∃ (n : Int), v = Value.int n
     | Typ.floatType _ => ∃ (f : Float), v = Value.float f
+    | Typ.optionType τ => v = Value.none ∨ ∃ (inner : Value), v = Value.some inner
+    | Typ.resultType τ_ok τ_err =>
+        (∃ (inner : Value), v = Value.ok inner) ∨ (∃ (inner : Value), v = Value.err inner)
+    | Typ.tupleType τs =>
+        ∃ (vs : List Value), v = Value.tuple_ vs ∧ vs.length = τs.length
+    | Typ.typeVar _ => False
+    | Typ.effectFunctionType _ _ _ => False
+    | Typ.neverType => False
+    | Typ.refType _ _ => False
+    | Typ.structType _ _ => False
 
   /-- Value.int values have intType -/
   theorem value_int_has_int_type (_n : Int) : ∃ (t : Typ), t = Typ.intType :=
@@ -571,6 +581,18 @@ section SafetyTheoremTests
     | float f => exact ⟨Typ.floatType .f64, f, rfl⟩
     | unit => exact ⟨Typ.unitType, Or.inl rfl⟩
     | undef => exact ⟨Typ.unitType, Or.inr rfl⟩
+    | some v' =>
+      exact ⟨Typ.optionType Typ.intType, Or.inr ⟨v', rfl⟩⟩
+    | none =>
+      exact ⟨Typ.optionType Typ.intType, Or.inl rfl⟩
+    | ok v' =>
+      exact ⟨Typ.resultType Typ.unitType Typ.unitType, Or.inl ⟨v', rfl⟩⟩
+    | err v' =>
+      exact ⟨Typ.resultType Typ.unitType Typ.unitType, Or.inr ⟨v', rfl⟩⟩
+    | tuple_ vs =>
+      have hLen : vs.length = (vs.map (fun _ => Typ.unitType)).length := by
+        simp only [List.length_map]
+      exact ⟨Typ.tupleType (vs.map (fun _ => Typ.unitType)), ⟨vs, rfl, hLen⟩⟩
 
   /-- Type invariants are preserved under equality -/
   theorem type_invariant_preserved_under_equality (v1 v2 : Value) (t : Typ) :

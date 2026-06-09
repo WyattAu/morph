@@ -89,6 +89,21 @@ inductive FloatWidth where
   | f32 | f64
   deriving Repr, BEq, Hashable
 
+inductive Capability where
+  | iso : Capability
+  | val : Capability
+  | ref : Capability
+  deriving Repr, BEq, Hashable
+
+inductive Effect where
+  | io : Effect
+  | net : Effect
+  | time : Effect
+  | system : Effect
+  deriving Repr, BEq, Hashable
+
+abbrev EffectSet := List Effect
+
 /-!
 ## Value
 
@@ -119,7 +134,12 @@ inductive Value where
   | float : Float -> Value
   | unit : Value
   | undef : Value
-deriving Repr, BEq
+  | some : Value → Value
+  | none : Value
+  | ok : Value → Value
+  | err : Value → Value
+  | tuple_ : List Value → Value
+  deriving Repr, BEq
 
 /-!
 ## Type
@@ -150,7 +170,15 @@ inductive Typ where
   | functionType : List Typ -> Typ -> Typ
   | intWidthType : IntWidth → Typ
   | floatType : FloatWidth → Typ
-  deriving Repr, BEq, Hashable
+  | neverType : Typ
+  | refType : Capability → Typ → Typ
+  | effectFunctionType : List Typ → Typ → EffectSet → Typ
+  | typeVar : Nat → Typ
+  | optionType : Typ → Typ
+  | resultType : Typ → Typ → Typ
+  | tupleType : List Typ → Typ
+  | structType : String → List (String × Typ) → Typ
+  deriving Repr, BEq, Hashable, Inhabited
 
 /-!
 ## Operator

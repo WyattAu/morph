@@ -28,8 +28,10 @@ theorem HasType_fvar_inv (bvs : List Typ) (Γ : TypEnv) (name : String) (τ : Ty
   intro h; cases h with | fvar_type => assumption
 
 theorem HasType_lit_int_inv (bvs : List Typ) (Γ : TypEnv) (n : Int) (τ : Typ) :
-    HasType bvs Γ (.lit (.int n)) τ → τ = .intType := by
-  intro h; cases h with | lit_int => rfl
+    HasType bvs Γ (.lit (.int n)) τ → τ = .intType ∨ (∃ w, τ = .intWidthType w) := by
+  intro h; cases h with
+  | lit_int => left; rfl
+  | lit_int_width _ _ w _ => right; exact ⟨w, rfl⟩
 
 theorem HasType_lit_bool_inv (bvs : List Typ) (Γ : TypEnv) (b : Bool) (τ : Typ) :
     HasType bvs Γ (.lit (.bool b)) τ → τ = .boolType := by
@@ -46,6 +48,11 @@ theorem HasType_lit_unit_inv (bvs : List Typ) (Γ : TypEnv) (τ : Typ) :
 theorem HasType_lit_pointer_inv (bvs : List Typ) (Γ : TypEnv) (p : Pointer) (τ : Typ) :
     HasType bvs Γ (.lit (.pointer p)) τ → τ = .pointerType := by
   intro h; cases h with | lit_pointer => rfl
+
+theorem HasType_lit_float_inv (bvs : List Typ) (Γ : TypEnv) (f : Float) (τ : Typ) :
+    HasType bvs Γ (.lit (.float f)) τ → ∃ w, τ = .floatType w := by
+  intro h; cases h with
+  | lit_float _ _ w _ => exact ⟨w, rfl⟩
 
 theorem HasType_unop_not_inv (bvs : List Typ) (Γ : TypEnv) (e : Expr) (τ : Typ) :
     HasType bvs Γ (.unop .not e) τ → τ = .boolType := by
@@ -103,6 +110,42 @@ the necessary equalities for use in rewriting.
     lift k (.block exprs) = .block (exprs.map (lift k)) := by
   simp [lift, liftUnder]
 
+@[simp] theorem lift_field (e : Expr) (name : String) (k : Nat) :
+    lift k (.field_ e name) = .field_ (lift k e) name := by
+  simp [lift, liftUnder]
+
+@[simp] theorem lift_pipe (e f : Expr) (k : Nat) :
+    lift k (.pipe e f) = .pipe (lift k e) (lift k f) := by
+  simp [lift, liftUnder]
+
+@[simp] theorem lift_typeAsc (e : Expr) (τ : Typ) (k : Nat) :
+    lift k (.typeAsc e τ) = .typeAsc (lift k e) τ := by
+  simp [lift, liftUnder]
+
+@[simp] theorem lift_some (e : Expr) (k : Nat) :
+    lift k (.some_ e) = .some_ (lift k e) := by
+  simp [lift, liftUnder]
+
+@[simp] theorem lift_none (k : Nat) :
+    lift k .none_ = .none_ := by
+  simp [lift, liftUnder]
+
+@[simp] theorem lift_ok (e : Expr) (k : Nat) :
+    lift k (.ok_ e) = .ok_ (lift k e) := by
+  simp [lift, liftUnder]
+
+@[simp] theorem lift_err (e : Expr) (k : Nat) :
+  lift k (.err_ e) = .err_ (lift k e) := by
+  simp [lift, liftUnder]
+
+@[simp] theorem lift_nullCoalesce (e1 e2 : Expr) (k : Nat) :
+  lift k (.nullCoalesce e1 e2) = .nullCoalesce (lift k e1) (lift k e2) := by
+  simp [lift, liftUnder]
+
+@[simp] theorem lift_tuple (elems : List Expr) (k : Nat) :
+    lift k (.tuple_ elems) = .tuple_ (elems.map (lift k)) := by
+  simp [lift, liftUnder]
+
 /-! ## Lift-Zero Identity
 
 `liftUnder bound 0 e = e` for all `bound` and `e`.
@@ -135,8 +178,18 @@ theorem liftUnder_zero_eq : forall (bound : Nat) (e : Expr), liftUnder bound 0 e
                liftUnder_zero_eq_list (bound + 1) body]
   | bound, .block exprs => by
     simp only [liftUnder, liftUnder_zero_eq_list bound exprs]
-  | bound, .match_ scrut cases => by
+  | bound, .field_ e name => by simp [liftUnder, liftUnder_zero_eq bound e]
+  | bound, .pipe e f => by simp [liftUnder, liftUnder_zero_eq bound e, liftUnder_zero_eq bound f]
+  | bound, .typeAsc e τ => by simp [liftUnder, liftUnder_zero_eq bound e]
+  | bound, .some_ e => by simp [liftUnder, liftUnder_zero_eq bound e]
+  | bound, .none_ => by simp [liftUnder]
+  | bound, .ok_ e => by simp [liftUnder, liftUnder_zero_eq bound e]
+  | bound, .err_ e => by simp [liftUnder, liftUnder_zero_eq bound e]
+  | bound, .nullCoalesce e1 e2 => by
+    simp only [liftUnder, liftUnder_zero_eq bound e1, liftUnder_zero_eq bound e2]
+  | bound, .match_ scrut arms => by
     simp only [liftUnder, liftUnder_zero_eq bound scrut]
+   | bound, .tuple_ elems => by simp [liftUnder, liftUnder_zero_eq_list bound elems]
 
 end
 
@@ -184,8 +237,24 @@ theorem liftUnder_comp : forall (bound k1 k2 : Nat) (e : Expr),
                liftUnder_comp_list (bound + 1) k1 k2 body]
   | bound, k1, k2, .block exprs => by
     simp only [liftUnder, liftUnder_comp_list bound k1 k2 exprs]
-  | bound, k1, k2, .match_ scrut cases => by
+  | bound, k1, k2, .field_ e name => by
+    simp [liftUnder, liftUnder_comp bound k1 k2 e]
+  | bound, k1, k2, .pipe e f => by
+    simp [liftUnder, liftUnder_comp bound k1 k2 e, liftUnder_comp bound k1 k2 f]
+  | bound, k1, k2, .typeAsc e τ => by
+    simp [liftUnder, liftUnder_comp bound k1 k2 e]
+  | bound, k1, k2, .some_ e => by
+    simp [liftUnder, liftUnder_comp bound k1 k2 e]
+  | bound, k1, k2, .none_ => by simp [liftUnder]
+  | bound, k1, k2, .ok_ e => by
+    simp [liftUnder, liftUnder_comp bound k1 k2 e]
+  | bound, k1, k2, .err_ e => by
+    simp [liftUnder, liftUnder_comp bound k1 k2 e]
+  | bound, k1, k2, .nullCoalesce e1 e2 => by
+    simp [liftUnder, liftUnder_comp bound k1 k2 e1, liftUnder_comp bound k1 k2 e2]
+  | bound, k1, k2, .match_ scrut arms => by
     simp only [liftUnder, liftUnder_comp bound k1 k2 scrut]
+   | bound, k1, k2, .tuple_ elems => by simp [liftUnder, liftUnder_comp_list bound k1 k2 elems]
 
 end
 
@@ -220,6 +289,7 @@ private theorem omega_list_len_succ (as bs : List Typ) (n : Nat) (σ : Typ)
   have h4 := h2.trans (congrArg (as.length + ·) h3)
   omega
 
+set_option maxHeartbeats 500000 in
 mutual
 
 theorem weakening_at_depth (xs : List Typ) (bvs : List Typ) (Γ : TypEnv)
@@ -314,6 +384,13 @@ theorem weakening_at_depth (xs : List Typ) (bvs : List Typ) (Γ : TypEnv)
       (liftUnder xs.length 1 e2)
       (weakening_at_depth xs bvs Γ e1 .pointerType σ hE1)
       (weakening_at_depth xs bvs Γ e2 .intType σ hE2)
+  | binop_string_concat _ _ op e1 e2 hOp hE1 hE2 =>
+    simp only [liftUnder]
+    exact HasType.binop_string_concat (xs ++ σ :: bvs) Γ op
+      (liftUnder xs.length 1 e1) (liftUnder xs.length 1 e2)
+      hOp
+      (weakening_at_depth xs bvs Γ e1 .stringType σ hE1)
+      (weakening_at_depth xs bvs Γ e2 .stringType σ hE2)
   | lam_type _ _ n body paramTys retTy hLen hBody =>
     simp only [liftUnder, liftUnder]
     have hLenEq : (paramTys.reverse ++ xs).length = n + xs.length := by
@@ -357,6 +434,49 @@ theorem weakening_at_depth (xs : List Typ) (bvs : List Typ) (Γ : TypEnv)
     simp only [liftUnder]
     exact HasType.block_type (xs ++ σ :: bvs) Γ (List.map (liftUnder xs.length 1) exprs) τs τ
       (weakening_at_depth_all xs bvs Γ exprs (τs ++ [τ]) σ hExprs)
+  | lit_float _ _ w f => simp only [liftUnder]; exact HasType.lit_float (xs ++ σ :: bvs) Γ w f
+  | lit_int_width _ _ w n => simp only [liftUnder]; exact HasType.lit_int_width (xs ++ σ :: bvs) Γ w n
+  | lit_some _ _ v τ => simp only [liftUnder]; exact HasType.lit_some (xs ++ σ :: bvs) Γ v τ
+  | lit_none _ _ τ => simp only [liftUnder]; exact HasType.lit_none (xs ++ σ :: bvs) Γ τ
+  | lit_ok _ _ v τ_ok τ_err => simp only [liftUnder]; exact HasType.lit_ok (xs ++ σ :: bvs) Γ v τ_ok τ_err
+  | lit_err _ _ v τ_err τ_ok => simp only [liftUnder]; exact HasType.lit_err (xs ++ σ :: bvs) Γ v τ_err τ_ok
+  | pipe_type _ _ e f τ_arg τ hE hF =>
+    simp only [liftUnder]
+    exact HasType.pipe_type (xs ++ σ :: bvs) Γ (liftUnder xs.length 1 e) (liftUnder xs.length 1 f) τ_arg τ
+      (weakening_at_depth xs bvs Γ e τ_arg σ hE)
+      (weakening_at_depth xs bvs Γ f (.functionType [τ_arg] τ) σ hF)
+  | typeAsc_type _ _ e τ hE =>
+    simp only [liftUnder]
+    exact HasType.typeAsc_type (xs ++ σ :: bvs) Γ (liftUnder xs.length 1 e) τ
+      (weakening_at_depth xs bvs Γ e τ σ hE)
+  | some_type _ _ e τ_inner hE =>
+    simp only [liftUnder]
+    exact HasType.some_type (xs ++ σ :: bvs) Γ (liftUnder xs.length 1 e) τ_inner
+      (weakening_at_depth xs bvs Γ e τ_inner σ hE)
+  | none_type _ _ τ => simp only [liftUnder]; exact HasType.none_type (xs ++ σ :: bvs) Γ τ
+  | ok_type _ _ e τ_ok τ_err hE =>
+    simp only [liftUnder]
+    exact HasType.ok_type (xs ++ σ :: bvs) Γ (liftUnder xs.length 1 e) τ_ok τ_err
+      (weakening_at_depth xs bvs Γ e τ_ok σ hE)
+  | err_type _ _ e τ_err τ_ok hE =>
+    simp only [liftUnder]
+    exact HasType.err_type (xs ++ σ :: bvs) Γ (liftUnder xs.length 1 e) τ_err τ_ok
+      (weakening_at_depth xs bvs Γ e τ_err σ hE)
+  | null_coalesce_type _ _ e1 e2 τ hE1 hE2 =>
+    simp only [liftUnder]
+    exact HasType.null_coalesce_type (xs ++ σ :: bvs) Γ (liftUnder xs.length 1 e1)
+      (liftUnder xs.length 1 e2) τ
+      (weakening_at_depth xs bvs Γ e1 (.optionType τ) σ hE1)
+      (weakening_at_depth xs bvs Γ e2 (.optionType τ) σ hE2)
+   | tuple_type _ _ elems tys hTys =>
+     simp only [liftUnder]
+     exact HasType.tuple_type (xs ++ σ :: bvs) Γ (elems.map (liftUnder xs.length 1)) tys
+       (weakening_at_depth_all xs bvs Γ elems tys σ hTys)
+   | field_access_type _ _ e fname sname fields τ hE hField =>
+     simp only [liftUnder]
+     exact HasType.field_access_type (xs ++ σ :: bvs) Γ (liftUnder xs.length 1 e) fname sname fields τ
+       (weakening_at_depth xs bvs Γ e (.structType sname fields) σ hE)
+       hField
 
 theorem weakening_at_depth_all (xs : List Typ) (bvs : List Typ) (Γ : TypEnv)
     (es : List Expr) (τs : List Typ) (σ : Typ)
@@ -465,6 +585,13 @@ theorem weakening (bvs : List Typ) (Γ : TypEnv) (e : Expr) (τ : Typ) (σ : Typ
     rw [lift_binop]
     exact HasType.binop_ptr_store (σ :: bvs) Γ (lift 1 e1) (lift 1 e2)
       (weakening _ _ _ _ σ hE1) (weakening _ _ _ _ σ hE2)
+  | HasType.binop_string_concat bvs Γ op e1 e2 hOp hE1 hE2 =>
+    rw [lift_binop]
+    exact HasType.binop_string_concat (σ :: bvs) Γ op
+      (lift 1 e1) (lift 1 e2)
+      hOp
+      (weakening _ _ _ _ σ hE1)
+      (weakening _ _ _ _ σ hE2)
   | HasType.lam_type bvs Γ n body paramTys retTy hLen hBody =>
     rw [lift_lam]
     have hLenEq1 := @List.length_reverse Typ paramTys
@@ -493,6 +620,55 @@ theorem weakening (bvs : List Typ) (Γ : TypEnv) (e : Expr) (τ : Typ) (σ : Typ
     rw [lift_block]
     exact HasType.block_type (σ :: bvs) Γ (List.map (lift 1) exprs) τs τ
       (weakening_all _ _ _ _ σ hExprs)
+  | HasType.lit_float bvs Γ w f =>
+    rw [lift_lit]
+    exact HasType.lit_float (σ :: bvs) Γ w f
+  | HasType.lit_int_width bvs Γ w n =>
+    rw [lift_lit]
+    exact HasType.lit_int_width (σ :: bvs) Γ w n
+  | HasType.lit_some bvs Γ v τ =>
+    rw [lift_lit]
+    exact HasType.lit_some (σ :: bvs) Γ v τ
+  | HasType.lit_none bvs Γ τ =>
+    rw [lift_lit]
+    exact HasType.lit_none (σ :: bvs) Γ τ
+  | HasType.lit_ok bvs Γ v τ_ok τ_err =>
+    rw [lift_lit]
+    exact HasType.lit_ok (σ :: bvs) Γ v τ_ok τ_err
+   | HasType.lit_err bvs Γ v τ_err τ_ok =>
+     rw [lift_lit]
+     exact HasType.lit_err (σ :: bvs) Γ v τ_err τ_ok
+   | HasType.pipe_type bvs Γ e f τ_arg τ hE hF =>
+    rw [lift_pipe]
+    exact HasType.pipe_type (σ :: bvs) Γ (lift 1 e) (lift 1 f) τ_arg τ
+      (weakening _ _ _ _ σ hE) (weakening _ _ _ _ σ hF)
+  | HasType.typeAsc_type bvs Γ e τ hE =>
+    rw [lift_typeAsc]
+    exact HasType.typeAsc_type (σ :: bvs) Γ (lift 1 e) τ (weakening _ _ _ _ σ hE)
+  | HasType.some_type bvs Γ e τ_inner hE =>
+    rw [lift_some]
+    exact HasType.some_type (σ :: bvs) Γ (lift 1 e) τ_inner (weakening _ _ _ _ σ hE)
+  | HasType.none_type bvs Γ τ =>
+    rw [lift_none]
+    exact HasType.none_type (σ :: bvs) Γ τ
+  | HasType.ok_type bvs Γ e τ_ok τ_err hE =>
+    rw [lift_ok]
+    exact HasType.ok_type (σ :: bvs) Γ (lift 1 e) τ_ok τ_err (weakening _ _ _ _ σ hE)
+  | HasType.err_type bvs Γ e τ_err τ_ok hE =>
+    rw [lift_err]
+    exact HasType.err_type (σ :: bvs) Γ (lift 1 e) τ_err τ_ok (weakening _ _ _ _ σ hE)
+  | HasType.null_coalesce_type bvs Γ e1 e2 τ hE1 hE2 =>
+    rw [lift_nullCoalesce]
+    exact HasType.null_coalesce_type (σ :: bvs) Γ (lift 1 e1) (lift 1 e2) τ
+      (weakening _ _ _ _ σ hE1) (weakening _ _ _ _ σ hE2)
+   | HasType.tuple_type bvs Γ elems tys hTys =>
+     rw [lift_tuple]
+     exact HasType.tuple_type (σ :: bvs) Γ (elems.map (lift 1)) tys
+       (weakening_all _ _ _ _ σ hTys)
+   | HasType.field_access_type bvs Γ e fname sname fields τ hE hField =>
+     rw [lift_field]
+     exact HasType.field_access_type (σ :: bvs) Γ (lift 1 e) fname sname fields τ
+       (weakening _ _ _ _ σ hE) hField
 
 theorem weakening_all (bvs : List Typ) (Γ : TypEnv) (es : List Expr) (τs : List Typ)
     (σ : Typ) (h : HasTypeAll bvs Γ es τs) : HasTypeAll (σ :: bvs) Γ (es.map (lift 1)) τs := by

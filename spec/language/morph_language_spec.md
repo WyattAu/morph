@@ -523,7 +523,7 @@ flowchart TD
 
 ### 6.2 Effect System
 
-- **LANG-REQ-040 (Taxonomy):* Defined effects: `Pure`, `IO`, `Net`, `Time`, `System`.
+- **LANG-REQ-040 (Taxonomy):* Defined effects: `IO`, `Net`, `Time`, `System`. Pure is a type capability, not an effect.
 
 **Priority:** Critical
 **Verification Method:** Test
@@ -1606,32 +1606,32 @@ fn legacy_code() -> void {
 **Dependencies:** LANG-REQ-089
 **Traceability:** Section 15.6.3 (Warning Levels)
 
-### 15.7 Async Error Handling
+### 15.7 IO Error Handling
 
-#### 15.7.1 Async Error Propagation
+#### 15.7.1 IO Error Propagation
 
-**LANG-REQ-091 (Async Error Propagation):* Errors in async contexts SHALL propagate through the `Result` type:
+**LANG-REQ-091 (IO Error Propagation):* Errors in I/O-performing functions SHALL propagate through the `Result` type:
 
 ```morph
-async fn fetch_data(url: str) -> Result<Data, NetworkError> {
-    let response = http::get(url).await?;
+fn fetch_data(url: str) -> Result<Data, NetworkError> performs IO {
+    let response = http::get(url)?;
     ret parse_response(response)?;
 }
 ```
 
 **Priority:** Critical
 **Verification Method:** Test
-**Rationale:** Ensures consistent error handling in async code
+**Rationale:** Ensures consistent error handling in I/O-performing code
 **Dependencies:** LANG-REQ-023, LANG-REQ-080
 **Traceability:** Section 15.7.1 (Async Error Propagation)
 
-#### 15.7.2 Async Error Aggregation
+#### 15.7.2 Concurrent Error Aggregation
 
-**LANG-REQ-092 (Async Error Aggregation):* The language SHALL provide utilities for aggregating errors from multiple async operations:
+**LANG-REQ-092 (Concurrent Error Aggregation):* The language SHALL provide utilities for aggregating errors from multiple concurrent operations:
 
 ```morph
-async fn fetch_all(urls: Vec<str>) -> Result<Vec<Data>, AggregatedError> {
-    let results = try_join_all(urls.iter().map(|url| fetch_data(url))).await?;
+fn fetch_all(urls: Vec<str>) -> Result<Vec<Data>, AggregatedError> performs IO {
+    let results = try_join_all(urls.iter().map(|url| fetch_data(url)))?;
     ret Ok(results);
 }
 ```
@@ -1642,19 +1642,19 @@ async fn fetch_all(urls: Vec<str>) -> Result<Vec<Data>, AggregatedError> {
 **Dependencies:** LANG-REQ-091
 **Traceability:** Section 15.7.2 (Async Error Aggregation)
 
-#### 15.7.3 Async Error Recovery
+#### 15.7.3 IO Error Recovery
 
-**LANG-REQ-093 (Async Error Recovery):* Async operations SHALL support error recovery patterns:
+**LANG-REQ-093 (IO Error Recovery):* I/O-performing operations SHALL support error recovery patterns:
 
 ```morph
-async fn resilient_fetch(url: str) -> Result<Data, NetworkError> {
-    retry_with_backoff(|| fetch_data(url), max_attempts: 3).await
+fn resilient_fetch(url: str) -> Result<Data, NetworkError> performs IO {
+    retry_with_backoff(|| fetch_data(url), max_attempts: 3)
 }
 ```
 
 **Priority:** High
 **Verification Method:** Test
-**Rationale:** Enables resilient async error handling
+**Rationale:** Enables resilient I/O error handling
 **Dependencies:** LANG-REQ-082, LANG-REQ-091
 **Traceability:** Section 15.7.3 (Async Error Recovery)
 
@@ -1752,8 +1752,8 @@ graph TD
 **LANG-REQ-098 (Timeout Errors):* Operations SHALL support timeout specification:
 
 ```morph
-async fn fetch_with_timeout(url: str, timeout: Duration) -> Result<Data, TimeoutError> {
-    tokio::time::timeout(timeout, fetch_data(url)).await?
+fn fetch_with_timeout(url: str, timeout: Duration) -> Result<Data, TimeoutError> performs IO {
+    tokio::time::timeout(timeout, fetch_data(url))?
 }
 ```
 
@@ -1768,7 +1768,7 @@ async fn fetch_with_timeout(url: str, timeout: Duration) -> Result<Data, Timeout
 **LANG-REQ-099 (Cancellation Errors):* Operations SHALL respect cancellation signals:
 
 ```morph
-async fn cancellable_operation(ctx: Context) -> Result<Data, CancellationError> {
+fn cancellable_operation(ctx: Context) -> Result<Data, CancellationError> performs IO {
     ctx.check_cancelled()?;
     // Perform operation
     ret Ok(data);
@@ -1783,10 +1783,10 @@ async fn cancellable_operation(ctx: Context) -> Result<Data, CancellationError> 
 
 #### 15.9.3 Context Propagation
 
-**LANG-REQ-100 (Context Propagation):* The `ctx` object SHALL be propagated through all async operations:
+**LANG-REQ-100 (Context Propagation):* The `ctx` object SHALL be propagated through all I/O-performing operations:
 
 ```morph
-async fn process_request(ctx: Context, req: Request) -> Result<Response, ProcessingError> {
+fn process_request(ctx: Context, req: Request) -> Result<Response, ProcessingError> performs IO {
     let data = fetch_data(ctx, req.url)?;
     let result = transform_data(ctx, data)?;
     ret Ok(Response { result });
@@ -1804,7 +1804,7 @@ async fn process_request(ctx: Context, req: Request) -> Result<Response, Process
 **LANG-REQ-101 (Deadline Management):* The context SHALL support deadline specification:
 
 ```morph
-async fn operation_with_deadline(ctx: Context) -> Result<Data, TimeoutError> {
+fn operation_with_deadline(ctx: Context) -> Result<Data, TimeoutError> performs IO {
     let deadline = ctx.deadline();
     if deadline.elapsed() {
         ret Err(TimeoutError::DeadlineExceeded);
@@ -2006,7 +2006,7 @@ enum Applicability {
 [ERR_NETWORK_TIMEOUT] Network Error: connection timeout after 30s
   --> src/network.morph:123:15
    |
-123 |     let response = http::get(url).await?;
+ 123 |     let response = http::get(url)?;
    |               ^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: increase timeout or implement retry logic
@@ -2098,7 +2098,7 @@ fn test_divide_by_zero() {
 
 #[test]
 fn test_network_timeout() {
-    let result = fetch_with_timeout("http://timeout.example.com", Duration::from_secs(1)).await;
+    let result = fetch_with_timeout("http://timeout.example.com", Duration::from_secs(1));
     assert!(matches!(result, Err(NetworkError::Timeout(_))));
 }
 ```
@@ -2151,15 +2151,15 @@ fn load_config() -> Result<Config, ConfigError> {
 }
 ```
 
-#### 15.14.3 Async Error Handling
+#### 15.14.3 IO Error Handling
 
 ```morph
-async fn fetch_all(urls: Vec<str>) -> Result<Vec<Data>, FetchError> {
+fn fetch_all(urls: Vec<str>) -> Result<Vec<Data>, FetchError> performs IO {
     let results = try_join_all(urls.iter().map(|url| {
-        fetch_data(url).await
+        fetch_data(url)
             .map_err(|e| FetchError::NetworkFailed(e)
                 .context(format!("Failed to fetch {}", url)))
-    })).await?;
+    }))?;
     
     ret Ok(results);
 }
@@ -2191,7 +2191,7 @@ act Service {
 #### 15.14.5 Timeout and Cancellation
 
 ```morph
-async fn operation_with_timeout(ctx: Context) -> Result<Data, OperationError> {
+fn operation_with_timeout(ctx: Context) -> Result<Data, OperationError> performs IO {
     tokio::select! {
         result = long_running_operation() => {
             ret result?;
@@ -2217,4 +2217,5 @@ async fn operation_with_timeout(ctx: Context) -> Result<Data, OperationError> {
 | 2.0.1 | 2026-01-03 | Kilo Code | Added missing mandatory sections (Examples, Cross-References, Verification/Validation Plan, Risk Assessment, Change Log) |
 | 2.0.1 | 2026-01-03 | Kilo Code | Fixed EARS requirement ID prefixes to standard format |
 | 2.0.2 | 2026-01-03 | Kilo Code | Enforced hard constraint: `hum` is in-memory projection only, never persisted to disk. Updated Section 1.2.1 and Section 2.1 to clarify `min` is single source of truth. |
-| 2.0.3 | 2026-01-04 | Kilo Code | Added comprehensive error handling specification (Section 15) with complete error type enumeration, error hierarchy, propagation rules, panic vs error return, recovery mechanisms, context and backtraces, suppression mechanisms, async error handling, actor error propagation, timeout and cancellation handling, error message format, location information, and suggested fixes. |
+| 2.0.3 | 2026-01-04 | Kilo Code | Added comprehensive error handling specification (Section 15) with complete error type enumeration, error hierarchy, propagation rules, panic vs error return, recovery mechanisms, context and backtraces, suppression mechanisms, I/O error handling, actor error propagation, timeout and cancellation handling, error message format, location information, and suggested fixes. |
+| 2.0.4 | 2026-01-29 | Spec Review | Fixed C-002: Replaced all `async fn` / `.await` usage in Section 15 code examples with `fn ... performs IO` syntax to comply with LANG-REQ-023 (no standalone `async`/`await` keywords). Renamed section headers from "Async" to "IO" to match spec terminology. |

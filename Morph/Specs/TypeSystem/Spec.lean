@@ -37,6 +37,14 @@ The TypeSystem module formalizes:
 
 abbrev TypEnv := List (String × Morph.Core.Typ)
 
+/-! ## Struct Field Type Lookup
+
+Look up the type of a named field in a struct's field list.
+Returns `none` if the field name is not found.
+-/
+def structFieldType (fields : List (String × Morph.Core.Typ)) (name : String) : Option Morph.Core.Typ :=
+  (fields.find? (fun (n, _) => n == name)).map Prod.snd
+
 def lookupTyp (env : TypEnv) (name : String) : Option Morph.Core.Typ :=
   env.find? (fun (n, _) => n == name) |>.map Prod.snd
 
@@ -52,6 +60,9 @@ inductive WellTyped : TypEnv -> Morph.Core.Typ -> Prop where
   | stringType_wf : forall env, WellTyped env .stringType
   | pointerType_wf : forall env, WellTyped env .pointerType
   | unitType_wf : forall env, WellTyped env .unitType
+  | floatType_wf : forall env w, WellTyped env (.floatType w)
+  | intWidthType_wf : forall env w, WellTyped env (.intWidthType w)
+  | neverType_wf : forall env, WellTyped env .neverType
   | arrayType_wf : forall env elemTy sz,
       WellTyped env elemTy ->
       WellTyped env (.arrayType elemTy sz)
@@ -59,6 +70,23 @@ inductive WellTyped : TypEnv -> Morph.Core.Typ -> Prop where
       (forall paramTy, paramTy ∈ paramTys -> WellTyped env paramTy) ->
       WellTyped env retTy ->
       WellTyped env (.functionType paramTys retTy)
+  | refType_wf : forall env cap innerTy,
+      WellTyped env innerTy -> WellTyped env (.refType cap innerTy)
+  | effectFunctionType_wf : forall env paramTys retTy effects,
+      (forall paramTy, paramTy ∈ paramTys -> WellTyped env paramTy) ->
+      WellTyped env retTy ->
+      WellTyped env (.effectFunctionType paramTys retTy effects)
+  | typeVar_wf : forall env n, WellTyped env (.typeVar n)
+  | optionType_wf : forall env innerTy,
+      WellTyped env innerTy → WellTyped env (.optionType innerTy)
+  | resultType_wf : forall env okTy errTy,
+      WellTyped env okTy → WellTyped env errTy → WellTyped env (.resultType okTy errTy)
+  | tupleType_wf : forall env elemTys,
+      (forall elemTy, elemTy ∈ elemTys → WellTyped env elemTy) →
+      WellTyped env (.tupleType elemTys)
+  | structType_wf : forall env name fields,
+      (forall p, p ∈ fields → WellTyped env p.snd) →
+      WellTyped env (.structType name fields)
 
 /-!
 ## Type Inference (Executable)
@@ -67,6 +95,15 @@ inductive WellTyped : TypEnv -> Morph.Core.Typ -> Prop where
 - `bvs : List Typ` — types of bound de Bruijn indices (bvs[0] = type of bvar 0)
 - `env : TypEnv` — types of free variables by name
 -/
+mutual
+def inferTypes (bvs : List Morph.Core.Typ) (env : TypEnv) : List Morph.Syntax.Expr -> Option (List Morph.Core.Typ)
+  | [] => some []
+  | e :: es =>
+    match inferType bvs env e, inferTypes bvs env es with
+    | some τ, some tys => some (τ :: tys)
+    | _, _ => none
+  termination_by es => sizeOf es
+
 def inferType (bvs : List Morph.Core.Typ) (env : TypEnv) : Morph.Syntax.Expr -> Option Morph.Core.Typ
   | .bvar n => if h : n < bvs.length then some bvs[n] else none
   | .fvar name => lookupTyp env name
@@ -77,6 +114,24 @@ def inferType (bvs : List Morph.Core.Typ) (env : TypEnv) : Morph.Syntax.Expr -> 
   | .lit (.pointer _) => some .pointerType
   | .lit (.float _) => some (.floatType .f64)
   | .lit .undef => none
+  | .lit (.some v) =>
+    match inferType bvs env (.lit v) with
+    | some τ => some (.optionType τ)
+    | none => none
+  | .lit .none => none
+  | .lit (.ok v) =>
+    match inferType bvs env (.lit v) with
+    | some τ => none
+    | none => none
+  | .lit (.err v) =>
+    match inferType bvs env (.lit v) with
+    | some τ => none
+    | none => none
+  | .lit (.tuple_ vs) =>
+    let tys := vs.map (fun v => inferType bvs env (.lit v))
+    if tys.all Option.isSome then
+      some (.tupleType (tys.map Option.get!))
+    else none
   | .unop op e =>
     match op with
     | .not =>
@@ -114,6 +169,8 @@ def inferType (bvs : List Morph.Core.Typ) (env : TypEnv) : Morph.Syntax.Expr -> 
       match op with
       | .ptrStore => some .unitType
       | _ => none
+    | some .stringType, some .stringType =>
+      if op == .add then some .stringType else none
     | _, _ => none
   | .app fn args =>
     match inferType bvs env fn with
@@ -146,7 +203,42 @@ def inferType (bvs : List Morph.Core.Typ) (env : TypEnv) : Morph.Syntax.Expr -> 
   | .block [e] => inferType bvs env e
   | .block (_ :: es) => inferType bvs env (.block es)
   | .match_ _ _ => none
-termination_by e => sizeOf e
+  | .field_ e name =>
+    match inferType bvs env e with
+    | some (.structType _ fields) =>
+      match structFieldType fields name with
+      | some τ => some τ
+      | none => none
+    | _ => none
+  | .pipe e f =>
+    match inferType bvs env e, inferType bvs env f with
+    | some τ_e, some (.functionType [τ_arg] τ_ret) =>
+      if τ_e == τ_arg then some τ_ret else none
+    | _, _ => none
+  | .some_ e =>
+    match inferType bvs env e with
+    | some τ => some (.optionType τ)
+    | none => none
+  | .none_ => none
+  | .ok_ e =>
+    match inferType bvs env e with
+    | some τ => none
+    | none => none
+  | .err_ e =>
+    match inferType bvs env e with
+    | some τ => none
+    | none => none
+  | .nullCoalesce e1 e2 =>
+    match inferType bvs env e1 with
+    | some (.optionType τ) => some (.optionType τ)
+    | _ => none
+  | .typeAsc e τ => inferType bvs env e
+  | .tuple_ elems =>
+    match inferTypes bvs env elems with
+    | some tys => some (.tupleType tys)
+    | none => none
+  termination_by e => sizeOf e
+end
 
 def typeCheck (bvs : List Morph.Core.Typ) (env : TypEnv) (e : Morph.Syntax.Expr) (expected : Morph.Core.Typ) : Prop :=
   inferType bvs env e = some expected
@@ -195,7 +287,7 @@ def isPtrArithOp (op : Morph.Core.Operator) : Prop :=
   (bvs[0] = type of bvar 0, the most recent binder)
 - `Γ : TypEnv` — types of free variables by name
 - `e : Expr` — the expression
-- `τ : Typ` — the inferred type
+ - `τ : Typ` — the inferred type
 -/
 
 mutual
@@ -212,6 +304,12 @@ inductive HasType : List Morph.Core.Typ → TypEnv → Morph.Syntax.Expr → Mor
   | lit_string : ∀ bvs Γ s, HasType bvs Γ (.lit (.string s)) .stringType
   | lit_unit : ∀ bvs Γ, HasType bvs Γ (.lit .unit) .unitType
   | lit_pointer : ∀ bvs Γ p, HasType bvs Γ (.lit (.pointer p)) .pointerType
+  | lit_float : ∀ bvs Γ w f, HasType bvs Γ (.lit (.float f)) (.floatType w)
+  | lit_int_width : ∀ bvs Γ w n, HasType bvs Γ (.lit (.int n)) (.intWidthType w)
+  | lit_some : ∀ bvs Γ v τ, HasType bvs Γ (.lit (.some v)) (.optionType τ)
+  | lit_none : ∀ bvs Γ τ, HasType bvs Γ (.lit .none) (.optionType τ)
+  | lit_ok : ∀ bvs Γ v τ_ok τ_err, HasType bvs Γ (.lit (.ok v)) (.resultType τ_ok τ_err)
+  | lit_err : ∀ bvs Γ v τ_err τ_ok, HasType bvs Γ (.lit (.err v)) (.resultType τ_ok τ_err)
   | unop_not : ∀ bvs Γ e,
       HasType bvs Γ e .boolType →
       HasType bvs Γ (.unop .not e) .boolType
@@ -244,6 +342,10 @@ inductive HasType : List Morph.Core.Typ → TypEnv → Morph.Syntax.Expr → Mor
   | binop_ptr_store : ∀ bvs Γ e1 e2,
       HasType bvs Γ e1 .pointerType → HasType bvs Γ e2 .intType →
       HasType bvs Γ (.binop .ptrStore e1 e2) .unitType
+  | binop_string_concat : ∀ bvs Γ op e1 e2,
+      op = .add →
+      HasType bvs Γ e1 .stringType → HasType bvs Γ e2 .stringType →
+      HasType bvs Γ (.binop op e1 e2) .stringType
   | lam_type : ∀ bvs Γ n body paramTys retTy,
       n = paramTys.length →
       HasType (paramTys.reverse ++ bvs) Γ body retTy →
@@ -267,6 +369,35 @@ inductive HasType : List Morph.Core.Typ → TypEnv → Morph.Syntax.Expr → Mor
   | block_type : ∀ bvs Γ exprs τs τ,
       HasTypeAll bvs Γ exprs (τs ++ [τ]) →
       HasType bvs Γ (.block exprs) τ
+  | pipe_type : ∀ bvs Γ e f τ_arg τ_ret,
+      HasType bvs Γ e τ_arg →
+      HasType bvs Γ f (.functionType [τ_arg] τ_ret) →
+      HasType bvs Γ (.pipe e f) τ_ret
+  | typeAsc_type : ∀ bvs Γ e τ,
+      HasType bvs Γ e τ →
+      HasType bvs Γ (.typeAsc e τ) τ
+  | some_type : ∀ bvs Γ e τ_inner,
+      HasType bvs Γ e τ_inner →
+      HasType bvs Γ (.some_ e) (.optionType τ_inner)
+  | none_type : ∀ bvs Γ τ,
+      HasType bvs Γ .none_ (.optionType τ)
+  | ok_type : ∀ bvs Γ e τ_ok τ_err,
+      HasType bvs Γ e τ_ok →
+      HasType bvs Γ (.ok_ e) (.resultType τ_ok τ_err)
+  | err_type : ∀ bvs Γ e τ_err τ_ok,
+      HasType bvs Γ e τ_err →
+      HasType bvs Γ (.err_ e) (.resultType τ_ok τ_err)
+  | null_coalesce_type : ∀ bvs Γ e1 e2 τ,
+      HasType bvs Γ e1 (.optionType τ) →
+      HasType bvs Γ e2 (.optionType τ) →
+      HasType bvs Γ (.nullCoalesce e1 e2) (.optionType τ)
+  | tuple_type : ∀ bvs Γ elems tys,
+      HasTypeAll bvs Γ elems tys →
+      HasType bvs Γ (.tuple_ elems) (.tupleType tys)
+  | field_access_type : ∀ bvs Γ e fname sname fields τ,
+      HasType bvs Γ e (.structType sname fields) →
+      structFieldType fields fname = some τ →
+      HasType bvs Γ (.field_ e fname) τ
 
 inductive HasTypeAll : List Morph.Core.Typ → TypEnv → List Morph.Syntax.Expr → List Morph.Core.Typ → Prop where
   | nil : ∀ bvs Γ,

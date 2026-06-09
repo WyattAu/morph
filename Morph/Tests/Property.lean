@@ -73,6 +73,11 @@ instance : Shrinkable Value where
     | .float _ => []
     | .unit => []
     | .undef => []
+    | .some v => [v]
+    | .none => []
+    | .ok v => [v]
+    | .err v => [v]
+    | .tuple_ vs => vs
 
 -- Typ: non-recursive for property testing (only base types needed)
 instance : Arbitrary Typ where
@@ -184,9 +189,9 @@ Full inversion coverage is in Morph/Tests/Typing.lean.
 
 section TypeInversionProperties
 
--- Lit int inversion: concrete test
+-- Lit int inversion: concrete test (now returns disjunction since lit_int_width also matches)
 example : ∀ (bvs : List Typ) (n : Int) (τ : Typ),
-    HasType bvs [] (.lit (.int n)) τ → τ = Typ.intType := by
+    HasType bvs [] (.lit (.int n)) τ → τ = Typ.intType ∨ (exists w, τ = .intWidthType w) := by
   intro bvs n τ h; exact HasType_lit_int_inv bvs [] n τ h
 
 -- Lit bool inversion: concrete test

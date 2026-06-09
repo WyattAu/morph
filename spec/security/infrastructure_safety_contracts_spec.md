@@ -54,11 +54,12 @@ Morph utilizes a **Typed Effect System** to track and restrict side effects, pre
 
 | Effect     | Description                                           |
 | :--------- | :---------------------------------------------------- |
-| **`Pure`** | Deterministic computation. No side effects. (Default) |
 | **`IO`**   | Filesystem access, Console I/O.                       |
 | **`Net`**  | Network socket creation/usage.                        |
 | **`Time`** | Access to non-monotonic clocks (System Time).         |
-| **`Sys`**  | Process spawning, FFI, System Calls.                  |
+| **`System`** | Process spawning, FFI, System Calls.                |
+
+> **Note:** `Pure` is a type capability (see `pure_type_spec.md`), not an effect. Functions without effect annotations are implicitly Pure.
 
 ### 2.2 Propagation Rules
 

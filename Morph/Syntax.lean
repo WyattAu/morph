@@ -61,6 +61,16 @@ Expression language using de Bruijn indices for bound variables:
 - `ifThenElse c t f`: Conditional expression
 - `forLoop start end body`: For loop (binds iterator at index 0 in body)
 - `block exprs`: Block expression (sequence of expressions)
+- `match_ scrut arms`: Pattern match expression
+- `field_ e name`: Field access on struct expression
+- `pipe e f`: Pipeline: e |> f
+- `typeAsc e τ`: Type ascription
+- `some_ e`: Option Some constructor
+- `none_`: Option None constructor
+- `ok_ e`: Result Ok constructor
+- `err_ e`: Result Err constructor
+- `nullCoalesce e1 e2`: Null coalescing (e1 ?? e2)
+- `tuple_ elems`: Tuple expression
 -/
 inductive Expr : Type where
   | bvar : Nat → Expr
@@ -75,7 +85,16 @@ inductive Expr : Type where
   | forLoop : Expr → Expr → List Expr → Expr
   | block : List Expr → Expr
   | match_ : Expr → List (List String × Expr) → Expr
- deriving Repr, BEq
+  | field_ : Expr → String → Expr
+  | pipe : Expr → Expr → Expr
+  | typeAsc : Expr → Typ → Expr
+  | some_ : Expr → Expr
+  | none_ : Expr
+  | ok_ : Expr → Expr
+  | err_ : Expr → Expr
+  | nullCoalesce : Expr → Expr → Expr
+  | tuple_ : List Expr → Expr
+  deriving Repr, BEq
 
 /-!
 ## Stmt
@@ -94,7 +113,7 @@ inductive Stmt : Type where
   | whileLoop : Expr → List Stmt → Stmt
   | doWhile : Expr → List Stmt → Stmt
   | nop : Stmt
- deriving Repr
+  deriving Repr
 /-!
 ## Program
 
@@ -136,6 +155,15 @@ def liftUnder (bound : Nat) (k : Nat) : Expr → Expr
     .forLoop (liftUnder bound k s) (liftUnder bound k e) (body.map (liftUnder (bound + 1) k))
   | .block exprs => .block (exprs.map (liftUnder bound k))
   | .match_ scrut cases => .match_ (liftUnder bound k scrut) cases
+  | .field_ e name => .field_ (liftUnder bound k e) name
+  | .pipe e f => .pipe (liftUnder bound k e) (liftUnder bound k f)
+  | .typeAsc e ty => .typeAsc (liftUnder bound k e) ty
+  | .some_ e => .some_ (liftUnder bound k e)
+  | .none_ => .none_
+  | .ok_ e => .ok_ (liftUnder bound k e)
+  | .err_ e => .err_ (liftUnder bound k e)
+  | .nullCoalesce e1 e2 => .nullCoalesce (liftUnder bound k e1) (liftUnder bound k e2)
+  | .tuple_ elems => .tuple_ (elems.map (liftUnder bound k))
 
 /-- Lift all free bound-variable indices in `e` by `k`. -/
 abbrev lift (k : Nat) (e : Expr) : Expr := liftUnder 0 k e
@@ -168,6 +196,15 @@ def subst' (bound : Nat) (e : Expr) (v : Expr) : Expr :=
     .forLoop (subst' bound s v) (subst' bound e v) (body.map (subst' (bound + 1) · v))
   | .block exprs => .block (exprs.map (subst' bound · v))
   | .match_ scrut cases => .match_ (subst' bound scrut v) cases
+  | .field_ e name => .field_ (subst' bound e v) name
+  | .pipe e f => .pipe (subst' bound e v) (subst' bound f v)
+  | .typeAsc e ty => .typeAsc (subst' bound e v) ty
+  | .some_ e => .some_ (subst' bound e v)
+  | .none_ => .none_
+  | .ok_ e => .ok_ (subst' bound e v)
+  | .err_ e => .err_ (subst' bound e v)
+  | .nullCoalesce e1 e2 => .nullCoalesce (subst' bound e1 v) (subst' bound e2 v)
+  | .tuple_ elems => .tuple_ (elems.map (fun e => subst' bound e v))
 
 /-- Substitute the bound variable at index 0 with `v`. -/
 abbrev subst (e : Expr) (v : Expr) : Expr := subst' 0 e v
@@ -208,6 +245,15 @@ def substAll' (k : Nat) (vs : List Expr) (e : Expr) : Expr :=
     .forLoop (substAll' k vs s) (substAll' k vs e) (body.map (substAll' (k + 1) vs))
   | .block exprs => .block (exprs.map (substAll' k vs))
   | .match_ scrut cases => .match_ (substAll' k vs scrut) cases
+  | .field_ e name => .field_ (substAll' k vs e) name
+  | .pipe e f => .pipe (substAll' k vs e) (substAll' k vs f)
+  | .typeAsc e ty => .typeAsc (substAll' k vs e) ty
+  | .some_ e => .some_ (substAll' k vs e)
+  | .none_ => .none_
+  | .ok_ e => .ok_ (substAll' k vs e)
+  | .err_ e => .err_ (substAll' k vs e)
+  | .nullCoalesce e1 e2 => .nullCoalesce (substAll' k vs e1) (substAll' k vs e2)
+  | .tuple_ elems => .tuple_ (elems.map (fun e => substAll' k vs e))
 
 /-- Simultaneously substitute bound variables at indices 0, 1, ..., |vs|-1. -/
 abbrev substAll (vs : List Expr) (e : Expr) : Expr := substAll' 0 vs e
@@ -232,5 +278,14 @@ def freeVars : Expr → List String
   | .forLoop s e body => freeVars s ++ freeVars e ++ body.flatMap freeVars
   | .block exprs => exprs.flatMap freeVars
   | .match_ scrut _ => freeVars scrut
+  | .field_ e _ => freeVars e
+  | .pipe e f => freeVars e ++ freeVars f
+  | .typeAsc e _ => freeVars e
+  | .some_ e => freeVars e
+  | .none_ => []
+  | .ok_ e => freeVars e
+  | .err_ e => freeVars e
+  | .nullCoalesce e1 e2 => freeVars e1 ++ freeVars e2
+  | .tuple_ elems => List.flatMap freeVars elems
 
 end Morph.Syntax

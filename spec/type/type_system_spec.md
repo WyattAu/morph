@@ -389,7 +389,7 @@ Morph tracks side effects to ensure architectural purity and security. The effec
 
 * Effect System Semantics:*
 - Effects are **type-level annotations** on functions, not runtime values
-- Effects form a **lattice** where `Pure` is the bottom element (most restrictive)
+- Effects form a **lattice** where `IO` is the bottom element (most restrictive)
 - Effect **subtyping** allows functions with fewer effects to be used where more restrictive effects are required
 - Effect **inference** automatically derives effect sets from function bodies when not explicitly specified
 - Effect **propagation** ensures that calling a function with effects adds those effects to the caller
@@ -398,14 +398,15 @@ Morph tracks side effects to ensure architectural purity and security. The effec
 
 | Effect Tag | Description | Examples |
 |-----------|-------------|-----------|
-| `Pure` | No side effects. Deterministic output. (Default) | `fn add(a: i32, b: i32) -> i32` |
 | `IO` | File system, Console access. | `fn read_file(path: str) -> str` |
 | `Net` | Network sockets. | `fn http_get(url: str) -> Response` |
 | `Time` | Clock access (Non-deterministic). | `fn get_timestamp() -> i64` |
 | `System` | FFI, Process spawning. | `fn spawn_process(cmd: str) -> Process` |
 
+> **Note:** `Pure` is a capability defined in `pure_type_spec.md`, not an effect type. Functions without effect annotations are implicitly Pure.
+
 * Effect Lattice:*
-$$ \text{Pure} \sqsubseteq \text{IO} \sqsubseteq \text{Net} \sqsubseteq \text{Time} \sqsubseteq \text{System} $$
+$$ \text{IO} \sqsubseteq \text{Net} \sqsubseteq \text{Time} \sqsubseteq \text{System} $$
 
 where $\sqsubseteq$ denotes effect subtyping relation (less effects ⊆ more effects).
 

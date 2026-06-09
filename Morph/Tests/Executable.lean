@@ -47,9 +47,11 @@ example : eval Context.empty (.lit (.string "hello")) == some (.lit (.string "he
 
 example : eval (Context.mk [.lit (.int 5)] []) (.bvar 0) == some (.lit (.int 5)) := by native_decide
 
-example : True := trivial
+example : eval Context.empty (.fvar "nonexistent") == none := by native_decide
 
-example : True := trivial
+example : eval Context.empty
+    (.let_ (.lit (.int 1)) (.let_ (.lit (.int 2)) (.binop .add (.bvar 0) (.bvar 1))))
+    == some (.lit (.int 3)) := by native_decide
 
 example : eval (Context.mk [.lit (.int 1)] []) (.bvar 5) == none := by native_decide
 
