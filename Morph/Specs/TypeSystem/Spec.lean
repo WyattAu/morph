@@ -202,7 +202,7 @@ def inferType (bvs : List Morph.Core.Typ) (env : TypEnv) : Morph.Syntax.Expr -> 
   | .block [] => some .unitType
   | .block [e] => inferType bvs env e
   | .block (_ :: es) => inferType bvs env (.block es)
-  | .match_ _ _ => none
+  | .match_ _ _ => none  -- match_ type inference is complex; typing via HasType.match_type
   | .field_ e name =>
     match inferType bvs env e with
     | some (.structType _ fields) =>
@@ -398,6 +398,10 @@ inductive HasType : List Morph.Core.Typ → TypEnv → Morph.Syntax.Expr → Mor
       HasType bvs Γ e (.structType sname fields) →
       structFieldType fields fname = some τ →
       HasType bvs Γ (.field_ e fname) τ
+  | match_type : ∀ bvs Γ scrut arms τ_scrut τ_result,
+      HasType bvs Γ scrut τ_scrut →
+      ArmsTyped bvs Γ τ_scrut arms τ_result →
+      HasType bvs Γ (.match_ scrut arms) τ_result
 
 inductive HasTypeAll : List Morph.Core.Typ → TypEnv → List Morph.Syntax.Expr → List Morph.Core.Typ → Prop where
   | nil : ∀ bvs Γ,
@@ -405,6 +409,14 @@ inductive HasTypeAll : List Morph.Core.Typ → TypEnv → List Morph.Syntax.Expr
   | cons : ∀ bvs Γ e es τ τs,
       HasType bvs Γ e τ → HasTypeAll bvs Γ es τs →
       HasTypeAll bvs Γ (e :: es) (τ :: τs)
+
+inductive ArmsTyped : List Morph.Core.Typ → TypEnv → Morph.Core.Typ → List (List String × Morph.Syntax.Expr) → Morph.Core.Typ → Prop where
+  | nil : ∀ bvs Γ τ_scrut τ_result,
+      ArmsTyped bvs Γ τ_scrut [] τ_result
+  | cons : ∀ bvs Γ vars body rest τ_scrut τ_result,
+      HasType (List.replicate vars.length τ_scrut ++ bvs) Γ body τ_result →
+      ArmsTyped bvs Γ τ_scrut rest τ_result →
+      ArmsTyped bvs Γ τ_scrut ((vars, body) :: rest) τ_result
 
 end
 

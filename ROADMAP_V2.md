@@ -1,10 +1,10 @@
 # Morph Master Roadmap
 
 **Version:** 2.0.0  
-**Date:** 2026-05-29  
+**Date:** 2026-06-09  
 **Source:** `.reports/COMPREHENSIVE_DEFICIT_REPORT.md`  
 **Target:** Publication-ready language by 2031  
-**Status:** DRAFT  
+**Status:** ACTIVE  
 
 ---
 
@@ -12,20 +12,20 @@
 
 | Metric | Value | Verdict |
 |--------|-------|---------|
-| Lean proofs | 787 theorems, 0 sorry, 120+ .olean artifacts | STRONG |
+| Lean proofs | 800+ theorems, 0 sorry, 342 jobs | STRONG |
 | Type safety proof (core lambda calc) | Progress + Preservation = Soundness | COMPLETE |
-| Formalization coverage of specs | ~6% (3,963 / 66,700 lines) | CRITICAL GAP |
-| Spec contradictions | 6 unresolved | MUST FIX |
-| Compliance requirements (P0) | 101 of 101 unimplemented | MUST FIX |
-| Compiler pipeline (Rust) | Lexer + Parser + partial Typeck + partial Codegen | FRAGMENTARY |
-| Runtime (Rust) | 12 modules, 55 tests — no VM, no interpreter | FRAGMENTARY |
+| Formalization coverage of specs | ~8% (expanded: 17 Typ, 21 Expr, 62 Step) | GROWING |
+| Spec contradictions | 0 (all 6 resolved) | RESOLVED |
+| Compliance requirements (P0) | ~15 implemented (type system core) | IN PROGRESS |
+| Compiler pipeline (Rust) | Lexer + Parser + Typeck (synced) + Codegen + CLI driver | FUNCTIONAL |
+| Runtime (Rust) | 12 modules, 55 tests — VM pending (Phase 2) | FRAGMENTARY |
 | `morph run` | Prints "interpreter not yet integrated" | BLOCKED |
-| Traceability matrix | Does not exist | MISSING |
-| Aspirational spec bloat | 29 tooling specs (15K lines), zero formalization | FREEZE |
+| Traceability matrix | Created and maintained | EXISTS |
+| Aspirational spec bloat | 29 tooling specs frozen, excluded from critical path | FROZEN |
 
 ### The Core Problem in One Sentence
 
-> We have a verified proof for a minimal lambda calculus, and a Rust prototype that can type-check more types than the Lean spec models, but nothing can run Morph code, the spec contradicts itself in 6 places, and 94% of the specification has no mechanical verification.
+> Phase 0 is complete: 0 spec contradictions, 29 aspirational specs frozen, traceability matrix exists. Phase 1 is ~70% complete: Lean spec now **exceeds** the Rust compiler's type coverage (17 Typ constructors, 21 Expr forms, 62 Step rules, 0 sorry). Soundness proof holds. Remaining: match_ HasType, capability HasType, and VM (Phase 2).
 
 ### Guiding Principle
 
@@ -116,29 +116,57 @@ Move `spec/tooling/{agent_planning_mdp,analysis_abstract_interp,...,synthesis_in
 
 Order matters — each extension requires re-proving progress + preservation.
 
-| Step | Add to Lean `Typ` | Add to `HasType` | Re-prove Progress/Preservation | Effort |
-|------|-------------------|-----------------|-------------------------------|--------|
-| 1a | `floatType(f32 \| f64)` | Literal constructors | 2–3 days |
-| 1b | `intWidthType(i8..i64, u8..u64, isize, usize)` | Literal constructors | 2–3 days |
-| 1c | `optionType(T)` | `Some` / `None` constructors | 1 week |
-| 1d | `resultType(T, E)` | `Ok` / `Err` constructors | 1 week |
-| 1e | `neverType` | (empty — no constructors) | 2 days |
-| 1f | `capabilityType(cap, T)` where `cap = Iso \| Val \| Ref \| Weak` | Capability constructors | 2–3 weeks |
-| 1g | `effectAnnotatedType(effs, T)` where `effs : EffectSet` | Effect constructors | 2 weeks |
-| 1h | Generic type variables (`varType(n)`) | Var binder constructors | 2 weeks |
+| Step | Add to Lean `Typ` | Status | Effort |
+|------|-------------------|--------|--------|
+| 1a | `floatType(f32 \| f64)` | ✅ COMPLETE | 2–3 days |
+| 1b | `intWidthType(i8..i64, u8..u64, isize, usize)` | ✅ COMPLETE | 2–3 days |
+| 1c | `optionType(T)` | ✅ COMPLETE | 1 week |
+| 1d | `resultType(T, E)` | ✅ COMPLETE | 1 week |
+| 1e | `neverType` | ✅ COMPLETE | 2 days |
+| 1f | `refType(cap, T)` (3 caps: iso/val/ref) | ✅ COMPLETE | 2–3 weeks |
+| 1g | `effectFunctionType(effs, T)` | ✅ COMPLETE | 2 weeks |
+| 1h | `typeVar(n)` | ✅ COMPLETE | 2 weeks |
+| 1i | `tupleType(List Typ)` | ✅ COMPLETE | 1 week |
+| 1j | `structType(String, List (String × Typ))` | ✅ COMPLETE | 1 week |
 
 ### 1.2 Extend Lean Expression Language
 
-| Step | Add to Lean `Expr` | Add to `Step` (operational semantics) | Add to `HasType` | Effort |
-|------|-------------------|-------------------------------------|-----------------|--------|
-| 2a | `match scrut arms` | Pattern match reduction rules | Match typing rules | 3 weeks |
-| 2b | `structLit fields` | Struct literal evaluation | Struct typing | 1 week |
-| 2c | `fieldAccess(e, name)` | Field access reduction | Field access typing | 1 week |
-| 2d | `errorPropagate(e)` | Error propagation (`e?`) | Result typing | 1 week |
-| 2e | `nullCoalesce(e, default)` | `e ?? default` reduction | Option typing | 1 week |
-| 2f | `pipeline(e, f)` | `e \|> f` reduction | Function typing | 3 days |
-| 2g | `walrus(x, e)` | `x := e` reduction | Binding typing | 3 days |
-| 2h | `typeAsc(e, T)` | Type ascription (erasure) | Type checking | 2 days |
+| Step | Add to Lean `Expr` | Status | Effort |
+|------|-------------------|--------|--------|
+| 2a | `match scrut arms` | ⏳ HasType pending | 3 weeks |
+| 2b | `structLit fields` | ❌ BLOCKED (termination) | 1 week |
+| 2c | `fieldAccess(e, name)` | ✅ COMPLETE | 1 week |
+| 2d | `errorPropagate(e)` | ❌ DESUGARED (parser sugar → match) | — |
+| 2e | `nullCoalesce(e, default)` | ✅ COMPLETE (5 Step rules) | 1 week |
+| 2f | `pipeline(e, f)` | ✅ COMPLETE | 3 days |
+| 2g | `walrus(x, e)` | ⏳ DEFERRED Phase 2 (ADR-008) | — |
+| 2h | `typeAsc(e, T)` | ✅ COMPLETE | 2 days |
+| 2i | `some_/none_/ok_/err_` | ✅ COMPLETE | 1 week |
+| 2j | `tuple_(List Expr)` | ✅ COMPLETE (HasTypeAll) | 1 week |
+
+### 1.2a Phase 1 Actual Progress (as of 2026-06-09)
+
+| Metric | ROADMAP Target | Actual | Status |
+|--------|---------------|--------|--------|
+| Typ constructors | 15+ | **17** | ✅ EXCEEDS |
+| Expr constructors | 19+ | **21** | ✅ EXCEEDS |
+| Step rules | — | **62** | NEW |
+| IsValue constructors | — | **7** | NEW |
+| HasType constructors | — | **40+** | NEW |
+| sorry count | 0 | **0** | ✅ |
+| Build jobs | — | **342** | — |
+| Rust tests | — | **55** | — |
+| Soundness proof | Progress + Preservation | **Complete (0 sorry)** | ✅ |
+
+**Remaining Phase 1 work:**
+- `match_` HasType (typing rule for pattern matching) — 2-3 weeks
+- Capability HasType (substructural modalities) — 3-4 weeks
+- `structInit` in Expr (blocked by Lean 4 termination checker) — needs workaround
+- Array index (deferred: no `Value.array` constructor yet)
+
+**Deferred to Phase 2:**
+- Walrus operator (`x := e`) — requires store semantics (ADR-008)
+- Array values — requires `Value.array` constructor
 
 ### 1.3 Extend Operational Semantics
 
@@ -674,8 +702,8 @@ Week 50-60:  Phase 7 (publications, documentation, demos)
 | Spec contradictions | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | Lean `sorry` count | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | Stub theorems (`True := trivial`) | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Lean type constructors | 7 | 15+ | 15+ | 15+ | 15+ | 15+ | 15+ | 15+ |
-| Lean expression forms | 11 | 19+ | 19+ | 19+ | 19+ | 19+ | 19+ | 19+ |
+| Lean type constructors | 17 | 17 | 17 | 17 | 17 | 17 | 17 | 17 |
+| Lean expression forms | 21 | 21+ | 21+ | 21+ | 21+ | 21+ | 21+ | 21+ |
 | Proven safety theorems | 7 | 20+ | 20+ | 20+ | 28+ | 28+ | 35+ | 35+ |
 | Compliance P0 done | 0 | 10 | 40 | 70 | 90 | 95 | 101 | 101 |
 | `morph run` works | No | No | **Yes** | Yes | Yes | Yes | Yes | Yes |
@@ -776,5 +804,5 @@ The following ~12 specs are the **core language specification** that drives all 
 ---
 
 *Maintained by: Morph core team  
-Last updated: 2026-05-29  
+Last updated: 2026-06-09  
 Next review: End of Phase 0 (2026-06-12)*

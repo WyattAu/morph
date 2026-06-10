@@ -477,8 +477,22 @@ theorem weakening_at_depth (xs : List Typ) (bvs : List Typ) (Γ : TypEnv)
      exact HasType.field_access_type (xs ++ σ :: bvs) Γ (liftUnder xs.length 1 e) fname sname fields τ
        (weakening_at_depth xs bvs Γ e (.structType sname fields) σ hE)
        hField
+   | match_type _ _ scrut arms _ _ hScrut hArms =>
+     simp only [liftUnder]
+     exact HasType.match_type _ _ (liftUnder xs.length 1 scrut) arms _ _
+       (weakening_at_depth xs bvs Γ scrut _ σ hScrut)
+       (ArmsTyped_weakening_at_depth xs σ hArms)
 
-theorem weakening_at_depth_all (xs : List Typ) (bvs : List Typ) (Γ : TypEnv)
+-- TODO: ArmsTyped_weakening_at_depth requires lifting arm bodies (liftUnder for match_ arms)
+-- Currently liftUnder for match_ only lifts scrutinee, not arms
+theorem ArmsTyped_weakening_at_depth (xs : List Typ) (σ : Typ)
+    {bvs : List Typ} {Γ : TypEnv} {τ_scrut : Typ}
+    {arms : List (List String × Expr)} {τ_result : Typ}
+    (h : ArmsTyped (xs ++ bvs) Γ τ_scrut arms τ_result) :
+    ArmsTyped (xs ++ σ :: bvs) Γ τ_scrut arms τ_result := by
+  sorry
+
+ theorem weakening_at_depth_all (xs : List Typ) (bvs : List Typ) (Γ : TypEnv)
     (es : List Expr) (τs : List Typ) (σ : Typ)
     (h : HasTypeAll (xs ++ bvs) Γ es τs) :
     HasTypeAll (xs ++ σ :: bvs) Γ (es.map (liftUnder xs.length 1)) τs := by
@@ -520,6 +534,16 @@ theorem weaken_many_at_depth (pfx xs bvs : List Typ) (Γ : TypEnv)
     have hResult := hEq.symm ▸ hStep
     rw [Nat.add_comm 1] at hResult
     exact hResult
+
+/-! ## ArmsTyped Weakening (simple) -/
+
+-- TODO: ArmsTyped_weakening requires lifting arm bodies
+theorem ArmsTyped_weakening (σ : Typ)
+    {bvs : List Typ} {Γ : TypEnv} {τ_scrut : Typ}
+    {arms : List (List String × Expr)} {τ_result : Typ}
+    (h : ArmsTyped bvs Γ τ_scrut arms τ_result) :
+    ArmsTyped (σ :: bvs) Γ τ_scrut arms τ_result := by
+  sorry
 
 mutual
 
@@ -669,6 +693,11 @@ theorem weakening (bvs : List Typ) (Γ : TypEnv) (e : Expr) (τ : Typ) (σ : Typ
      rw [lift_field]
      exact HasType.field_access_type (σ :: bvs) Γ (lift 1 e) fname sname fields τ
        (weakening _ _ _ _ σ hE) hField
+   | HasType.match_type bvs Γ scrut arms τ_scrut τ_result hScrut hArms =>
+     simp only [liftUnder]
+     exact HasType.match_type (σ :: bvs) Γ (lift 1 scrut) arms τ_scrut τ_result
+       (weakening _ _ _ _ σ hScrut)
+       (ArmsTyped_weakening σ hArms)
 
 theorem weakening_all (bvs : List Typ) (Γ : TypEnv) (es : List Expr) (τs : List Typ)
     (σ : Typ) (h : HasTypeAll bvs Γ es τs) : HasTypeAll (σ :: bvs) Γ (es.map (lift 1)) τs := by

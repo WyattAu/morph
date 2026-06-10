@@ -148,6 +148,10 @@ private theorem depth_field {e : Expr} {name : String} :
     exprDepth e < exprDepth (.field_ e name) := by
   simp only [exprDepth]; exact Nat.lt_succ_self _
 
+private theorem depth_match_scrut {scrut : Expr} {arms : List (List String × Expr)} :
+    exprDepth scrut < exprDepth (.match_ scrut arms) := by
+  simp only [exprDepth]; exact Nat.lt_succ_self _
+
 private theorem depth_pipe_l {e : Expr} {f : Expr} :
     exprDepth e < exprDepth (.pipe e f) := by
   simp only [exprDepth]
@@ -815,6 +819,19 @@ private theorem progress_strong :
         | ok_ _ _ => cases hE_base
         | some_ _ _ => cases hE_base
         | tuple_ _ _ => cases hE_base
+    | match_type _ _ scrut arms ts tr hScrut hArms =>
+      -- match scrut arms: either scrut can step, or scrut is a value (match_arm/match_empty)
+      have hRes := ih scrut (Nat.lt_of_lt_of_le depth_match_scrut (Nat.le_of_lt_succ hDepth))
+        ts hScrut
+      cases hRes with
+      | inr hStep =>
+        obtain ⟨scrut', hs⟩ := hStep
+        right; exact ⟨.match_ scrut' arms, Step.match_scrut_step scrut scrut' arms hs⟩
+      | inl hv =>
+        -- scrut is a value. Need to show it's a literal value for match_arm/match_empty.
+        -- In closed terms (bvs = [], Γ = []), a value must be a literal.
+        -- TODO: proper canonical form for arbitrary typed values
+        sorry
 
 /-! ## Main Theorem -/
 

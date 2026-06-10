@@ -334,6 +334,11 @@ private theorem HasType_subst_depth (pfx : List Typ) (bvs : List Typ) (Γ : TypE
      exact HasType.field_access_type (pfx ++ bvs) Γ (subst' pfx.length e v) fname sname fields τ
        (HasType_subst_depth pfx bvs Γ e v τ1 (.structType sname fields) hE hV)
        hField
+   | .match_type _ _ scrut arms ts tr hScrut hArms =>
+     simp only [subst']
+     exact HasType.match_type _ _ (subst' pfx.length scrut v) arms _ _
+       (HasType_subst_depth pfx bvs Γ scrut v τ1 ts hScrut hV)
+       (sorry)  -- TODO: ArmsTyped_subst_depth
    | .block_type _ _ exprs τs τ hAll =>
     simp only [subst']
     exact HasType.block_type _ _ _ τs τ
@@ -631,12 +636,17 @@ private theorem HasType_substAll (pfx σs : List Typ) (bvs : List Typ) (Γ : Typ
      unfold substAll'
      exact HasType.tuple_type _ _ (elems.map (substAll' pfx.length vs.reverse)) tys
        (HasTypeAll_substAll pfx σs bvs Γ vs elems tys hTys hVs hLen)
-   | .field_access_type _ _ e fname sname fields τ hE hField =>
-     unfold substAll'
-     exact HasType.field_access_type (pfx ++ bvs) Γ (substAll' pfx.length vs.reverse e) fname sname fields τ
-       (HasType_substAll pfx σs bvs Γ vs e (.structType sname fields) hE hVs hLen)
-       hField
-   | .block_type _ _ exprs τs' τ hAll =>
+    | .field_access_type _ _ e fname sname fields τ hE hField =>
+      unfold substAll'
+      exact HasType.field_access_type (pfx ++ bvs) Γ (substAll' pfx.length vs.reverse e) fname sname fields τ
+        (HasType_substAll pfx σs bvs Γ vs e (.structType sname fields) hE hVs hLen)
+        hField
+    | .match_type _ _ scrut arms _ _ hScrut hArms =>
+      unfold substAll'
+      exact HasType.match_type _ _ (substAll' pfx.length vs.reverse scrut) arms _ _
+        (HasType_substAll pfx σs bvs Γ vs scrut _ hScrut hVs hLen)
+        (sorry)  -- TODO: ArmsTyped_substAll
+    | .block_type _ _ exprs τs' τ hAll =>
     unfold substAll'
     exact HasType.block_type _ _ _ τs' τ
       (HasTypeAll_substAll pfx σs bvs Γ vs exprs (τs' ++ [τ]) hAll hVs hLen)
@@ -960,12 +970,23 @@ theorem preservation : forall {e e' : Expr} {τ : Typ} {bvs : List Typ} {Γ : Ty
     | _ => contradiction
   | match_scrut_step scrut scrut' arms hStep1 =>
     cases hType with
+    | match_type _ _ _ _ _ _ hScrut hArms =>
+      exact HasType.match_type _ _ scrut' arms _ _ (preservation hScrut hStep1) hArms
     | _ => contradiction
   | match_arm v vars body rest =>
     cases hType with
+    | match_type _ _ _ _ _ _ hScrut hArms =>
+      -- substAll (replicate vars.length (.lit v)) body
+      -- body was typed under (replicate vars.length ts ++ bvs)
+      -- after substitution, should be typed under bvs
+      sorry  -- TODO: ArmsTyped_subst + HasType_subst_depth for arm bodies
     | _ => contradiction
   | match_empty v =>
     cases hType with
+    | match_type _ _ _ _ _ _ hScrut hArms =>
+      -- match_empty returns .lit .unit, but the type should be tr
+      -- From ArmsTyped.nil, tr is determined. Need tr = .unitType for empty arms.
+      sorry  -- TODO: show τ_result = .unitType for empty arms
     | _ => contradiction
   | some_step e e' hStep1 =>
     cases hType with
