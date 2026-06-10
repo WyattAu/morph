@@ -411,8 +411,8 @@ inductive HasTypeAll : List Morph.Core.Typ → TypEnv → List Morph.Syntax.Expr
       HasTypeAll bvs Γ (e :: es) (τ :: τs)
 
 inductive ArmsTyped : List Morph.Core.Typ → TypEnv → Morph.Core.Typ → List (List String × Morph.Syntax.Expr) → Morph.Core.Typ → Prop where
-  | nil : ∀ bvs Γ τ_scrut τ_result,
-      ArmsTyped bvs Γ τ_scrut [] τ_result
+  | nil : ∀ bvs Γ τ_scrut,
+      ArmsTyped bvs Γ τ_scrut [] .unitType
   | cons : ∀ bvs Γ vars body rest τ_scrut τ_result,
       HasType (List.replicate vars.length τ_scrut ++ bvs) Γ body τ_result →
       ArmsTyped bvs Γ τ_scrut rest τ_result →

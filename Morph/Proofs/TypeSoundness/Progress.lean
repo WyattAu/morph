@@ -828,10 +828,20 @@ private theorem progress_strong :
         obtain ⟨scrut', hs⟩ := hStep
         right; exact ⟨.match_ scrut' arms, Step.match_scrut_step scrut scrut' arms hs⟩
       | inl hv =>
-        -- scrut is a value. Need to show it's a literal value for match_arm/match_empty.
-        -- In closed terms (bvs = [], Γ = []), a value must be a literal.
-        -- TODO: proper canonical form for arbitrary typed values
-        sorry
+        right
+        cases hScrut with
+        | lit_int _ _ n => match arms with | [] => exact ⟨.lit .unit, Step.match_empty (.int n)⟩ | (vars, body) :: rest => exact ⟨substAll (List.replicate vars.length (.lit (.int n))) body, Step.match_arm (.int n) vars body rest⟩
+        | lit_bool _ _ b => match arms with | [] => exact ⟨.lit .unit, Step.match_empty (.bool b)⟩ | (vars, body) :: rest => exact ⟨substAll (List.replicate vars.length (.lit (.bool b))) body, Step.match_arm (.bool b) vars body rest⟩
+        | lit_string _ _ s => match arms with | [] => exact ⟨.lit .unit, Step.match_empty (.string s)⟩ | (vars, body) :: rest => exact ⟨substAll (List.replicate vars.length (.lit (.string s))) body, Step.match_arm (.string s) vars body rest⟩
+        | lit_unit _ _ => match arms with | [] => exact ⟨.lit .unit, Step.match_empty .unit⟩ | (vars, body) :: rest => exact ⟨substAll (List.replicate vars.length (.lit .unit)) body, Step.match_arm .unit vars body rest⟩
+        | lit_pointer _ _ p => match arms with | [] => exact ⟨.lit .unit, Step.match_empty (.pointer p)⟩ | (vars, body) :: rest => exact ⟨substAll (List.replicate vars.length (.lit (.pointer p))) body, Step.match_arm (.pointer p) vars body rest⟩
+        | lit_float _ _ w f => match arms with | [] => exact ⟨.lit .unit, Step.match_empty (.float f)⟩ | (vars, body) :: rest => exact ⟨substAll (List.replicate vars.length (.lit (.float f))) body, Step.match_arm (.float f) vars body rest⟩
+        | lit_int_width _ _ w n => match arms with | [] => exact ⟨.lit .unit, Step.match_empty (.int n)⟩ | (vars, body) :: rest => exact ⟨substAll (List.replicate vars.length (.lit (.int n))) body, Step.match_arm (.int n) vars body rest⟩
+        | lit_some _ _ v _ => match arms with | [] => exact ⟨.lit .unit, Step.match_empty (.some v)⟩ | (vars, body) :: rest => exact ⟨substAll (List.replicate vars.length (.lit (.some v))) body, Step.match_arm (.some v) vars body rest⟩
+        | lit_none _ _ _ => match arms with | [] => exact ⟨.lit .unit, Step.match_empty .none⟩ | (vars, body) :: rest => exact ⟨substAll (List.replicate vars.length (.lit .none)) body, Step.match_arm .none vars body rest⟩
+        | lit_ok _ _ v _ _ => match arms with | [] => exact ⟨.lit .unit, Step.match_empty (.ok v)⟩ | (vars, body) :: rest => exact ⟨substAll (List.replicate vars.length (.lit (.ok v))) body, Step.match_arm (.ok v) vars body rest⟩
+        | lit_err _ _ v _ _ => match arms with | [] => exact ⟨.lit .unit, Step.match_empty (.err v)⟩ | (vars, body) :: rest => exact ⟨substAll (List.replicate vars.length (.lit (.err v))) body, Step.match_arm (.err v) vars body rest⟩
+        | _ => cases hv <;> sorry
 
 /-! ## Main Theorem -/
 

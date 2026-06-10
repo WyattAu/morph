@@ -161,6 +161,13 @@ theorem liftUnder_zero_eq_list : forall (bound : Nat) (es : List Expr),
   | bound, head :: tail => by
     simp [List.map, liftUnder_zero_eq bound head, liftUnder_zero_eq_list bound tail]
 
+theorem liftUnder_zero_eq_arms : forall (bound : Nat) (arms : List (List String × Expr)),
+    liftUnderArms bound 0 arms = arms
+  | _, [] => by simp only [liftUnderArms]
+  | bound, (vars, body) :: rest => by
+    simp only [liftUnderArms, liftUnder_zero_eq (bound + vars.length) body,
+               liftUnder_zero_eq_arms bound rest]
+
 theorem liftUnder_zero_eq : forall (bound : Nat) (e : Expr), liftUnder bound 0 e = e
   | bound, .bvar n => by simp [liftUnder]
   | bound, .fvar name => by simp [liftUnder]
@@ -188,7 +195,7 @@ theorem liftUnder_zero_eq : forall (bound : Nat) (e : Expr), liftUnder bound 0 e
   | bound, .nullCoalesce e1 e2 => by
     simp only [liftUnder, liftUnder_zero_eq bound e1, liftUnder_zero_eq bound e2]
   | bound, .match_ scrut arms => by
-    simp only [liftUnder, liftUnder_zero_eq bound scrut]
+    simp only [liftUnder, liftUnder_zero_eq bound scrut, liftUnder_zero_eq_arms bound arms]
    | bound, .tuple_ elems => by simp [liftUnder, liftUnder_zero_eq_list bound elems]
 
 end
@@ -209,6 +216,14 @@ theorem liftUnder_comp_list : forall (bound k1 k2 : Nat) (es : List Expr),
   | _, _, _, [] => rfl
   | bound, k1, k2, head :: tail => by
     simp [List.map, liftUnder_comp bound k1 k2 head, liftUnder_comp_list bound k1 k2 tail]
+
+theorem liftUnder_comp_arms : forall (bound k1 k2 : Nat) (arms : List (List String × Expr)),
+    liftUnderArms bound k1 (liftUnderArms bound k2 arms) =
+    liftUnderArms bound (k1 + k2) arms
+  | _, _, _, [] => by simp only [liftUnderArms]
+  | bound, k1, k2, (vars, body) :: rest => by
+    simp only [liftUnderArms, liftUnder_comp (bound + vars.length) k1 k2 body,
+               liftUnder_comp_arms bound k1 k2 rest]
 
 theorem liftUnder_comp : forall (bound k1 k2 : Nat) (e : Expr),
     liftUnder bound k1 (liftUnder bound k2 e) = liftUnder bound (k1 + k2) e
@@ -253,7 +268,7 @@ theorem liftUnder_comp : forall (bound k1 k2 : Nat) (e : Expr),
   | bound, k1, k2, .nullCoalesce e1 e2 => by
     simp [liftUnder, liftUnder_comp bound k1 k2 e1, liftUnder_comp bound k1 k2 e2]
   | bound, k1, k2, .match_ scrut arms => by
-    simp only [liftUnder, liftUnder_comp bound k1 k2 scrut]
+    simp only [liftUnder, liftUnder_comp bound k1 k2 scrut, liftUnder_comp_arms bound k1 k2 arms]
    | bound, k1, k2, .tuple_ elems => by simp [liftUnder, liftUnder_comp_list bound k1 k2 elems]
 
 end
@@ -478,19 +493,30 @@ theorem weakening_at_depth (xs : List Typ) (bvs : List Typ) (Γ : TypEnv)
        (weakening_at_depth xs bvs Γ e (.structType sname fields) σ hE)
        hField
    | match_type _ _ scrut arms _ _ hScrut hArms =>
-     simp only [liftUnder]
-     exact HasType.match_type _ _ (liftUnder xs.length 1 scrut) arms _ _
-       (weakening_at_depth xs bvs Γ scrut _ σ hScrut)
-       (ArmsTyped_weakening_at_depth xs σ hArms)
+      simp only [liftUnder]
+      exact HasType.match_type _ _ (liftUnder xs.length 1 scrut) (liftUnderArms xs.length 1 arms) _ _
+        (weakening_at_depth xs bvs Γ scrut _ σ hScrut)
+        (ArmsTyped_weakening_at_depth xs σ hArms)
 
--- TODO: ArmsTyped_weakening_at_depth requires lifting arm bodies (liftUnder for match_ arms)
--- Currently liftUnder for match_ only lifts scrutinee, not arms
 theorem ArmsTyped_weakening_at_depth (xs : List Typ) (σ : Typ)
     {bvs : List Typ} {Γ : TypEnv} {τ_scrut : Typ}
     {arms : List (List String × Expr)} {τ_result : Typ}
     (h : ArmsTyped (xs ++ bvs) Γ τ_scrut arms τ_result) :
-    ArmsTyped (xs ++ σ :: bvs) Γ τ_scrut arms τ_result := by
-  sorry
+    ArmsTyped (xs ++ σ :: bvs) Γ τ_scrut (liftUnderArms xs.length 1 arms) τ_result := by
+  cases h with
+  | nil => simp only [liftUnderArms]; constructor
+  | cons bvs Γ vars body rest τ_scrut τ_result hBody hRest =>
+    simp only [liftUnderArms]
+    constructor
+    · have hBody' := weakening_at_depth (List.replicate vars.length τ_scrut ++ xs) bvs Γ body τ_result σ
+        (by show HasType ((List.replicate vars.length τ_scrut ++ xs) ++ bvs) Γ body τ_result
+            rw [List.append_assoc]; exact hBody)
+      simp only [List.length_append, List.length_replicate] at hBody'
+      rw [Nat.add_comm] at hBody'
+      show HasType (List.replicate vars.length τ_scrut ++ (xs ++ σ :: bvs)) Γ
+          (liftUnder (xs.length + vars.length) 1 body) τ_result
+      rw [← List.append_assoc]; exact hBody'
+    · exact ArmsTyped_weakening_at_depth xs σ hRest
 
  theorem weakening_at_depth_all (xs : List Typ) (bvs : List Typ) (Γ : TypEnv)
     (es : List Expr) (τs : List Typ) (σ : Typ)
@@ -537,13 +563,14 @@ theorem weaken_many_at_depth (pfx xs bvs : List Typ) (Γ : TypEnv)
 
 /-! ## ArmsTyped Weakening (simple) -/
 
--- TODO: ArmsTyped_weakening requires lifting arm bodies
 theorem ArmsTyped_weakening (σ : Typ)
     {bvs : List Typ} {Γ : TypEnv} {τ_scrut : Typ}
     {arms : List (List String × Expr)} {τ_result : Typ}
     (h : ArmsTyped bvs Γ τ_scrut arms τ_result) :
-    ArmsTyped (σ :: bvs) Γ τ_scrut arms τ_result := by
-  sorry
+    ArmsTyped (σ :: bvs) Γ τ_scrut (liftUnderArms 0 1 arms) τ_result := by
+  have h := ArmsTyped_weakening_at_depth [] σ h
+  simp only [List.nil_append, List.length_nil] at h
+  exact h
 
 mutual
 
@@ -694,10 +721,10 @@ theorem weakening (bvs : List Typ) (Γ : TypEnv) (e : Expr) (τ : Typ) (σ : Typ
      exact HasType.field_access_type (σ :: bvs) Γ (lift 1 e) fname sname fields τ
        (weakening _ _ _ _ σ hE) hField
    | HasType.match_type bvs Γ scrut arms τ_scrut τ_result hScrut hArms =>
-     simp only [liftUnder]
-     exact HasType.match_type (σ :: bvs) Γ (lift 1 scrut) arms τ_scrut τ_result
-       (weakening _ _ _ _ σ hScrut)
-       (ArmsTyped_weakening σ hArms)
+      simp only [liftUnder]
+      exact HasType.match_type (σ :: bvs) Γ (lift 1 scrut) (liftUnderArms 0 1 arms) τ_scrut τ_result
+        (weakening _ _ _ _ σ hScrut)
+        (ArmsTyped_weakening σ hArms)
 
 theorem weakening_all (bvs : List Typ) (Γ : TypEnv) (es : List Expr) (τs : List Typ)
     (σ : Typ) (h : HasTypeAll bvs Γ es τs) : HasTypeAll (σ :: bvs) Γ (es.map (lift 1)) τs := by

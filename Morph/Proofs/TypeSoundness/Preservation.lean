@@ -104,6 +104,22 @@ private theorem sem_isBitwiseOp_not_spec_isPtrArithOp (op : Operator) :
 `lift 0 e` has the same type as `e`. This follows from `lift_zero_eq : lift 0 e = e`.
 -/
 
+private theorem HasTypeAll_replicate (bvs : List Typ) (Γ : TypEnv) (e : Expr) (τ : Typ)
+    (h : HasType bvs Γ e τ) : ∀ n, HasTypeAll bvs Γ (List.replicate n e) (List.replicate n τ)
+  | 0 => by simp; constructor
+  | n + 1 => by simp [List.replicate_succ]; constructor; exact h; exact HasTypeAll_replicate bvs Γ e τ h n
+
+private theorem list_reverse_replicate (α : Type _) (a : α) (n : Nat) :
+    (List.replicate n a).reverse = List.replicate n a := by
+  induction n with
+  | zero => simp
+  | succ n IH =>
+    simp only [List.replicate_succ, List.reverse_cons]
+    rw [IH]
+    induction n with
+    | zero => simp
+    | succ n IH2 => simp [List.replicate_succ, List.cons_append, IH2]
+
 private theorem lift_zero_preserves_type (bvs : List Typ) (Γ : TypEnv) (e : Expr) (τ : Typ)
     (h : HasType bvs Γ e τ) : HasType bvs Γ (lift 0 e) τ := by
   rw [lift_zero_eq]; exact h
@@ -335,14 +351,34 @@ private theorem HasType_subst_depth (pfx : List Typ) (bvs : List Typ) (Γ : TypE
        (HasType_subst_depth pfx bvs Γ e v τ1 (.structType sname fields) hE hV)
        hField
    | .match_type _ _ scrut arms ts tr hScrut hArms =>
-     simp only [subst']
-     exact HasType.match_type _ _ (subst' pfx.length scrut v) arms _ _
-       (HasType_subst_depth pfx bvs Γ scrut v τ1 ts hScrut hV)
-       (sorry)  -- TODO: ArmsTyped_subst_depth
+      simp only [subst']
+      exact HasType.match_type _ _ (subst' pfx.length scrut v) (substArms pfx.length v arms) _ _
+        (HasType_subst_depth pfx bvs Γ scrut v τ1 ts hScrut hV)
+        (ArmsTyped_subst_depth pfx bvs Γ arms v τ1 ts tr hArms hV)
    | .block_type _ _ exprs τs τ hAll =>
     simp only [subst']
     exact HasType.block_type _ _ _ τs τ
       (HasTypeAll_subst_depth pfx bvs Γ exprs v τ1 (τs ++ [τ]) hAll hV)
+
+private theorem ArmsTyped_subst_depth (pfx : List Typ) (bvs : List Typ) (Γ : TypEnv)
+    (arms : List (List String × Expr)) (v : Expr) (τ1 ts tr : Typ)
+    (hArms : ArmsTyped (pfx ++ τ1 :: bvs) Γ ts arms tr)
+    (hV : HasType bvs Γ v τ1) :
+    ArmsTyped (pfx ++ bvs) Γ ts (substArms pfx.length v arms) tr := by
+  cases hArms with
+  | nil => simp only [substArms]; constructor
+  | cons bvs Γ vars body rest ts tr hBody hRest =>
+    simp only [substArms]
+    constructor
+    · have hBody' : HasType ((List.replicate vars.length ts ++ pfx) ++ τ1 :: bvs) Γ body tr := by
+        show HasType ((List.replicate vars.length ts ++ pfx) ++ τ1 :: bvs) Γ body tr
+        rw [List.append_assoc]; exact hBody
+      have hResult := HasType_subst_depth (List.replicate vars.length ts ++ pfx) bvs Γ body v τ1 tr hBody' hV
+      simp only [List.length_append, List.length_replicate] at hResult
+      show HasType (List.replicate vars.length ts ++ (pfx ++ bvs)) Γ
+          (subst' (pfx.length + vars.length) body v) tr
+      rw [← List.append_assoc, Nat.add_comm]; exact hResult
+    · exact ArmsTyped_subst_depth pfx bvs Γ rest v τ1 ts tr hRest hV
 
 end
 
@@ -641,15 +677,36 @@ private theorem HasType_substAll (pfx σs : List Typ) (bvs : List Typ) (Γ : Typ
       exact HasType.field_access_type (pfx ++ bvs) Γ (substAll' pfx.length vs.reverse e) fname sname fields τ
         (HasType_substAll pfx σs bvs Γ vs e (.structType sname fields) hE hVs hLen)
         hField
-    | .match_type _ _ scrut arms _ _ hScrut hArms =>
-      unfold substAll'
-      exact HasType.match_type _ _ (substAll' pfx.length vs.reverse scrut) arms _ _
-        (HasType_substAll pfx σs bvs Γ vs scrut _ hScrut hVs hLen)
-        (sorry)  -- TODO: ArmsTyped_substAll
+     | .match_type _ _ scrut arms ts tr hScrut hArms =>
+       unfold substAll'
+       exact HasType.match_type _ _ (substAll' pfx.length vs.reverse scrut) (substAllArms pfx.length vs.reverse arms) ts tr
+         (HasType_substAll pfx σs bvs Γ vs scrut ts hScrut hVs hLen)
+         (ArmsTyped_substAll pfx σs bvs Γ vs arms ts tr hArms hVs hLen)
     | .block_type _ _ exprs τs' τ hAll =>
     unfold substAll'
     exact HasType.block_type _ _ _ τs' τ
       (HasTypeAll_substAll pfx σs bvs Γ vs exprs (τs' ++ [τ]) hAll hVs hLen)
+
+private theorem ArmsTyped_substAll (pfx σs : List Typ) (bvs : List Typ) (Γ : TypEnv)
+    (vs : List Expr) (arms : List (List String × Expr)) (ts tr : Typ)
+    (hArms : ArmsTyped (pfx ++ σs ++ bvs) Γ ts arms tr)
+    (hVs : HasTypeAll bvs Γ vs σs.reverse)
+    (hLen : vs.length = σs.length) :
+    ArmsTyped (pfx ++ bvs) Γ ts (substAllArms pfx.length vs.reverse arms) tr := by
+  cases hArms with
+  | nil => simp only [substAllArms]; constructor
+  | cons bvs Γ vars body rest ts tr hBody hRest =>
+    simp only [substAllArms]
+    constructor
+    · have hBody' : HasType ((List.replicate vars.length ts ++ pfx) ++ σs ++ bvs) Γ body tr := by
+        simp only [List.append_assoc] at hBody ⊢
+        exact hBody
+      have hResult := HasType_substAll (List.replicate vars.length ts ++ pfx) σs bvs Γ vs body tr hBody' hVs hLen
+      simp only [List.length_append, List.length_replicate] at hResult
+      show HasType (List.replicate vars.length ts ++ (pfx ++ bvs)) Γ
+          (substAll' (pfx.length + vars.length) vs.reverse body) tr
+      rw [← List.append_assoc, Nat.add_comm]; exact hResult
+    · exact ArmsTyped_substAll pfx σs bvs Γ vs rest ts tr hRest hVs hLen
 
 end
 
@@ -975,18 +1032,25 @@ theorem preservation : forall {e e' : Expr} {τ : Typ} {bvs : List Typ} {Γ : Ty
     | _ => contradiction
   | match_arm v vars body rest =>
     cases hType with
-    | match_type _ _ _ _ _ _ hScrut hArms =>
-      -- substAll (replicate vars.length (.lit v)) body
-      -- body was typed under (replicate vars.length ts ++ bvs)
-      -- after substitution, should be typed under bvs
-      sorry  -- TODO: ArmsTyped_subst + HasType_subst_depth for arm bodies
+    | match_type _ _ _ _ τ_scrut τ_result hScrut hArms =>
+      match hArms with
+      | .cons _ _ _ body2 _ ts tr hBody2 _ =>
+        have hRepLen : (List.replicate vars.length (Expr.lit v)).length = (List.replicate vars.length ts).length := by
+          simp [List.length_replicate]
+        have hRepVs : HasTypeAll bvs Γ (List.replicate vars.length (Expr.lit v)) (List.replicate vars.length ts).reverse := by
+          rw [list_reverse_replicate]
+          exact HasTypeAll_replicate bvs Γ (Expr.lit v) ts hScrut vars.length
+        have hResult := HasType_iterSubst (List.replicate vars.length ts) bvs Γ
+          (List.replicate vars.length (Expr.lit v)) body2 tr hBody2 hRepVs hRepLen
+        show HasType bvs Γ (substAll' 0 (List.replicate vars.length (Expr.lit v)) body2) tr
+        rw [list_reverse_replicate] at hResult
+        exact hResult
     | _ => contradiction
   | match_empty v =>
     cases hType with
     | match_type _ _ _ _ _ _ hScrut hArms =>
-      -- match_empty returns .lit .unit, but the type should be tr
-      -- From ArmsTyped.nil, tr is determined. Need tr = .unitType for empty arms.
-      sorry  -- TODO: show τ_result = .unitType for empty arms
+      cases hArms
+      exact HasType.lit_unit _ _
     | _ => contradiction
   | some_step e e' hStep1 =>
     cases hType with
