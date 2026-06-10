@@ -1030,23 +1030,23 @@ theorem preservation : forall {e e' : Expr} {τ : Typ} {bvs : List Typ} {Γ : Ty
     | match_type _ _ _ _ _ _ hScrut hArms =>
       exact HasType.match_type _ _ scrut' arms _ _ (preservation hScrut hStep1) hArms
     | _ => contradiction
-  | match_arm v vars body rest =>
+  | match_arm e vars body rest hIsVal =>
     cases hType with
     | match_type _ _ _ _ τ_scrut τ_result hScrut hArms =>
       match hArms with
       | .cons _ _ _ body2 _ ts tr hBody2 _ =>
-        have hRepLen : (List.replicate vars.length (Expr.lit v)).length = (List.replicate vars.length ts).length := by
+        have hRepLen : (List.replicate vars.length e).length = (List.replicate vars.length ts).length := by
           simp [List.length_replicate]
-        have hRepVs : HasTypeAll bvs Γ (List.replicate vars.length (Expr.lit v)) (List.replicate vars.length ts).reverse := by
+        have hRepVs : HasTypeAll bvs Γ (List.replicate vars.length e) (List.replicate vars.length ts).reverse := by
           rw [list_reverse_replicate]
-          exact HasTypeAll_replicate bvs Γ (Expr.lit v) ts hScrut vars.length
+          exact HasTypeAll_replicate bvs Γ e ts hScrut vars.length
         have hResult := HasType_iterSubst (List.replicate vars.length ts) bvs Γ
-          (List.replicate vars.length (Expr.lit v)) body2 tr hBody2 hRepVs hRepLen
-        show HasType bvs Γ (substAll' 0 (List.replicate vars.length (Expr.lit v)) body2) tr
+          (List.replicate vars.length e) body2 tr hBody2 hRepVs hRepLen
+        show HasType bvs Γ (substAll' 0 (List.replicate vars.length e) body2) tr
         rw [list_reverse_replicate] at hResult
         exact hResult
     | _ => contradiction
-  | match_empty v =>
+  | match_empty e hIsVal =>
     cases hType with
     | match_type _ _ _ _ _ _ hScrut hArms =>
       cases hArms

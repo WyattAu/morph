@@ -338,12 +338,14 @@ inductive Step : Expr → Expr → Prop where
       Step scrut scrut' →
       Step (.match_ scrut arms) (.match_ scrut' arms)
 
-  | match_arm : ∀ v vars body rest,
-      Step (.match_ (.lit v) ((vars, body) :: rest))
-        (substAll (List.replicate vars.length (.lit v)) body)
+  | match_arm : ∀ e vars body rest,
+      IsValue e →
+      Step (.match_ e ((vars, body) :: rest))
+        (substAll (List.replicate vars.length e) body)
 
-  | match_empty : ∀ v,
-      Step (.match_ (.lit v) []) (.lit .unit)
+  | match_empty : ∀ e,
+      IsValue e →
+      Step (.match_ e []) (.lit .unit)
 
   /- ## Null Coalesce (e1 ?? e2) -/
 
