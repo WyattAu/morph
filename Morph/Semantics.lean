@@ -32,6 +32,7 @@ inductive IsValue : Expr → Prop where
   | some_ : ∀ e, IsValue e → IsValue (.some_ e)
   | tuple_ : ∀ (elems : List Expr) (_hvs : ∀ e ∈ elems, IsValue e), IsValue (.tuple_ elems)
   | array_ : ∀ (elems : List Expr) (_hvs : ∀ e ∈ elems, IsValue e), IsValue (.arrayLit elems)
+  | refCreate : ∀ e cap τ, IsValue e → IsValue (.refCreate e cap τ)
 
 end
 
@@ -240,6 +241,11 @@ inductive Step : Expr → Expr → Prop where
   | block_pop : ∀ e head rest,
       IsValue e → Step (.block (e :: head :: rest)) (.block (head :: rest))
 
+  | block_refCreate_singleton : ∀ e cap τ, IsValue e → Step (.block [.refCreate e cap τ]) (.refCreate e cap τ)
+  | block_refLoad_singleton : ∀ e, IsValue e → Step (.block [.refLoad e]) (.refLoad e)
+  | block_refStore_singleton : ∀ e v τ, IsValue e → IsValue v → Step (.block [.refStore e v τ]) (.refStore e v τ)
+  | block_refFree_singleton : ∀ e, IsValue e → Step (.block [.refFree e]) (.refFree e)
+
   | binop_string_concat : ∀ s1 s2,
       Step (.binop .add (.lit (.string s1)) (.lit (.string s2))) (.lit (.string (s1 ++ s2)))
 
@@ -423,5 +429,51 @@ inductive Step : Expr → Expr → Prop where
       elems.length > 0 →
       Step (.arrayIndex (.arrayLit elems) (.lit (.int (Int.negSucc n))))
            (elems.getD 0 (.lit .unit))
+
+  /- ## Reference Operations (Store Model, ADR-010)
+
+  Reference operations step through their sub-expressions.
+  The "done" rules (allocating, loading, storing, freeing) are deferred
+  to the store-carrying Step migration (ADR-010 Phase 2).
+  Without a store, these expressions get stuck at fully-evaluated form. -/
+
+  | ref_create_step : ∀ e e' cap τ,
+      Step e e' →
+      Step (.refCreate e cap τ) (.refCreate e' cap τ)
+
+  | ref_load_step : ∀ e e',
+      Step e e' →
+      Step (.refLoad e) (.refLoad e')
+
+  | ref_store_step_arr : ∀ e e' v τ,
+      Step e e' →
+      Step (.refStore e v τ) (.refStore e' v τ)
+
+  | ref_store_step_val : ∀ e e' v τ,
+      IsValue e →
+      Step v e' →
+      Step (.refStore e v τ) (.refStore e e' τ)
+
+  | ref_free_step : ∀ e e',
+      Step e e' →
+      Step (.refFree e) (.refFree e')
+
+  /- ## Reference Operations — Evaluation on Fully-Evaluated Arguments (Storeless)
+
+  When sub-expressions are fully evaluated, reference operations can proceed
+  without a store by directly reducing. These rules replace the previous design
+  where refLoad/refStore/refFree were considered "stuck values." -/
+
+  | ref_load_eval : ∀ e cap τ,
+      IsValue e →
+      Step (.refLoad (.refCreate e cap τ)) e
+
+  | ref_store_eval : ∀ e v cap τ,
+      IsValue e → IsValue v → cap ≠ .val →
+      Step (.refStore (.refCreate e cap τ) v τ) (.lit .unit)
+
+  | ref_free_eval : ∀ e τ,
+      IsValue e →
+      Step (.refFree (.refCreate e .iso τ)) (.lit .unit)
 
 end Morph.Semantics

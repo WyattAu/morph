@@ -371,6 +371,21 @@ private theorem HasType_subst_depth (pfx : List Typ) (bvs : List Typ) (Γ : TypE
     simp only [subst']
     exact HasType.block_type _ _ _ τs τ
       (HasTypeAll_subst_depth pfx bvs Γ exprs v τ1 (τs ++ [τ]) hAll hV)
+   | .refCreate_type _ _ e cap τ hE =>
+     simp only [subst']
+     exact HasType.refCreate_type _ _ _ cap τ (HasType_subst_depth pfx bvs Γ e v τ1 τ hE hV)
+   | .refLoad_type _ _ e cap τ hE =>
+     simp only [subst']
+     exact HasType.refLoad_type _ _ _ cap τ (HasType_subst_depth pfx bvs Γ e v τ1 (.refType cap τ) hE hV)
+   | .refStore_type _ _ e v' cap τ hE hV' hCap =>
+     simp only [subst']
+     exact HasType.refStore_type _ _ _ _ cap τ
+       (HasType_subst_depth pfx bvs Γ e v τ1 (.refType cap τ) hE hV)
+       (HasType_subst_depth pfx bvs Γ v' v τ1 τ hV' hV)
+       hCap
+   | .refFree_type _ _ e τ hE =>
+     simp only [subst']
+     exact HasType.refFree_type _ _ _ τ (HasType_subst_depth pfx bvs Γ e v τ1 (.refType .iso τ) hE hV)
 
 private theorem ArmsTyped_subst_depth (pfx : List Typ) (bvs : List Typ) (Γ : TypEnv)
     (arms : List (List String × Expr)) (v : Expr) (τ1 ts tr : Typ)
@@ -706,10 +721,25 @@ private theorem HasType_substAll (pfx σs : List Typ) (bvs : List Typ) (Γ : Typ
        exact HasType.arrayIndex_type (pfx ++ bvs) Γ (substAll' pfx.length vs.reverse arr) (substAll' pfx.length vs.reverse idx) τ' n
          (HasType_substAll pfx σs bvs Γ vs arr (.arrayType τ' n) hArr hVs hLen)
          (HasType_substAll pfx σs bvs Γ vs idx .intType hIdx hVs hLen)
-    | .block_type _ _ exprs τs' τ hAll =>
-    unfold substAll'
-    exact HasType.block_type _ _ _ τs' τ
-      (HasTypeAll_substAll pfx σs bvs Γ vs exprs (τs' ++ [τ]) hAll hVs hLen)
+     | .block_type _ _ exprs τs' τ hAll =>
+     unfold substAll'
+     exact HasType.block_type _ _ _ τs' τ
+       (HasTypeAll_substAll pfx σs bvs Γ vs exprs (τs' ++ [τ]) hAll hVs hLen)
+     | .refCreate_type _ _ e cap τ hE =>
+       unfold substAll'
+       exact HasType.refCreate_type _ _ _ cap τ (HasType_substAll pfx σs bvs Γ vs e τ hE hVs hLen)
+     | .refLoad_type _ _ e cap τ hE =>
+       unfold substAll'
+       exact HasType.refLoad_type _ _ _ cap τ (HasType_substAll pfx σs bvs Γ vs e (.refType cap τ) hE hVs hLen)
+     | .refStore_type _ _ e v' cap τ hE hV' hCap =>
+       unfold substAll'
+       exact HasType.refStore_type _ _ _ _ cap τ
+         (HasType_substAll pfx σs bvs Γ vs e (.refType cap τ) hE hVs hLen)
+         (HasType_substAll pfx σs bvs Γ vs v' τ hV' hVs hLen)
+         hCap
+     | .refFree_type _ _ e τ hE =>
+       unfold substAll'
+       exact HasType.refFree_type _ _ _ τ (HasType_substAll pfx σs bvs Γ vs e (.refType .iso τ) hE hVs hLen)
 
 private theorem ArmsTyped_substAll (pfx σs : List Typ) (bvs : List Typ) (Γ : TypEnv)
     (vs : List Expr) (arms : List (List String × Expr)) (ts tr : Typ)
@@ -1036,6 +1066,42 @@ theorem preservation : forall {e e' : Expr} {τ : Typ} {bvs : List Typ} {Γ : Ty
         exfalso
         exact append_singleton_ne_nil τs' τ (HasTypeAll_nil_types (HasTypeAll_cons_tail hAll))
     | _ => contradiction
+  | block_refCreate_singleton e cap τ_param _ =>
+    cases hType with
+    | block_type _ _ _ τs _ hAll =>
+      cases τs with
+      | nil => exact HasTypeAll_cons_head hAll
+      | cons τ' τs' =>
+        exfalso
+        exact append_singleton_ne_nil τs' τ (HasTypeAll_nil_types (HasTypeAll_cons_tail hAll))
+    | _ => contradiction
+  | block_refLoad_singleton e _ =>
+    cases hType with
+    | block_type _ _ _ τs _ hAll =>
+      cases τs with
+      | nil => exact HasTypeAll_cons_head hAll
+      | cons τ' τs' =>
+        exfalso
+        exact append_singleton_ne_nil τs' τ (HasTypeAll_nil_types (HasTypeAll_cons_tail hAll))
+    | _ => contradiction
+  | block_refStore_singleton e v τ_param _ _ =>
+    cases hType with
+    | block_type _ _ _ τs _ hAll =>
+      cases τs with
+      | nil => exact HasTypeAll_cons_head hAll
+      | cons τ' τs' =>
+        exfalso
+        exact append_singleton_ne_nil τs' τ (HasTypeAll_nil_types (HasTypeAll_cons_tail hAll))
+    | _ => contradiction
+  | block_refFree_singleton e _ =>
+    cases hType with
+    | block_type _ _ _ τs _ hAll =>
+      cases τs with
+      | nil => exact HasTypeAll_cons_head hAll
+      | cons τ' τs' =>
+        exfalso
+        exact append_singleton_ne_nil τs' τ (HasTypeAll_nil_types (HasTypeAll_cons_tail hAll))
+    | _ => contradiction
   | pipe_left e e' f hStep1 =>
     cases hType with
     | pipe_type => exact HasType.pipe_type _ _ e' f _ _ (preservation (by assumption) hStep1) (by assumption)
@@ -1256,18 +1322,58 @@ theorem preservation : forall {e e' : Expr} {τ : Typ} {bvs : List Typ} {Γ : Ty
             | cons _ _ _ _ _ _ hE_head _ => simp [List.getD]; exact hE_head
         | _ => contradiction
       | _ => contradiction
-    | array_index_neg elems hvs m hPos =>
+     | array_index_neg elems hvs m hPos =>
+       cases hType with
+       | arrayIndex_type _ _ _ _ τ n hArr hIdx =>
+         cases hArr with
+         | arrayLit_type _ _ _ _ _ hAll hLen hn =>
+           cases n with
+           | zero => exfalso; omega
+           | succ n' =>
+             simp only [List.replicate_succ] at hAll
+             cases hAll with
+             | cons _ _ _ _ _ _ hE_head _ => simp [List.getD]; exact hE_head
+         | _ => contradiction
+       | _ => contradiction
+    | ref_create_step e e' cap τ hStep1 =>
       cases hType with
-      | arrayIndex_type _ _ _ _ τ n hArr hIdx =>
-        cases hArr with
-        | arrayLit_type _ _ _ _ _ hAll hLen hn =>
-          cases n with
-          | zero => exfalso; omega
-          | succ n' =>
-            simp only [List.replicate_succ] at hAll
-            cases hAll with
-            | cons _ _ _ _ _ _ hE_head _ => simp [List.getD]; exact hE_head
+      | refCreate_type _ _ _ cap τ hE =>
+        exact HasType.refCreate_type _ _ _ cap τ (preservation hE hStep1)
+      | _ => contradiction
+    | ref_load_step e e' hStep1 =>
+      cases hType with
+      | refLoad_type _ _ _ cap τ hE =>
+        exact HasType.refLoad_type _ _ _ cap τ (preservation hE hStep1)
+      | _ => contradiction
+    | ref_store_step_arr e e' v τ hStep1 =>
+      cases hType with
+      | refStore_type _ _ _ _ cap τ hE hV' hCap =>
+        exact HasType.refStore_type _ _ _ _ cap τ (preservation hE hStep1) hV' hCap
+      | _ => contradiction
+    | ref_store_step_val e e' v τ hVal hStep1 =>
+      cases hType with
+      | refStore_type _ _ _ _ cap τ hE hV' hCap =>
+        exact HasType.refStore_type _ _ _ _ cap τ hE (preservation hV' hStep1) hCap
+      | _ => contradiction
+    | ref_free_step e e' hStep1 =>
+      cases hType with
+      | refFree_type _ _ _ τ hE =>
+        exact HasType.refFree_type _ _ _ τ (preservation hE hStep1)
+      | _ => contradiction
+    | ref_load_eval e cap τ_val _ =>
+      cases hType with
+      | refLoad_type _ _ _ cap τ_inner hE =>
+        cases hE with
+        | refCreate_type _ _ _ _ _ hE' => exact hE'
         | _ => contradiction
+      | _ => contradiction
+    | ref_store_eval e v cap τ_val _ _ _ =>
+      cases hType with
+      | refStore_type => exact HasType.lit_unit _ _
+      | _ => contradiction
+    | ref_free_eval e τ_val _ =>
+      cases hType with
+      | refFree_type => exact HasType.lit_unit _ _
       | _ => contradiction
 
 end

@@ -1,7 +1,7 @@
 # Morph Master Roadmap
 
-**Version:** 2.0.0  
-**Date:** 2026-06-09  
+**Version:** 2.1.0  
+**Date:** 2026-06-11  
 **Source:** `.reports/COMPREHENSIVE_DEFICIT_REPORT.md`  
 **Target:** Publication-ready language by 2031  
 **Status:** ACTIVE  
@@ -12,9 +12,9 @@
 
 | Metric | Value | Verdict |
 |--------|-------|---------|
-| Lean proofs | 800+ theorems, 0 sorry, 342 jobs | STRONG |
+| Lean proofs | 800+ theorems, 0 sorry, 344 jobs | STRONG |
 | Type safety proof (core lambda calc) | Progress + Preservation = Soundness | COMPLETE |
-| Formalization coverage of specs | ~8% (expanded: 17 Typ, 21 Expr, 62 Step) | GROWING |
+| Formalization coverage of specs | ~12% (expanded: 17 Typ, 23 Expr, 67 Step) | GROWING |
 | Spec contradictions | 0 (all 6 resolved) | RESOLVED |
 | Compliance requirements (P0) | ~15 implemented (type system core) | IN PROGRESS |
 | Compiler pipeline (Rust) | Lexer + Parser + Typeck (synced) + Codegen + CLI driver | FUNCTIONAL |
@@ -22,14 +22,28 @@
 | `morph run` | Prints "interpreter not yet integrated" | BLOCKED |
 | Traceability matrix | Created and maintained | EXISTS |
 | Aspirational spec bloat | 29 tooling specs frozen, excluded from critical path | FROZEN |
+| Store model | Scaffold in Morph/Store.lean + Morph/LinearContext.lean | SCAFFOLD |
 
 ### The Core Problem in One Sentence
 
-> Phase 0 is complete: 0 spec contradictions, 29 aspirational specs frozen, traceability matrix exists. Phase 1 is ~70% complete: Lean spec now **exceeds** the Rust compiler's type coverage (17 Typ constructors, 21 Expr forms, 62 Step rules, 0 sorry). Soundness proof holds. Remaining: match_ HasType, capability HasType, and VM (Phase 2).
+> Phase 0 is complete: 0 spec contradictions, 29 aspirational specs frozen, traceability matrix exists. Phase 1 is ~80% complete: Lean spec now **exceeds** the Rust compiler's type coverage (17 Typ constructors, 23 Expr forms, 67 Step rules, 0 sorry). Soundness proof holds. Array formalization complete. Store model scaffold created (ADR-010). Linear context scaffold created. Remaining: match_ HasType, capability HasType, store model migration, and VM (Phase 2).
 
 ### Guiding Principle
 
 **Every feature must follow this cycle:** Spec → Lean proof → Rust implementation → Lean as test oracle → Lean extended. No feature enters the compiler without first being proven in Lean.
+
+---
+
+## 0.5 Team Structure
+
+| Team | Focus | Size | Deliverables |
+|------|-------|------|-------------|
+| Team Formal | Lean proofs, spec, store model | 3-4 | Store migration, capability proofs, memory safety |
+| Team Compiler | Rust compiler pipeline | 3-4 | Type checker sync, codegen, generics, closures |
+| Team Runtime | VM, scheduler, actors | 2-3 | Bytecode VM, fiber scheduler, actor system |
+| Team DX | Stdlib, tooling, demos | 2-3 | LSP, formatter, stdlib, demo applications |
+
+All team members are mathematicians capable of writing Lean proofs.
 
 ---
 
@@ -143,18 +157,20 @@ Order matters — each extension requires re-proving progress + preservation.
 | 2h | `typeAsc(e, T)` | ✅ COMPLETE | 2 days |
 | 2i | `some_/none_/ok_/err_` | ✅ COMPLETE | 1 week |
 | 2j | `tuple_(List Expr)` | ✅ COMPLETE (HasTypeAll) | 1 week |
+| 2k | `arrayLit(elems)` | ✅ COMPLETE | 1 week |
+| 2l | `arrayIndex(arr, idx)` | ✅ COMPLETE | 1 week |
 
-### 1.2a Phase 1 Actual Progress (as of 2026-06-09)
+### 1.2a Phase 1 Actual Progress (as of 2026-06-11)
 
 | Metric | ROADMAP Target | Actual | Status |
 |--------|---------------|--------|--------|
 | Typ constructors | 15+ | **17** | ✅ EXCEEDS |
-| Expr constructors | 19+ | **21** | ✅ EXCEEDS |
-| Step rules | — | **62** | NEW |
+| Expr constructors | 19+ | **23** | ✅ EXCEEDS |
+| Step rules | — | **67** | NEW |
 | IsValue constructors | — | **7** | NEW |
 | HasType constructors | — | **40+** | NEW |
 | sorry count | 0 | **0** | ✅ |
-| Build jobs | — | **342** | — |
+| Build jobs | — | **344** | — |
 | Rust tests | — | **55** | — |
 | Soundness proof | Progress + Preservation | **Complete (0 sorry)** | ✅ |
 
@@ -162,7 +178,7 @@ Order matters — each extension requires re-proving progress + preservation.
 - `match_` HasType (typing rule for pattern matching) — 2-3 weeks
 - Capability HasType (substructural modalities) — 3-4 weeks
 - `structInit` in Expr (blocked by Lean 4 termination checker) — needs workaround
-- Array index (deferred: no `Value.array` constructor yet)
+- Store model migration (ADR-010 Phase 1-3) — 6-8 weeks
 
 **Deferred to Phase 2:**
 - Walrus operator (`x := e`) — requires store semantics (ADR-008)
@@ -177,7 +193,7 @@ Order matters — each extension requires re-proving progress + preservation.
 | Pointer arithmetic | `PtrAdd(ptr, offset)` and `PtrSub(ptr, offset)` | 1 week |
 | Pointer load/store | `PtrLoad(ptr)` and `PtrStore(ptr, val)` | 1 week |
 | String concatenation | `StrConcat(s1, s2)` | 3 days |
-| Array indexing | `ArrayGet(arr, idx)` with bounds check | 3 days |
+| Array indexing | `ArrayGet(arr, idx)` with bounds check | ✅ COMPLETE (5 Step rules) |
 | Array length | `ArrayLen(arr)` | 1 day |
 
 ### 1.4 Add Missing Semantic Features to Rust Compiler (Sync)
@@ -226,6 +242,23 @@ After each Lean extension, update the Rust compiler to match:
 | `type_inference_terminates` | `inferType` always terminates (no infinite loops in unification) | 2 weeks |
 | `subtyping_decidable` | Subtyping relation is decidable for all Morph types | 2 weeks |
 | `principal_types` | When inference succeeds, it produces a most-general type | 3 weeks |
+
+### 1.8 Store Model Migration (ADR-010)
+
+> **Goal:** Integrate the store into the operational semantics, enabling memory safety proofs.
+> 
+> **Exit gate:** Step carries Store, Progress + Preservation proven with Store, Value.loc constructor exists.
+
+| Phase | Description | Status | Effort |
+|-------|-------------|--------|--------|
+| 1.8a | Value.loc constructor in Core.lean | ⏳ PENDING | 1 day |
+| 1.8b | Step signature: `Store → Expr → Store → Expr → Prop` | ⏳ PENDING | 1 week |
+| 1.8c | Existing rules carry σ unchanged | ⏳ PENDING | 1 week |
+| 1.8d | Expr.refCreate/refLoad/refStore/refFree | ⏳ PENDING | 2 weeks |
+| 1.8e | HasType for reference operations | ⏳ PENDING | 2 weeks |
+| 1.8f | Store-typed Progress + Preservation | ⏳ PENDING | 3 weeks |
+| 1.8g | LinearContext integration into HasType | ⏳ PENDING | 3 weeks |
+| 1.8h | Memory safety proofs (no-use-after-free, no-double-free, acyclicity) | ⏳ PENDING | 6 weeks |
 
 ### Phase 1 Effort Summary
 
@@ -647,35 +680,49 @@ After each Lean extension, update the Rust compiler to match:
 ## 10. Dependency Graph
 
 ```
-Phase 0 (Spec Integrity)
-  ├─→ Phase 1 (Core Formalization)
-  │     ├─→ Phase 2 (Execution Engine) ← can start at Phase 1.3
-  │     │     └─→ Phase 3 (Native Backend) ← starts after 2.2
-  │     └─→ Phase 4 (Stdlib & Concurrency) ← starts after 2.1
-  │           └─→ Phase 5 (Tooling) ← starts after 4.1
-  └─→ Phase 6 (Hardening) ← starts after Phase 3
-
-Phase 7 (Publication) ← after Phase 6
-Phase 8 (Ecosystem) ← after Phase 7
+Phase 0 (Spec Integrity) ✅
+  ├─→ Phase 1 (Core Formalization) ← 80% COMPLETE
+  │     ├─→ Phase 1.8 (Store Migration) ← STARTING NOW
+  │     │     └─→ Phase 1.5 (Memory Safety Proofs)
+  │     │           └─→ Phase 1.6 (Actor Isolation Proofs)
+  │     └─→ Phase 2 (Execution Engine) ← can start in parallel
+  │           ├─→ Phase 3 (Native Backend)
+  │           └─→ Phase 4 (Stdlib & Concurrency)
+  └─→ Phase 5 (Tooling)
 ```
 
 ### Critical Path
 
 ```
-Week 1-2:    Phase 0 (spec integrity)
-Week 3-8:    Phase 1.1–1.2 (extend Lean types + expressions)
-Week 5-10:   Phase 1.4 (Rust compiler sync)
-Week 6-14:   Phase 1.5–1.6 (memory safety + actor isolation proofs)
-Week 9-14:   Phase 1.7 (type system decidability)
-Week 9-14:   Phase 2.1 (VM implementation) [parallel]
-Week 14-18:  Phase 2.3–2.6 (codegen fixes, closures, type checker, modules)
-Week 16-22:  Phase 3.1–3.3 (HIR→MIR→LLVM) [parallel with 2.4–2.6]
-Week 22-28:  Phase 3.4–3.5 (FFI, monomorphization)
-Week 22-34:  Phase 4.1–4.2 (stdlib, traits) [parallel with 3]
-Week 28-38:  Phase 4.3–4.4 (concurrency runtime + proofs)
-Week 38-44:  Phase 5.1–5.4 (LSP, formatter, tests, package manager)
-Week 44-50:  Phase 6 (hardening, benchmarks, security audit)
-Week 50-60:  Phase 7 (publications, documentation, demos)
+TRACK A — Team Formal (Lean proofs):
+Week 1-2:     Phase 0 (spec integrity) ✅
+Week 3-10:    Phase 1.1–1.3 (extend Lean types + expressions) ✅
+Week 10-18:   Phase 1.8 (store model migration)
+Week 18-26:   Phase 1.5 (memory safety proofs)
+Week 26-32:   Phase 1.6 (actor isolation proofs)
+Week 32-38:   Phase 1.7 + Phase 6.4–6.5 (decidability, effect soundness, pattern match proofs)
+
+TRACK B — Team Compiler (Rust pipeline):
+Week 3-10:    Phase 1.4 (Rust compiler sync with Lean extensions)
+Week 10-22:   Phase 2.3–2.5 (codegen fixes, closures, type checker)
+Week 22-28:   Phase 2.6 (module system)
+Week 28-38:   Phase 3.1–3.3 (HIR→MIR→LLVM)
+Week 38-44:   Phase 3.4–3.5 (FFI, monomorphization)
+
+TRACK C — Team Runtime (VM, scheduler, actors):
+Week 10-18:   Phase 2.1 (VM implementation)
+Week 18-22:   Phase 2.2 (compiler-to-VM bridge)
+Week 22-34:   Phase 4.3 (concurrency runtime)
+Week 34-38:   Phase 4.4 (concurrency proofs)
+
+TRACK D — Team DX (stdlib, tooling, demos):
+Week 22-34:   Phase 4.1–4.2 (stdlib, trait system)
+Week 38-44:   Phase 4.2 completion + Phase 5.1 (LSP server)
+Week 44-50:   Phase 5.2–5.4 (formatter, tests, package manager)
+Week 50-56:   Phase 5 completion + Phase 6 (hardening, benchmarks, security audit)
+
+TRACK E — Integration & Publication:
+Week 56-60:   Phase 7 (publications, documentation, demos)
 ```
 
 ---
@@ -703,8 +750,9 @@ Week 50-60:  Phase 7 (publications, documentation, demos)
 | Lean `sorry` count | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | Stub theorems (`True := trivial`) | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | Lean type constructors | 17 | 17 | 17 | 17 | 17 | 17 | 17 | 17 |
-| Lean expression forms | 21 | 21+ | 21+ | 21+ | 21+ | 21+ | 21+ | 21+ |
+| Lean expression forms | 21 | 23+ | 23+ | 23+ | 23+ | 23+ | 23+ | 23+ |
 | Proven safety theorems | 7 | 20+ | 20+ | 20+ | 28+ | 28+ | 35+ | 35+ |
+| Build jobs | — | 344 | — | — | — | — | — | — |
 | Compliance P0 done | 0 | 10 | 40 | 70 | 90 | 95 | 101 | 101 |
 | `morph run` works | No | No | **Yes** | Yes | Yes | Yes | Yes | Yes |
 | Native binary output | No | No | No | **Yes** | Yes | Yes | Yes | Yes |
@@ -804,5 +852,5 @@ The following ~12 specs are the **core language specification** that drives all 
 ---
 
 *Maintained by: Morph core team  
-Last updated: 2026-06-09  
+Last updated: 2026-06-11  
 Next review: End of Phase 0 (2026-06-12)*

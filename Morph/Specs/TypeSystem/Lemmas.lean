@@ -154,6 +154,22 @@ the necessary equalities for use in rewriting.
     lift k (.arrayIndex arr idx) = .arrayIndex (lift k arr) (lift k idx) := by
   simp [lift, liftUnder]
 
+@[simp] theorem lift_refCreate (e : Expr) (cap : Capability) (τ : Typ) (k : Nat) :
+    lift k (.refCreate e cap τ) = .refCreate (lift k e) cap τ := by
+  simp [lift, liftUnder]
+
+@[simp] theorem lift_refLoad (e : Expr) (k : Nat) :
+    lift k (.refLoad e) = .refLoad (lift k e) := by
+  simp [lift, liftUnder]
+
+@[simp] theorem lift_refStore (e v : Expr) (τ : Typ) (k : Nat) :
+    lift k (.refStore e v τ) = .refStore (lift k e) (lift k v) τ := by
+  simp [lift, liftUnder]
+
+@[simp] theorem lift_refFree (e : Expr) (k : Nat) :
+    lift k (.refFree e) = .refFree (lift k e) := by
+  simp [lift, liftUnder]
+
 /-! ## Lift-Zero Identity
 
 `liftUnder bound 0 e = e` for all `bound` and `e`.
@@ -207,6 +223,10 @@ theorem liftUnder_zero_eq : forall (bound : Nat) (e : Expr), liftUnder bound 0 e
    | bound, .tuple_ elems => by simp [liftUnder, liftUnder_zero_eq_list bound elems]
    | bound, .arrayLit elems => by simp [liftUnder, liftUnder_zero_eq_list bound elems]
    | bound, .arrayIndex arr idx => by simp [liftUnder, liftUnder_zero_eq bound arr, liftUnder_zero_eq bound idx]
+   | bound, .refCreate e cap τ => by simp [liftUnder, liftUnder_zero_eq bound e]
+   | bound, .refLoad e => by simp [liftUnder, liftUnder_zero_eq bound e]
+   | bound, .refStore e v τ => by simp [liftUnder, liftUnder_zero_eq bound e, liftUnder_zero_eq bound v]
+   | bound, .refFree e => by simp [liftUnder, liftUnder_zero_eq bound e]
 
 end
 
@@ -282,6 +302,10 @@ theorem liftUnder_comp : forall (bound k1 k2 : Nat) (e : Expr),
    | bound, k1, k2, .tuple_ elems => by simp [liftUnder, liftUnder_comp_list bound k1 k2 elems]
    | bound, k1, k2, .arrayLit elems => by simp [liftUnder, liftUnder_comp_list bound k1 k2 elems]
    | bound, k1, k2, .arrayIndex arr idx => by simp [liftUnder, liftUnder_comp bound k1 k2 arr, liftUnder_comp bound k1 k2 idx]
+   | bound, k1, k2, .refCreate e cap τ => by simp [liftUnder, liftUnder_comp bound k1 k2 e]
+   | bound, k1, k2, .refLoad e => by simp [liftUnder, liftUnder_comp bound k1 k2 e]
+   | bound, k1, k2, .refStore e v τ => by simp [liftUnder, liftUnder_comp bound k1 k2 e, liftUnder_comp bound k1 k2 v]
+   | bound, k1, k2, .refFree e => by simp [liftUnder, liftUnder_comp bound k1 k2 e]
 
 end
 
@@ -521,6 +545,25 @@ theorem weakening_at_depth (xs : List Typ) (bvs : List Typ) (Γ : TypEnv)
        (liftUnder xs.length 1 idx) τ n
        (weakening_at_depth xs bvs Γ arr (.arrayType τ n) σ hArr)
        (weakening_at_depth xs bvs Γ idx .intType σ hIdx)
+   | refCreate_type _ _ e cap τ hE =>
+     simp only [liftUnder]
+     exact HasType.refCreate_type (xs ++ σ :: bvs) Γ (liftUnder xs.length 1 e) cap τ
+       (weakening_at_depth xs bvs Γ e τ σ hE)
+   | refLoad_type _ _ e cap τ hE =>
+     simp only [liftUnder]
+     exact HasType.refLoad_type (xs ++ σ :: bvs) Γ (liftUnder xs.length 1 e) cap τ
+       (weakening_at_depth xs bvs Γ e (.refType cap τ) σ hE)
+   | refStore_type _ _ e v cap τ hE hV hCap =>
+     simp only [liftUnder]
+     exact HasType.refStore_type (xs ++ σ :: bvs) Γ (liftUnder xs.length 1 e)
+       (liftUnder xs.length 1 v) cap τ
+       (weakening_at_depth xs bvs Γ e (.refType cap τ) σ hE)
+       (weakening_at_depth xs bvs Γ v τ σ hV)
+       hCap
+   | refFree_type _ _ e τ hE =>
+     simp only [liftUnder]
+     exact HasType.refFree_type (xs ++ σ :: bvs) Γ (liftUnder xs.length 1 e) τ
+       (weakening_at_depth xs bvs Γ e (.refType .iso τ) σ hE)
 
 theorem ArmsTyped_weakening_at_depth (xs : List Typ) (σ : Typ)
     {bvs : List Typ} {Γ : TypEnv} {τ_scrut : Typ}
@@ -759,6 +802,22 @@ theorem weakening (bvs : List Typ) (Γ : TypEnv) (e : Expr) (τ : Typ) (σ : Typ
      rw [lift_arrayIndex]
      exact HasType.arrayIndex_type (σ :: bvs) Γ (lift 1 arr) (lift 1 idx) τ n
        (weakening _ _ _ _ σ hArr) (weakening _ _ _ _ σ hIdx)
+   | HasType.refCreate_type bvs Γ e cap τ hE =>
+     rw [lift_refCreate]
+     exact HasType.refCreate_type (σ :: bvs) Γ (lift 1 e) cap τ
+       (weakening _ _ _ _ σ hE)
+   | HasType.refLoad_type bvs Γ e cap τ hE =>
+     rw [lift_refLoad]
+     exact HasType.refLoad_type (σ :: bvs) Γ (lift 1 e) cap τ
+       (weakening _ _ _ _ σ hE)
+   | HasType.refStore_type bvs Γ e v cap τ hE hV hCap =>
+     rw [lift_refStore]
+     exact HasType.refStore_type (σ :: bvs) Γ (lift 1 e) (lift 1 v) cap τ
+       (weakening _ _ _ _ σ hE) (weakening _ _ _ _ σ hV) hCap
+   | HasType.refFree_type bvs Γ e τ hE =>
+     rw [lift_refFree]
+     exact HasType.refFree_type (σ :: bvs) Γ (lift 1 e) τ
+       (weakening _ _ _ _ σ hE)
 
 theorem weakening_all (bvs : List Typ) (Γ : TypEnv) (es : List Expr) (τs : List Typ)
     (σ : Typ) (h : HasTypeAll bvs Γ es τs) : HasTypeAll (σ :: bvs) Γ (es.map (lift 1)) τs := by

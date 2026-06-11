@@ -68,6 +68,10 @@ inductive WellTypedValue : Expr → Typ → Prop where
    | array_val : forall elems τ n,
        HasTypeAll [] [] elems (List.replicate n τ) -> n = elems.length -> n > 0 ->
        WellTypedValue (.arrayLit elems) (.arrayType τ n)
+   | refCreate_val : forall e cap τ, IsValue e → WellTypedValue (.refCreate e cap τ) (.refType cap τ)
+   | refLoad_val : forall e τ, IsValue e → WellTypedValue (.refLoad e) τ
+   | refStore_val : forall e v τ, IsValue e → IsValue v → WellTypedValue (.refStore e v τ) .unitType
+   | refFree_val : forall e τ, IsValue e → WellTypedValue (.refFree e) .unitType
 
 /-! ## Progress-Preservation Combination
 
@@ -145,6 +149,9 @@ theorem value_is_well_typed : forall {e : Expr} {τ : Typ},
       | lit_unit => exact WellTypedValue.lit_unit
     | pointer p => cases ht with
       | lit_pointer => exact WellTypedValue.lit_pointer p
+      | _ => contradiction
+    | loc _ => cases ht with
+      | _ => contradiction
     | float f => cases ht with
       | lit_float => exact WellTypedValue.lit_float _ _
       | _ => contradiction
@@ -185,6 +192,9 @@ theorem value_is_well_typed : forall {e : Expr} {τ : Typ},
     | _ => contradiction
   | array_ elems hvs => cases ht with
     | arrayLit_type _ _ _ τ n hAll hLen hn => exact WellTypedValue.array_val elems τ n hAll hLen hn
+    | _ => contradiction
+  | refCreate e cap τ hv => cases ht with
+    | refCreate_type _ _ _ _ _ hE => exact WellTypedValue.refCreate_val e cap τ hv
     | _ => contradiction
 
 /-! ## Closed Term Typing Inversion

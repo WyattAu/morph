@@ -140,6 +140,7 @@ def inferType (bvs : List Morph.Core.Typ) (env : TypEnv) : Morph.Syntax.Expr -> 
         some (.arrayType τ vs.length)
       else none
     | _ => none
+  | .lit (.loc _) => some .pointerType  -- locations are opaque pointers
   | .unop op e =>
     match op with
     | .not =>
@@ -259,6 +260,22 @@ def inferType (bvs : List Morph.Core.Typ) (env : TypEnv) : Morph.Syntax.Expr -> 
     match inferType bvs env arr, inferType bvs env idx with
     | some (.arrayType τ _), some .intType => some τ
     | _, _ => none
+  | .refCreate e cap τ =>
+    match inferType bvs env e with
+    | some τ' => some (.refType cap τ)  -- annotate with capability
+    | none => none
+  | .refLoad e =>
+    match inferType bvs env e with
+    | some (.refType _ τ) => some τ
+    | _ => none
+  | .refStore e _ τ =>
+    match inferType bvs env e with
+    | some (.refType _ _) => some .unitType
+    | _ => none
+  | .refFree e =>
+    match inferType bvs env e with
+    | some (.refType .iso _) => some .unitType  -- only iso can free
+    | _ => none
   termination_by e => sizeOf e
 end
 
@@ -425,6 +442,21 @@ inductive HasType : List Morph.Core.Typ → TypEnv → Morph.Syntax.Expr → Mor
       HasType bvs Γ arr (.arrayType τ n) →
       HasType bvs Γ idx .intType →
       HasType bvs Γ (.arrayIndex arr idx) τ
+  -- Reference operations (storeless placeholders, ADR-010)
+  | refCreate_type : ∀ bvs Γ e cap τ,
+      HasType bvs Γ e τ →
+      HasType bvs Γ (.refCreate e cap τ) (.refType cap τ)
+  | refLoad_type : ∀ bvs Γ e cap τ,
+      HasType bvs Γ e (.refType cap τ) →
+      HasType bvs Γ (.refLoad e) τ
+  | refStore_type : ∀ bvs Γ e v cap τ,
+      HasType bvs Γ e (.refType cap τ) →
+      HasType bvs Γ v τ →
+      cap ≠ .val →  -- cannot store through immutable reference
+      HasType bvs Γ (.refStore e v τ) .unitType
+  | refFree_type : ∀ bvs Γ e τ,
+      HasType bvs Γ e (.refType .iso τ) →
+      HasType bvs Γ (.refFree e) .unitType
   | field_access_type : ∀ bvs Γ e fname sname fields τ,
       HasType bvs Γ e (.structType sname fields) →
       structFieldType fields fname = some τ →

@@ -35,6 +35,10 @@ def exprDepth : Morph.Syntax.Expr → Nat
   | .tuple_ elems => listExprDepth elems + 1
   | .arrayLit elems => listExprDepth elems + 1
   | .arrayIndex arr idx => Nat.max (exprDepth arr) (exprDepth idx) + 1
+  | .refCreate e _ _ => exprDepth e + 1
+  | .refLoad e => exprDepth e + 1
+  | .refStore e v _ => Nat.max (exprDepth e) (exprDepth v) + 1
+  | .refFree e => exprDepth e + 1
 end
 
 end Morph.Proofs.TypeSoundness

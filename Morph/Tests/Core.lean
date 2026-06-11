@@ -503,7 +503,7 @@ section SafetyTheoremTests
     | Typ.intType => ∃ (n : Int), v = Value.int n
     | Typ.boolType => ∃ (b : Bool), v = Value.bool b
     | Typ.stringType => ∃ (s : String), v = Value.string s
-    | Typ.pointerType => ∃ (ptr : Pointer), v = Value.pointer ptr
+    | Typ.pointerType => (∃ (ptr : Pointer), v = Value.pointer ptr) ∨ (∃ n, v = Value.loc n)
     | Typ.unitType => v = Value.unit ∨ v = Value.undef
     | Typ.arrayType elem size =>
         ∃ (arr : List Value), arr.length = size ∧
@@ -577,7 +577,7 @@ section SafetyTheoremTests
     | int n => exact ⟨Typ.intType, n, rfl⟩
     | bool b => exact ⟨Typ.boolType, b, rfl⟩
     | string s => exact ⟨Typ.stringType, s, rfl⟩
-    | pointer p => exact ⟨Typ.pointerType, p, rfl⟩
+    | pointer p => exact ⟨Typ.pointerType, Or.inl ⟨p, rfl⟩⟩
     | float f => exact ⟨Typ.floatType .f64, f, rfl⟩
     | unit => exact ⟨Typ.unitType, Or.inl rfl⟩
     | undef => exact ⟨Typ.unitType, Or.inr rfl⟩
@@ -595,6 +595,8 @@ section SafetyTheoremTests
       exact ⟨Typ.tupleType (vs.map (fun _ => Typ.unitType)), ⟨vs, rfl, hLen⟩⟩
     | array_ vs =>
       exact ⟨Typ.functionType [] Typ.unitType, Value.array_ vs, rfl, [], rfl, Typ.unitType, rfl⟩
+    | loc n =>
+      exact ⟨Typ.pointerType, Or.inr ⟨n, rfl⟩⟩
 
   /-- Type invariants are preserved under equality -/
   theorem type_invariant_preserved_under_equality (v1 v2 : Value) (t : Typ) :

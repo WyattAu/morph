@@ -98,6 +98,10 @@ inductive Expr : Type where
   | tuple_ : List Expr → Expr
   | arrayLit : List Expr → Expr
   | arrayIndex : Expr → Expr → Expr
+  | refCreate : Expr → Capability → Typ → Expr
+  | refLoad : Expr → Expr
+  | refStore : Expr → Expr → Typ → Expr
+  | refFree : Expr → Expr
   deriving Repr, BEq
 
 /-!
@@ -175,6 +179,10 @@ def liftUnder (bound : Nat) (k : Nat) : Expr → Expr
   | .tuple_ elems => .tuple_ (elems.map (liftUnder bound k))
   | .arrayLit elems => .arrayLit (elems.map (liftUnder bound k))
   | .arrayIndex arr idx => .arrayIndex (liftUnder bound k arr) (liftUnder bound k idx)
+  | .refCreate e cap τ => .refCreate (liftUnder bound k e) cap τ
+  | .refLoad e => .refLoad (liftUnder bound k e)
+  | .refStore e v τ => .refStore (liftUnder bound k e) (liftUnder bound k v) τ
+  | .refFree e => .refFree (liftUnder bound k e)
 end
 
 /-- Lift all free bound-variable indices in `e` by `k`. -/
@@ -224,6 +232,10 @@ def subst' (bound : Nat) (e : Expr) (v : Expr) : Expr :=
   | .tuple_ elems => .tuple_ (elems.map (fun e => subst' bound e v))
   | .arrayLit elems => .arrayLit (elems.map (fun e => subst' bound e v))
   | .arrayIndex arr idx => .arrayIndex (subst' bound arr v) (subst' bound idx v)
+  | .refCreate e cap τ => .refCreate (subst' bound e v) cap τ
+  | .refLoad e => .refLoad (subst' bound e v)
+  | .refStore e v' τ => .refStore (subst' bound e v) (subst' bound v' v) τ
+  | .refFree e => .refFree (subst' bound e v)
 end
 
 /-- Substitute the bound variable at index 0 with `v`. -/
@@ -281,6 +293,10 @@ def substAll' (k : Nat) (vs : List Expr) (e : Expr) : Expr :=
   | .tuple_ elems => .tuple_ (elems.map (fun e => substAll' k vs e))
   | .arrayLit elems => .arrayLit (elems.map (fun e => substAll' k vs e))
   | .arrayIndex arr idx => .arrayIndex (substAll' k vs arr) (substAll' k vs idx)
+  | .refCreate e cap τ => .refCreate (substAll' k vs e) cap τ
+  | .refLoad e => .refLoad (substAll' k vs e)
+  | .refStore e v τ => .refStore (substAll' k vs e) (substAll' k vs v) τ
+  | .refFree e => .refFree (substAll' k vs e)
 end
 
 /-- Simultaneously substitute bound variables at indices 0, 1, ..., |vs|-1. -/
@@ -322,6 +338,10 @@ def freeVars : Expr → List String
   | .tuple_ elems => List.flatMap freeVars elems
   | .arrayLit elems => List.flatMap freeVars elems
   | .arrayIndex arr idx => freeVars arr ++ freeVars idx
+  | .refCreate e _ _ => freeVars e
+  | .refLoad e => freeVars e
+  | .refStore e v _ => freeVars e ++ freeVars v
+  | .refFree e => freeVars e
 end
 
 end Morph.Syntax

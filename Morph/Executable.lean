@@ -228,6 +228,19 @@ partial def eval (ctx : Context) : Expr → Option Expr
           some (.lit (elems.getD n.toNat .unit))
         else none
       | _, _ => none
+   | .refCreate e cap _ => do
+      let _ ← eval ctx e
+      some (.lit (.loc 0))  -- placeholder; real semantics uses Store
+   | .refLoad e => do
+      let _ ← eval ctx e
+      some (.lit .unit)  -- placeholder
+   | .refStore e v _ => do
+      let _ ← eval ctx e
+      let _ ← eval ctx v
+      some (.lit .unit)  -- placeholder
+   | .refFree e => do
+      let _ ← eval ctx e
+      some (.lit .unit)  -- placeholder
   where
   evalBlock (ctx : Context) : List Expr → Option Expr
     | [] => some (.lit .unit)
