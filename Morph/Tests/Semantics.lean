@@ -2,6 +2,7 @@ import Std
 import Morph.Core
 import Morph.Syntax
 import Morph.Semantics
+import Morph.Store
 import Aesop
 
 /-!
@@ -30,6 +31,7 @@ This module provides unit tests and property-based tests for:
 - `Morph.Core` - Core type definitions (Value, Operator, Typ, etc.)
 - `Morph.Syntax` - Surface syntax (Expr, Stmt, Id, Program, etc.)
 - `Morph.Semantics` - Semantics definitions (IsValue, Step, subst, eval helpers)
+- `Morph.Store` - Store type for Step relation
 - `Std` - Standard library
 - `Aesop` - Automated proof search
 
@@ -51,6 +53,8 @@ namespace Tests.Semantics
 open Morph.Semantics
 open Morph.Core
 open Morph.Syntax
+
+def σ : Morph.Store := Morph.Store.empty
 
 /-!
 ## Section 1: IsValue Predicate Unit Tests
@@ -314,104 +318,104 @@ end SubstitutionTests
 section StepBinopTests
 
   theorem step_binop_left :
-    Step (.binop .add (.ifThenElse (.lit (.bool true)) (.lit (.int 1)) (.lit (.int 2)))
+    Step σ (.binop .add (.ifThenElse (.lit (.bool true)) (.lit (.int 1)) (.lit (.int 2)))
           (.lit (.int 3)))
-      (.binop .add (.lit (.int 1)) (.lit (.int 3))) := by
+      σ (.binop .add (.lit (.int 1)) (.lit (.int 3))) := by
     apply Step.binop_left; apply Step.if_true
 
   theorem step_binop_right :
-    Step (.binop .add (.lit (.int 1))
+    Step σ (.binop .add (.lit (.int 1))
           (.ifThenElse (.lit (.bool true)) (.lit (.int 2)) (.lit (.int 3))))
-      (.binop .add (.lit (.int 1)) (.lit (.int 2))) := by
+      σ (.binop .add (.lit (.int 1)) (.lit (.int 2))) := by
     apply Step.binop_right; apply IsValue.lit; apply Step.if_true
 
   theorem step_binop_arith_add :
-    Step (.binop .add (.lit (.int 3)) (.lit (.int 4))) (.lit (.int 7)) := by
+    Step σ (.binop .add (.lit (.int 3)) (.lit (.int 4))) σ (.lit (.int 7)) := by
     apply Step.binop_arith <;> trivial
 
   theorem step_binop_arith_sub :
-    Step (.binop .sub (.lit (.int 10)) (.lit (.int 3))) (.lit (.int 7)) := by
+    Step σ (.binop .sub (.lit (.int 10)) (.lit (.int 3))) σ (.lit (.int 7)) := by
     apply Step.binop_arith <;> trivial
 
   theorem step_binop_arith_mul :
-    Step (.binop .mul (.lit (.int 6)) (.lit (.int 7))) (.lit (.int 42)) := by
+    Step σ (.binop .mul (.lit (.int 6)) (.lit (.int 7))) σ (.lit (.int 42)) := by
     apply Step.binop_arith <;> trivial
 
   theorem step_binop_arith_div :
-    Step (.binop .div (.lit (.int 10)) (.lit (.int 3))) (.lit (.int 3)) := by
+    Step σ (.binop .div (.lit (.int 10)) (.lit (.int 3))) σ (.lit (.int 3)) := by
     apply Step.binop_arith <;> trivial
 
   theorem step_binop_arith_mod :
-    Step (.binop .mod (.lit (.int 10)) (.lit (.int 3))) (.lit (.int 1)) := by
+    Step σ (.binop .mod (.lit (.int 10)) (.lit (.int 3))) σ (.lit (.int 1)) := by
     apply Step.binop_arith <;> trivial
 
   theorem step_binop_comp_eq :
-    Step (.binop .eq (.lit (.int 3)) (.lit (.int 3))) (.lit (.bool true)) := by
+    Step σ (.binop .eq (.lit (.int 3)) (.lit (.int 3))) σ (.lit (.bool true)) := by
     apply Step.binop_comp; trivial
 
   theorem step_binop_comp_neq :
-    Step (.binop .neq (.lit (.int 3)) (.lit (.int 4))) (.lit (.bool true)) := by
+    Step σ (.binop .neq (.lit (.int 3)) (.lit (.int 4))) σ (.lit (.bool true)) := by
     apply Step.binop_comp; trivial
 
   theorem step_binop_comp_lt :
-    Step (.binop .lt (.lit (.int 3)) (.lit (.int 5))) (.lit (.bool true)) := by
+    Step σ (.binop .lt (.lit (.int 3)) (.lit (.int 5))) σ (.lit (.bool true)) := by
     apply Step.binop_comp; trivial
 
   theorem step_binop_comp_leq :
-    Step (.binop .leq (.lit (.int 3)) (.lit (.int 3))) (.lit (.bool true)) := by
+    Step σ (.binop .leq (.lit (.int 3)) (.lit (.int 3))) σ (.lit (.bool true)) := by
     apply Step.binop_comp; trivial
 
   theorem step_binop_comp_gt :
-    Step (.binop .gt (.lit (.int 5)) (.lit (.int 3))) (.lit (.bool true)) := by
+    Step σ (.binop .gt (.lit (.int 5)) (.lit (.int 3))) σ (.lit (.bool true)) := by
     apply Step.binop_comp; trivial
 
   theorem step_binop_comp_geq :
-    Step (.binop .geq (.lit (.int 5)) (.lit (.int 5))) (.lit (.bool true)) := by
+    Step σ (.binop .geq (.lit (.int 5)) (.lit (.int 5))) σ (.lit (.bool true)) := by
     apply Step.binop_comp; trivial
 
   theorem step_binop_logic_and :
-    Step (.binop .and (.lit (.bool true)) (.lit (.bool false))) (.lit (.bool false)) := by
+    Step σ (.binop .and (.lit (.bool true)) (.lit (.bool false))) σ (.lit (.bool false)) := by
     apply Step.binop_logic <;> trivial
 
   theorem step_binop_logic_or :
-    Step (.binop .or (.lit (.bool false)) (.lit (.bool true))) (.lit (.bool true)) := by
+    Step σ (.binop .or (.lit (.bool false)) (.lit (.bool true))) σ (.lit (.bool true)) := by
     apply Step.binop_logic <;> trivial
 
   theorem step_binop_bitwise_andb :
-    Step (.binop .andb (.lit (.int 1)) (.lit (.int 1))) (.lit (.int 1)) := by
+    Step σ (.binop .andb (.lit (.int 1)) (.lit (.int 1))) σ (.lit (.int 1)) := by
     apply Step.binop_bitwise <;> trivial
 
   theorem step_binop_bitwise_orb :
-    Step (.binop .orb (.lit (.int 0)) (.lit (.int 1))) (.lit (.int 1)) := by
+    Step σ (.binop .orb (.lit (.int 0)) (.lit (.int 1))) σ (.lit (.int 1)) := by
     apply Step.binop_bitwise <;> trivial
 
   theorem step_binop_bitwise_xorb :
-    Step (.binop .xorb (.lit (.int 1)) (.lit (.int 0))) (.lit (.int 1)) := by
+    Step σ (.binop .xorb (.lit (.int 1)) (.lit (.int 0))) σ (.lit (.int 1)) := by
     apply Step.binop_bitwise <;> trivial
 
   theorem step_binop_bitwise_shl :
-    Step (.binop .shl (.lit (.int 1)) (.lit (.int 2))) (.lit (.int 4)) := by
+    Step σ (.binop .shl (.lit (.int 1)) (.lit (.int 2))) σ (.lit (.int 4)) := by
     apply Step.binop_bitwise <;> trivial
 
   theorem step_binop_bitwise_shr :
-    Step (.binop .shr (.lit (.int 8)) (.lit (.int 2))) (.lit (.int 2)) := by
+    Step σ (.binop .shr (.lit (.int 8)) (.lit (.int 2))) σ (.lit (.int 2)) := by
     apply Step.binop_bitwise <;> trivial
 
   theorem step_binop_div_zero :
-    Step (.binop .div (.lit (.int 42)) (.lit (.int 0))) (.lit (.int 0)) := by
-    exact Step.binop_div_zero 42
+    Step σ (.binop .div (.lit (.int 42)) (.lit (.int 0))) σ (.lit (.int 0)) := by
+    exact Step.binop_div_zero σ 42
 
   theorem step_binop_div_zero_zero :
-    Step (.binop .div (.lit (.int 0)) (.lit (.int 0))) (.lit (.int 0)) := by
-    exact Step.binop_div_zero 0
+    Step σ (.binop .div (.lit (.int 0)) (.lit (.int 0))) σ (.lit (.int 0)) := by
+    exact Step.binop_div_zero σ 0
 
   theorem step_binop_mod_zero :
-    Step (.binop .mod (.lit (.int 42)) (.lit (.int 0))) (.lit (.int 0)) := by
-    exact Step.binop_mod_zero 42
+    Step σ (.binop .mod (.lit (.int 42)) (.lit (.int 0))) σ (.lit (.int 0)) := by
+    exact Step.binop_mod_zero σ 42
 
   theorem step_binop_mod_zero_zero :
-    Step (.binop .mod (.lit (.int 0)) (.lit (.int 0))) (.lit (.int 0)) := by
-    exact Step.binop_mod_zero 0
+    Step σ (.binop .mod (.lit (.int 0)) (.lit (.int 0))) σ (.lit (.int 0)) := by
+    exact Step.binop_mod_zero σ 0
 
 end StepBinopTests
 
@@ -422,29 +426,29 @@ end StepBinopTests
 section StepUnopTests
 
   theorem step_unop_step :
-    Step (.unop .not (.ifThenElse (.lit (.bool true)) (.lit (.bool true)) (.lit (.bool false))))
-      (.unop .not (.lit (.bool true))) := by
+    Step σ (.unop .not (.ifThenElse (.lit (.bool true)) (.lit (.bool true)) (.lit (.bool false))))
+      σ (.unop .not (.lit (.bool true))) := by
     apply Step.unop_step; apply Step.if_true
 
   theorem step_unop_not_true :
-    Step (.unop .not (.lit (.bool true))) (.lit (.bool false)) := by
-    exact Step.unop_not true
+    Step σ (.unop .not (.lit (.bool true))) σ (.lit (.bool false)) := by
+    exact Step.unop_not σ true
 
   theorem step_unop_not_false :
-    Step (.unop .not (.lit (.bool false))) (.lit (.bool true)) := by
-    exact Step.unop_not false
+    Step σ (.unop .not (.lit (.bool false))) σ (.lit (.bool true)) := by
+    exact Step.unop_not σ false
 
   theorem step_unop_notb_pos :
-    Step (.unop .notb (.lit (.int 5))) (.lit (.int (-6))) := by
-    exact Step.unop_notb 5
+    Step σ (.unop .notb (.lit (.int 5))) σ (.lit (.int (-6))) := by
+    exact Step.unop_notb σ 5
 
   theorem step_unop_notb_zero :
-    Step (.unop .notb (.lit (.int 0))) (.lit (.int (-1))) := by
-    exact Step.unop_notb 0
+    Step σ (.unop .notb (.lit (.int 0))) σ (.lit (.int (-1))) := by
+    exact Step.unop_notb σ 0
 
   theorem step_unop_notb_neg :
-    Step (.unop .notb (.lit (.int (-3)))) (.lit (.int 2)) := by
-    exact Step.unop_notb (-3)
+    Step σ (.unop .notb (.lit (.int (-3)))) σ (.lit (.int 2)) := by
+    exact Step.unop_notb σ (-3)
 
 end StepUnopTests
 
@@ -455,19 +459,19 @@ end StepUnopTests
 section StepConditionalTests
 
   theorem step_if_cond :
-    Step (.ifThenElse (.binop .add (.lit (.int 1)) (.lit (.int 2)))
+    Step σ (.ifThenElse (.binop .add (.lit (.int 1)) (.lit (.int 2)))
           (.lit (.int 10)) (.lit (.int 20)))
-      (.ifThenElse (.lit (.int 3)) (.lit (.int 10)) (.lit (.int 20))) := by
+      σ (.ifThenElse (.lit (.int 3)) (.lit (.int 10)) (.lit (.int 20))) := by
     apply Step.if_cond; apply Step.binop_arith <;> trivial
 
   theorem step_if_true :
-    Step (.ifThenElse (.lit (.bool true)) (.lit (.int 1)) (.lit (.int 2)))
-      (.lit (.int 1)) := by
+    Step σ (.ifThenElse (.lit (.bool true)) (.lit (.int 1)) (.lit (.int 2)))
+      σ (.lit (.int 1)) := by
     apply Step.if_true
 
   theorem step_if_false :
-    Step (.ifThenElse (.lit (.bool false)) (.lit (.int 1)) (.lit (.int 2)))
-      (.lit (.int 2)) := by
+    Step σ (.ifThenElse (.lit (.bool false)) (.lit (.int 1)) (.lit (.int 2)))
+      σ (.lit (.int 2)) := by
     apply Step.if_false
 
 end StepConditionalTests
@@ -479,18 +483,18 @@ end StepConditionalTests
 section StepLetTests
 
   theorem step_let_step :
-    Step (.let_ (.binop .add (.lit (.int 1)) (.lit (.int 2))) (.bvar 0))
-      (.let_ (.lit (.int 3)) (.bvar 0)) := by
+    Step σ (.let_ (.binop .add (.lit (.int 1)) (.lit (.int 2))) (.bvar 0))
+      σ (.let_ (.lit (.int 3)) (.bvar 0)) := by
     apply Step.let_step; apply Step.binop_arith <;> trivial
 
   theorem step_let_subst :
-    Step (.let_ (.lit (.int 42)) (.bvar 0))
-      (subst (.bvar 0) (.lit (.int 42))) := by
+    Step σ (.let_ (.lit (.int 42)) (.bvar 0))
+      σ (subst (.bvar 0) (.lit (.int 42))) := by
     apply Step.let_subst; apply IsValue.lit
 
   theorem step_let_subst_lam :
-    Step (.let_ (.lam 1 (.bvar 0)) (.bvar 0))
-      (subst (.bvar 0) (.lam 1 (.bvar 0))) := by
+    Step σ (.let_ (.lam 1 (.bvar 0)) (.bvar 0))
+      σ (subst (.bvar 0) (.lam 1 (.bvar 0))) := by
     apply Step.let_subst; apply IsValue.lam
 
 end StepLetTests
@@ -502,33 +506,33 @@ end StepLetTests
 section StepForLoopTests
 
   theorem step_for_start :
-    Step (.forLoop (.binop .add (.lit (.int 0)) (.lit (.int 1)))
+    Step σ (.forLoop (.binop .add (.lit (.int 0)) (.lit (.int 1)))
           (.lit (.int 5)) [])
-      (.forLoop (.lit (.int 1)) (.lit (.int 5)) []) := by
+      σ (.forLoop (.lit (.int 1)) (.lit (.int 5)) []) := by
     apply Step.for_start; apply Step.binop_arith <;> trivial
 
   theorem step_for_end :
-    Step (.forLoop (.lit (.int 0)) (.binop .add (.lit (.int 3)) (.lit (.int 2)))
+    Step σ (.forLoop (.lit (.int 0)) (.binop .add (.lit (.int 3)) (.lit (.int 2)))
           [])
-      (.forLoop (.lit (.int 0)) (.lit (.int 5)) []) := by
+      σ (.forLoop (.lit (.int 0)) (.lit (.int 5)) []) := by
     apply Step.for_end; apply IsValue.lit; apply Step.binop_arith <;> trivial
 
   theorem step_for_exec :
-    Step (.forLoop (.lit (.int 0)) (.lit (.int 3)) [.bvar 0])
-      (.let_ (.lit (.int 0))
+    Step σ (.forLoop (.lit (.int 0)) (.lit (.int 3)) [.bvar 0])
+      σ (.let_ (.lit (.int 0))
         (.block ([.bvar 0] ++ [.forLoop (.lit (.int 1)) (.lit (.int 3)) [.bvar 1]]))) := by
     have hMap : (List.map (lift 1) [.bvar 0]) = [.bvar 1] := by
       simp only [List.map_cons, List.map_nil]; unfold lift liftUnder; simp
-    have hStep := Step.for_exec 0 3 [.bvar 0] (by decide)
+    have hStep := Step.for_exec σ 0 3 [.bvar 0] (by decide)
     rw [hMap] at hStep
     exact hStep
 
   theorem step_for_done :
-    Step (.forLoop (.lit (.int 5)) (.lit (.int 3)) []) (.lit .unit) := by
+    Step σ (.forLoop (.lit (.int 5)) (.lit (.int 3)) []) σ (.lit .unit) := by
     apply Step.for_done; decide
 
   theorem step_for_done_equal :
-    Step (.forLoop (.lit (.int 3)) (.lit (.int 3)) []) (.lit .unit) := by
+    Step σ (.forLoop (.lit (.int 3)) (.lit (.int 3)) []) σ (.lit .unit) := by
     apply Step.for_done; decide
 
 end StepForLoopTests
@@ -540,21 +544,21 @@ end StepForLoopTests
 section StepBlockTests
 
   theorem step_block_head :
-    Step (.block [.binop .add (.lit (.int 1)) (.lit (.int 2)), .lit (.int 3)])
-      (.block [.lit (.int 3), .lit (.int 3)]) := by
+    Step σ (.block [.binop .add (.lit (.int 1)) (.lit (.int 2)), .lit (.int 3)])
+      σ (.block [.lit (.int 3), .lit (.int 3)]) := by
     apply Step.block_head; apply Step.binop_arith <;> trivial
 
   theorem step_block_singleton :
-    Step (.block [.lit (.int 42)]) (.lit (.int 42)) := by
+    Step σ (.block [.lit (.int 42)]) σ (.lit (.int 42)) := by
     apply Step.block_singleton; apply IsValue.lit
 
   theorem step_block_lam_singleton :
-    Step (.block [.lam 1 (.bvar 0)]) (.lam 1 (.bvar 0)) := by
+    Step σ (.block [.lam 1 (.bvar 0)]) σ (.lam 1 (.bvar 0)) := by
     apply Step.block_lam_singleton
 
   theorem step_block_pop :
-    Step (.block [.lit (.int 1), .lit (.int 2)])
-      (.block [.lit (.int 2)]) := by
+    Step σ (.block [.lit (.int 1), .lit (.int 2)])
+      σ (.block [.lit (.int 2)]) := by
     apply Step.block_pop; apply IsValue.lit
 
 end StepBlockTests
@@ -566,26 +570,26 @@ end StepBlockTests
 section StepAppTests
 
   theorem step_let_subst_lam_in_app :
-    Step (.let_ (.lam 1 (.bvar 0))
+    Step σ (.let_ (.lam 1 (.bvar 0))
           (.app (.bvar 0) [.lit (.int 1)]))
-      (subst (.app (.bvar 0) [.lit (.int 1)]) (.lam 1 (.bvar 0))) := by
+      σ (subst (.app (.bvar 0) [.lit (.int 1)]) (.lam 1 (.bvar 0))) := by
     apply Step.let_subst; apply IsValue.lam
 
   theorem step_app_arg :
-    Step (.app (.lam 1 (.bvar 0))
+    Step σ (.app (.lam 1 (.bvar 0))
           [.binop .add (.lit (.int 1)) (.lit (.int 2))])
-      (.app (.lam 1 (.bvar 0)) [.lit (.int 3)]) := by
+      σ (.app (.lam 1 (.bvar 0)) [.lit (.int 3)]) := by
     apply Step.app_arg; apply IsValue.lam; apply Step.binop_arith <;> trivial
 
   theorem step_app_lam :
-    Step (.app (.lam 1 (.bvar 0)) [.lit (.int 42)])
-      (substAll [.lit (.int 42)] (.bvar 0)) := by
+    Step σ (.app (.lam 1 (.bvar 0)) [.lit (.int 42)])
+      σ (substAll [.lit (.int 42)] (.bvar 0)) := by
     apply Step.app_lam; rfl
 
   theorem step_app_lam_multi :
-    Step (.app (.lam 2 (.binop .add (.bvar 1) (.bvar 0)))
+    Step σ (.app (.lam 2 (.binop .add (.bvar 1) (.bvar 0)))
           [.lit (.int 3), .lit (.int 4)])
-      (substAll [.lit (.int 4), .lit (.int 3)]
+      σ (substAll [.lit (.int 4), .lit (.int 3)]
         (.binop .add (.bvar 1) (.bvar 0))) := by
     apply Step.app_lam; rfl
 
@@ -661,7 +665,7 @@ end StmtTests
 
 section PropertyTests
 
-  theorem step_well_formed (e1 e2 : Expr) : Step e1 e2 → True := by
+  theorem step_well_formed (σ : Morph.Store) (e1 e2 : Expr) : Step σ e1 σ e2 → True := by
     intro _; trivial
 
   theorem isvalue_is_predicate (e : Expr) : IsValue e → True := by

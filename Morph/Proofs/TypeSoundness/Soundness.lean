@@ -4,6 +4,7 @@ SPDX-License-Identifier: Apache-2.0 -/
 import Morph.Core
 import Morph.Syntax
 import Morph.Semantics
+import Morph.Store
 import Morph.Specs.TypeSystem.Spec
 import Morph.Proofs.TypeSoundness.Progress
 import Morph.Proofs.TypeSoundness.Preservation
@@ -17,7 +18,7 @@ open Morph.Specs.TypeSystem
 
 /-! # Type Safety (Soundness)
 
-Type safety is the combination of progress and preservation:
+Type Safety is the combination of progress and preservation:
 
 1. **Progress:** Every well-typed closed term is either a value or can take a step.
 2. **Preservation:** If a well-typed term takes a step, the result has the same type.
@@ -82,11 +83,11 @@ This is strictly stronger than progress alone because it also guarantees type
 preservation for the step.
 -/
 
-theorem type_safety : forall {e : Expr} {τ : Typ},
+theorem type_safety : forall {σ : Store} {e : Expr} {τ : Typ},
     HasType [] [] e τ ->
-    IsValue e \/ exists e', Step e e' /\ HasType [] [] e' τ := by
-  intro e τ hType
-  have hProgress := progress hType
+    IsValue e \/ exists e', Step σ e σ e' /\ HasType [] [] e' τ := by
+  intro σ e τ hType
+  have hProgress := @progress σ _ _ hType
   cases hProgress with
   | inl hv => left; exact hv
   | inr hStep =>
@@ -99,11 +100,11 @@ A term is "stuck" if it is not a value and cannot take a step.
 Type safety guarantees that no well-typed closed term is stuck.
 -/
 
-theorem not_stuck : forall {e : Expr} {τ : Typ},
-    HasType [] [] e τ -> ¬(¬IsValue e /\ forall e', ¬Step e e') := by
-  intro e τ hType hStuck
+theorem not_stuck : forall {σ : Store} {e : Expr} {τ : Typ},
+    HasType [] [] e τ -> ¬(¬IsValue e /\ forall e', ¬Step σ e σ e') := by
+  intro σ e τ hType hStuck
   obtain ⟨hNotVal, hNoStep⟩ := hStuck
-  have hProgress := progress hType
+  have hProgress := @progress σ _ _ hType
   cases hProgress with
   | inl hv => exact hNotVal hv
   | inr hStep =>
@@ -116,14 +117,14 @@ If a well-typed closed term reduces to another term in zero or more steps,
 the result has the same type.
 -/
 
-inductive MultiStep : Expr → Expr → Prop where
-  | refl : forall e, MultiStep e e
-  | step : forall e e' e'', Step e e' → MultiStep e' e'' → MultiStep e e''
+inductive MultiStep : Store → Expr → Store → Expr → Prop where
+  | refl : forall σ e, MultiStep σ e σ e
+  | step : forall σ1 e1 σ2 e2 σ3 e3, Step σ1 e1 σ2 e2 → MultiStep σ2 e2 σ3 e3 → MultiStep σ1 e1 σ3 e3
 
-theorem multi_step_preservation : forall {e e' : Expr} {τ : Typ},
-    HasType [] [] e τ -> MultiStep e e' -> HasType [] [] e' τ
-  | _, _, _, hType, .refl _ => hType
-  | _, _, _, hType, .step _ _ _ hStep hRest =>
+theorem multi_step_preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ},
+    HasType [] [] e τ -> MultiStep σ e σ' e' -> HasType [] [] e' τ
+  | _, _, _, _, _, hType, .refl _ _ => hType
+  | _, _, _, _, _, hType, .step _ _ _ _ _ _ hStep hRest =>
     multi_step_preservation (preservation hType hStep) hRest
 
 /-! ## Values Are Well-Typed

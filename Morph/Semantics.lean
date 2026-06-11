@@ -4,6 +4,7 @@ SPDX-License-Identifier: Apache-2.0
 
 import Morph.Core
 import Morph.Syntax
+import Morph.Store
 
 namespace Morph.Semantics
 
@@ -13,10 +14,11 @@ open Morph.Syntax
 /-!
 # Small-Step Operational Semantics (de Bruijn)
 
-Defines the `Step : Expr → Expr → Prop` relation and the `IsValue : Expr → Prop` predicate
+Defines the `Step : Store → Expr → Store → Expr → Prop` relation and the `IsValue : Expr → Prop` predicate
 for the Morph surface syntax with de Bruijn indices.
 
 This semantics is call-by-value: arguments are evaluated before function application.
+The store is threaded through all rules (unchanged in Phase 1a).
 -/
 
 /-! ## Value Predicate -/
@@ -104,68 +106,68 @@ def evalPtrArithOp : Operator → Pointer → Int → Option Pointer
 
 /-! ## Small-Step Relation -/
 
-inductive Step : Expr → Expr → Prop where
+inductive Step : Store → Expr → Store → Expr → Prop where
   /- ## Binary Operations -/
 
-  | binop_left : ∀ op e1 e1' e2,
-      Step e1 e1' →
-      Step (.binop op e1 e2) (.binop op e1' e2)
+  | binop_left : ∀ σ op e1 e1' e2,
+      Step σ e1 σ e1' →
+      Step σ (.binop op e1 e2) σ (.binop op e1' e2)
 
-  | binop_right : ∀ op v1 e2 e2',
-      IsValue (.lit v1) → Step e2 e2' →
-      Step (.binop op (.lit v1) e2) (.binop op (.lit v1) e2')
+  | binop_right : ∀ σ op v1 e2 e2',
+      IsValue (.lit v1) → Step σ e2 σ e2' →
+      Step σ (.binop op (.lit v1) e2) σ (.binop op (.lit v1) e2')
 
-  | binop_arith : ∀ op n1 n2 r,
+  | binop_arith : ∀ σ op n1 n2 r,
       isArithOp op →
       evalArithOp op n1 n2 = some r →
-      Step (.binop op (.lit (.int n1)) (.lit (.int n2))) (.lit (.int r))
+      Step σ (.binop op (.lit (.int n1)) (.lit (.int n2))) σ (.lit (.int r))
 
-  | binop_comp : ∀ op n1 n2,
+  | binop_comp : ∀ σ op n1 n2,
       isCompOp op →
-      Step (.binop op (.lit (.int n1)) (.lit (.int n2)))
-        (.lit (.bool (evalCompOp op n1 n2)))
+      Step σ (.binop op (.lit (.int n1)) (.lit (.int n2)))
+        σ (.lit (.bool (evalCompOp op n1 n2)))
 
-  | binop_logic : ∀ op b1 b2 r,
+  | binop_logic : ∀ σ op b1 b2 r,
       isLogicOp op → evalLogicOp op b1 b2 = some r →
-      Step (.binop op (.lit (.bool b1)) (.lit (.bool b2))) (.lit (.bool r))
+      Step σ (.binop op (.lit (.bool b1)) (.lit (.bool b2))) σ (.lit (.bool r))
 
-  | binop_bitwise : ∀ op n1 n2 r,
+  | binop_bitwise : ∀ σ op n1 n2 r,
       isBitwiseOp op →
       evalBitwiseOp op n1 n2 = some r →
-      Step (.binop op (.lit (.int n1)) (.lit (.int n2))) (.lit (.int r))
+      Step σ (.binop op (.lit (.int n1)) (.lit (.int n2))) σ (.lit (.int r))
 
-  | binop_ptr_arith : ∀ op p n r,
+  | binop_ptr_arith : ∀ σ op p n r,
       isPtrArithOp op →
       evalPtrArithOp op p n = some r →
-      Step (.binop op (.lit (.pointer p)) (.lit (.int n))) (.lit (.pointer r))
+      Step σ (.binop op (.lit (.pointer p)) (.lit (.int n))) σ (.lit (.pointer r))
 
-  | binop_ptr_load : ∀ p,
-      Step (.binop .ptrLoad (.lit (.pointer p)) (.lit (.unit))) (.lit (.unit))
+  | binop_ptr_load : ∀ σ p,
+      Step σ (.binop .ptrLoad (.lit (.pointer p)) (.lit (.unit))) σ (.lit (.unit))
 
-  | binop_ptr_store : ∀ p v,
-      Step (.binop .ptrStore (.lit (.pointer p)) (.lit v)) (.lit .unit)
+  | binop_ptr_store : ∀ σ p v,
+      Step σ (.binop .ptrStore (.lit (.pointer p)) (.lit v)) σ (.lit .unit)
 
   /- ## Unary Operations -/
 
-  | unop_step : ∀ op e e',
-      Step e e' → Step (.unop op e) (.unop op e')
+  | unop_step : ∀ σ op e e',
+      Step σ e σ e' → Step σ (.unop op e) σ (.unop op e')
 
-  | unop_not : ∀ b,
-      Step (.unop .not (.lit (.bool b))) (.lit (.bool (!b)))
+  | unop_not : ∀ σ b,
+      Step σ (.unop .not (.lit (.bool b))) σ (.lit (.bool (!b)))
 
-  | unop_notb : ∀ n,
-      Step (.unop .notb (.lit (.int n))) (.lit (.int (-n - 1)))
+  | unop_notb : ∀ σ n,
+      Step σ (.unop .notb (.lit (.int n))) σ (.lit (.int (-n - 1)))
 
   /- ## Conditionals -/
 
-  | if_cond : ∀ c c' t f,
-      Step c c' → Step (.ifThenElse c t f) (.ifThenElse c' t f)
+  | if_cond : ∀ σ c c' t f,
+      Step σ c σ c' → Step σ (.ifThenElse c t f) σ (.ifThenElse c' t f)
 
-  | if_true : ∀ t f,
-      Step (.ifThenElse (.lit (.bool true)) t f) t
+  | if_true : ∀ σ t f,
+      Step σ (.ifThenElse (.lit (.bool true)) t f) σ t
 
-  | if_false : ∀ t f,
-      Step (.ifThenElse (.lit (.bool false)) t f) f
+  | if_false : ∀ σ t f,
+      Step σ (.ifThenElse (.lit (.bool false)) t f) σ f
 
   /- ## Let Binding
 
@@ -173,12 +175,12 @@ inductive Step : Expr → Expr → Prop where
   No binder name is needed — substitution is capture-avoiding by construction.
   -/
 
-  | let_step : ∀ e1 e1' e2,
-      Step e1 e1' → Step (.let_ e1 e2) (.let_ e1' e2)
+  | let_step : ∀ σ e1 e1' e2,
+      Step σ e1 σ e1' → Step σ (.let_ e1 e2) σ (.let_ e1' e2)
 
-  | let_subst : ∀ e1 e2,
+  | let_subst : ∀ σ e1 e2,
       IsValue e1 →
-      Step (.let_ e1 e2) (subst e2 e1)
+      Step σ (.let_ e1 e2) σ (subst e2 e1)
 
   /- ## For Loops
 
@@ -186,12 +188,12 @@ inductive Step : Expr → Expr → Prop where
   No binder name is needed.
   -/
 
-  | for_start : ∀ s s' e body,
-      Step s s' → Step (.forLoop s e body) (.forLoop s' e body)
+  | for_start : ∀ σ s s' e body,
+      Step σ s σ s' → Step σ (.forLoop s e body) σ (.forLoop s' e body)
 
-  | for_end : ∀ s e e' body,
-      IsValue (.lit s) → Step e e' →
-      Step (.forLoop (.lit s) e body) (.forLoop (.lit s) e' body)
+  | for_end : ∀ σ s e e' body,
+      IsValue (.lit s) → Step σ e σ e' →
+      Step σ (.forLoop (.lit s) e body) σ (.forLoop (.lit s) e' body)
 
   /- When executing one iteration of a for-loop, the body appears twice:
      1. In the first copy (under `let_`), the iterator is at index 0 — same context
@@ -199,61 +201,61 @@ inductive Step : Expr → Expr → Prop where
      2. In the recursive forLoop, the body is under BOTH `let_` (adds .intType)
         AND the inner forLoop (adds another .intType). So the body needs `lift 1`
         to shift outer-variable references past the let-binding layer. -/
-  | for_exec : ∀ n m body,
+  | for_exec : ∀ σ n m body,
       n < m →
-      Step (.forLoop (.lit (.int n)) (.lit (.int m)) body)
-        (.let_ (.lit (.int n))
+      Step σ (.forLoop (.lit (.int n)) (.lit (.int m)) body)
+        σ (.let_ (.lit (.int n))
           (.block (body ++ [.forLoop (.lit (.int (n + 1))) (.lit (.int m)) (body.map (lift 1))])))
 
-  | for_done : ∀ n m body,
+  | for_done : ∀ σ n m body,
       n ≥ m →
-      Step (.forLoop (.lit (.int n)) (.lit (.int m)) body) (.lit .unit)
+      Step σ (.forLoop (.lit (.int n)) (.lit (.int m)) body) σ (.lit .unit)
 
   /- ## Blocks -/
 
-  | block_head : ∀ e e' rest,
-      Step e e' → Step (.block (e :: rest)) (.block (e' :: rest))
+  | block_head : ∀ σ e e' rest,
+      Step σ e σ e' → Step σ (.block (e :: rest)) σ (.block (e' :: rest))
 
-  | block_singleton : ∀ v,
-      IsValue (.lit v) → Step (.block [.lit v]) (.lit v)
+  | block_singleton : ∀ σ v,
+      IsValue (.lit v) → Step σ (.block [.lit v]) σ (.lit v)
 
-  | block_lam_singleton : ∀ n body,
-      Step (.block [.lam n body]) (.lam n body)
+  | block_lam_singleton : ∀ σ n body,
+      Step σ (.block [.lam n body]) σ (.lam n body)
 
-  | block_none_singleton :
-      Step (.block [.none_]) .none_
+  | block_none_singleton : ∀ σ,
+      Step σ (.block [.none_]) σ .none_
 
-  | block_err_singleton : ∀ e,
-      IsValue e → Step (.block [.err_ e]) (.err_ e)
+  | block_err_singleton : ∀ σ e,
+      IsValue e → Step σ (.block [.err_ e]) σ (.err_ e)
 
-  | block_ok_singleton : ∀ e,
-      IsValue e → Step (.block [.ok_ e]) (.ok_ e)
+  | block_ok_singleton : ∀ σ e,
+      IsValue e → Step σ (.block [.ok_ e]) σ (.ok_ e)
 
-  | block_some_singleton : ∀ e,
-      IsValue e → Step (.block [.some_ e]) (.some_ e)
+  | block_some_singleton : ∀ σ e,
+      IsValue e → Step σ (.block [.some_ e]) σ (.some_ e)
 
-  | block_tuple_singleton : ∀ (elems : List Expr) (_hvs : ∀ e ∈ elems, IsValue e),
-      Step (.block [.tuple_ elems]) (.tuple_ elems)
+  | block_tuple_singleton : ∀ σ (elems : List Expr) (_hvs : ∀ e ∈ elems, IsValue e),
+      Step σ (.block [.tuple_ elems]) σ (.tuple_ elems)
 
-  | block_array_singleton : ∀ (elems : List Expr) (_hvs : ∀ e ∈ elems, IsValue e),
-      Step (.block [.arrayLit elems]) (.arrayLit elems)
+  | block_array_singleton : ∀ σ (elems : List Expr) (_hvs : ∀ e ∈ elems, IsValue e),
+      Step σ (.block [.arrayLit elems]) σ (.arrayLit elems)
 
-  | block_pop : ∀ e head rest,
-      IsValue e → Step (.block (e :: head :: rest)) (.block (head :: rest))
+  | block_pop : ∀ σ e head rest,
+      IsValue e → Step σ (.block (e :: head :: rest)) σ (.block (head :: rest))
 
-  | block_refCreate_singleton : ∀ e cap τ, IsValue e → Step (.block [.refCreate e cap τ]) (.refCreate e cap τ)
-  | block_refLoad_singleton : ∀ e, IsValue e → Step (.block [.refLoad e]) (.refLoad e)
-  | block_refStore_singleton : ∀ e v τ, IsValue e → IsValue v → Step (.block [.refStore e v τ]) (.refStore e v τ)
-  | block_refFree_singleton : ∀ e, IsValue e → Step (.block [.refFree e]) (.refFree e)
+  | block_refCreate_singleton : ∀ σ e cap τ, IsValue e → Step σ (.block [.refCreate e cap τ]) σ (.refCreate e cap τ)
+  | block_refLoad_singleton : ∀ σ e, IsValue e → Step σ (.block [.refLoad e]) σ (.refLoad e)
+  | block_refStore_singleton : ∀ σ e v τ, IsValue e → IsValue v → Step σ (.block [.refStore e v τ]) σ (.refStore e v τ)
+  | block_refFree_singleton : ∀ σ e, IsValue e → Step σ (.block [.refFree e]) σ (.refFree e)
 
-  | binop_string_concat : ∀ s1 s2,
-      Step (.binop .add (.lit (.string s1)) (.lit (.string s2))) (.lit (.string (s1 ++ s2)))
+  | binop_string_concat : ∀ σ s1 s2,
+      Step σ (.binop .add (.lit (.string s1)) (.lit (.string s2))) σ (.lit (.string (s1 ++ s2)))
 
-  | binop_div_zero : ∀ n1,
-      Step (.binop .div (.lit (.int n1)) (.lit (.int 0))) (.lit (.int 0))
+  | binop_div_zero : ∀ σ n1,
+      Step σ (.binop .div (.lit (.int n1)) (.lit (.int 0))) σ (.lit (.int 0))
 
-  | binop_mod_zero : ∀ n1,
-      Step (.binop .mod (.lit (.int n1)) (.lit (.int 0))) (.lit (.int 0))
+  | binop_mod_zero : ∀ σ n1,
+      Step σ (.binop .mod (.lit (.int n1)) (.lit (.int 0))) σ (.lit (.int 0))
 
   /- ## Function Application
 
@@ -262,118 +264,118 @@ inductive Step : Expr → Expr → Prop where
   - `substAll body args.reverse` simultaneously substitutes all bound variables
   -/
 
-  | app_fn : ∀ fn fn' args,
-      Step fn fn' →
-      Step (.app fn args) (.app fn' args)
+  | app_fn : ∀ σ fn fn' args,
+      Step σ fn σ fn' →
+      Step σ (.app fn args) σ (.app fn' args)
 
-  | app_arg : ∀ fn a a' rest,
-      IsValue fn → Step a a' →
-      Step (.app fn (a :: rest)) (.app fn (a' :: rest))
+  | app_arg : ∀ σ fn a a' rest,
+      IsValue fn → Step σ a σ a' →
+      Step σ (.app fn (a :: rest)) σ (.app fn (a' :: rest))
 
-  | app_lam : ∀ n body args,
+  | app_lam : ∀ σ n body args,
       args.length = n →
-      Step (.app (.lam n body) args) (substAll args.reverse body)
+      Step σ (.app (.lam n body) args) σ (substAll args.reverse body)
 
   /- ## Field Access
   Step the base expression. No final reduction without struct values. -/
 
-  | field_step : ∀ e e' name,
-      Step e e' →
-      Step (.field_ e name) (.field_ e' name)
+  | field_step : ∀ σ e e' name,
+      Step σ e σ e' →
+      Step σ (.field_ e name) σ (.field_ e' name)
 
   /- ## Pipeline (e |> f) -/
 
-  | pipe_left : ∀ e e' f,
-      Step e e' →
-      Step (.pipe e f) (.pipe e' f)
+  | pipe_left : ∀ σ e e' f,
+      Step σ e σ e' →
+      Step σ (.pipe e f) σ (.pipe e' f)
 
-  | pipe_right : ∀ v f f',
-      IsValue v → Step f f' →
-      Step (.pipe v f) (.pipe v f')
+  | pipe_right : ∀ σ v f f',
+      IsValue v → Step σ f σ f' →
+      Step σ (.pipe v f) σ (.pipe v f')
 
-  | pipe_done : ∀ v f,
+  | pipe_done : ∀ σ v f,
       IsValue v →
-      Step (.pipe v f) (.app f [v])
+      Step σ (.pipe v f) σ (.app f [v])
 
   /- ## Type Ascription (e : τ) -/
 
-  | typeAsc_step : ∀ e e' τ,
-      Step e e' →
-      Step (.typeAsc e τ) (.typeAsc e' τ)
+  | typeAsc_step : ∀ σ e e' τ,
+      Step σ e σ e' →
+      Step σ (.typeAsc e τ) σ (.typeAsc e' τ)
 
-  | typeAsc_done : ∀ v τ,
+  | typeAsc_done : ∀ σ v τ,
       IsValue v →
-      Step (.typeAsc v τ) v
+      Step σ (.typeAsc v τ) σ v
 
   /- ## Option Constructors -/
 
-  | some_step : ∀ e e',
-      Step e e' →
-      Step (.some_ e) (.some_ e')
+  | some_step : ∀ σ e e',
+      Step σ e σ e' →
+      Step σ (.some_ e) σ (.some_ e')
 
-  | some_done : ∀ v,
-      Step (.some_ (.lit v)) (.lit (.some v))
+  | some_done : ∀ σ v,
+      Step σ (.some_ (.lit v)) σ (.lit (.some v))
 
-  | some_none_done :
-      Step (.some_ .none_) (.lit (.some Value.none))
+  | some_none_done : ∀ σ,
+      Step σ (.some_ .none_) σ (.lit (.some Value.none))
 
-  | none_step :
-      Step .none_ (.lit Value.none)
+  | none_step : ∀ σ,
+      Step σ .none_ σ (.lit Value.none)
 
   /- ## Result Constructors -/
 
-  | ok_step : ∀ e e',
-      Step e e' →
-      Step (.ok_ e) (.ok_ e')
+  | ok_step : ∀ σ e e',
+      Step σ e σ e' →
+      Step σ (.ok_ e) σ (.ok_ e')
 
-  | ok_done : ∀ v,
-      Step (.ok_ (.lit v)) (.lit (.ok v))
+  | ok_done : ∀ σ v,
+      Step σ (.ok_ (.lit v)) σ (.lit (.ok v))
 
-  | ok_none_done :
-      Step (.ok_ .none_) (.lit (.ok Value.none))
+  | ok_none_done : ∀ σ,
+      Step σ (.ok_ .none_) σ (.lit (.ok Value.none))
 
-  | err_step : ∀ e e',
-      Step e e' →
-      Step (.err_ e) (.err_ e')
+  | err_step : ∀ σ e e',
+      Step σ e σ e' →
+      Step σ (.err_ e) σ (.err_ e')
 
-  | err_done : ∀ v,
-      Step (.err_ (.lit v)) (.lit (.err v))
+  | err_done : ∀ σ v,
+      Step σ (.err_ (.lit v)) σ (.lit (.err v))
 
-  | err_none_done :
-      Step (.err_ .none_) (.lit (.err Value.none))
+  | err_none_done : ∀ σ,
+      Step σ (.err_ .none_) σ (.lit (.err Value.none))
 
   /- ## Match -/
 
-  | match_scrut_step : ∀ scrut scrut' arms,
-      Step scrut scrut' →
-      Step (.match_ scrut arms) (.match_ scrut' arms)
+  | match_scrut_step : ∀ σ scrut scrut' arms,
+      Step σ scrut σ scrut' →
+      Step σ (.match_ scrut arms) σ (.match_ scrut' arms)
 
-  | match_arm : ∀ e vars body rest,
+  | match_arm : ∀ σ e vars body rest,
       IsValue e →
-      Step (.match_ e ((vars, body) :: rest))
-        (substAll (List.replicate vars.length e) body)
+      Step σ (.match_ e ((vars, body) :: rest))
+        σ (substAll (List.replicate vars.length e) body)
 
-  | match_empty : ∀ e,
+  | match_empty : ∀ σ e,
       IsValue e →
-      Step (.match_ e []) (.lit .unit)
+      Step σ (.match_ e []) σ (.lit .unit)
 
   /- ## Null Coalesce (e1 ?? e2) -/
 
-  | null_coalesce_step_e1 : ∀ e1 e1' e2,
-      Step e1 e1' →
-      Step (.nullCoalesce e1 e2) (.nullCoalesce e1' e2)
+  | null_coalesce_step_e1 : ∀ σ e1 e1' e2,
+      Step σ e1 σ e1' →
+      Step σ (.nullCoalesce e1 e2) σ (.nullCoalesce e1' e2)
 
-  | null_coalesce_some : ∀ v e2,
-      Step (.nullCoalesce (.some_ v) e2) (.some_ v)
+  | null_coalesce_some : ∀ σ v e2,
+      Step σ (.nullCoalesce (.some_ v) e2) σ (.some_ v)
 
-  | null_coalesce_none : ∀ e2,
-      Step (.nullCoalesce .none_ e2) e2
+  | null_coalesce_none : ∀ σ e2,
+      Step σ (.nullCoalesce .none_ e2) σ e2
 
-  | null_coalesce_lit_some : ∀ v e2,
-      Step (.nullCoalesce (.lit (.some v)) e2) (.lit (.some v))
+  | null_coalesce_lit_some : ∀ σ v e2,
+      Step σ (.nullCoalesce (.lit (.some v)) e2) σ (.lit (.some v))
 
-  | null_coalesce_lit_none : ∀ e2,
-      Step (.nullCoalesce (.lit .none) e2) e2
+  | null_coalesce_lit_none : ∀ σ e2,
+      Step σ (.nullCoalesce (.lit .none) e2) σ e2
 
   /- ## Tuple
 
@@ -381,14 +383,14 @@ inductive Step : Expr → Expr → Prop where
   `tuple_step_head` steps the first element.
   `tuple_step_rest` skips the first value element and steps the rest. -/
 
-  | tuple_step_head : ∀ head head' rest,
-      Step head head' →
-      Step (.tuple_ (head :: rest)) (.tuple_ (head' :: rest))
+  | tuple_step_head : ∀ σ head head' rest,
+      Step σ head σ head' →
+      Step σ (.tuple_ (head :: rest)) σ (.tuple_ (head' :: rest))
 
-  | tuple_step_rest : ∀ head rest rest',
+  | tuple_step_rest : ∀ σ head rest rest',
       IsValue head →
-      Step (.tuple_ rest) (.tuple_ rest') →
-      Step (.tuple_ (head :: rest)) (.tuple_ (head :: rest'))
+      Step σ (.tuple_ rest) σ (.tuple_ rest') →
+      Step σ (.tuple_ (head :: rest)) σ (.tuple_ (head :: rest'))
 
   /- ## Array
 
@@ -396,39 +398,39 @@ inductive Step : Expr → Expr → Prop where
   Array index steps the array expression first, then the index expression,
   then performs the bounds-checked lookup on the resulting value. -/
 
-  | array_step_head : ∀ head head' rest,
-      Step head head' →
-      Step (.arrayLit (head :: rest)) (.arrayLit (head' :: rest))
+  | array_step_head : ∀ σ head head' rest,
+      Step σ head σ head' →
+      Step σ (.arrayLit (head :: rest)) σ (.arrayLit (head' :: rest))
 
-  | array_step_rest : ∀ head rest rest',
+  | array_step_rest : ∀ σ head rest rest',
       IsValue head →
-      Step (.arrayLit rest) (.arrayLit rest') →
-      Step (.arrayLit (head :: rest)) (.arrayLit (head :: rest'))
+      Step σ (.arrayLit rest) σ (.arrayLit rest') →
+      Step σ (.arrayLit (head :: rest)) σ (.arrayLit (head :: rest'))
 
-  | array_index_array : ∀ arr arr' idx,
-      Step arr arr' →
-      Step (.arrayIndex arr idx) (.arrayIndex arr' idx)
+  | array_index_array : ∀ σ arr arr' idx,
+      Step σ arr σ arr' →
+      Step σ (.arrayIndex arr idx) σ (.arrayIndex arr' idx)
 
-  | array_index_idx : ∀ arr idx idx',
+  | array_index_idx : ∀ σ arr idx idx',
       IsValue arr →
-      Step idx idx' →
-      Step (.arrayIndex arr idx) (.arrayIndex arr idx')
+      Step σ idx σ idx' →
+      Step σ (.arrayIndex arr idx) σ (.arrayIndex arr idx')
 
-  | array_index_hit : ∀ (elems : List Expr) (hvs : ∀ e ∈ elems, IsValue e) (n : Nat),
+  | array_index_hit : ∀ σ (elems : List Expr) (hvs : ∀ e ∈ elems, IsValue e) (n : Nat),
       n < elems.length →
-      Step (.arrayIndex (.arrayLit elems) (.lit (.int n)))
-           (elems.getD n (.lit .unit))
+      Step σ (.arrayIndex (.arrayLit elems) (.lit (.int n)))
+           σ (elems.getD n (.lit .unit))
 
-  | array_index_oob : ∀ (elems : List Expr) (hvs : ∀ e ∈ elems, IsValue e) (n : Nat),
+  | array_index_oob : ∀ σ (elems : List Expr) (hvs : ∀ e ∈ elems, IsValue e) (n : Nat),
       elems.length > 0 →
       n ≥ elems.length →
-      Step (.arrayIndex (.arrayLit elems) (.lit (.int n)))
-           (elems.getD 0 (.lit .unit))
+      Step σ (.arrayIndex (.arrayLit elems) (.lit (.int n)))
+           σ (elems.getD 0 (.lit .unit))
 
-  | array_index_neg : ∀ (elems : List Expr) (hvs : ∀ e ∈ elems, IsValue e) (n : Nat),
+  | array_index_neg : ∀ σ (elems : List Expr) (hvs : ∀ e ∈ elems, IsValue e) (n : Nat),
       elems.length > 0 →
-      Step (.arrayIndex (.arrayLit elems) (.lit (.int (Int.negSucc n))))
-           (elems.getD 0 (.lit .unit))
+      Step σ (.arrayIndex (.arrayLit elems) (.lit (.int (Int.negSucc n))))
+           σ (elems.getD 0 (.lit .unit))
 
   /- ## Reference Operations (Store Model, ADR-010)
 
@@ -437,26 +439,26 @@ inductive Step : Expr → Expr → Prop where
   to the store-carrying Step migration (ADR-010 Phase 2).
   Without a store, these expressions get stuck at fully-evaluated form. -/
 
-  | ref_create_step : ∀ e e' cap τ,
-      Step e e' →
-      Step (.refCreate e cap τ) (.refCreate e' cap τ)
+  | ref_create_step : ∀ σ e e' cap τ,
+      Step σ e σ e' →
+      Step σ (.refCreate e cap τ) σ (.refCreate e' cap τ)
 
-  | ref_load_step : ∀ e e',
-      Step e e' →
-      Step (.refLoad e) (.refLoad e')
+  | ref_load_step : ∀ σ e e',
+      Step σ e σ e' →
+      Step σ (.refLoad e) σ (.refLoad e')
 
-  | ref_store_step_arr : ∀ e e' v τ,
-      Step e e' →
-      Step (.refStore e v τ) (.refStore e' v τ)
+  | ref_store_step_arr : ∀ σ e e' v τ,
+      Step σ e σ e' →
+      Step σ (.refStore e v τ) σ (.refStore e' v τ)
 
-  | ref_store_step_val : ∀ e e' v τ,
+  | ref_store_step_val : ∀ σ e e' v τ,
       IsValue e →
-      Step v e' →
-      Step (.refStore e v τ) (.refStore e e' τ)
+      Step σ v σ e' →
+      Step σ (.refStore e v τ) σ (.refStore e e' τ)
 
-  | ref_free_step : ∀ e e',
-      Step e e' →
-      Step (.refFree e) (.refFree e')
+  | ref_free_step : ∀ σ e e',
+      Step σ e σ e' →
+      Step σ (.refFree e) σ (.refFree e')
 
   /- ## Reference Operations — Evaluation on Fully-Evaluated Arguments (Storeless)
 
@@ -464,16 +466,16 @@ inductive Step : Expr → Expr → Prop where
   without a store by directly reducing. These rules replace the previous design
   where refLoad/refStore/refFree were considered "stuck values." -/
 
-  | ref_load_eval : ∀ e cap τ,
+  | ref_load_eval : ∀ σ e cap τ,
       IsValue e →
-      Step (.refLoad (.refCreate e cap τ)) e
+      Step σ (.refLoad (.refCreate e cap τ)) σ e
 
-  | ref_store_eval : ∀ e v cap τ,
+  | ref_store_eval : ∀ σ e v cap τ,
       IsValue e → IsValue v → cap ≠ .val →
-      Step (.refStore (.refCreate e cap τ) v τ) (.lit .unit)
+      Step σ (.refStore (.refCreate e cap τ) v τ) σ (.lit .unit)
 
-  | ref_free_eval : ∀ e τ,
+  | ref_free_eval : ∀ σ e τ,
       IsValue e →
-      Step (.refFree (.refCreate e .iso τ)) (.lit .unit)
+      Step σ (.refFree (.refCreate e .iso τ)) σ (.lit .unit)
 
 end Morph.Semantics
