@@ -65,6 +65,9 @@ inductive WellTypedValue : Expr → Typ → Prop where
        IsValue e -> WellTypedValue (.some_ e) (.optionType τ)
    | tuple_val : forall elems tys,
        HasTypeAll [] [] elems tys -> WellTypedValue (.tuple_ elems) (.tupleType tys)
+   | array_val : forall elems τ n,
+       HasTypeAll [] [] elems (List.replicate n τ) -> n = elems.length -> n > 0 ->
+       WellTypedValue (.arrayLit elems) (.arrayType τ n)
 
 /-! ## Progress-Preservation Combination
 
@@ -179,6 +182,9 @@ theorem value_is_well_typed : forall {e : Expr} {τ : Typ},
     | _ => contradiction
   | tuple_ elems hvs => cases ht with
     | tuple_type _ _ _ tys hAll => exact WellTypedValue.tuple_val elems tys hAll
+    | _ => contradiction
+  | array_ elems hvs => cases ht with
+    | arrayLit_type _ _ _ τ n hAll hLen hn => exact WellTypedValue.array_val elems τ n hAll hLen hn
     | _ => contradiction
 
 /-! ## Closed Term Typing Inversion

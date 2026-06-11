@@ -33,6 +33,8 @@ def exprDepth : Morph.Syntax.Expr → Nat
   | .err_ e => exprDepth e + 1
   | .nullCoalesce e1 e2 => Nat.max (exprDepth e1) (exprDepth e2) + 1
   | .tuple_ elems => listExprDepth elems + 1
+  | .arrayLit elems => listExprDepth elems + 1
+  | .arrayIndex arr idx => Nat.max (exprDepth arr) (exprDepth idx) + 1
 end
 
 end Morph.Proofs.TypeSoundness

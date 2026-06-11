@@ -208,11 +208,26 @@ partial def eval (ctx : Context) : Expr → Option Expr
      | .none_ => eval ctx e2
      | _ => none
    | .tuple_ elems => do
-     let vals ← elems.mapM (eval ctx)
-     if vals.length = elems.length then
-       some (.lit (.tuple_ (vals.filterMap fun v => match v with | .lit inner => some inner | _ => none)))
-     else
-       none
+      let vals ← elems.mapM (eval ctx)
+      if vals.length = elems.length then
+        some (.lit (.tuple_ (vals.filterMap fun v => match v with | .lit inner => some inner | _ => none)))
+      else
+        none
+   | .arrayLit elems => do
+      let vals ← elems.mapM (eval ctx)
+      if vals.length = elems.length then
+        some (.lit (.array_ (vals.filterMap fun v => match v with | .lit inner => some inner | _ => none)))
+      else
+        none
+   | .arrayIndex arr idx => do
+      let arrVal ← eval ctx arr
+      let idxVal ← eval ctx idx
+      match arrVal, idxVal with
+      | .lit (.array_ elems), .lit (.int n) =>
+        if n ≥ 0 && n < elems.length then
+          some (.lit (elems.getD n.toNat .unit))
+        else none
+      | _, _ => none
   where
   evalBlock (ctx : Context) : List Expr → Option Expr
     | [] => some (.lit .unit)

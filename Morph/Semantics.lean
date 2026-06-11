@@ -31,6 +31,7 @@ inductive IsValue : Expr → Prop where
   | ok_ : ∀ e, IsValue e → IsValue (.ok_ e)
   | some_ : ∀ e, IsValue e → IsValue (.some_ e)
   | tuple_ : ∀ (elems : List Expr) (_hvs : ∀ e ∈ elems, IsValue e), IsValue (.tuple_ elems)
+  | array_ : ∀ (elems : List Expr) (_hvs : ∀ e ∈ elems, IsValue e), IsValue (.arrayLit elems)
 
 end
 
@@ -233,6 +234,9 @@ inductive Step : Expr → Expr → Prop where
   | block_tuple_singleton : ∀ (elems : List Expr) (_hvs : ∀ e ∈ elems, IsValue e),
       Step (.block [.tuple_ elems]) (.tuple_ elems)
 
+  | block_array_singleton : ∀ (elems : List Expr) (_hvs : ∀ e ∈ elems, IsValue e),
+      Step (.block [.arrayLit elems]) (.arrayLit elems)
+
   | block_pop : ∀ e head rest,
       IsValue e → Step (.block (e :: head :: rest)) (.block (head :: rest))
 
@@ -380,4 +384,44 @@ inductive Step : Expr → Expr → Prop where
       Step (.tuple_ rest) (.tuple_ rest') →
       Step (.tuple_ (head :: rest)) (.tuple_ (head :: rest'))
 
-  end Morph.Semantics
+  /- ## Array
+
+  Array literals step by evaluating their elements left-to-right (same as tuples).
+  Array index steps the array expression first, then the index expression,
+  then performs the bounds-checked lookup on the resulting value. -/
+
+  | array_step_head : ∀ head head' rest,
+      Step head head' →
+      Step (.arrayLit (head :: rest)) (.arrayLit (head' :: rest))
+
+  | array_step_rest : ∀ head rest rest',
+      IsValue head →
+      Step (.arrayLit rest) (.arrayLit rest') →
+      Step (.arrayLit (head :: rest)) (.arrayLit (head :: rest'))
+
+  | array_index_array : ∀ arr arr' idx,
+      Step arr arr' →
+      Step (.arrayIndex arr idx) (.arrayIndex arr' idx)
+
+  | array_index_idx : ∀ arr idx idx',
+      IsValue arr →
+      Step idx idx' →
+      Step (.arrayIndex arr idx) (.arrayIndex arr idx')
+
+  | array_index_hit : ∀ (elems : List Expr) (hvs : ∀ e ∈ elems, IsValue e) (n : Nat),
+      n < elems.length →
+      Step (.arrayIndex (.arrayLit elems) (.lit (.int n)))
+           (elems.getD n (.lit .unit))
+
+  | array_index_oob : ∀ (elems : List Expr) (hvs : ∀ e ∈ elems, IsValue e) (n : Nat),
+      elems.length > 0 →
+      n ≥ elems.length →
+      Step (.arrayIndex (.arrayLit elems) (.lit (.int n)))
+           (elems.getD 0 (.lit .unit))
+
+  | array_index_neg : ∀ (elems : List Expr) (hvs : ∀ e ∈ elems, IsValue e) (n : Nat),
+      elems.length > 0 →
+      Step (.arrayIndex (.arrayLit elems) (.lit (.int (Int.negSucc n))))
+           (elems.getD 0 (.lit .unit))
+
+end Morph.Semantics

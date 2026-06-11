@@ -146,6 +146,14 @@ the necessary equalities for use in rewriting.
     lift k (.tuple_ elems) = .tuple_ (elems.map (lift k)) := by
   simp [lift, liftUnder]
 
+@[simp] theorem lift_arrayLit (elems : List Expr) (k : Nat) :
+    lift k (.arrayLit elems) = .arrayLit (elems.map (lift k)) := by
+  simp [lift, liftUnder]
+
+@[simp] theorem lift_arrayIndex (arr idx : Expr) (k : Nat) :
+    lift k (.arrayIndex arr idx) = .arrayIndex (lift k arr) (lift k idx) := by
+  simp [lift, liftUnder]
+
 /-! ## Lift-Zero Identity
 
 `liftUnder bound 0 e = e` for all `bound` and `e`.
@@ -197,6 +205,8 @@ theorem liftUnder_zero_eq : forall (bound : Nat) (e : Expr), liftUnder bound 0 e
   | bound, .match_ scrut arms => by
     simp only [liftUnder, liftUnder_zero_eq bound scrut, liftUnder_zero_eq_arms bound arms]
    | bound, .tuple_ elems => by simp [liftUnder, liftUnder_zero_eq_list bound elems]
+   | bound, .arrayLit elems => by simp [liftUnder, liftUnder_zero_eq_list bound elems]
+   | bound, .arrayIndex arr idx => by simp [liftUnder, liftUnder_zero_eq bound arr, liftUnder_zero_eq bound idx]
 
 end
 
@@ -270,6 +280,8 @@ theorem liftUnder_comp : forall (bound k1 k2 : Nat) (e : Expr),
   | bound, k1, k2, .match_ scrut arms => by
     simp only [liftUnder, liftUnder_comp bound k1 k2 scrut, liftUnder_comp_arms bound k1 k2 arms]
    | bound, k1, k2, .tuple_ elems => by simp [liftUnder, liftUnder_comp_list bound k1 k2 elems]
+   | bound, k1, k2, .arrayLit elems => by simp [liftUnder, liftUnder_comp_list bound k1 k2 elems]
+   | bound, k1, k2, .arrayIndex arr idx => by simp [liftUnder, liftUnder_comp bound k1 k2 arr, liftUnder_comp bound k1 k2 idx]
 
 end
 
@@ -497,6 +509,18 @@ theorem weakening_at_depth (xs : List Typ) (bvs : List Typ) (Γ : TypEnv)
       exact HasType.match_type _ _ (liftUnder xs.length 1 scrut) (liftUnderArms xs.length 1 arms) _ _
         (weakening_at_depth xs bvs Γ scrut _ σ hScrut)
         (ArmsTyped_weakening_at_depth xs σ hArms)
+   | arrayLit_type _ _ elems τ n hElems hLen hn =>
+     simp only [liftUnder]
+     have hLen' : n = (List.map (liftUnder xs.length 1) elems).length := by
+       rw [List.length_map]; exact hLen
+     exact HasType.arrayLit_type (xs ++ σ :: bvs) Γ (elems.map (liftUnder xs.length 1)) τ n
+       (weakening_at_depth_all xs bvs Γ elems (List.replicate n τ) σ hElems) hLen' hn
+   | arrayIndex_type _ _ arr idx τ n hArr hIdx =>
+     simp only [liftUnder]
+     exact HasType.arrayIndex_type (xs ++ σ :: bvs) Γ (liftUnder xs.length 1 arr)
+       (liftUnder xs.length 1 idx) τ n
+       (weakening_at_depth xs bvs Γ arr (.arrayType τ n) σ hArr)
+       (weakening_at_depth xs bvs Γ idx .intType σ hIdx)
 
 theorem ArmsTyped_weakening_at_depth (xs : List Typ) (σ : Typ)
     {bvs : List Typ} {Γ : TypEnv} {τ_scrut : Typ}
@@ -725,6 +749,16 @@ theorem weakening (bvs : List Typ) (Γ : TypEnv) (e : Expr) (τ : Typ) (σ : Typ
       exact HasType.match_type (σ :: bvs) Γ (lift 1 scrut) (liftUnderArms 0 1 arms) τ_scrut τ_result
         (weakening _ _ _ _ σ hScrut)
         (ArmsTyped_weakening σ hArms)
+   | HasType.arrayLit_type bvs Γ elems τ n hElems hLen hn =>
+     rw [lift_arrayLit]
+     have hLen' : n = (List.map (lift 1) elems).length := by
+       rw [List.length_map]; exact hLen
+     exact HasType.arrayLit_type (σ :: bvs) Γ (elems.map (lift 1)) τ n
+       (weakening_all _ _ _ _ σ hElems) hLen' hn
+   | HasType.arrayIndex_type bvs Γ arr idx τ n hArr hIdx =>
+     rw [lift_arrayIndex]
+     exact HasType.arrayIndex_type (σ :: bvs) Γ (lift 1 arr) (lift 1 idx) τ n
+       (weakening _ _ _ _ σ hArr) (weakening _ _ _ _ σ hIdx)
 
 theorem weakening_all (bvs : List Typ) (Γ : TypEnv) (es : List Expr) (τs : List Typ)
     (σ : Typ) (h : HasTypeAll bvs Γ es τs) : HasTypeAll (σ :: bvs) Γ (es.map (lift 1)) τs := by

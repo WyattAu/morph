@@ -71,6 +71,8 @@ Expression language using de Bruijn indices for bound variables:
 - `err_ e`: Result Err constructor
 - `nullCoalesce e1 e2`: Null coalescing (e1 ?? e2)
 - `tuple_ elems`: Tuple expression
+- `arrayLit elems`: Array literal expression
+- `arrayIndex arr idx`: Array index expression
 -/
 inductive Expr : Type where
   | bvar : Nat → Expr
@@ -94,6 +96,8 @@ inductive Expr : Type where
   | err_ : Expr → Expr
   | nullCoalesce : Expr → Expr → Expr
   | tuple_ : List Expr → Expr
+  | arrayLit : List Expr → Expr
+  | arrayIndex : Expr → Expr → Expr
   deriving Repr, BEq
 
 /-!
@@ -169,6 +173,8 @@ def liftUnder (bound : Nat) (k : Nat) : Expr → Expr
   | .err_ e => .err_ (liftUnder bound k e)
   | .nullCoalesce e1 e2 => .nullCoalesce (liftUnder bound k e1) (liftUnder bound k e2)
   | .tuple_ elems => .tuple_ (elems.map (liftUnder bound k))
+  | .arrayLit elems => .arrayLit (elems.map (liftUnder bound k))
+  | .arrayIndex arr idx => .arrayIndex (liftUnder bound k arr) (liftUnder bound k idx)
 end
 
 /-- Lift all free bound-variable indices in `e` by `k`. -/
@@ -216,6 +222,8 @@ def subst' (bound : Nat) (e : Expr) (v : Expr) : Expr :=
   | .err_ e => .err_ (subst' bound e v)
   | .nullCoalesce e1 e2 => .nullCoalesce (subst' bound e1 v) (subst' bound e2 v)
   | .tuple_ elems => .tuple_ (elems.map (fun e => subst' bound e v))
+  | .arrayLit elems => .arrayLit (elems.map (fun e => subst' bound e v))
+  | .arrayIndex arr idx => .arrayIndex (subst' bound arr v) (subst' bound idx v)
 end
 
 /-- Substitute the bound variable at index 0 with `v`. -/
@@ -271,6 +279,8 @@ def substAll' (k : Nat) (vs : List Expr) (e : Expr) : Expr :=
   | .err_ e => .err_ (substAll' k vs e)
   | .nullCoalesce e1 e2 => .nullCoalesce (substAll' k vs e1) (substAll' k vs e2)
   | .tuple_ elems => .tuple_ (elems.map (fun e => substAll' k vs e))
+  | .arrayLit elems => .arrayLit (elems.map (fun e => substAll' k vs e))
+  | .arrayIndex arr idx => .arrayIndex (substAll' k vs arr) (substAll' k vs idx)
 end
 
 /-- Simultaneously substitute bound variables at indices 0, 1, ..., |vs|-1. -/
@@ -310,6 +320,8 @@ def freeVars : Expr → List String
   | .err_ e => freeVars e
   | .nullCoalesce e1 e2 => freeVars e1 ++ freeVars e2
   | .tuple_ elems => List.flatMap freeVars elems
+  | .arrayLit elems => List.flatMap freeVars elems
+  | .arrayIndex arr idx => freeVars arr ++ freeVars idx
 end
 
 end Morph.Syntax

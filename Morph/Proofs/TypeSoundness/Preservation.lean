@@ -355,6 +355,18 @@ private theorem HasType_subst_depth (pfx : List Typ) (bvs : List Typ) (Γ : TypE
       exact HasType.match_type _ _ (subst' pfx.length scrut v) (substArms pfx.length v arms) _ _
         (HasType_subst_depth pfx bvs Γ scrut v τ1 ts hScrut hV)
         (ArmsTyped_subst_depth pfx bvs Γ arms v τ1 ts tr hArms hV)
+   | .arrayLit_type _ _ elems τ' n hElems hLen hn =>
+     simp only [subst']
+     have hLen' : n = (List.map (fun e => subst' pfx.length e v) elems).length := by
+       simp [List.length_map, hLen]
+     exact HasType.arrayLit_type (pfx ++ bvs) Γ (elems.map (fun e => subst' pfx.length e v)) τ' n
+       (HasTypeAll_subst_depth pfx bvs Γ elems v τ1 (List.replicate n τ') hElems hV)
+       hLen' (by omega)
+   | .arrayIndex_type _ _ arr idx τ' n hArr hIdx =>
+     simp only [subst']
+     exact HasType.arrayIndex_type (pfx ++ bvs) Γ (subst' pfx.length arr v) (subst' pfx.length idx v) τ' n
+       (HasType_subst_depth pfx bvs Γ arr v τ1 (.arrayType τ' n) hArr hV)
+       (HasType_subst_depth pfx bvs Γ idx v τ1 .intType hIdx hV)
    | .block_type _ _ exprs τs τ hAll =>
     simp only [subst']
     exact HasType.block_type _ _ _ τs τ
@@ -681,7 +693,19 @@ private theorem HasType_substAll (pfx σs : List Typ) (bvs : List Typ) (Γ : Typ
        unfold substAll'
        exact HasType.match_type _ _ (substAll' pfx.length vs.reverse scrut) (substAllArms pfx.length vs.reverse arms) ts tr
          (HasType_substAll pfx σs bvs Γ vs scrut ts hScrut hVs hLen)
-         (ArmsTyped_substAll pfx σs bvs Γ vs arms ts tr hArms hVs hLen)
+                   (ArmsTyped_substAll pfx σs bvs Γ vs arms ts tr hArms hVs hLen)
+     | .arrayLit_type _ _ elems τ' n hElems hLen' hn =>
+       unfold substAll'
+       have hLen'' : n = (List.map (fun e => substAll' pfx.length vs.reverse e) elems).length := by
+         simp [List.length_map, hLen']
+       exact HasType.arrayLit_type (pfx ++ bvs) Γ (elems.map (fun e => substAll' pfx.length vs.reverse e)) τ' n
+         (HasTypeAll_substAll pfx σs bvs Γ vs elems (List.replicate n τ') hElems hVs hLen)
+         hLen'' (by omega)
+     | .arrayIndex_type _ _ arr idx τ' n hArr hIdx =>
+       unfold substAll'
+       exact HasType.arrayIndex_type (pfx ++ bvs) Γ (substAll' pfx.length vs.reverse arr) (substAll' pfx.length vs.reverse idx) τ' n
+         (HasType_substAll pfx σs bvs Γ vs arr (.arrayType τ' n) hArr hVs hLen)
+         (HasType_substAll pfx σs bvs Γ vs idx .intType hIdx hVs hLen)
     | .block_type _ _ exprs τs' τ hAll =>
     unfold substAll'
     exact HasType.block_type _ _ _ τs' τ
@@ -1003,6 +1027,15 @@ theorem preservation : forall {e e' : Expr} {τ : Typ} {bvs : List Typ} {Γ : Ty
         exfalso
         exact append_singleton_ne_nil τs' τ (HasTypeAll_nil_types (HasTypeAll_cons_tail hAll))
     | _ => contradiction
+  | block_array_singleton elems =>
+    cases hType with
+    | block_type _ _ _ τs _ hAll =>
+      cases τs with
+      | nil => exact HasTypeAll_cons_head hAll
+      | cons τ' τs' =>
+        exfalso
+        exact append_singleton_ne_nil τs' τ (HasTypeAll_nil_types (HasTypeAll_cons_tail hAll))
+    | _ => contradiction
   | pipe_left e e' f hStep1 =>
     cases hType with
     | pipe_type => exact HasType.pipe_type _ _ e' f _ _ (preservation (by assumption) hStep1) (by assumption)
@@ -1137,6 +1170,104 @@ theorem preservation : forall {e e' : Expr} {τ : Typ} {bvs : List Typ} {Γ : Ty
           have hAll_rest' := HasType_tuple_inv (preservation (HasType.tuple_type _ _ _ _ hAll_rest) hs)
           exact HasType.tuple_type _ _ _ _
             (HasTypeAll.cons _ _ _ _ _ _ hE_head hAll_rest')
+      | _ => contradiction
+    | array_step_head head head' rest hs =>
+      cases hType with
+      | arrayLit_type _ _ _ τ n hAll hLen hn =>
+        cases n with
+        | zero => exfalso; omega
+        | succ n' =>
+          simp only [List.replicate_succ] at hAll ⊢
+          cases hAll with
+          | cons _ _ _ _ _ _ hE_head hAll_rest =>
+            exact HasType.arrayLit_type _ _ (head' :: rest) τ (Nat.succ n')
+              (HasTypeAll.cons _ _ _ _ _ _ (preservation hE_head hs) hAll_rest)
+              (by simp only [List.length_cons] at hLen ⊢; omega) (by omega)
+      | _ => contradiction
+    | array_step_rest head rest rest' hv hs =>
+      cases hType with
+      | arrayLit_type _ _ _ τ n hAll hLen hn =>
+        cases n with
+        | zero => exfalso; omega
+        | succ n' =>
+          simp only [List.replicate_succ] at hAll ⊢
+          cases hAll with
+          | cons _ _ _ _ _ _ hE_head hAll_rest =>
+            cases n' with
+            | zero =>
+              have : rest = [] := List.eq_nil_of_length_eq_zero (Nat.succ.inj hLen).symm
+              subst this
+              cases hs
+            | succ n'' =>
+              have hRestType : HasType bvs Γ (.arrayLit rest) (.arrayType τ (Nat.succ n'')) :=
+                HasType.arrayLit_type _ _ rest τ (Nat.succ n'') hAll_rest
+                  (Nat.succ.inj hLen) (Nat.succ_pos n'')
+              have hRestType' := preservation hRestType hs
+              cases hRestType' with
+              | arrayLit_type _ _ _ _ _ hAll_rest' hLen' hn' =>
+                exact HasType.arrayLit_type _ _ (head :: rest') τ (Nat.succ (Nat.succ n''))
+                  (HasTypeAll.cons _ _ _ _ _ _ hE_head hAll_rest')
+                  (congrArg Nat.succ hLen') (Nat.succ_pos _)
+              | _ => contradiction
+      | _ => contradiction
+    | array_index_array arr arr' idx hs =>
+      cases hType with
+      | arrayIndex_type _ _ _ _ τ n hArr hIdx =>
+        exact HasType.arrayIndex_type _ _ arr' idx τ n (preservation hArr hs) hIdx
+      | _ => contradiction
+    | array_index_idx arr idx idx' hv hs =>
+      cases hType with
+      | arrayIndex_type _ _ _ _ τ n hArr hIdx =>
+        exact HasType.arrayIndex_type _ _ arr idx' τ n hArr (preservation hIdx hs)
+      | _ => contradiction
+    | array_index_hit elems hvs idx hLt =>
+      cases hType with
+      | arrayIndex_type _ _ _ _ τ m hArr hIdx =>
+        cases hArr with
+        | arrayLit_type _ _ _ _ _ hAll hLen hn =>
+          have hGet : ∀ es n, HasTypeAll bvs Γ es (List.replicate n τ) →
+            ∀ i (_ : i < es.length), HasType bvs Γ (es.getD i (.lit .unit)) τ := by
+            intro es n hAll'
+            induction es generalizing n with
+            | nil => intro i h; simp at h
+            | cons head tail ih =>
+              cases n with
+              | zero => intro i h; cases hAll'
+              | succ n' =>
+                intro i h
+                cases hAll' with
+                | cons _ _ _ _ _ _ hE_head hE_tail =>
+                  cases i with
+                  | zero => simp [List.getD]; exact hE_head
+                  | succ i' => simp only [List.getD_cons_succ]; exact ih n' hE_tail i' (by simp at h; omega)
+          exact hGet elems m hAll idx (by omega)
+        | _ => contradiction
+      | _ => contradiction
+    | array_index_oob elems hvs idx hPos hGe =>
+      cases hType with
+      | arrayIndex_type _ _ _ _ τ m hArr hIdx =>
+        cases hArr with
+        | arrayLit_type _ _ _ _ _ hAll hLen hn =>
+          cases m with
+          | zero => exfalso; omega
+          | succ m' =>
+            simp only [List.replicate_succ] at hAll
+            cases hAll with
+            | cons _ _ _ _ _ _ hE_head _ => simp [List.getD]; exact hE_head
+        | _ => contradiction
+      | _ => contradiction
+    | array_index_neg elems hvs m hPos =>
+      cases hType with
+      | arrayIndex_type _ _ _ _ τ n hArr hIdx =>
+        cases hArr with
+        | arrayLit_type _ _ _ _ _ hAll hLen hn =>
+          cases n with
+          | zero => exfalso; omega
+          | succ n' =>
+            simp only [List.replicate_succ] at hAll
+            cases hAll with
+            | cons _ _ _ _ _ _ hE_head _ => simp [List.getD]; exact hE_head
+        | _ => contradiction
       | _ => contradiction
 
 end

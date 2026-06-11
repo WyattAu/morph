@@ -245,6 +245,20 @@ def inferType (bvs : List Morph.Core.Typ) (env : TypEnv) : Morph.Syntax.Expr -> 
     match inferTypes bvs env elems with
     | some tys => some (.tupleType tys)
     | none => none
+  | .arrayLit elems =>
+    match inferTypes bvs env elems with
+    | some tys =>
+      match tys.head? with
+      | some τ =>
+        if tys.all (fun t => t == τ) && elems.length > 0 then
+          some (.arrayType τ elems.length)
+        else none
+      | none => none
+    | none => none
+  | .arrayIndex arr idx =>
+    match inferType bvs env arr, inferType bvs env idx with
+    | some (.arrayType τ _), some .intType => some τ
+    | _, _ => none
   termination_by e => sizeOf e
 end
 
@@ -402,6 +416,15 @@ inductive HasType : List Morph.Core.Typ → TypEnv → Morph.Syntax.Expr → Mor
   | tuple_type : ∀ bvs Γ elems tys,
       HasTypeAll bvs Γ elems tys →
       HasType bvs Γ (.tuple_ elems) (.tupleType tys)
+  | arrayLit_type : ∀ bvs Γ elems τ n,
+      HasTypeAll bvs Γ elems (List.replicate n τ) →
+      n = elems.length →
+      n > 0 →
+      HasType bvs Γ (.arrayLit elems) (.arrayType τ n)
+  | arrayIndex_type : ∀ bvs Γ arr idx τ n,
+      HasType bvs Γ arr (.arrayType τ n) →
+      HasType bvs Γ idx .intType →
+      HasType bvs Γ (.arrayIndex arr idx) τ
   | field_access_type : ∀ bvs Γ e fname sname fields τ,
       HasType bvs Γ e (.structType sname fields) →
       structFieldType fields fname = some τ →
