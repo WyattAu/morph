@@ -78,6 +78,7 @@ instance : Shrinkable Value where
     | .ok v => [v]
     | .err v => [v]
     | .tuple_ vs => vs
+    | .array_ vs => vs
 
 -- Typ: non-recursive for property testing (only base types needed)
 instance : Arbitrary Typ where

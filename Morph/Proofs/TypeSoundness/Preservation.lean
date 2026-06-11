@@ -1021,7 +1021,7 @@ theorem preservation : forall {e e' : Expr} {τ : Typ} {bvs : List Typ} {Γ : Ty
     cases hType with
     | typeAsc_type => exact HasType.typeAsc_type _ _ e' _ (preservation (by assumption) hStep1)
     | _ => contradiction
-  | typeAsc_done v τ =>
+  | typeAsc_done valExpr τAsc =>
     cases hType with
     | typeAsc_type => exact (by assumption)
     | _ => contradiction

@@ -515,8 +515,8 @@ section SafetyTheoremTests
             ∃ (retType : Typ), retType = ret
     | Typ.intWidthType _ => ∃ (n : Int), v = Value.int n
     | Typ.floatType _ => ∃ (f : Float), v = Value.float f
-    | Typ.optionType τ => v = Value.none ∨ ∃ (inner : Value), v = Value.some inner
-    | Typ.resultType τ_ok τ_err =>
+    | Typ.optionType _ => v = Value.none ∨ ∃ (inner : Value), v = Value.some inner
+    | Typ.resultType _ _ =>
         (∃ (inner : Value), v = Value.ok inner) ∨ (∃ (inner : Value), v = Value.err inner)
     | Typ.tupleType τs =>
         ∃ (vs : List Value), v = Value.tuple_ vs ∧ vs.length = τs.length
@@ -593,6 +593,8 @@ section SafetyTheoremTests
       have hLen : vs.length = (vs.map (fun _ => Typ.unitType)).length := by
         simp only [List.length_map]
       exact ⟨Typ.tupleType (vs.map (fun _ => Typ.unitType)), ⟨vs, rfl, hLen⟩⟩
+    | array_ vs =>
+      exact ⟨Typ.functionType [] Typ.unitType, Value.array_ vs, rfl, [], rfl, Typ.unitType, rfl⟩
 
   /-- Type invariants are preserved under equality -/
   theorem type_invariant_preserved_under_equality (v1 v2 : Value) (t : Typ) :

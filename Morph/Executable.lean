@@ -183,21 +183,21 @@ partial def eval (ctx : Context) : Expr → Option Expr
     match v with
     | .lit inner => some (.lit (.some inner))
     | .none_ => some (.lit (.some Value.none))
-    | .lam n body => none
+    | .lam _ _ => none
     | _ => none
   | .ok_ e => do
     let v ← eval ctx e
     match v with
     | .lit inner => some (.lit (.ok inner))
     | .none_ => some (.lit (.ok Value.none))
-    | .lam n body => none
+    | .lam _ _ => none
     | _ => none
    | .err_ e => do
      let v ← eval ctx e
      match v with
      | .lit inner => some (.lit (.err inner))
      | .none_ => some (.lit (.err Value.none))
-     | .lam n body => none
+     | .lam _ _ => none
      | _ => none
    | .nullCoalesce e1 e2 => do
      let v1 ← eval ctx e1

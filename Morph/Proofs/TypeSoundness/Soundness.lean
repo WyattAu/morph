@@ -159,7 +159,8 @@ theorem value_is_well_typed : forall {e : Expr} {τ : Typ},
      | err v' => cases ht with
        | lit_err _ _ _ τ_err τ_ok => exact WellTypedValue.lit_err v' τ_ok τ_err
        | _ => contradiction
-    | tuple_ vs => contradiction
+     | tuple_ vs => contradiction
+    | array_ vs => contradiction
   | lam n body =>
     cases ht with
     | lam_type => exact WellTypedValue.lam n body _ _

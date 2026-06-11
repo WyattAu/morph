@@ -139,6 +139,7 @@ inductive Value where
   | ok : Value → Value
   | err : Value → Value
   | tuple_ : List Value → Value
+  | array_ : List Value → Value
   deriving Repr, BEq
 
 /-!

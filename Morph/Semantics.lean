@@ -30,7 +30,7 @@ inductive IsValue : Expr → Prop where
   | err_ : ∀ e, IsValue e → IsValue (.err_ e)
   | ok_ : ∀ e, IsValue e → IsValue (.ok_ e)
   | some_ : ∀ e, IsValue e → IsValue (.some_ e)
-  | tuple_ : ∀ (elems : List Expr) (hvs : ∀ e ∈ elems, IsValue e), IsValue (.tuple_ elems)
+  | tuple_ : ∀ (elems : List Expr) (_hvs : ∀ e ∈ elems, IsValue e), IsValue (.tuple_ elems)
 
 end
 
@@ -230,7 +230,7 @@ inductive Step : Expr → Expr → Prop where
   | block_some_singleton : ∀ e,
       IsValue e → Step (.block [.some_ e]) (.some_ e)
 
-  | block_tuple_singleton : ∀ (elems : List Expr) (hvs : ∀ e ∈ elems, IsValue e),
+  | block_tuple_singleton : ∀ (elems : List Expr) (_hvs : ∀ e ∈ elems, IsValue e),
       Step (.block [.tuple_ elems]) (.tuple_ elems)
 
   | block_pop : ∀ e head rest,

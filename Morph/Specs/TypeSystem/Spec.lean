@@ -132,6 +132,14 @@ def inferType (bvs : List Morph.Core.Typ) (env : TypEnv) : Morph.Syntax.Expr -> 
     if tys.all Option.isSome then
       some (.tupleType (tys.map Option.get!))
     else none
+  | .lit (.array_ vs) =>
+    let tys := vs.map (fun v => inferType bvs env (.lit v))
+    match tys.head? with
+    | some (some τ) =>
+      if tys.all (fun t => t == some τ) && (vs.length > 0) then
+        some (.arrayType τ vs.length)
+      else none
+    | _ => none
   | .unop op e =>
     match op with
     | .not =>
@@ -402,6 +410,7 @@ inductive HasType : List Morph.Core.Typ → TypEnv → Morph.Syntax.Expr → Mor
       HasType bvs Γ scrut τ_scrut →
       ArmsTyped bvs Γ τ_scrut arms τ_result →
       HasType bvs Γ (.match_ scrut arms) τ_result
+
 
 inductive HasTypeAll : List Morph.Core.Typ → TypEnv → List Morph.Syntax.Expr → List Morph.Core.Typ → Prop where
   | nil : ∀ bvs Γ,
