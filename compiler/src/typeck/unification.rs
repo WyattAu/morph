@@ -1,10 +1,10 @@
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use crate::lexer::token::Span;
 use crate::typeck::errors::TypeError;
 use crate::typeck::types::Ty;
 
-pub type Substitution = HashMap<u32, Ty>;
+pub type Substitution = FxHashMap<u32, Ty>;
 
 pub fn occurs(var: u32, ty: &Ty) -> bool {
     match ty {
@@ -201,7 +201,7 @@ mod tests {
 
     #[test]
     fn test_unify_same_type() {
-        let mut subst = Substitution::new();
+        let mut subst = Substitution::default();
         let result = unify(&Ty::Bool, &Ty::Bool, &mut subst, dummy_span());
         assert!(result.is_ok());
         assert!(subst.is_empty());
@@ -209,7 +209,7 @@ mod tests {
 
     #[test]
     fn test_unify_int_same_kind() {
-        let mut subst = Substitution::new();
+        let mut subst = Substitution::default();
         let result = unify(
             &Ty::Int(IntKind::I32),
             &Ty::Int(IntKind::I32),
@@ -221,7 +221,7 @@ mod tests {
 
     #[test]
     fn test_unify_int_different_kind() {
-        let mut subst = Substitution::new();
+        let mut subst = Substitution::default();
         let result = unify(
             &Ty::Int(IntKind::I32),
             &Ty::Int(IntKind::I64),
@@ -233,7 +233,7 @@ mod tests {
 
     #[test]
     fn test_unify_type_var() {
-        let mut subst = Substitution::new();
+        let mut subst = Substitution::default();
         let result = unify(
             &Ty::TypeVar(0),
             &Ty::Int(IntKind::I32),
@@ -246,7 +246,7 @@ mod tests {
 
     #[test]
     fn test_unify_type_var_reverse() {
-        let mut subst = Substitution::new();
+        let mut subst = Substitution::default();
         let result = unify(
             &Ty::Int(IntKind::I64),
             &Ty::TypeVar(1),
@@ -259,7 +259,7 @@ mod tests {
 
     #[test]
     fn test_occurs_check() {
-        let mut subst = Substitution::new();
+        let mut subst = Substitution::default();
         let recursive = Ty::Optional(Box::new(Ty::TypeVar(0)));
         let result = unify(&Ty::TypeVar(0), &recursive, &mut subst, dummy_span());
         assert!(result.is_err());
@@ -271,7 +271,7 @@ mod tests {
 
     #[test]
     fn test_apply_subst() {
-        let mut subst = Substitution::new();
+        let mut subst = Substitution::default();
         subst.insert(0, Ty::Int(IntKind::I32));
         subst.insert(1, Ty::Bool);
 
@@ -285,9 +285,9 @@ mod tests {
 
     #[test]
     fn test_compose_subst() {
-        let mut s1 = Substitution::new();
+        let mut s1 = Substitution::default();
         s1.insert(0, Ty::Bool);
-        let mut s2 = Substitution::new();
+        let mut s2 = Substitution::default();
         s2.insert(1, Ty::TypeVar(0));
 
         let composed = compose_subst(&s1, &s2);
@@ -297,7 +297,7 @@ mod tests {
 
     #[test]
     fn test_unify_tuple() {
-        let mut subst = Substitution::new();
+        let mut subst = Substitution::default();
         let t1 = Ty::Tuple(vec![Ty::TypeVar(0), Ty::Bool]);
         let t2 = Ty::Tuple(vec![Ty::Int(IntKind::I32), Ty::TypeVar(1)]);
         let result = unify(&t1, &t2, &mut subst, dummy_span());
@@ -308,7 +308,7 @@ mod tests {
 
     #[test]
     fn test_unify_tuple_length_mismatch() {
-        let mut subst = Substitution::new();
+        let mut subst = Substitution::default();
         let t1 = Ty::Tuple(vec![Ty::Bool]);
         let t2 = Ty::Tuple(vec![Ty::Bool, Ty::Int(IntKind::I32)]);
         let result = unify(&t1, &t2, &mut subst, dummy_span());
@@ -317,7 +317,7 @@ mod tests {
 
     #[test]
     fn test_unify_optional() {
-        let mut subst = Substitution::new();
+        let mut subst = Substitution::default();
         let t1 = Ty::Optional(Box::new(Ty::TypeVar(0)));
         let t2 = Ty::Optional(Box::new(Ty::Int(IntKind::I64)));
         let result = unify(&t1, &t2, &mut subst, dummy_span());
@@ -327,7 +327,7 @@ mod tests {
 
     #[test]
     fn test_unify_result() {
-        let mut subst = Substitution::new();
+        let mut subst = Substitution::default();
         let t1 = Ty::Result {
             ok: Box::new(Ty::TypeVar(0)),
             err: Box::new(Ty::Named {
@@ -349,21 +349,21 @@ mod tests {
 
     #[test]
     fn test_unify_never_with_anything() {
-        let mut subst = Substitution::new();
+        let mut subst = Substitution::default();
         let result = unify(&Ty::Never, &Ty::Int(IntKind::I32), &mut subst, dummy_span());
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_unify_error_sentinel() {
-        let mut subst = Substitution::new();
+        let mut subst = Substitution::default();
         let result = unify(&Ty::Error, &Ty::Int(IntKind::I32), &mut subst, dummy_span());
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_unify_fn_types() {
-        let mut subst = Substitution::new();
+        let mut subst = Substitution::default();
         let t1 = Ty::Fn {
             params: vec![Ty::TypeVar(0)],
             ret: Box::new(Ty::TypeVar(1)),

@@ -1,13 +1,13 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::ast::Visibility;
 use crate::lexer::token::Span;
 use crate::typeck::types::Ty;
 
 pub struct TypeEnv {
-    bindings: HashMap<String, (Ty, Visibility, Option<Span>)>,
+    bindings: FxHashMap<String, (Ty, Visibility, Option<Span>)>,
     parent: Option<Box<TypeEnv>>,
-    consumed: HashSet<String>,
+    consumed: FxHashSet<String>,
 }
 
 impl Default for TypeEnv {
@@ -19,25 +19,25 @@ impl Default for TypeEnv {
 impl TypeEnv {
     pub fn new() -> Self {
         Self {
-            bindings: HashMap::new(),
+            bindings: FxHashMap::default(),
             parent: None,
-            consumed: HashSet::new(),
+            consumed: FxHashSet::default(),
         }
     }
 
     pub fn with_parent(parent: TypeEnv) -> Self {
         Self {
-            bindings: HashMap::new(),
+            bindings: FxHashMap::default(),
             parent: Some(Box::new(parent)),
-            consumed: HashSet::new(),
+            consumed: FxHashSet::default(),
         }
     }
 
     pub fn enter_scope(&self) -> Self {
         Self {
-            bindings: HashMap::new(),
+            bindings: FxHashMap::default(),
             parent: Some(Box::new(self.clone())),
-            consumed: HashSet::new(),
+            consumed: FxHashSet::default(),
         }
     }
 

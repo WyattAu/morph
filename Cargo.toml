@@ -5,3 +5,6 @@ members = [
     "cli",
 ]
 resolver = "2"
+
+[workspace.dependencies]
+rustc-hash = "2"

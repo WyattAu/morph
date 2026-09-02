@@ -1,18 +1,18 @@
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use crate::ast::NodeId;
 use crate::typeck::types::{EffectSet, Ty};
 
 pub struct TypeCheckResult {
-    pub type_map: HashMap<NodeId, Ty>,
-    pub effect_map: HashMap<NodeId, EffectSet>,
+    pub type_map: FxHashMap<NodeId, Ty>,
+    pub effect_map: FxHashMap<NodeId, EffectSet>,
     pub warnings: Vec<crate::diagnostic::Diagnostic>,
 }
 
 impl TypeCheckResult {
     pub fn new(
-        type_map: HashMap<NodeId, Ty>,
-        effect_map: HashMap<NodeId, EffectSet>,
+        type_map: FxHashMap<NodeId, Ty>,
+        effect_map: FxHashMap<NodeId, EffectSet>,
         warnings: Vec<crate::diagnostic::Diagnostic>,
     ) -> Self {
         Self {
@@ -24,8 +24,8 @@ impl TypeCheckResult {
 
     pub fn empty() -> Self {
         Self {
-            type_map: HashMap::new(),
-            effect_map: HashMap::new(),
+            type_map: FxHashMap::default(),
+            effect_map: FxHashMap::default(),
             warnings: Vec::new(),
         }
     }

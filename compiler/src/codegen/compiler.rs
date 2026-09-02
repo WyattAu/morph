@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use crate::ast::{self, ActorDecl, BinOp, Expr, FnDecl, Item, Literal, Stmt, TypeBody, UnOp};
 use crate::lexer::token::Span;
@@ -13,14 +13,14 @@ use super::morph_ir::{
 type CompileResult<T = ()> = Result<T, CodeGenError>;
 
 struct LocalScope {
-    vars: HashMap<String, u32>,
+    vars: FxHashMap<String, u32>,
     next_slot: u32,
 }
 
 impl LocalScope {
     fn new() -> Self {
         Self {
-            vars: HashMap::new(),
+            vars: FxHashMap::default(),
             next_slot: 0,
         }
     }
@@ -39,14 +39,14 @@ impl LocalScope {
 
 pub struct CodeGen {
     module: MorphIRModule,
-    type_map: HashMap<crate::ast::NodeId, Ty>,
-    effect_map: HashMap<crate::ast::NodeId, EffectSet>,
+    type_map: FxHashMap<crate::ast::NodeId, Ty>,
+    effect_map: FxHashMap<crate::ast::NodeId, EffectSet>,
     current_function: Option<CompiledFunction>,
     scope_stack: Vec<LocalScope>,
-    string_table: HashMap<String, u32>,
+    string_table: FxHashMap<String, u32>,
     loop_depth: u32,
     registry: TypeRegistry,
-    fn_sigs: HashMap<String, FnSig>,
+    fn_sigs: FxHashMap<String, FnSig>,
 }
 
 #[derive(Debug, Clone)]
@@ -58,23 +58,23 @@ struct FnSig {
 }
 
 impl CodeGen {
-    pub fn new(type_map: HashMap<crate::ast::NodeId, Ty>) -> Self {
+    pub fn new(type_map: FxHashMap<crate::ast::NodeId, Ty>) -> Self {
         Self {
             module: MorphIRModule::new("main".to_string()),
             type_map,
-            effect_map: HashMap::new(),
+            effect_map: FxHashMap::default(),
             current_function: None,
             scope_stack: Vec::new(),
-            string_table: HashMap::new(),
+            string_table: FxHashMap::default(),
             loop_depth: 0,
             registry: TypeRegistry::new(),
-            fn_sigs: HashMap::new(),
+            fn_sigs: FxHashMap::default(),
         }
     }
 
     pub fn with_effects(
-        type_map: HashMap<crate::ast::NodeId, Ty>,
-        effect_map: HashMap<crate::ast::NodeId, EffectSet>,
+        type_map: FxHashMap<crate::ast::NodeId, Ty>,
+        effect_map: FxHashMap<crate::ast::NodeId, EffectSet>,
     ) -> Self {
         let mut cg = Self::new(type_map);
         cg.effect_map = effect_map;
@@ -83,7 +83,7 @@ impl CodeGen {
 
     pub fn compile(
         items: &[crate::ast::Node<Item>],
-        type_map: HashMap<crate::ast::NodeId, Ty>,
+        type_map: FxHashMap<crate::ast::NodeId, Ty>,
     ) -> Result<MorphIRModule, Vec<CodeGenError>> {
         let mut cg = Self::new(type_map);
         let mut errors = Vec::new();
@@ -106,8 +106,8 @@ impl CodeGen {
 
     pub fn compile_with_effects(
         items: &[crate::ast::Node<Item>],
-        type_map: HashMap<crate::ast::NodeId, Ty>,
-        effect_map: HashMap<crate::ast::NodeId, EffectSet>,
+        type_map: FxHashMap<crate::ast::NodeId, Ty>,
+        effect_map: FxHashMap<crate::ast::NodeId, EffectSet>,
     ) -> Result<MorphIRModule, Vec<CodeGenError>> {
         let mut cg = Self::with_effects(type_map, effect_map);
         let mut errors = Vec::new();
@@ -1184,7 +1184,7 @@ mod tests {
     fn test_simple_fn_compilation() {
         let body = make_block(vec![], Some(make_lit_int(42)));
         let item = make_fn_item("foo", vec![], Some(make_named_type("i64")), body);
-        let result = CodeGen::compile(&[item], HashMap::new());
+        let result = CodeGen::compile(&[item], FxHashMap::default());
         assert!(result.is_ok());
         let module = result.unwrap();
         assert_eq!(module.functions.len(), 1);
@@ -1196,7 +1196,7 @@ mod tests {
         let expr = make_binop(BinOp::Add, make_lit_int(1), make_lit_int(2));
         let body = make_block(vec![], Some(expr));
         let item = make_fn_item("add_test", vec![], Some(make_named_type("i64")), body);
-        let result = CodeGen::compile(&[item], HashMap::new());
+        let result = CodeGen::compile(&[item], FxHashMap::default());
         assert!(result.is_ok());
         let module = result.unwrap();
         let func = &module.functions[0];
@@ -1219,7 +1219,7 @@ mod tests {
         );
         let body = make_block(vec![], Some(walrus));
         let item = make_fn_item("var_test", vec![], Some(make_named_type("i64")), body);
-        let result = CodeGen::compile(&[item], HashMap::new());
+        let result = CodeGen::compile(&[item], FxHashMap::default());
         assert!(result.is_ok());
         let module = result.unwrap();
         let func = &module.functions[0];
@@ -1248,7 +1248,7 @@ mod tests {
         );
         let body = make_block(vec![], Some(if_expr));
         let item = make_fn_item("if_test", vec![], Some(make_named_type("i64")), body);
-        let result = CodeGen::compile(&[item], HashMap::new());
+        let result = CodeGen::compile(&[item], FxHashMap::default());
         assert!(result.is_ok());
         let module = result.unwrap();
         let func = &module.functions[0];
@@ -1274,7 +1274,7 @@ mod tests {
             Some(make_named_type("i64")),
             body,
         );
-        let result = CodeGen::compile(&[item], HashMap::new());
+        let result = CodeGen::compile(&[item], FxHashMap::default());
         assert!(result.is_ok());
         let module = result.unwrap();
         let func = &module.functions[0];
@@ -1287,7 +1287,7 @@ mod tests {
     fn test_yield_checkpoint_at_fn_entry() {
         let body = make_block(vec![], Some(make_lit_int(42)));
         let item = make_fn_item("with_yield", vec![], Some(make_named_type("i64")), body);
-        let result = CodeGen::compile(&[item], HashMap::new());
+        let result = CodeGen::compile(&[item], FxHashMap::default());
         assert!(result.is_ok());
         let module = result.unwrap();
         let func = &module.functions[0];
@@ -1299,7 +1299,7 @@ mod tests {
 
     #[test]
     fn test_string_interning() {
-        let mut cg = CodeGen::new(HashMap::new());
+        let mut cg = CodeGen::new(FxHashMap::default());
         assert_eq!(cg.intern_string("hello"), 0);
         assert_eq!(cg.intern_string("world"), 1);
         assert_eq!(cg.intern_string("hello"), 0);
@@ -1317,7 +1317,7 @@ mod tests {
         );
         let body = make_block(vec![], Some(prop));
         let item = make_fn_item("err_prop", vec![], None, body);
-        let result = CodeGen::compile(&[item], HashMap::new());
+        let result = CodeGen::compile(&[item], FxHashMap::default());
         assert!(result.is_ok());
         let module = result.unwrap();
         let func = &module.functions[0];
@@ -1348,7 +1348,7 @@ mod tests {
         );
         let body = make_block(vec![], Some(coalesce));
         let item = make_fn_item("null_coalesce_test", vec![], None, body);
-        let result = CodeGen::compile(&[item], HashMap::new());
+        let result = CodeGen::compile(&[item], FxHashMap::default());
         assert!(result.is_ok());
         let module = result.unwrap();
         let func = &module.functions[0];
@@ -1364,7 +1364,7 @@ mod tests {
         let item1 = make_fn_item("fn1", vec![], Some(make_named_type("i64")), body1);
         let body2 = make_block(vec![], Some(make_lit_int(2)));
         let item2 = make_fn_item("fn2", vec![], Some(make_named_type("i64")), body2);
-        let result = CodeGen::compile(&[item1, item2], HashMap::new());
+        let result = CodeGen::compile(&[item1, item2], FxHashMap::default());
         assert!(result.is_ok());
         let module = result.unwrap();
         assert_eq!(module.functions.len(), 2);
@@ -1375,7 +1375,7 @@ mod tests {
         let expr = make_binop(BinOp::Lt, make_lit_int(1), make_lit_int(2));
         let body = make_block(vec![], Some(expr));
         let item = make_fn_item("cmp_test", vec![], Some(make_named_type("bool")), body);
-        let result = CodeGen::compile(&[item], HashMap::new());
+        let result = CodeGen::compile(&[item], FxHashMap::default());
         assert!(result.is_ok());
         let module = result.unwrap();
         let func = &module.functions[0];

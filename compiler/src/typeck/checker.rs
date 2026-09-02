@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::ast::{
     self, ActorDecl, ActorMember, BinOp, Capability, ConstDecl, EffectSet as AstEffectSet, Expr,
@@ -20,12 +20,12 @@ pub struct TypeChecker {
     env: TypeEnv,
     diagnostics: Vec<Diagnostic>,
     type_var_counter: u32,
-    type_map: HashMap<NodeId, Ty>,
-    effect_map: HashMap<NodeId, EffectSet>,
+    type_map: FxHashMap<NodeId, Ty>,
+    effect_map: FxHashMap<NodeId, EffectSet>,
     current_effects: EffectSet,
     current_actor: Option<String>,
-    type_defs: HashMap<String, TypeDefInfo>,
-    fn_sigs: HashMap<String, FnSigInfo>,
+    type_defs: FxHashMap<String, TypeDefInfo>,
+    fn_sigs: FxHashMap<String, FnSigInfo>,
     return_type: Option<Ty>,
 }
 
@@ -64,12 +64,12 @@ impl TypeChecker {
             env: TypeEnv::new(),
             diagnostics: Vec::new(),
             type_var_counter: 0,
-            type_map: HashMap::new(),
-            effect_map: HashMap::new(),
+            type_map: FxHashMap::default(),
+            effect_map: FxHashMap::default(),
             current_effects: EffectSet::empty(),
             current_actor: None,
-            type_defs: HashMap::new(),
-            fn_sigs: HashMap::new(),
+            type_defs: FxHashMap::default(),
+            fn_sigs: FxHashMap::default(),
             return_type: None,
         }
     }
@@ -253,7 +253,7 @@ impl TypeChecker {
         let body_ty = self.infer_expr(&decl.body);
 
         if !matches!(body_ty, Ty::Never | Ty::Error) && !matches!(ret_ty, Ty::Void | Ty::Error) {
-            let mut subst = Substitution::new();
+            let mut subst = Substitution::default();
             if let Err(err) = unification::unify(&body_ty, &ret_ty, &mut subst, decl.body.span) {
                 self.emit_type_error(err);
             }
@@ -279,7 +279,7 @@ impl TypeChecker {
         };
 
         if let Some(first_span) = decl.generic_params.first() {
-            let mut seen = std::collections::HashSet::new();
+            let mut seen = FxHashSet::default();
             for param in &decl.generic_params {
                 if !seen.insert(&param.name) {
                     self.emit_error(
@@ -294,7 +294,7 @@ impl TypeChecker {
 
         match &info.body {
             TypeDefBody::Struct(fields) => {
-                let mut seen = std::collections::HashSet::new();
+                let mut seen = FxHashSet::default();
                 for (fname, fty) in fields {
                     if !seen.insert(fname.as_str()) {
                         self.emit_error(
@@ -313,7 +313,7 @@ impl TypeChecker {
                 }
             }
             TypeDefBody::Enum(variants) => {
-                let mut seen = std::collections::HashSet::new();
+                let mut seen = FxHashSet::default();
                 for (vname, field_tys) in variants {
                     if !seen.insert(vname.as_str()) {
                         self.emit_error(
@@ -340,7 +340,7 @@ impl TypeChecker {
     fn check_const_decl(&mut self, decl: &ConstDecl) {
         let expected = self.resolve_type(&decl.type_ann);
         let found = self.infer_expr(&decl.value);
-        let mut subst = Substitution::new();
+        let mut subst = Substitution::default();
         if let Err(err) = unification::unify(&found, &expected, &mut subst, decl.value.span) {
             self.emit_type_error(err);
         }
@@ -362,7 +362,7 @@ impl TypeChecker {
                     let ty = self.resolve_type(type_ann);
                     if let Some(init_expr) = init {
                         let init_ty = self.infer_expr(init_expr);
-                        let mut subst = Substitution::new();
+                        let mut subst = Substitution::default();
                         if let Err(err) =
                             unification::unify(&init_ty, &ty, &mut subst, init_expr.span)
                         {
@@ -490,7 +490,7 @@ impl TypeChecker {
             _ => self.infer_expr(expr),
         };
 
-        let mut subst = Substitution::new();
+        let mut subst = Substitution::default();
         if let Err(err) = unification::unify(&inferred, expected, &mut subst, expr.span) {
             self.emit_type_error(err);
             return inferred;
@@ -514,7 +514,7 @@ impl TypeChecker {
                 let value_ty = self.infer_expr(value);
                 let ty = if let Some(ann) = type_ann {
                     let expected = self.resolve_type(ann);
-                    let mut subst = Substitution::new();
+                    let mut subst = Substitution::default();
                     if let Err(err) =
                         unification::unify(&value_ty, &expected, &mut subst, value.span)
                     {
@@ -530,7 +530,7 @@ impl TypeChecker {
                 let target_ty = self.infer_expr(target);
                 let value_ty = self.infer_expr(value);
                 self.check_cap_transition_between(&value_ty, &target_ty, target.span);
-                let mut subst = Substitution::new();
+                let mut subst = Substitution::default();
                 if let Err(err) = unification::unify(&value_ty, &target_ty, &mut subst, target.span)
                 {
                     self.emit_type_error(err);
@@ -541,7 +541,7 @@ impl TypeChecker {
                     let ret_ty = self.infer_expr(ret_expr);
                     if let Some(expected) = self.return_type.clone() {
                         self.check_cap_transition_between(&ret_ty, &expected, ret_expr.span);
-                        let mut subst = Substitution::new();
+                        let mut subst = Substitution::default();
                         if let Err(err) =
                             unification::unify(&ret_ty, &expected, &mut subst, ret_expr.span)
                         {
@@ -556,7 +556,7 @@ impl TypeChecker {
             Stmt::Break | Stmt::Continue | Stmt::Nop => {}
             Stmt::While { condition, body } => {
                 let cond_ty = self.infer_expr(condition);
-                let mut subst = Substitution::new();
+                let mut subst = Substitution::default();
                 if let Err(err) =
                     unification::unify(&cond_ty, &Ty::Bool, &mut subst, condition.span)
                 {
@@ -630,7 +630,7 @@ impl TypeChecker {
         match op {
             BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod => {
                 if lt.is_numeric() && rt.is_numeric() {
-                    let mut subst = Substitution::new();
+                    let mut subst = Substitution::default();
                     if unification::unify(&lt, &rt, &mut subst, span).is_ok() {
                         unification::apply_subst(&subst, &lt)
                     } else {
@@ -646,7 +646,7 @@ impl TypeChecker {
                 }
             }
             BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => {
-                let mut subst = Substitution::new();
+                let mut subst = Substitution::default();
                 if unification::unify(&lt, &rt, &mut subst, span).is_err() {
                     self.emit_error(
                         "E003",
@@ -657,7 +657,7 @@ impl TypeChecker {
                 Ty::Bool
             }
             BinOp::And | BinOp::Or => {
-                let mut subst = Substitution::new();
+                let mut subst = Substitution::default();
                 if let Err(err) = unification::unify(&lt, &Ty::Bool, &mut subst, lhs.span) {
                     self.emit_type_error(err);
                 }
@@ -728,7 +728,7 @@ impl TypeChecker {
                 for (arg, param_ty) in args.iter().zip(params.iter()) {
                     let arg_ty = self.infer_expr(arg);
                     self.check_cap_transition_between(&arg_ty, param_ty, arg.span);
-                    let mut subst = Substitution::new();
+                    let mut subst = Substitution::default();
                     if let Err(err) = unification::unify(&arg_ty, param_ty, &mut subst, arg.span) {
                         self.emit_type_error(err);
                     }
@@ -810,7 +810,7 @@ impl TypeChecker {
 
         match &obj_ty {
             Ty::Array(inner) => {
-                let mut subst = Substitution::new();
+                let mut subst = Substitution::default();
                 if let Err(err) =
                     unification::unify(&idx_ty, &Ty::Int(IntKind::USize), &mut subst, span)
                 {
@@ -859,7 +859,7 @@ impl TypeChecker {
         span: Span,
     ) -> Ty {
         let cond_ty = self.infer_expr(condition);
-        let mut subst = Substitution::new();
+        let mut subst = Substitution::default();
         if let Err(err) = unification::unify(&cond_ty, &Ty::Bool, &mut subst, condition.span) {
             self.emit_type_error(err);
         }
@@ -868,7 +868,7 @@ impl TypeChecker {
 
         if let Some(else_br) = else_branch {
             let else_ty = self.infer_expr(else_br);
-            let mut subst2 = Substitution::new();
+            let mut subst2 = Substitution::default();
             if let Err(err) = unification::unify(&then_ty, &else_ty, &mut subst2, span) {
                 self.emit_type_error(err);
             }
@@ -895,14 +895,14 @@ impl TypeChecker {
             self.check_pattern(&arm.kind.pattern, &scrut_ty);
             if let Some(guard) = &arm.kind.guard {
                 let guard_ty = self.infer_expr(guard);
-                let mut subst = Substitution::new();
+                let mut subst = Substitution::default();
                 if let Err(err) = unification::unify(&guard_ty, &Ty::Bool, &mut subst, guard.span) {
                     self.emit_type_error(err);
                 }
             }
             let arm_ty = self.infer_expr(&arm.kind.body);
             if let Some(ref prev) = result_ty {
-                let mut subst = Substitution::new();
+                let mut subst = Substitution::default();
                 if let Err(err) = unification::unify(prev, &arm_ty, &mut subst, arm.span) {
                     self.emit_type_error(err);
                 }
@@ -923,7 +923,7 @@ impl TypeChecker {
             }
             Pattern::Literal(lit) => {
                 let lit_ty = self.infer_literal(lit, Some(expected));
-                let mut subst = Substitution::new();
+                let mut subst = Substitution::default();
                 if let Err(err) = unification::unify(&lit_ty, expected, &mut subst, pattern.span) {
                     self.emit_type_error(err);
                 }
@@ -1023,7 +1023,7 @@ impl TypeChecker {
                         .as_ref()
                         .map(|t| self.resolve_type(t))
                         .unwrap_or_else(|| self.fresh_var());
-                    let mut subst = Substitution::new();
+                    let mut subst = Substitution::default();
                     if let Err(err) = unification::unify(&lhs_ty, &param_ty, &mut subst, lhs.span) {
                         self.emit_type_error(err);
                     }
@@ -1033,7 +1033,7 @@ impl TypeChecker {
             Expr::Var(name) => {
                 if let Some(sig) = self.fn_sigs.get(name).cloned() {
                     if sig.params.len() == 1 {
-                        let mut subst = Substitution::new();
+                        let mut subst = Substitution::default();
                         if let Err(err) =
                             unification::unify(&lhs_ty, &sig.params[0].1, &mut subst, lhs.span)
                         {
@@ -1089,7 +1089,7 @@ impl TypeChecker {
             _ => lhs_ty.clone(),
         };
 
-        let mut subst = Substitution::new();
+        let mut subst = Substitution::default();
         if let Err(err) = unification::unify(&inner, &rhs_ty, &mut subst, lhs.span) {
             self.emit_type_error(err);
         }
@@ -1112,7 +1112,7 @@ impl TypeChecker {
                 match expected {
                     Some(exp) => {
                         let found = self.infer_expr(fexpr);
-                        let mut subst = Substitution::new();
+                        let mut subst = Substitution::default();
                         if let Err(err) = unification::unify(&found, &exp, &mut subst, fexpr.span) {
                             self.emit_type_error(err);
                         }
@@ -1159,7 +1159,7 @@ impl TypeChecker {
         let value_ty = self.infer_expr(value);
         let ty = if let Some(ann) = type_ann {
             let expected = self.resolve_type(ann);
-            let mut subst = Substitution::new();
+            let mut subst = Substitution::default();
             if let Err(err) = unification::unify(&value_ty, &expected, &mut subst, value.span) {
                 self.emit_type_error(err);
             }

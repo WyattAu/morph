@@ -7,3 +7,4 @@ description = "Morph language compiler frontend"
 
 [dependencies]
 thiserror = "2"
+rustc-hash = { workspace = true }

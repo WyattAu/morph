@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use crate::typeck::types::{FloatKind, IntKind, Ty};
 
@@ -18,15 +18,15 @@ impl TypeLayout {
 
 #[derive(Debug, Clone, Default)]
 pub struct TypeRegistry {
-    structs: HashMap<String, Vec<(String, Ty)>>,
-    enums: HashMap<String, Vec<(String, Vec<Ty>)>>,
+    structs: FxHashMap<String, Vec<(String, Ty)>>,
+    enums: FxHashMap<String, Vec<(String, Vec<Ty>)>>,
 }
 
 impl TypeRegistry {
     pub fn new() -> Self {
         Self {
-            structs: HashMap::new(),
-            enums: HashMap::new(),
+            structs: FxHashMap::default(),
+            enums: FxHashMap::default(),
         }
     }
 
