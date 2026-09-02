@@ -1355,6 +1355,18 @@ theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {bvs : L
       cases hType with
       | refFree_type => exact HasType.lit_unit _ _
       | _ => contradiction
+    | ref_load_done loc τ_val v hLoad =>
+      cases hType with
+      | refLoad_type _ _ _ cap τ' hE => cases hE
+      | _ => contradiction
+    | ref_store_done loc v τ σ' hStore =>
+      cases hType with
+      | refStore_type _ _ _ _ cap τ' hE hV hCap => cases hE
+      | _ => contradiction
+    | ref_free_done loc σ' hFree =>
+      cases hType with
+      | refFree_type _ _ _ τ' hE => cases hE
+      | _ => contradiction
 
 end
 

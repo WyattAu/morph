@@ -478,4 +478,21 @@ inductive Step : Store → Expr → Store → Expr → Prop where
       IsValue e →
       Step σ (.refFree (.refCreate e .iso τ)) σ (.lit .unit)
 
+  /- ## Reference Operations — Store "Done" Rules (ADR-010 Phase 1b)
+
+  When reference operations are applied to fully-evaluated location values
+  (.lit (.loc n)), they interact with the store: loading, storing, and freeing. -/
+
+  | ref_load_done : ∀ σ loc τ v,
+      Store.load σ loc = some (τ, v) →
+      Step σ (.refLoad (.lit (.loc loc))) σ (.lit v)
+
+  | ref_store_done : ∀ σ loc v τ σ',
+      Store.store σ loc v τ = some σ' →
+      Step σ (.refStore (.lit (.loc loc)) (.lit v) τ) σ' (.lit .unit)
+
+  | ref_free_done : ∀ σ loc σ',
+      Store.free σ loc = some σ' →
+      Step σ (.refFree (.lit (.loc loc))) σ' (.lit .unit)
+
 end Morph.Semantics
