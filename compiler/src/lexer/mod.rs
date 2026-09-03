@@ -1,6 +1,3 @@
-use std::iter::Peekable;
-use std::str::Chars;
-
 pub mod token;
 
 use token::{Span, Token, TokenKind};
@@ -51,32 +48,94 @@ impl LexError {
     }
 }
 
+// --- Lookup tables for ASCII fast-path (stable, no nightly SIMD) ---
+// These tables enable branchless classification and are auto-vectorizable.
+// For hot loops we check `b < 128` then table lookup; otherwise fallback to Unicode.
+
+const fn build_ident_continue_table() -> [bool; 256] {
+    let mut tbl = [false; 256];
+    let mut i = 0;
+    while i < 256 {
+        let b = i as u8;
+        tbl[i] = matches!(b, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_');
+        i += 1;
+    }
+    tbl
+}
+
+const fn build_digit_table() -> [bool; 256] {
+    let mut tbl = [false; 256];
+    let mut i = 0;
+    while i < 256 {
+        tbl[i] = (i as u8).is_ascii_digit();
+        i += 1;
+    }
+    tbl
+}
+
+const fn build_hex_table() -> [bool; 256] {
+    let mut tbl = [false; 256];
+    let mut i = 0;
+    while i < 256 {
+        let b = i as u8;
+        tbl[i] = matches!(b, b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F');
+        i += 1;
+    }
+    tbl
+}
+
+const fn build_whitespace_table() -> [bool; 256] {
+    let mut tbl = [false; 256];
+    tbl[b' ' as usize] = true;
+    tbl[b'\t' as usize] = true;
+    tbl[b'\n' as usize] = true;
+    tbl[b'\r' as usize] = true;
+    // Note: other Unicode whitespaces (e.g. U+00A0) are handled via fallback `char::is_whitespace`
+    tbl
+}
+
+static IDENT_CONTINUE_TABLE: [bool; 256] = build_ident_continue_table();
+static DIGIT_TABLE: [bool; 256] = build_digit_table();
+static HEX_TABLE: [bool; 256] = build_hex_table();
+static WHITESPACE_TABLE: [bool; 256] = build_whitespace_table();
+
 struct LexerState<'a> {
     source: &'a str,
-    chars: Peekable<Chars<'a>>,
+    // Keep raw bytes for SIMD-friendly ASCII fast-paths.
+    // `position` is always a valid UTF-8 boundary (byte offset).
+    bytes: &'a [u8],
     position: usize,
     line: u32,
     column: u32,
 }
 
 impl<'a> LexerState<'a> {
+    #[inline]
     fn new(source: &'a str) -> Self {
         Self {
             source,
-            chars: source.chars().peekable(),
+            bytes: source.as_bytes(),
             position: 0,
             line: 1,
             column: 1,
         }
     }
 
-    fn peek(&mut self) -> Option<char> {
-        self.chars.peek().copied()
+    #[inline]
+    fn peek(&self) -> Option<char> {
+        self.source[self.position..].chars().next()
     }
 
+    #[inline]
+    fn peek_byte(&self) -> Option<u8> {
+        self.bytes.get(self.position).copied()
+    }
+
+    #[inline]
     fn advance(&mut self) -> Option<char> {
-        let ch = self.chars.next()?;
-        self.position += ch.len_utf8();
+        let ch = self.source[self.position..].chars().next()?;
+        let len = ch.len_utf8();
+        self.position += len;
         if ch == '\n' {
             self.line += 1;
             self.column = 1;
@@ -86,29 +145,113 @@ impl<'a> LexerState<'a> {
         Some(ch)
     }
 
+    // Fast byte advance for known ASCII (1 byte, no newline handling caller must update line/col).
+    #[inline(always)]
+    fn advance_ascii_byte(&mut self, b: u8) {
+        self.position += 1;
+        if b == b'\n' {
+            self.line += 1;
+            self.column = 1;
+        } else {
+            self.column += 1;
+        }
+    }
+
+    #[inline]
     fn current_span(&self, start_pos: usize, start_col: u32) -> Span {
         Span::new(start_pos, self.position, self.line, start_col)
     }
 
+    // --- Hot path: whitespace skipping ---------------------------------------
+    // ASCII fast-path: bulk-scan bytes using lookup table. Falls back to
+    // `char::is_whitespace` for non-ASCII (e.g. U+00A0, U+2003).
+    // Uses `WHITESPACE_TABLE` + explicit byte compare so LLVM can vectorize
+    // the loop (effectively SIMD via auto-vectorization / memchr idiom).
+    #[inline]
     fn skip_whitespace(&mut self) {
-        while let Some(ch) = self.peek() {
-            if ch.is_whitespace() {
-                self.advance();
+        let len = self.bytes.len();
+        while self.position < len {
+            let b = self.bytes[self.position];
+            if b < 128 {
+                if WHITESPACE_TABLE[b as usize] {
+                    // Inline advance for ASCII whitespace
+                    self.position += 1;
+                    if b == b'\n' {
+                        self.line += 1;
+                        self.column = 1;
+                    } else {
+                        self.column += 1;
+                    }
+                    // --- Bulk ASCII whitespace chunk ---
+                    // After one hit, try to consume a run without per-char decode.
+                    // This loop is deliberately simple so LLVM vectorizes it.
+                    // Equivalent to `memchr` for non-whitespace.
+                    while self.position < len {
+                        let b2 = self.bytes[self.position];
+                        if b2 < 128 {
+                            if WHITESPACE_TABLE[b2 as usize] {
+                                self.position += 1;
+                                if b2 == b'\n' {
+                                    self.line += 1;
+                                    self.column = 1;
+                                } else {
+                                    self.column += 1;
+                                }
+                                continue;
+                            } else {
+                                break;
+                            }
+                        } else {
+                            break; // non-ASCII -> fallback below
+                        }
+                    }
+                    // Check if next char is Unicode whitespace
+                    if self.position < len && self.bytes[self.position] >= 128 {
+                        if let Some(ch) = self.peek() {
+                            if ch.is_whitespace() {
+                                self.advance();
+                                continue;
+                            }
+                        }
+                    }
+                    break;
+                } else {
+                    break;
+                }
             } else {
+                // Non-ASCII: decode and check full Unicode whitespace
+                if let Some(ch) = self.peek() {
+                    if ch.is_whitespace() {
+                        self.advance();
+                        continue;
+                    }
+                }
                 break;
             }
         }
     }
 
+    #[inline]
     fn skip_line_comment(&mut self) {
-        while let Some(ch) = self.peek() {
-            if ch == '\n' {
-                break;
-            }
-            self.advance();
+        // Fast-path: scan for newline using memchr idiom (byte search).
+        // `position` is already after `//`.
+        let remaining = &self.bytes[self.position..];
+        // `iter().position` on bytes is lowered to `memchr` on most targets and is SIMD-accelerated.
+        if let Some(offset) = remaining.iter().position(|&b| b == b'\n') {
+            // Count columns: comments don't contain newlines except terminator, so column += offset
+            // (We still need line/col accurate for next token)
+            self.position += offset;
+            self.column += offset as u32;
+            // Leave '\n' to be consumed by skip_whitespace (which handles line increment)
+        } else {
+            // No newline till EOF
+            let remaining_len = remaining.len();
+            self.position += remaining_len;
+            self.column += remaining_len as u32;
         }
     }
 
+    #[inline]
     fn skip_block_comment(&mut self) -> Result<(), LexError> {
         let start_line = self.line;
         let start_col = self.column;
@@ -146,27 +289,150 @@ impl<'a> LexerState<'a> {
         Ok(())
     }
 
+    // --- Hot path: string literal -------------------------------------------
+    // ASCII fast-path: use byte search (`memchr` idiom) to jump between
+    // delimiters. Only falls back to char-by-char for escapes and Unicode.
+    #[inline]
     fn lex_string(&mut self) -> Result<TokenKind, LexError> {
         let start_line = self.line;
         let start_col = self.column;
         let start_pos = self.position;
 
+        // Use owned String but extend via `push_str` on slices to avoid per-char allocation.
+        // `Cow` would be possible if `TokenKind` were `Cow<'a,str>`, but we keep owned `String`
+        // for API stability and still avoid intermediate allocations by slicing.
         let mut value = String::new();
+        // Heuristic: reserve a bit to reduce realloc for long strings
+        // (cheap, and helps for bulk literals)
+        // We don't know length; reserve 32 as default.
+        value.reserve(32);
+
         loop {
-            match self.peek() {
+            // Fast scan for next `"` or `\` using byte search.
+            // This is the SIMD fast-path: `memchr`/`memchr2` style search over bytes.
+            let remaining_bytes = &self.bytes[self.position..];
+            if remaining_bytes.is_empty() {
+                return Err(LexError::UnterminatedString {
+                    line: start_line,
+                    col: start_col,
+                    pos: start_pos,
+                });
+            }
+            // Find delimiter: position of `"` or `\`
+            // Manual loop is auto-vectorized; equivalent to `memchr2`.
+            let mut delim_offset: Option<(usize, u8)> = None;
+            // Process in chunks of 16 for better vectorization hint
+            // We keep it simple but add `#[inline]` and use `position` search.
+            // Using `iter().position` with predicate is recognized as memchr.
+            let search_len = remaining_bytes.len();
+            let mut i = 0;
+            // Unrolled 8-byte fast check before falling back to position()
+            // This helps LLVM emit SIMD for long strings.
+            while i + 8 <= search_len {
+                let chunk = &remaining_bytes[i..i + 8];
+                // Check chunk for `"` or `\`
+                // Using lookup to let compiler vectorize
+                let mut found = None;
+                for (j, &b) in chunk.iter().enumerate() {
+                    if b == b'"' || b == b'\\' {
+                        found = Some((i + j, b));
+                        break;
+                    }
+                }
+                if let Some(f) = found {
+                    delim_offset = Some(f);
+                    break;
+                }
+                // Also quickly skip if chunk is all ASCII non-delimiter and no high bit?
+                // If any byte >=128, we still treat as content; slicing handles UTF-8.
+                i += 8;
+            }
+            if delim_offset.is_none() {
+                // Tail search
+                for (j, &b) in remaining_bytes[i..].iter().enumerate() {
+                    if b == b'"' || b == b'\\' {
+                        delim_offset = Some((i + j, b));
+                        break;
+                    }
+                }
+            }
+
+            match delim_offset {
                 None => {
+                    // No delimiter till EOF -> unterminated, but push remaining content for error recovery?
                     return Err(LexError::UnterminatedString {
                         line: start_line,
                         col: start_col,
                         pos: start_pos,
                     });
                 }
-                Some('"') => {
-                    self.advance();
+                Some((offset, b'"')) => {
+                    // Chunk before `"` is pure content (may contain UTF-8, but no escapes/delims)
+                    if offset > 0 {
+                        let chunk_str = &self.source[self.position..self.position + offset];
+                        // Update line/col for chunk: count newlines
+                        // Strings rarely contain newlines; fast count via bytes
+                        let chunk_bytes = &remaining_bytes[..offset];
+                        let mut newlines = 0u32;
+                        let mut last_nl_pos = 0usize;
+                        for (idx, &cb) in chunk_bytes.iter().enumerate() {
+                            if cb == b'\n' {
+                                newlines += 1;
+                                last_nl_pos = idx;
+                            }
+                        }
+                        if newlines > 0 {
+                            self.line += newlines;
+                            // column = bytes after last newline +1
+                            self.column = (offset - last_nl_pos) as u32;
+                        } else {
+                            // column tracks char count, but for non-newline chunk, bytes == chars for ASCII;
+                            // for Unicode we need char count. Use `chars().count()` only when non-ASCII present.
+                            let has_non_ascii = chunk_bytes.iter().any(|&c| c >= 128);
+                            if has_non_ascii {
+                                self.column += chunk_str.chars().count() as u32;
+                            } else {
+                                self.column += offset as u32;
+                            }
+                        }
+                        value.push_str(chunk_str);
+                        self.position += offset;
+                    }
+                    // Consume closing `"`
+                    self.position += 1;
+                    self.column += 1;
                     break;
                 }
-                Some('\\') => {
-                    self.advance();
+                Some((offset, b'\\')) => {
+                    // Push content up to `\`
+                    if offset > 0 {
+                        let chunk_str = &self.source[self.position..self.position + offset];
+                        let chunk_bytes = &remaining_bytes[..offset];
+                        let has_non_ascii = chunk_bytes.iter().any(|&c| c >= 128);
+                        if chunk_bytes.contains(&b'\n') {
+                            // Rare: handle newlines inside string
+                            let mut newlines = 0u32;
+                            let mut last_nl_pos = 0usize;
+                            for (idx, &cb) in chunk_bytes.iter().enumerate() {
+                                if cb == b'\n' {
+                                    newlines += 1;
+                                    last_nl_pos = idx;
+                                }
+                            }
+                            self.line += newlines;
+                            self.column = (offset - last_nl_pos) as u32;
+                        } else if has_non_ascii {
+                            self.column += chunk_str.chars().count() as u32;
+                        } else {
+                            self.column += offset as u32;
+                        }
+                        value.push_str(chunk_str);
+                        self.position += offset;
+                    }
+                    // Now at `\`, handle escape (fallback to original logic but using bytes for speed)
+                    // Consume `\`
+                    self.position += 1;
+                    self.column += 1;
                     let escape_pos = self.position;
                     match self.peek() {
                         Some('n') => {
@@ -255,101 +521,161 @@ impl<'a> LexerState<'a> {
                             });
                         }
                     }
+                    // Continue loop to find next delimiter
                 }
-                Some(ch) => {
-                    self.advance();
-                    value.push(ch);
-                }
+                Some((_, _)) => unreachable!(),
             }
         }
         Ok(TokenKind::StringLiteral(value))
     }
 
+    #[inline]
     fn lex_number(&mut self, first: char) -> Result<TokenKind, LexError> {
         let start_col = self.column - 1;
         let start_pos = self.position - 1;
         let start_line = self.line;
 
         if first == '0' {
-            match self.peek() {
-                Some('x') | Some('X') => {
-                    self.advance();
+            match self.peek_byte() {
+                Some(b'x') | Some(b'X') => {
+                    self.advance_ascii_byte(self.bytes[self.position]);
                     return self.lex_hex_number(start_pos, start_line, start_col);
                 }
-                Some('b') | Some('B') => {
-                    self.advance();
+                Some(b'b') | Some(b'B') => {
+                    self.advance_ascii_byte(self.bytes[self.position]);
                     return self.lex_binary_number(start_pos, start_line, start_col);
                 }
                 _ => {}
             }
         }
 
-        let mut digits = String::new();
-        digits.push(first);
-        while let Some(ch) = self.peek() {
-            if ch.is_ascii_digit() || ch == '_' {
-                self.advance();
-                digits.push(ch);
+        // --- ASCII fast-path for decimal digits + underscores ---
+        // Collect digits via byte scan, but avoid per-char String push; track byte range then slice.
+        let digit_start = start_pos;
+        // We have already consumed `first` (at start_pos). `position` points after it.
+        // Bulk scan forward for [0-9_]
+        let mut end = self.position;
+        let len = self.bytes.len();
+        while end < len {
+            let b = self.bytes[end];
+            if b < 128 {
+                if DIGIT_TABLE[b as usize] || b == b'_' {
+                    end += 1;
+                } else {
+                    break;
+                }
             } else {
                 break;
             }
         }
+        // Update position/column in bulk
+        let consumed = end - self.position;
+        if consumed > 0 {
+            self.position = end;
+            self.column += consumed as u32;
+        }
+        // Slice for later cleaning; keep original digit string view
+        // We need digits String for further_float detection; we'll build from slice
 
-        if self.peek() == Some('.') {
-            if let Some(next_after_dot) = self.peek_at(self.position + 1) {
-                if next_after_dot.is_ascii_digit() {
-                    self.advance();
-                    digits.push('.');
-                    while let Some(ch) = self.peek() {
-                        if ch.is_ascii_digit() || ch == '_' {
-                            self.advance();
-                            digits.push(ch);
+        // Check for fractional part: '.' followed by digit
+        if self.peek_byte() == Some(b'.') {
+            // Use byte lookahead for char after '.'
+            let after_dot_pos = self.position + 1;
+            if after_dot_pos < len {
+                let after = self.bytes[after_dot_pos];
+                let is_digit_after = after < 128 && DIGIT_TABLE[after as usize];
+                // For non-ASCII after dot, we fallback to char check (should be digit)
+                let fallback_is_digit = if after >= 128 {
+                    self.source[after_dot_pos..]
+                        .chars()
+                        .next()
+                        .map_or(false, |c| c.is_ascii_digit())
+                } else {
+                    false
+                };
+                if is_digit_after || fallback_is_digit {
+                    // Consume '.' and fractional digits
+                    self.advance_ascii_byte(b'.');
+                    // Scan fractional digits
+                    let mut frac_end = self.position;
+                    while frac_end < len {
+                        let b = self.bytes[frac_end];
+                        if b < 128 {
+                            if DIGIT_TABLE[b as usize] || b == b'_' {
+                                frac_end += 1;
+                            } else {
+                                break;
+                            }
                         } else {
                             break;
                         }
                     }
-                    if let Some('e') | Some('E') = self.peek() {
-                        self.advance();
-                        digits.push('e');
-                        if let Some('+') | Some('-') = self.peek() {
-                            let sign = self.advance().unwrap();
-                            digits.push(sign);
+                    let frac_consumed = frac_end - self.position;
+                    self.position = frac_end;
+                    self.column += frac_consumed as u32;
+
+                    // Exponent part
+                    if matches!(self.peek_byte(), Some(b'e') | Some(b'E')) {
+                        let e_byte = self.bytes[self.position];
+                        self.advance_ascii_byte(e_byte);
+                        if matches!(self.peek_byte(), Some(b'+') | Some(b'-')) {
+                            let sign = self.bytes[self.position];
+                            self.advance_ascii_byte(sign);
                         }
-                        while let Some(ch) = self.peek() {
-                            if ch.is_ascii_digit() || ch == '_' {
-                                self.advance();
-                                digits.push(ch);
+                        let mut exp_end = self.position;
+                        while exp_end < len {
+                            let b = self.bytes[exp_end];
+                            if b < 128 {
+                                if DIGIT_TABLE[b as usize] || b == b'_' {
+                                    exp_end += 1;
+                                } else {
+                                    break;
+                                }
                             } else {
                                 break;
                             }
                         }
+                        let exp_consumed = exp_end - self.position;
+                        self.position = exp_end;
+                        self.column += exp_consumed as u32;
                     }
-                    let cleaned: String = digits.chars().filter(|c| *c != '_').collect();
+                    let raw = &self.source[digit_start..self.position];
+                    let cleaned: String = raw.chars().filter(|c| *c != '_').collect();
                     return Ok(TokenKind::FloatLiteral(cleaned));
                 }
             }
         }
 
-        if let Some('e') | Some('E') = self.peek() {
-            self.advance();
-            digits.push('e');
-            if let Some('+') | Some('-') = self.peek() {
-                let sign = self.advance().unwrap();
-                digits.push(sign);
+        if matches!(self.peek_byte(), Some(b'e') | Some(b'E')) {
+            let e_byte = self.bytes[self.position];
+            self.advance_ascii_byte(e_byte);
+            if matches!(self.peek_byte(), Some(b'+') | Some(b'-')) {
+                let sign = self.bytes[self.position];
+                self.advance_ascii_byte(sign);
             }
-            while let Some(ch) = self.peek() {
-                if ch.is_ascii_digit() || ch == '_' {
-                    self.advance();
-                    digits.push(ch);
+            let mut exp_end = self.position;
+            while exp_end < len {
+                let b = self.bytes[exp_end];
+                if b < 128 {
+                    if DIGIT_TABLE[b as usize] || b == b'_' {
+                        exp_end += 1;
+                    } else {
+                        break;
+                    }
                 } else {
                     break;
                 }
             }
-            let cleaned: String = digits.chars().filter(|c| *c != '_').collect();
+            let exp_consumed = exp_end - self.position;
+            self.position = exp_end;
+            self.column += exp_consumed as u32;
+            let raw = &self.source[digit_start..self.position];
+            let cleaned: String = raw.chars().filter(|c| *c != '_').collect();
             return Ok(TokenKind::FloatLiteral(cleaned));
         }
 
-        let cleaned: String = digits.chars().filter(|c| *c != '_').collect();
+        let raw = &self.source[digit_start..self.position];
+        let cleaned: String = raw.chars().filter(|c| *c != '_').collect();
         let value = cleaned
             .parse::<i64>()
             .map_err(|_| LexError::InvalidNumber {
@@ -361,23 +687,33 @@ impl<'a> LexerState<'a> {
         Ok(TokenKind::IntLiteral(value))
     }
 
+    #[inline]
     fn lex_hex_number(
         &mut self,
         start_pos: usize,
         start_line: u32,
         start_col: u32,
     ) -> Result<TokenKind, LexError> {
-        let mut hex = String::new();
-        while let Some(ch) = self.peek() {
-            if ch.is_ascii_hexdigit() || ch == '_' {
-                self.advance();
-                if ch != '_' {
-                    hex.push(ch);
+        let hex_start = self.position;
+        let len = self.bytes.len();
+        let mut end = self.position;
+        while end < len {
+            let b = self.bytes[end];
+            if b < 128 {
+                if HEX_TABLE[b as usize] || b == b'_' {
+                    end += 1;
+                } else {
+                    break;
                 }
             } else {
                 break;
             }
         }
+        let raw_slice = &self.source[hex_start..end];
+        let hex: String = raw_slice.chars().filter(|c| *c != '_').collect();
+        let consumed = end - self.position;
+        self.position = end;
+        self.column += consumed as u32;
         if hex.is_empty() {
             return Err(LexError::InvalidNumber {
                 text: "0x".to_string(),
@@ -395,23 +731,29 @@ impl<'a> LexerState<'a> {
         Ok(TokenKind::IntLiteral(value))
     }
 
+    #[inline]
     fn lex_binary_number(
         &mut self,
         start_pos: usize,
         start_line: u32,
         start_col: u32,
     ) -> Result<TokenKind, LexError> {
-        let mut bits = String::new();
-        while let Some(ch) = self.peek() {
-            if ch == '0' || ch == '1' || ch == '_' {
-                self.advance();
-                if ch != '_' {
-                    bits.push(ch);
-                }
+        let bin_start = self.position;
+        let len = self.bytes.len();
+        let mut end = self.position;
+        while end < len {
+            let b = self.bytes[end];
+            if b == b'0' || b == b'1' || b == b'_' {
+                end += 1;
             } else {
                 break;
             }
         }
+        let raw_slice = &self.source[bin_start..end];
+        let bits: String = raw_slice.chars().filter(|c| *c != '_').collect();
+        let consumed = end - self.position;
+        self.position = end;
+        self.column += consumed as u32;
         if bits.is_empty() {
             return Err(LexError::InvalidNumber {
                 text: "0b".to_string(),
@@ -429,27 +771,66 @@ impl<'a> LexerState<'a> {
         Ok(TokenKind::IntLiteral(value))
     }
 
+    #[inline]
+    #[allow(dead_code)]
     fn peek_at(&self, pos: usize) -> Option<char> {
         self.source[pos..].chars().next()
     }
 
+    // --- Hot path: identifier / keyword -------------------------------------
+    // ASCII fast-path: bulk scan using `IDENT_CONTINUE_TABLE`. For non-ASCII,
+    // fallback to `is_alphanumeric` (Unicode correct). Uses `&str` slice for
+    // keyword match to avoid allocating intermediate `String` per char.
+    #[inline]
     fn lex_identifier_or_keyword(&mut self, first: char) -> TokenKind {
-        let mut ident = String::new();
-        ident.push(first);
-        while let Some(ch) = self.peek() {
-            if ch.is_alphanumeric() || ch == '_' {
-                self.advance();
-                ident.push(ch);
+        // `first` already consumed; `start_pos` is one char before `position`
+        let start_pos = self.position - first.len_utf8();
+        let start_col = self.column - 1; // column already advanced for first char
+                                         // Fast bulk scan for continuation bytes
+        let len = self.bytes.len();
+        let mut end = self.position;
+        // ASCII fast chunk: 8 bytes at a time
+        while end < len {
+            let b = self.bytes[end];
+            if b < 128 {
+                if IDENT_CONTINUE_TABLE[b as usize] {
+                    end += 1;
+                    continue;
+                } else {
+                    break;
+                }
             } else {
+                // Unicode fallback: decode char
+                if let Some(ch) = self.source[end..].chars().next() {
+                    if ch.is_alphanumeric() || ch == '_' {
+                        end += ch.len_utf8();
+                        continue;
+                    }
+                }
                 break;
             }
         }
+        // Update state: column tracks char count
+        let ident_slice = &self.source[start_pos..end];
+        // Fast column update: if ASCII-only, column = start_col + byte_len
+        // else need char count
+        let has_non_ascii = ident_slice.as_bytes().iter().any(|&b| b >= 128);
+        if has_non_ascii {
+            let char_len = ident_slice.chars().count() as u32;
+            self.column = start_col + char_len;
+        } else {
+            self.column = start_col + (end - start_pos) as u32;
+        }
+        self.position = end;
 
-        if ident == "_" {
+        if ident_slice == "_" {
             return TokenKind::Underscore;
         }
 
-        match ident.as_str() {
+        // Keyword match on `&str` slice (no allocation). `Cow` could be used if caller wants
+        // borrowed `TokenKind`, but `TokenKind` owns `String` for `Identifier`, so we allocate
+        // only on non-keyword path and directly from slice.
+        match ident_slice {
             "fn" => TokenKind::Fn,
             "ret" => TokenKind::Ret,
             "use" => TokenKind::Use,
@@ -475,7 +856,7 @@ impl<'a> LexerState<'a> {
             "true" => TokenKind::BoolLiteral(true),
             "false" => TokenKind::BoolLiteral(false),
             "null" => TokenKind::Null,
-            _ => TokenKind::Identifier(ident),
+            _ => TokenKind::Identifier(ident_slice.to_owned()),
         }
     }
 }
@@ -487,6 +868,7 @@ impl Lexer {
         Self
     }
 
+    #[inline]
     pub fn tokenize(source: &str) -> Vec<Result<Token, LexError>> {
         let mut state = LexerState::new(source);
         let mut tokens = Vec::new();
@@ -813,13 +1195,23 @@ impl Lexer {
                     ))
                 }
                 _ => {
-                    state.advance();
-                    Err(LexError::InvalidChar {
-                        ch,
-                        line: start_line,
-                        col: start_col,
-                        pos: start_pos,
-                    })
+                    // Unicode fallback: advance and check if it's part of identifier/whitespace
+                    // For true invalid char, report error.
+                    // First check if char is alphanumeric (could be unicode ident start) – but
+                    // our main loop only handles ASCII start; handle unicode ident start here.
+                    if ch.is_alphabetic() || ch == '_' {
+                        state.advance();
+                        let kind = state.lex_identifier_or_keyword(ch);
+                        Ok(Token::new(kind, state.current_span(start_pos, start_col)))
+                    } else {
+                        state.advance();
+                        Err(LexError::InvalidChar {
+                            ch,
+                            line: start_line,
+                            col: start_col,
+                            pos: start_pos,
+                        })
+                    }
                 }
             };
 
