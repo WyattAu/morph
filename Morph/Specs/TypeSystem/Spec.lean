@@ -4,6 +4,7 @@ SPDX-License-Identifier: Apache-2.0
 
 import Morph.Core
 import Morph.Syntax
+import Morph.LinearContext
 
 namespace Morph.Specs.TypeSystem
 
@@ -15,11 +16,12 @@ using de Bruijn indices for bound variables.
 
 ## Key Design Decisions
 
-- `HasType bvs Γ e τ`: The first parameter `bvs : List Typ` tracks the types
-  of currently-bound de Bruijn indices. `bvs[0]` is the type of bvar 0, etc.
+- `HasType ctx Γ e τ`: The first parameter `ctx : LinCtx` tracks the types
+  and usages of currently-bound de Bruijn indices. `ctx.types[0]` is the
+  type of bvar 0, etc.
 - `TypEnv` maps free variable names to types (unchanged from named-variable system).
-- `inferType bvs env e`: Executable type inference with bound-variable context.
-- Weakening is trivial: just prepend a type to `bvs`.
+- `inferType ctx env e`: Executable type inference with bound-variable context.
+- Weakening is trivial: just prepend entries via `LinCtx.pushMany`.
 - Substitution lemma is straightforward induction (no capture-avoidance needed).
 
 ## Overview
@@ -91,21 +93,22 @@ inductive WellTyped : TypEnv -> Morph.Core.Typ -> Prop where
 /-!
 ## Type Inference (Executable)
 
-`inferType bvs env e` infers the type of expression `e` in:
-- `bvs : List Typ` — types of bound de Bruijn indices (bvs[0] = type of bvar 0)
+`inferType ctx env e` infers the type of expression `e` in:
+- `ctx : LinCtx` — linear context of bound de Bruijn indices
+  (ctx.types[0] = type of bvar 0)
 - `env : TypEnv` — types of free variables by name
 -/
 mutual
-def inferTypes (bvs : List Morph.Core.Typ) (env : TypEnv) : List Morph.Syntax.Expr -> Option (List Morph.Core.Typ)
+def inferTypes (ctx : LinCtx) (env : TypEnv) : List Morph.Syntax.Expr -> Option (List Morph.Core.Typ)
   | [] => some []
   | e :: es =>
-    match inferType bvs env e, inferTypes bvs env es with
+    match inferType ctx env e, inferTypes ctx env es with
     | some τ, some tys => some (τ :: tys)
     | _, _ => none
   termination_by es => sizeOf es
 
-def inferType (bvs : List Morph.Core.Typ) (env : TypEnv) : Morph.Syntax.Expr -> Option Morph.Core.Typ
-  | .bvar n => if h : n < bvs.length then some bvs[n] else none
+def inferType (ctx : LinCtx) (env : TypEnv) : Morph.Syntax.Expr -> Option Morph.Core.Typ
+  | .bvar n => if h : n < ctx.types.length then some ctx.types[n] else none
   | .fvar name => lookupTyp env name
   | .lit (.int _) => some .intType
   | .lit (.bool _) => some .boolType
@@ -115,25 +118,25 @@ def inferType (bvs : List Morph.Core.Typ) (env : TypEnv) : Morph.Syntax.Expr -> 
   | .lit (.float _) => some (.floatType .f64)
   | .lit .undef => none
   | .lit (.some v) =>
-    match inferType bvs env (.lit v) with
+    match inferType ctx env (.lit v) with
     | some τ => some (.optionType τ)
     | none => none
   | .lit .none => none
   | .lit (.ok v) =>
-    match inferType bvs env (.lit v) with
+    match inferType ctx env (.lit v) with
     | some τ => none
     | none => none
   | .lit (.err v) =>
-    match inferType bvs env (.lit v) with
+    match inferType ctx env (.lit v) with
     | some τ => none
     | none => none
   | .lit (.tuple_ vs) =>
-    let tys := vs.map (fun v => inferType bvs env (.lit v))
+    let tys := vs.map (fun v => inferType ctx env (.lit v))
     if tys.all Option.isSome then
       some (.tupleType (tys.map Option.get!))
     else none
   | .lit (.array_ vs) =>
-    let tys := vs.map (fun v => inferType bvs env (.lit v))
+    let tys := vs.map (fun v => inferType ctx env (.lit v))
     match tys.head? with
     | some (some τ) =>
       if tys.all (fun t => t == some τ) && (vs.length > 0) then
@@ -144,17 +147,17 @@ def inferType (bvs : List Morph.Core.Typ) (env : TypEnv) : Morph.Syntax.Expr -> 
   | .unop op e =>
     match op with
     | .not =>
-      match inferType bvs env e with
+      match inferType ctx env e with
       | some .boolType => some .boolType
       | _ => none
     | .notb =>
-      match inferType bvs env e with
+      match inferType ctx env e with
       | some .intType => some .intType
       | _ => none
     | _ => none
   | .binop op e1 e2 =>
-    let typ1? := inferType bvs env e1
-    let typ2? := inferType bvs env e2
+    let typ1? := inferType ctx env e1
+    let typ2? := inferType ctx env e2
     match typ1?, typ2? with
     | some .intType, some .intType =>
       match op with
@@ -182,10 +185,10 @@ def inferType (bvs : List Morph.Core.Typ) (env : TypEnv) : Morph.Syntax.Expr -> 
       if op == .add then some .stringType else none
     | _, _ => none
   | .app fn args =>
-    match inferType bvs env fn with
+    match inferType ctx env fn with
     | some (.functionType paramTys retTy) =>
       if args.length == paramTys.length then
-        let argTys := args.map (inferType bvs env)
+        let argTys := args.map (inferType ctx env)
         if argTys.all Option.isSome then
           let ok := (argTys.zip paramTys).all (fun (aTy?, pTy) =>
             match aTy? with
@@ -197,57 +200,57 @@ def inferType (bvs : List Morph.Core.Typ) (env : TypEnv) : Morph.Syntax.Expr -> 
     | _ => none
   | .lam n _ => none  -- Lambdas need annotations for synthesis
   | .let_ e1 e2 =>
-    match inferType bvs env e1 with
-    | some τ1 => inferType (τ1 :: bvs) env e2
+    match inferType ctx env e1 with
+    | some τ1 => inferType ((τ1, LinCtx.initialUsage τ1) :: ctx) env e2
     | none => none
   | .ifThenElse c t f =>
-    match inferType bvs env c with
+    match inferType ctx env c with
     | some .boolType =>
-      let typT := inferType bvs env t
-      let typF := inferType bvs env f
+      let typT := inferType ctx env t
+      let typF := inferType ctx env f
       if typT == typF then typT else none
     | _ => none
   | .forLoop _ _ _ => some .unitType
   | .block [] => some .unitType
-  | .block [e] => inferType bvs env e
-  | .block (_ :: es) => inferType bvs env (.block es)
+  | .block [e] => inferType ctx env e
+  | .block (_ :: es) => inferType ctx env (.block es)
   | .match_ _ _ => none  -- match_ type inference is complex; typing via HasType.match_type
   | .field_ e name =>
-    match inferType bvs env e with
+    match inferType ctx env e with
     | some (.structType _ fields) =>
       match structFieldType fields name with
       | some τ => some τ
       | none => none
     | _ => none
   | .pipe e f =>
-    match inferType bvs env e, inferType bvs env f with
+    match inferType ctx env e, inferType ctx env f with
     | some τ_e, some (.functionType [τ_arg] τ_ret) =>
       if τ_e == τ_arg then some τ_ret else none
     | _, _ => none
   | .some_ e =>
-    match inferType bvs env e with
+    match inferType ctx env e with
     | some τ => some (.optionType τ)
     | none => none
   | .none_ => none
   | .ok_ e =>
-    match inferType bvs env e with
+    match inferType ctx env e with
     | some τ => none
     | none => none
   | .err_ e =>
-    match inferType bvs env e with
+    match inferType ctx env e with
     | some τ => none
     | none => none
   | .nullCoalesce e1 e2 =>
-    match inferType bvs env e1 with
+    match inferType ctx env e1 with
     | some (.optionType τ) => some (.optionType τ)
     | _ => none
-  | .typeAsc e τ => inferType bvs env e
+  | .typeAsc e τ => inferType ctx env e
   | .tuple_ elems =>
-    match inferTypes bvs env elems with
+    match inferTypes ctx env elems with
     | some tys => some (.tupleType tys)
     | none => none
   | .arrayLit elems =>
-    match inferTypes bvs env elems with
+    match inferTypes ctx env elems with
     | some tys =>
       match tys.head? with
       | some τ =>
@@ -257,30 +260,30 @@ def inferType (bvs : List Morph.Core.Typ) (env : TypEnv) : Morph.Syntax.Expr -> 
       | none => none
     | none => none
   | .arrayIndex arr idx =>
-    match inferType bvs env arr, inferType bvs env idx with
+    match inferType ctx env arr, inferType ctx env idx with
     | some (.arrayType τ _), some .intType => some τ
     | _, _ => none
   | .refCreate e cap τ =>
-    match inferType bvs env e with
+    match inferType ctx env e with
     | some τ' => some (.refType cap τ)  -- annotate with capability
     | none => none
   | .refLoad e =>
-    match inferType bvs env e with
+    match inferType ctx env e with
     | some (.refType _ τ) => some τ
     | _ => none
   | .refStore e _ τ =>
-    match inferType bvs env e with
+    match inferType ctx env e with
     | some (.refType _ _) => some .unitType
     | _ => none
   | .refFree e =>
-    match inferType bvs env e with
+    match inferType ctx env e with
     | some (.refType .iso _) => some .unitType  -- only iso can free
     | _ => none
   termination_by e => sizeOf e
 end
 
-def typeCheck (bvs : List Morph.Core.Typ) (env : TypEnv) (e : Morph.Syntax.Expr) (expected : Morph.Core.Typ) : Prop :=
-  inferType bvs env e = some expected
+def typeCheck (ctx : LinCtx) (env : TypEnv) (e : Morph.Syntax.Expr) (expected : Morph.Core.Typ) : Prop :=
+  inferType ctx env e = some expected
 
 /-!
 ## Subtyping
@@ -321,9 +324,9 @@ def isPtrArithOp (op : Morph.Core.Operator) : Prop :=
 
 /-! ## Typing Judgments
 
-`HasType bvs Γ e τ`:
-- `bvs : List Typ` — types of bound de Bruijn indices
-  (bvs[0] = type of bvar 0, the most recent binder)
+`HasType ctx Γ e τ`:
+- `ctx : LinCtx` — linear context of bound de Bruijn indices
+  (ctx.types[0] = type of bvar 0, the most recent binder)
 - `Γ : TypEnv` — types of free variables by name
 - `e : Expr` — the expression
  - `τ : Typ` — the inferred type
@@ -331,156 +334,156 @@ def isPtrArithOp (op : Morph.Core.Operator) : Prop :=
 
 mutual
 
-inductive HasType : List Morph.Core.Typ → TypEnv → Morph.Syntax.Expr → Morph.Core.Typ → Prop where
-  | bvar_type : ∀ bvs Γ n,
-      (h : n < bvs.length) →
-      HasType bvs Γ (.bvar n) bvs[n]
-  | fvar_type : ∀ bvs Γ name τ,
+inductive HasType : LinCtx → TypEnv → Morph.Syntax.Expr → Morph.Core.Typ → Prop where
+  | bvar_type : ∀ ctx Γ n,
+      (h : n < (ctx.types).length) →
+      HasType ctx Γ (.bvar n) (ctx.types)[n]
+  | fvar_type : ∀ ctx Γ name τ,
       lookupTyp Γ name = some τ →
-      HasType bvs Γ (.fvar name) τ
-  | lit_int : ∀ bvs Γ n, HasType bvs Γ (.lit (.int n)) .intType
-  | lit_bool : ∀ bvs Γ b, HasType bvs Γ (.lit (.bool b)) .boolType
-  | lit_string : ∀ bvs Γ s, HasType bvs Γ (.lit (.string s)) .stringType
-  | lit_unit : ∀ bvs Γ, HasType bvs Γ (.lit .unit) .unitType
-  | lit_pointer : ∀ bvs Γ p, HasType bvs Γ (.lit (.pointer p)) .pointerType
-  | lit_float : ∀ bvs Γ w f, HasType bvs Γ (.lit (.float f)) (.floatType w)
-  | lit_int_width : ∀ bvs Γ w n, HasType bvs Γ (.lit (.int n)) (.intWidthType w)
-  | lit_some : ∀ bvs Γ v τ, HasType bvs Γ (.lit (.some v)) (.optionType τ)
-  | lit_none : ∀ bvs Γ τ, HasType bvs Γ (.lit .none) (.optionType τ)
-  | lit_ok : ∀ bvs Γ v τ_ok τ_err, HasType bvs Γ (.lit (.ok v)) (.resultType τ_ok τ_err)
-  | lit_err : ∀ bvs Γ v τ_err τ_ok, HasType bvs Γ (.lit (.err v)) (.resultType τ_ok τ_err)
-  | unop_not : ∀ bvs Γ e,
-      HasType bvs Γ e .boolType →
-      HasType bvs Γ (.unop .not e) .boolType
-  | unop_notb : ∀ bvs Γ e,
-      HasType bvs Γ e .intType →
-      HasType bvs Γ (.unop .notb e) .intType
-  | binop_arith : ∀ bvs Γ op e1 e2,
+      HasType ctx Γ (.fvar name) τ
+  | lit_int : ∀ ctx Γ n, HasType ctx Γ (.lit (.int n)) .intType
+  | lit_bool : ∀ ctx Γ b, HasType ctx Γ (.lit (.bool b)) .boolType
+  | lit_string : ∀ ctx Γ s, HasType ctx Γ (.lit (.string s)) .stringType
+  | lit_unit : ∀ ctx Γ, HasType ctx Γ (.lit .unit) .unitType
+  | lit_pointer : ∀ ctx Γ p, HasType ctx Γ (.lit (.pointer p)) .pointerType
+  | lit_float : ∀ ctx Γ w f, HasType ctx Γ (.lit (.float f)) (.floatType w)
+  | lit_int_width : ∀ ctx Γ w n, HasType ctx Γ (.lit (.int n)) (.intWidthType w)
+  | lit_some : ∀ ctx Γ v τ, HasType ctx Γ (.lit (.some v)) (.optionType τ)
+  | lit_none : ∀ ctx Γ τ, HasType ctx Γ (.lit .none) (.optionType τ)
+  | lit_ok : ∀ ctx Γ v τ_ok τ_err, HasType ctx Γ (.lit (.ok v)) (.resultType τ_ok τ_err)
+  | lit_err : ∀ ctx Γ v τ_err τ_ok, HasType ctx Γ (.lit (.err v)) (.resultType τ_ok τ_err)
+  | unop_not : ∀ ctx Γ e,
+      HasType ctx Γ e .boolType →
+      HasType ctx Γ (.unop .not e) .boolType
+  | unop_notb : ∀ ctx Γ e,
+      HasType ctx Γ e .intType →
+      HasType ctx Γ (.unop .notb e) .intType
+  | binop_arith : ∀ ctx Γ op e1 e2,
       isArithOp op →
-      HasType bvs Γ e1 .intType → HasType bvs Γ e2 .intType →
-      HasType bvs Γ (.binop op e1 e2) .intType
-  | binop_comp : ∀ bvs Γ op e1 e2,
+      HasType ctx Γ e1 .intType → HasType ctx Γ e2 .intType →
+      HasType ctx Γ (.binop op e1 e2) .intType
+  | binop_comp : ∀ ctx Γ op e1 e2,
       isCompOp op →
-      HasType bvs Γ e1 .intType → HasType bvs Γ e2 .intType →
-      HasType bvs Γ (.binop op e1 e2) .boolType
-  | binop_logic : ∀ bvs Γ op e1 e2,
+      HasType ctx Γ e1 .intType → HasType ctx Γ e2 .intType →
+      HasType ctx Γ (.binop op e1 e2) .boolType
+  | binop_logic : ∀ ctx Γ op e1 e2,
       isLogicOp op →
-      HasType bvs Γ e1 .boolType → HasType bvs Γ e2 .boolType →
-      HasType bvs Γ (.binop op e1 e2) .boolType
-  | binop_bitwise : ∀ bvs Γ op e1 e2,
+      HasType ctx Γ e1 .boolType → HasType ctx Γ e2 .boolType →
+      HasType ctx Γ (.binop op e1 e2) .boolType
+  | binop_bitwise : ∀ ctx Γ op e1 e2,
       isBitwiseOp op →
-      HasType bvs Γ e1 .intType → HasType bvs Γ e2 .intType →
-      HasType bvs Γ (.binop op e1 e2) .intType
-  | binop_ptr_arith : ∀ bvs Γ op e1 e2,
+      HasType ctx Γ e1 .intType → HasType ctx Γ e2 .intType →
+      HasType ctx Γ (.binop op e1 e2) .intType
+  | binop_ptr_arith : ∀ ctx Γ op e1 e2,
       isPtrArithOp op →
-      HasType bvs Γ e1 .pointerType → HasType bvs Γ e2 .intType →
-      HasType bvs Γ (.binop op e1 e2) .pointerType
-  | binop_ptr_load : ∀ bvs Γ e1 e2,
-      HasType bvs Γ e1 .pointerType → HasType bvs Γ e2 .unitType →
-      HasType bvs Γ (.binop .ptrLoad e1 e2) .unitType
-  | binop_ptr_store : ∀ bvs Γ e1 e2,
-      HasType bvs Γ e1 .pointerType → HasType bvs Γ e2 .intType →
-      HasType bvs Γ (.binop .ptrStore e1 e2) .unitType
-  | binop_string_concat : ∀ bvs Γ op e1 e2,
+      HasType ctx Γ e1 .pointerType → HasType ctx Γ e2 .intType →
+      HasType ctx Γ (.binop op e1 e2) .pointerType
+  | binop_ptr_load : ∀ ctx Γ e1 e2,
+      HasType ctx Γ e1 .pointerType → HasType ctx Γ e2 .unitType →
+      HasType ctx Γ (.binop .ptrLoad e1 e2) .unitType
+  | binop_ptr_store : ∀ ctx Γ e1 e2,
+      HasType ctx Γ e1 .pointerType → HasType ctx Γ e2 .intType →
+      HasType ctx Γ (.binop .ptrStore e1 e2) .unitType
+  | binop_string_concat : ∀ ctx Γ op e1 e2,
       op = .add →
-      HasType bvs Γ e1 .stringType → HasType bvs Γ e2 .stringType →
-      HasType bvs Γ (.binop op e1 e2) .stringType
-  | lam_type : ∀ bvs Γ n body paramTys retTy,
+      HasType ctx Γ e1 .stringType → HasType ctx Γ e2 .stringType →
+      HasType ctx Γ (.binop op e1 e2) .stringType
+  | lam_type : ∀ ctx Γ n body paramTys retTy,
       n = paramTys.length →
-      HasType (paramTys.reverse ++ bvs) Γ body retTy →
-      HasType bvs Γ (.lam n body) (.functionType paramTys retTy)
-  | app_type : ∀ bvs Γ fn args τs τ,
-      HasType bvs Γ fn (.functionType τs τ) →
-      HasTypeAll bvs Γ args τs →
-      HasType bvs Γ (.app fn args) τ
-  | let_type : ∀ bvs Γ e1 e2 τ1 τ2,
-      HasType bvs Γ e1 τ1 →
-      HasType (τ1 :: bvs) Γ e2 τ2 →
-      HasType bvs Γ (.let_ e1 e2) τ2
-  | if_type : ∀ bvs Γ c t f τ,
-      HasType bvs Γ c .boolType →
-      HasType bvs Γ t τ → HasType bvs Γ f τ →
-      HasType bvs Γ (.ifThenElse c t f) τ
-  | for_type : ∀ bvs Γ s e body,
-      HasType bvs Γ s .intType → HasType bvs Γ e .intType →
-      HasTypeAll (.intType :: bvs) Γ body [.unitType] →
-      HasType bvs Γ (.forLoop s e body) .unitType
-  | block_type : ∀ bvs Γ exprs τs τ,
-      HasTypeAll bvs Γ exprs (τs ++ [τ]) →
-      HasType bvs Γ (.block exprs) τ
-  | pipe_type : ∀ bvs Γ e f τ_arg τ_ret,
-      HasType bvs Γ e τ_arg →
-      HasType bvs Γ f (.functionType [τ_arg] τ_ret) →
-      HasType bvs Γ (.pipe e f) τ_ret
-  | typeAsc_type : ∀ bvs Γ e τ,
-      HasType bvs Γ e τ →
-      HasType bvs Γ (.typeAsc e τ) τ
-  | some_type : ∀ bvs Γ e τ_inner,
-      HasType bvs Γ e τ_inner →
-      HasType bvs Γ (.some_ e) (.optionType τ_inner)
-  | none_type : ∀ bvs Γ τ,
-      HasType bvs Γ .none_ (.optionType τ)
-  | ok_type : ∀ bvs Γ e τ_ok τ_err,
-      HasType bvs Γ e τ_ok →
-      HasType bvs Γ (.ok_ e) (.resultType τ_ok τ_err)
-  | err_type : ∀ bvs Γ e τ_err τ_ok,
-      HasType bvs Γ e τ_err →
-      HasType bvs Γ (.err_ e) (.resultType τ_ok τ_err)
-  | null_coalesce_type : ∀ bvs Γ e1 e2 τ,
-      HasType bvs Γ e1 (.optionType τ) →
-      HasType bvs Γ e2 (.optionType τ) →
-      HasType bvs Γ (.nullCoalesce e1 e2) (.optionType τ)
-  | tuple_type : ∀ bvs Γ elems tys,
-      HasTypeAll bvs Γ elems tys →
-      HasType bvs Γ (.tuple_ elems) (.tupleType tys)
-  | arrayLit_type : ∀ bvs Γ elems τ n,
-      HasTypeAll bvs Γ elems (List.replicate n τ) →
+      HasType (LinCtx.pushMany ctx paramTys.reverse) Γ body retTy →
+      HasType ctx Γ (.lam n body) (.functionType paramTys retTy)
+  | app_type : ∀ ctx Γ fn args τs τ,
+      HasType ctx Γ fn (.functionType τs τ) →
+      HasTypeAll ctx Γ args τs →
+      HasType ctx Γ (.app fn args) τ
+  | let_type : ∀ ctx Γ e1 e2 τ1 τ2,
+      HasType ctx Γ e1 τ1 →
+      HasType ((τ1, LinCtx.initialUsage τ1) :: ctx) Γ e2 τ2 →
+      HasType ctx Γ (.let_ e1 e2) τ2
+  | if_type : ∀ ctx Γ c t f τ,
+      HasType ctx Γ c .boolType →
+      HasType ctx Γ t τ → HasType ctx Γ f τ →
+      HasType ctx Γ (.ifThenElse c t f) τ
+  | for_type : ∀ ctx Γ s e body,
+      HasType ctx Γ s .intType → HasType ctx Γ e .intType →
+      HasTypeAll ((.intType, LinCtx.initialUsage .intType) :: ctx) Γ body [.unitType] →
+      HasType ctx Γ (.forLoop s e body) .unitType
+  | block_type : ∀ ctx Γ exprs τs τ,
+      HasTypeAll ctx Γ exprs (τs ++ [τ]) →
+      HasType ctx Γ (.block exprs) τ
+  | pipe_type : ∀ ctx Γ e f τ_arg τ_ret,
+      HasType ctx Γ e τ_arg →
+      HasType ctx Γ f (.functionType [τ_arg] τ_ret) →
+      HasType ctx Γ (.pipe e f) τ_ret
+  | typeAsc_type : ∀ ctx Γ e τ,
+      HasType ctx Γ e τ →
+      HasType ctx Γ (.typeAsc e τ) τ
+  | some_type : ∀ ctx Γ e τ_inner,
+      HasType ctx Γ e τ_inner →
+      HasType ctx Γ (.some_ e) (.optionType τ_inner)
+  | none_type : ∀ ctx Γ τ,
+      HasType ctx Γ .none_ (.optionType τ)
+  | ok_type : ∀ ctx Γ e τ_ok τ_err,
+      HasType ctx Γ e τ_ok →
+      HasType ctx Γ (.ok_ e) (.resultType τ_ok τ_err)
+  | err_type : ∀ ctx Γ e τ_err τ_ok,
+      HasType ctx Γ e τ_err →
+      HasType ctx Γ (.err_ e) (.resultType τ_ok τ_err)
+  | null_coalesce_type : ∀ ctx Γ e1 e2 τ,
+      HasType ctx Γ e1 (.optionType τ) →
+      HasType ctx Γ e2 (.optionType τ) →
+      HasType ctx Γ (.nullCoalesce e1 e2) (.optionType τ)
+  | tuple_type : ∀ ctx Γ elems tys,
+      HasTypeAll ctx Γ elems tys →
+      HasType ctx Γ (.tuple_ elems) (.tupleType tys)
+  | arrayLit_type : ∀ ctx Γ elems τ n,
+      HasTypeAll ctx Γ elems (List.replicate n τ) →
       n = elems.length →
       n > 0 →
-      HasType bvs Γ (.arrayLit elems) (.arrayType τ n)
-  | arrayIndex_type : ∀ bvs Γ arr idx τ n,
-      HasType bvs Γ arr (.arrayType τ n) →
-      HasType bvs Γ idx .intType →
-      HasType bvs Γ (.arrayIndex arr idx) τ
+      HasType ctx Γ (.arrayLit elems) (.arrayType τ n)
+  | arrayIndex_type : ∀ ctx Γ arr idx τ n,
+      HasType ctx Γ arr (.arrayType τ n) →
+      HasType ctx Γ idx .intType →
+      HasType ctx Γ (.arrayIndex arr idx) τ
   -- Reference operations (storeless placeholders, ADR-010)
-  | refCreate_type : ∀ bvs Γ e cap τ,
-      HasType bvs Γ e τ →
-      HasType bvs Γ (.refCreate e cap τ) (.refType cap τ)
-  | refLoad_type : ∀ bvs Γ e cap τ,
-      HasType bvs Γ e (.refType cap τ) →
-      HasType bvs Γ (.refLoad e) τ
-  | refStore_type : ∀ bvs Γ e v cap τ,
-      HasType bvs Γ e (.refType cap τ) →
-      HasType bvs Γ v τ →
+  | refCreate_type : ∀ ctx Γ e cap τ,
+      HasType ctx Γ e τ →
+      HasType ctx Γ (.refCreate e cap τ) (.refType cap τ)
+  | refLoad_type : ∀ ctx Γ e cap τ,
+      HasType ctx Γ e (.refType cap τ) →
+      HasType ctx Γ (.refLoad e) τ
+  | refStore_type : ∀ ctx Γ e v cap τ,
+      HasType ctx Γ e (.refType cap τ) →
+      HasType ctx Γ v τ →
       cap ≠ .val →  -- cannot store through immutable reference
-      HasType bvs Γ (.refStore e v τ) .unitType
-  | refFree_type : ∀ bvs Γ e τ,
-      HasType bvs Γ e (.refType .iso τ) →
-      HasType bvs Γ (.refFree e) .unitType
-  | field_access_type : ∀ bvs Γ e fname sname fields τ,
-      HasType bvs Γ e (.structType sname fields) →
+      HasType ctx Γ (.refStore e v τ) .unitType
+  | refFree_type : ∀ ctx Γ e τ,
+      HasType ctx Γ e (.refType .iso τ) →
+      HasType ctx Γ (.refFree e) .unitType
+  | field_access_type : ∀ ctx Γ e fname sname fields τ,
+      HasType ctx Γ e (.structType sname fields) →
       structFieldType fields fname = some τ →
-      HasType bvs Γ (.field_ e fname) τ
-  | match_type : ∀ bvs Γ scrut arms τ_scrut τ_result,
-      HasType bvs Γ scrut τ_scrut →
-      ArmsTyped bvs Γ τ_scrut arms τ_result →
-      HasType bvs Γ (.match_ scrut arms) τ_result
+      HasType ctx Γ (.field_ e fname) τ
+  | match_type : ∀ ctx Γ scrut arms τ_scrut τ_result,
+      HasType ctx Γ scrut τ_scrut →
+      ArmsTyped ctx Γ τ_scrut arms τ_result →
+      HasType ctx Γ (.match_ scrut arms) τ_result
 
 
-inductive HasTypeAll : List Morph.Core.Typ → TypEnv → List Morph.Syntax.Expr → List Morph.Core.Typ → Prop where
-  | nil : ∀ bvs Γ,
-      HasTypeAll bvs Γ [] []
-  | cons : ∀ bvs Γ e es τ τs,
-      HasType bvs Γ e τ → HasTypeAll bvs Γ es τs →
-      HasTypeAll bvs Γ (e :: es) (τ :: τs)
+inductive HasTypeAll : LinCtx → TypEnv → List Morph.Syntax.Expr → List Morph.Core.Typ → Prop where
+  | nil : ∀ ctx Γ,
+      HasTypeAll ctx Γ [] []
+  | cons : ∀ ctx Γ e es τ τs,
+      HasType ctx Γ e τ → HasTypeAll ctx Γ es τs →
+      HasTypeAll ctx Γ (e :: es) (τ :: τs)
 
-inductive ArmsTyped : List Morph.Core.Typ → TypEnv → Morph.Core.Typ → List (List String × Morph.Syntax.Expr) → Morph.Core.Typ → Prop where
-  | nil : ∀ bvs Γ τ_scrut,
-      ArmsTyped bvs Γ τ_scrut [] .unitType
-  | cons : ∀ bvs Γ vars body rest τ_scrut τ_result,
-      HasType (List.replicate vars.length τ_scrut ++ bvs) Γ body τ_result →
-      ArmsTyped bvs Γ τ_scrut rest τ_result →
-      ArmsTyped bvs Γ τ_scrut ((vars, body) :: rest) τ_result
+inductive ArmsTyped : LinCtx → TypEnv → Morph.Core.Typ → List (List String × Morph.Syntax.Expr) → Morph.Core.Typ → Prop where
+  | nil : ∀ ctx Γ τ_scrut,
+      ArmsTyped ctx Γ τ_scrut [] .unitType
+  | cons : ∀ ctx Γ vars body rest τ_scrut τ_result,
+      HasType (LinCtx.pushMany ctx (List.replicate vars.length τ_scrut)) Γ body τ_result →
+      ArmsTyped ctx Γ τ_scrut rest τ_result →
+      ArmsTyped ctx Γ τ_scrut ((vars, body) :: rest) τ_result
 
 end
 

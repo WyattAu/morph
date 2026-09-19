@@ -3,7 +3,7 @@ SPDX-License-Identifier: Apache-2.0 -/
 
 import Morph.Core
 import Morph.Syntax
-import Morph.Specs.TypeSystem
+import Morph.Specs.TypeSystem.Spec
 
 namespace Morph.TypeChecker
 
@@ -34,8 +34,8 @@ See ADR-004 for bidirectional typing design.
 
     For lambdas, bidirectional typing is needed; use `checkType` with an
     expected function type to infer lambda parameter types. -/
-def synthType (bvs : List Typ) (env : TypEnv) (e : Expr) : Option Typ :=
-  inferType bvs env e
+def synthType (ctx : LinCtx) (env : TypEnv) (e : Expr) : Option Typ :=
+  inferType ctx env e
 
 /-! ## Type Checking -/
 
@@ -43,17 +43,17 @@ def synthType (bvs : List Typ) (env : TypEnv) (e : Expr) : Option Typ :=
     For lambdas, this performs bidirectional checking: given an expected
     function type, the parameter types are used to extend the de Bruijn
     context and check the body. -/
-def checkType (bvs : List Typ) (env : TypEnv) (e : Expr) (expected : Typ) : Bool :=
+def checkType (ctx : LinCtx) (env : TypEnv) (e : Expr) (expected : Typ) : Bool :=
   match e with
   | .lam n body =>
     match expected with
     | .functionType paramTys retTy =>
       if _h : n = paramTys.length then
-        checkType (paramTys.reverse ++ bvs) env body retTy
+        checkType (LinCtx.pushMany ctx paramTys.reverse) env body retTy
       else false
     | _ => false
   | _ =>
-    match synthType bvs env e with
+    match synthType ctx env e with
     | some t => t == expected
     | none => false
 
@@ -96,14 +96,14 @@ partial def unify (t1 t2 : Typ) : Option Typ :=
 
     The overall type of the block is the type of the last expression
     (or `unitType` if empty). -/
-def typeCheckBlock (bvs : List Typ) (env : TypEnv) (exprs : List Expr) : Bool :=
-  exprs.all (fun e => (synthType bvs env e).isSome)
+def typeCheckBlock (ctx : LinCtx) (env : TypEnv) (exprs : List Expr) : Bool :=
+  exprs.all (fun e => (synthType ctx env e).isSome)
 
 /-! ## Error Reporting -/
 
 /-- Produce a human-readable type error message when type checking fails. -/
-def formatTypeError (bvs : List Typ) (env : TypEnv) (e : Expr) (expected : Typ) : String :=
-  match synthType bvs env e with
+def formatTypeError (ctx : LinCtx) (env : TypEnv) (e : Expr) (expected : Typ) : String :=
+  match synthType ctx env e with
   | some actual =>
     s!"Type mismatch: expected {repr expected}, found {repr actual} in {repr e}"
   | none =>
@@ -111,9 +111,9 @@ def formatTypeError (bvs : List Typ) (env : TypEnv) (e : Expr) (expected : Typ) 
 
 /-! ## Utility: Infer Type of List of Expressions -/
 
-def inferTypes (bvs : List Typ) (env : TypEnv) (exprs : List Expr) : Option (List Typ) :=
+def inferTypes (ctx : LinCtx) (env : TypEnv) (exprs : List Expr) : Option (List Typ) :=
   exprs.foldlM (init := []) (fun acc e =>
-    match synthType bvs env e with
+    match synthType ctx env e with
     | some t => some (acc ++ [t])
     | none => none)
 

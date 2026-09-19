@@ -44,10 +44,9 @@ section InferTypeTests
 
   -- Bound variable type inference
 
-  example : inferType [Typ.intType] [] (.bvar 0) = some Typ.intType := by
+  example : inferType [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] (.bvar 0) = some Typ.intType := by
     simp only [inferType]
-    show (if h : 0 < [Typ.intType].length then some [Typ.intType][0] else none) = some Typ.intType
-    simp [List.length_cons, List.length_nil]
+    simp [inferType, Morph.LinCtx.types, List.length_cons, List.length_nil]
 
   example : inferType [] [] (.bvar 0) = none := by
     simp only [inferType]
@@ -126,7 +125,7 @@ section InferTypeTests
   -- Let binding type inference
 
   example : inferType [] [] (.let_ (.lit (.int 42)) (.bvar 0)) = some Typ.intType := by
-    simp [inferType]
+    simp [inferType, Morph.LinCtx.types]
 
   -- If-then-else and application type inference are tested via HasType constructors
   -- below. The BEq comparison in inferType for these cases makes direct equality
@@ -165,11 +164,11 @@ section HasTypeConstructorTests
   open HasType
 
   -- HT-01: bvar_type
-  example : HasType [Typ.intType, Typ.boolType] [] (.bvar 0) Typ.intType :=
-    HasType.bvar_type [Typ.intType, Typ.boolType] [] 0 (by native_decide)
+  example : HasType [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType), (Typ.boolType, Morph.LinCtx.initialUsage Typ.boolType)] [] (.bvar 0) Typ.intType :=
+    HasType.bvar_type [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType), (Typ.boolType, Morph.LinCtx.initialUsage Typ.boolType)] [] 0 (by simp [Morph.LinCtx.types])
 
-  example : HasType [Typ.intType, Typ.boolType] [] (.bvar 1) Typ.boolType :=
-    HasType.bvar_type [Typ.intType, Typ.boolType] [] 1 (by native_decide)
+  example : HasType [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType), (Typ.boolType, Morph.LinCtx.initialUsage Typ.boolType)] [] (.bvar 1) Typ.boolType :=
+    HasType.bvar_type [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType), (Typ.boolType, Morph.LinCtx.initialUsage Typ.boolType)] [] 1 (by simp [Morph.LinCtx.types])
 
   -- HT-02: fvar_type
   example : HasType [] [("x", Typ.intType)] (.fvar "x") Typ.intType :=
@@ -251,24 +250,24 @@ section HasTypeConstructorTests
   -- HT-19: lam_type (identity function: int -> int)
   example : HasType [] [] (.lam 1 (.bvar 0)) (.functionType [Typ.intType] Typ.intType) :=
     HasType.lam_type [] [] 1 (.bvar 0) [Typ.intType] Typ.intType rfl
-      (HasType.bvar_type [Typ.intType] [] 0 (by native_decide))
+      (HasType.bvar_type [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] 0 (by simp [Morph.LinCtx.types]))
 
   -- HT-20: lam_type (two-arg function)
   example : HasType [] [] (.lam 2 (.binop .add (.bvar 0) (.bvar 1)))
       (.functionType [Typ.intType, Typ.intType] Typ.intType) :=
     HasType.lam_type [] [] 2 (.binop .add (.bvar 0) (.bvar 1))
       [Typ.intType, Typ.intType] Typ.intType rfl
-        (HasType.binop_arith [Typ.intType, Typ.intType] [] .add (.bvar 0) (.bvar 1)
+        (HasType.binop_arith [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType), (Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] .add (.bvar 0) (.bvar 1)
           (by unfold isArithOp; trivial)
-        (HasType.bvar_type [Typ.intType, Typ.intType] [] 0 (by native_decide))
-        (HasType.bvar_type [Typ.intType, Typ.intType] [] 1 (by native_decide)))
+        (HasType.bvar_type [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType), (Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] 0 (by simp [Morph.LinCtx.types]))
+        (HasType.bvar_type [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType), (Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] 1 (by simp [Morph.LinCtx.types])))
 
   -- HT-21: app_type (identity applied to int literal)
   example : HasType [] [] (.app (.lam 1 (.bvar 0)) [.lit (.int 42)]) Typ.intType :=
     HasType.app_type [] [] (.lam 1 (.bvar 0)) [.lit (.int 42)]
       [Typ.intType] Typ.intType
       (HasType.lam_type [] [] 1 (.bvar 0) [Typ.intType] Typ.intType rfl
-        (HasType.bvar_type [Typ.intType] [] 0 (by native_decide)))
+        (HasType.bvar_type [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] 0 (by simp [Morph.LinCtx.types])))
       (HasTypeAll.cons [] [] (.lit (.int 42)) [] Typ.intType []
         (HasType.lit_int [] [] 42) (HasTypeAll.nil [] []))
 
@@ -281,10 +280,10 @@ section HasTypeConstructorTests
       [Typ.intType, Typ.intType] Typ.intType
       (HasType.lam_type [] [] 2 (.binop .add (.bvar 0) (.bvar 1))
         [Typ.intType, Typ.intType] Typ.intType rfl
-        (HasType.binop_arith [Typ.intType, Typ.intType] [] .add (.bvar 0) (.bvar 1)
+        (HasType.binop_arith [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType), (Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] .add (.bvar 0) (.bvar 1)
           (by unfold isArithOp; trivial)
-          (HasType.bvar_type [Typ.intType, Typ.intType] [] 0 (by native_decide))
-          (HasType.bvar_type [Typ.intType, Typ.intType] [] 1 (by native_decide))))
+          (HasType.bvar_type [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType), (Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] 0 (by simp [Morph.LinCtx.types]))
+          (HasType.bvar_type [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType), (Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] 1 (by simp [Morph.LinCtx.types]))))
       (HasTypeAll.cons [] [] (.lit (.int 1)) [.lit (.int 2)] Typ.intType [Typ.intType]
         (HasType.lit_int [] [] 1)
         (HasTypeAll.cons [] [] (.lit (.int 2)) [] Typ.intType []
@@ -294,7 +293,7 @@ section HasTypeConstructorTests
   example : HasType [] [] (.let_ (.lit (.int 42)) (.bvar 0)) Typ.intType :=
     HasType.let_type [] [] (.lit (.int 42)) (.bvar 0) Typ.intType Typ.intType
       (HasType.lit_int [] [] 42)
-      (HasType.bvar_type [Typ.intType] [] 0 (by native_decide))
+      (HasType.bvar_type [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] 0 (by simp [Morph.LinCtx.types]))
 
   -- HT-24: let_type (shadowing chain)
   example : HasType [] []
@@ -302,10 +301,10 @@ section HasTypeConstructorTests
     HasType.let_type [] [] (.lit (.int 1))
       (.let_ (.lit (.bool true)) (.bvar 0)) Typ.intType Typ.boolType
       (HasType.lit_int [] [] 1)
-      (HasType.let_type [Typ.intType] [] (.lit (.bool true)) (.bvar 0)
+      (HasType.let_type [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] (.lit (.bool true)) (.bvar 0)
         Typ.boolType Typ.boolType
-        (HasType.lit_bool [Typ.intType] [] true)
-        (HasType.bvar_type [Typ.boolType, Typ.intType] [] 0 (by native_decide)))
+        (HasType.lit_bool [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] true)
+        (HasType.bvar_type [(Typ.boolType, Morph.LinCtx.initialUsage Typ.boolType), (Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] 0 (by simp [Morph.LinCtx.types])))
 
   -- HT-25: if_type (true branch)
   example : HasType [] []
@@ -341,9 +340,9 @@ section HasTypeConstructorTests
       (.lit (.int 0)) (.lit (.int 10)) [.lit .unit]
       (HasType.lit_int [] [] 0)
       (HasType.lit_int [] [] 10)
-      (HasTypeAll.cons [Typ.intType] [] (.lit .unit) [] Typ.unitType []
-        (HasType.lit_unit [Typ.intType] [])
-        (HasTypeAll.nil [Typ.intType] []))
+      (HasTypeAll.cons [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] (.lit .unit) [] Typ.unitType []
+        (HasType.lit_unit [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [])
+        (HasTypeAll.nil [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] []))
 
   -- HT-29: block_type (empty)
   -- Note: empty blocks are handled by inferType but block_type requires non-empty exprs.

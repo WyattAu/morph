@@ -192,6 +192,115 @@ theorem push_type (ctx : LinCtx) (τ : Typ) (u : Usage) :
     types (push ctx τ u) = τ :: types ctx := by
   simp [push, types]
 
+/-! ## Weakening Support -/
+
+/-- Push a list of types onto the context (weakening support).
+    Each type gets its initial usage (zero for linear, many for unrestricted). -/
+def pushMany (ctx : LinCtx) (τs : List Typ) : LinCtx :=
+  (τs.map (fun τ => (τ, initialUsage τ))) ++ ctx
+
+theorem types_pushMany (ctx : LinCtx) (τs : List Typ) :
+    types (pushMany ctx τs) = τs ++ types ctx := by
+  have hmap : Prod.fst ∘ (fun τ => (τ, initialUsage τ)) = id := by
+    funext x; rfl
+  simp only [pushMany, types, List.map_append, List.map_map, hmap, List.map_id]
+
+/-- Reassociation for nested context extension:
+    pushing `xs` then `ys` equals pushing `xs ++ ys` in one go. -/
+theorem pushMany_pushMany_append (ctx : LinCtx) (xs ys : List Typ) :
+    pushMany (pushMany ctx ys) xs = pushMany ctx (xs ++ ys) := by
+  simp only [pushMany, List.map_append, List.append_assoc]
+
+/-! ## Index Bridges for Multi-Type Insertion -/
+
+/-- Inserting entries for `σs` between prefix `pfx` and base `ctx` does not change
+    the type seen at index `n < pfx.length` (both land inside the prefix). -/
+theorem types_pushMany_pushMany_index_low (ctx : LinCtx) (pfx σs : List Typ) (n : Nat)
+    (h : n < pfx.length) :
+    (types (pushMany (pushMany ctx σs) pfx))[n]?
+      = (types (pushMany ctx pfx))[n]? := by
+  simp only [types_pushMany]
+  rw [List.getElem?_append_left h, List.getElem?_append_left h]
+
+/-- Inserting entries for `σs` between prefix `pfx` and base `ctx`: index
+    `pfx.length + k` (for `k < σs.length`) reads the inserted type `σs[k]`. -/
+theorem types_pushMany_pushMany_index_mid (ctx : LinCtx) (pfx σs : List Typ) (k : Nat)
+    (h : k < σs.length) :
+    (types (pushMany (pushMany ctx σs) pfx))[pfx.length + k]?
+      = some (σs[k]'h) := by
+  simp only [types_pushMany]
+  rw [List.getElem?_append_right (by omega),
+      show pfx.length + k - pfx.length = k from by omega]
+  simp only [List.getElem?_append_left h]
+  exact List.getElem?_eq_some_iff.mpr ⟨h, rfl⟩
+
+/-- Inserting entries for `σs` between prefix `pfx` and base `ctx`: index `n`
+    (for `n ≥ pfx.length + σs.length`) in the extended context reads index
+    `n - σs.length` of the unextended one. -/
+theorem types_pushMany_pushMany_index_high (ctx : LinCtx) (pfx σs : List Typ) (n : Nat)
+    (h : n ≥ pfx.length + σs.length) :
+    (types (pushMany (pushMany ctx σs) pfx))[n]?
+      = (types (pushMany ctx pfx))[n - σs.length]? := by
+  simp only [types_pushMany]
+  rw [List.getElem?_append_right (by omega)]
+  rw [List.getElem?_append_right (by omega)]
+  rw [List.getElem?_append_right (by omega)]
+  rw [show n - pfx.length - σs.length = n - σs.length - pfx.length from by omega]
+
+theorem types_pushMany_index_high (ctx : LinCtx) (τs : List Typ) (n : Nat)
+    (h : n < ctx.length) :
+    (types (pushMany ctx τs))[n + τs.length]'(by simp [types, pushMany]; omega)
+        = (types ctx)[n]'(by rw [types_length]; exact h) := by
+  simp [types_pushMany]
+
+theorem types_pushMany_index_low (ctx : LinCtx) (τs : List Typ) (k : Nat)
+    (h : k < τs.length) :
+    (types (pushMany ctx τs))[k]'(by simp [types, pushMany]; omega) = τs[k]'h := by
+  simp [types_pushMany, h]
+
+/-- Index bridge for weakening: inserting `(σ, initialUsage σ)` between the pushed
+    prefix `xs` and the base context does not change the type seen at index `n < xs.length`
+    (both land inside the pushed prefix). -/
+theorem types_pushMany_push_index_low (ctx : LinCtx) (xs : List Typ) (σ : Typ) (n : Nat)
+    (h : n < xs.length) :
+    (types (pushMany ((σ, initialUsage σ) :: ctx) xs))[n]'(by
+        rw [types_pushMany]
+        have h1 : types ((σ, initialUsage σ) :: ctx) = σ :: types ctx := rfl
+        rw [h1]
+        simp only [List.length_append, List.length_cons]
+        omega)
+      = (types (pushMany ctx xs))[n]'(by
+        simp only [types_pushMany, List.length_append]
+        omega) := by
+  simp only [types_pushMany]
+  exact (List.getElem_append_left h).trans (List.getElem_append_left h).symm
+
+/-- Cast a `getElem` application along an equality of lists. -/
+private theorem getElem_of_eq {α : Type _} {as bs : List α} {k : Nat}
+    (e : as = bs) (p : k < as.length) :
+    as[k]'p = bs[k]'(e ▸ p) := by
+  subst e; rfl
+
+/-- Index bridge for weakening (Option form): inserting `(σ, initialUsage σ)` between
+    the pushed prefix `xs` and the base context shifts the base-context index by one
+    (`n + 1` in the new context reads index `n` of the old context).
+    Stated with `xs[i]?` to keep rewriting proof-free; recover the `getElem` form with
+    `List.getElem?_of_lt` and `Option.some.inj`. -/
+theorem types_pushMany_push_index_high (ctx : LinCtx) (xs : List Typ) (σ : Typ) (n : Nat)
+    (hGe : n ≥ xs.length)
+    (hCons : (n - xs.length) + 1 < (types ((σ, initialUsage σ) :: ctx)).length) :
+    (types (pushMany ((σ, initialUsage σ) :: ctx) xs))[n + 1]?
+      = (types (pushMany ctx xs))[n]? := by
+  have hTyC : types ((σ, initialUsage σ) :: ctx) = σ :: types ctx := rfl
+  simp only [types_pushMany]
+  rw [hTyC] at hCons ⊢
+  obtain ⟨i, rfl⟩ : ∃ i, n = i + xs.length := ⟨n - xs.length, by omega⟩
+  rw [List.getElem?_append_right (l₁ := xs) (l₂ := σ :: types ctx) (by omega),
+      show i + xs.length + 1 - xs.length = i + 1 from by omega,
+      List.getElem?_cons_succ,
+      List.getElem?_append_right (l₁ := xs) (l₂ := types ctx) (by omega),
+      show i + xs.length - xs.length = i from by omega]
+
 theorem consume_types_unchanged (ctx : LinCtx) (idx : Nat) :
     types (consume ctx idx) = types ctx := by
   induction ctx generalizing idx with

@@ -235,14 +235,14 @@ private theorem depth_refFree {e} :
     exprDepth e < exprDepth (.refFree e) := by
   simp only [exprDepth]; exact Nat.lt_succ_self _
 
-private theorem HasTypeAll_nil_types {bvs : List Typ} {Γ : TypEnv} {tys : List Typ} :
-    HasTypeAll bvs Γ [] tys → tys = [] := by
+private theorem HasTypeAll_nil_types {ctx : LinCtx} {Γ : TypEnv} {tys : List Typ} :
+    HasTypeAll ctx Γ [] tys → tys = [] := by
   intro h
   cases h with
   | nil => rfl
 
-private theorem HasTypeAll_length (bvs : List Typ) (Γ : TypEnv) (es : List Expr) (τs : List Typ) :
-    HasTypeAll bvs Γ es τs → es.length = τs.length := by
+private theorem HasTypeAll_length (ctx : LinCtx) (Γ : TypEnv) (es : List Expr) (τs : List Typ) :
+    HasTypeAll ctx Γ es τs → es.length = τs.length := by
   intro h
   cases es with
   | nil =>
@@ -258,24 +258,24 @@ private theorem HasTypeAll_length (bvs : List Typ) (Γ : TypEnv) (es : List Expr
       simp only [List.length_cons]
       match h with
       | HasTypeAll.cons _ _ _ _ _ _ _ hRest =>
-        exact congrArg (· + 1) (HasTypeAll_length bvs Γ es' τs' hRest)
+        exact congrArg (· + 1) (HasTypeAll_length ctx Γ es' τs' hRest)
 
-private theorem HasTypeAll_append_cons_head {bvs : List Typ} {Γ : TypEnv} {e : Expr} {es : List Expr}
-    {τs : List Typ} {τ : Typ} (h : HasTypeAll bvs Γ (e :: es) (τs ++ [τ])) :
-    ∃ τ_h, HasType bvs Γ e τ_h := by
+private theorem HasTypeAll_append_cons_head {ctx : LinCtx} {Γ : TypEnv} {e : Expr} {es : List Expr}
+    {τs : List Typ} {τ : Typ} (h : HasTypeAll ctx Γ (e :: es) (τs ++ [τ])) :
+    ∃ τ_h, HasType ctx Γ e τ_h := by
   cases τs with
   | nil =>
-    change HasTypeAll bvs Γ (e :: es) [τ] at h
+    change HasTypeAll ctx Γ (e :: es) [τ] at h
     cases h with
     | cons _ _ _ _ _ _ hE _ => exact ⟨_, hE⟩
   | cons τ' τs' =>
-    change HasTypeAll bvs Γ (e :: es) (τ' :: (τs' ++ [τ])) at h
+    change HasTypeAll ctx Γ (e :: es) (τ' :: (τs' ++ [τ])) at h
     cases h with
      | cons _ _ _ _ _ _ hE _ => exact ⟨_, hE⟩
 
-private theorem HasTypeAll_mem {bvs : List Typ} {Γ : TypEnv} {es : List Expr}
-    {τs : List Typ} (hAll : HasTypeAll bvs Γ es τs) (e : Expr) (he : e ∈ es) :
-    ∃ τ, HasType bvs Γ e τ := by
+private theorem HasTypeAll_mem {ctx : LinCtx} {Γ : TypEnv} {es : List Expr}
+    {τs : List Typ} (hAll : HasTypeAll ctx Γ es τs) (e : Expr) (he : e ∈ es) :
+    ∃ τ, HasType ctx Γ e τ := by
   cases es with
   | nil => cases he
   | cons head rest =>
