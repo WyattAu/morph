@@ -46,7 +46,7 @@ section InferTypeTests
 
   example : inferType [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] (.bvar 0) = some Typ.intType := by
     simp only [inferType]
-    simp [inferType, Morph.LinCtx.types, List.length_cons, List.length_nil]
+    simp [Morph.LinCtx.types, List.length_cons, List.length_nil]
 
   example : inferType [] [] (.bvar 0) = none := by
     simp only [inferType]

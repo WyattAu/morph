@@ -228,7 +228,7 @@ partial def eval (ctx : Context) : Expr → Option Expr
           some (.lit (elems.getD n.toNat .unit))
         else none
       | _, _ => none
-   | .refCreate e cap _ => do
+   | .refCreate e _cap _ => do
       let _ ← eval ctx e
       some (.lit (.loc 0))  -- placeholder; real semantics uses Store
    | .refLoad e => do

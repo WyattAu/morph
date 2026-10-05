@@ -107,17 +107,13 @@ def isValid (σ : Store) (loc : Loc) : Bool :=
 def isFreed (σ : Store) (loc : Loc) : Bool :=
   loc ∈ σ.freed
 
-/-! ## Store Typing Invariant -/
+/-! ## Store Typing Invariant
 
-/-- A store is well-typed if every allocated location contains a value
-    that matches its declared type. -/
-def StoreTyping (σ : Store) (Γ : TypEnv) : Prop :=
-  ∀ loc τ v,
-    σ.heap loc = some (τ, v) →
-    loc ∉ σ.freed
-
--- NOTE: Full store typing (value matches type) will be proven after
--- Step is migrated to carry Store. For now, we only track the freed list invariant.
+The real store invariant is `StoreTyped` / `StoreInv` in
+`Morph/Specs/TypeSystem/StoreTyping.lean`, which additionally relates each
+location to the `StoreTyp` map used for typing and requires the stored value to
+inhabit its declared type. An earlier placeholder tracked only the freed list
+and has been removed. -/
 
 /-! ## Capability-Specific Store Properties -/
 
@@ -695,7 +691,7 @@ theorem store_preserves_inv {σ σ' : Store} {Δ : StoreTyp} {loc : Loc}
     have hpt' : pointeeTy Δ l = some τ := pointeeTy_of_ref hΔ
     have heq : τ = t := Option.some.inj (hpt'.symm.trans hpt)
     subst heq
-    exact ⟨v, by rw [hheap']; simp only [if_pos rfl, ↓reduceIte]⟩
+    exact ⟨v, by rw [hheap']; simp only [↓reduceIte]⟩
   · obtain ⟨v', hv'⟩ := htot l t hpt
     refine ⟨v', ?_⟩
     rw [hheap']

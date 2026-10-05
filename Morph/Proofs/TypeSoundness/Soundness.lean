@@ -72,7 +72,7 @@ inductive WellTypedValue : Expr → Typ → Prop where
    | refCreate_val : forall e cap τ, IsValue e → WellTypedValue (.refCreate e cap τ) (.refType cap τ)
    | refLoad_val : forall e τ, IsValue e → WellTypedValue (.refLoad e) τ
    | refStore_val : forall e v τ, IsValue e → IsValue v → WellTypedValue (.refStore e v τ) .unitType
-   | refFree_val : forall e τ, IsValue e → WellTypedValue (.refFree e) .unitType
+   | refFree_val : forall e _τ, IsValue e → WellTypedValue (.refFree e) .unitType
 
 /-! ## Progress-Preservation Combination
 

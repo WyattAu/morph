@@ -416,18 +416,18 @@ inductive Step : Store → Expr → Store → Expr → Prop where
       Step σ idx σ idx' →
       Step σ (.arrayIndex arr idx) σ (.arrayIndex arr idx')
 
-  | array_index_hit : ∀ σ (elems : List Expr) (hvs : ∀ e ∈ elems, IsValue e) (n : Nat),
+  | array_index_hit : ∀ σ (elems : List Expr) (_hvs : ∀ e ∈ elems, IsValue e) (n : Nat),
       n < elems.length →
       Step σ (.arrayIndex (.arrayLit elems) (.lit (.int n)))
            σ (elems.getD n (.lit .unit))
 
-  | array_index_oob : ∀ σ (elems : List Expr) (hvs : ∀ e ∈ elems, IsValue e) (n : Nat),
+  | array_index_oob : ∀ σ (elems : List Expr) (_hvs : ∀ e ∈ elems, IsValue e) (n : Nat),
       elems.length > 0 →
       n ≥ elems.length →
       Step σ (.arrayIndex (.arrayLit elems) (.lit (.int n)))
            σ (elems.getD 0 (.lit .unit))
 
-  | array_index_neg : ∀ σ (elems : List Expr) (hvs : ∀ e ∈ elems, IsValue e) (n : Nat),
+  | array_index_neg : ∀ σ (elems : List Expr) (_hvs : ∀ e ∈ elems, IsValue e) (n : Nat),
       elems.length > 0 →
       Step σ (.arrayIndex (.arrayLit elems) (.lit (.int (Int.negSucc n))))
            σ (elems.getD 0 (.lit .unit))
