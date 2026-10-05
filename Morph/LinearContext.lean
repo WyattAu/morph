@@ -136,6 +136,11 @@ def push (ctx : LinCtx) (τ : Typ) (u : Usage := .zero) : LinCtx :=
 def pop (ctx : LinCtx) : LinCtx :=
   ctx.drop 1
 
+/-- Drop the `n` most recent bindings. Used when leaving the scope of a binder
+    that may have consumed its own bindings: the binder's slots are gone, so the
+    surrounding context is the body context minus those slots. -/
+abbrev drop (ctx : LinCtx) (n : Nat) : LinCtx := List.drop n ctx
+
 /-! ## Context Classification -/
 
 /-- Check if a type requires substructural discipline. -/
@@ -192,6 +197,15 @@ def usages (ctx : LinCtx) : List Usage :=
 
 theorem types_length (ctx : LinCtx) : (types ctx).length = ctx.length := by
   simp [types]
+
+theorem types_drop (ctx : LinCtx) (n : Nat) :
+    types (drop ctx n) = (types ctx).drop n := by
+  simp [types, drop]
+
+theorem length_drop (ctx : LinCtx) (n : Nat) (h : n ≤ ctx.length) :
+    (drop ctx n).length + n = ctx.length := by
+  simp [drop]
+  omega
 
 theorem push_type (ctx : LinCtx) (τ : Typ) (u : Usage) :
     types (push ctx τ u) = τ :: types ctx := by

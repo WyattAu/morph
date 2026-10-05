@@ -12,6 +12,22 @@ namespace Morph.Specs.TypeSystem
 open Morph.Core
 open Morph.Syntax
 
+/-! ## Values Do Not Consume
+
+Typing a value never consumes the ambient context: literals, lambdas and
+`none_` are typed by rules that thread the context through unchanged, and
+`refCreate` threads it too (its allocation happens at run time, not in the
+typing rule).
+
+This is what makes the consumption-aware substitution lemma well-posed: when
+`let_subst` replaces a bound variable by the value that was let-bound, the
+substituted expression inherits exactly the context the value was typed in. -/
+
+theorem value_does_not_consume : ∀ {e : Expr} {τ : Typ} {cin cout : LinCtx},
+    Morph.Semantics.IsValue e → HasType cin [] e τ cout → cout = cin := by
+  intro e τ cin cout hv ht
+  cases hv <;> cases ht <;> simp_all
+
 /-! ## Inversion Lemmas -/
 
 -- NOTE: both bvar rules bound n by the length of the context, so any
