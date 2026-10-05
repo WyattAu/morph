@@ -19,7 +19,9 @@ using de Bruijn indices for bound variables.
 - `HasType ctx Γ e τ ctx'`: The first parameter `ctx : LinCtx` tracks the types
   and usages of currently-bound de Bruijn indices. `ctx.types[0]` is the
   type of bvar 0, etc. The last parameter `ctx'` is the context *after*
-  typing `e`; currently every rule returns `ctx` unchanged (ADR-010 Phase 1c-β-1).
+  typing `e`. In ADR-010 Phase 1c-β-2 only `bvar_type` (consuming a linear slot)
+  and the `binop_*` rules (threading a mid context) change it; the rest still
+  return `ctx` unchanged.
 - `TypEnv` maps free variable names to types (unchanged from named-variable system).
 - `inferType ctx env e`: Executable type inference with bound-variable context.
 - Weakening is trivial: just prepend entries via `LinCtx.pushMany`.
@@ -334,19 +336,38 @@ def isPtrArithOp (op : Morph.Core.Operator) : Prop :=
 - `ctx' : LinCtx` — the linear context *after* typing `e` (ADR-010)
 
 The judgment is a *state transformer on contexts*: it consumes the input
-context `ctx` and produces the output context `ctx'`. Phase 1c-β-1 only installs
-the plumbing — **every rule returns the context it was given unchanged**
-(`ctx' = ctx`; a rule that pushes binders threads the extended context, which is
-itself returned unchanged). Phase 1c-β-2 adds the consumption rules that actually
-mutate the context, and later phases merge contexts at branching points.
+context `ctx` and produces the output context `ctx'`. Phase 1c-β-1 only installed
+the plumbing (every rule returned the context it was given unchanged).
+
+Phase 1c-β-2 (this increment) makes `Usage` matter in exactly two places, and
+is deliberately partial elsewhere:
+- `bvar_type` reads a linear slot (`ctx[n] = some (τ, .zero)`) and *consumes* it:
+  its output context is `LinCtx.consume ctx n` (slot `n` advances to `.one`).
+  `bvar_type_many` reads an unrestricted slot (`ctx[n] = some (τ, .many)`) and
+  leaves the context unchanged.
+- the `binop_*` rules *thread* the context: the second operand is typed in the
+  first operand's **output** context, and the rule's own output context is that
+  same mid context. This matches `HasTypeAll.cons`.
+
+Every other rule still passes its input context through unchanged. That is
+inconsistent with the consuming `bvar_type` but sound, and it is temporary: later
+phases thread the remaining rules and merge contexts at branching points.
 -/
 
 mutual
 
 inductive HasType : LinCtx → TypEnv → Morph.Syntax.Expr → Morph.Core.Typ → LinCtx → Prop where
-  | bvar_type : ∀ ctx Γ n,
+  -- linear binding: consuming it advances the slot to .one
+  | bvar_type : ∀ ctx Γ n τ (ctx' : LinCtx),
       (h : n < (ctx.types).length) →
-      HasType ctx Γ (.bvar n) (ctx.types)[n] ctx
+      ctx[n]? = some (τ, Usage.zero) →
+      ctx' = LinCtx.consume ctx n →
+      HasType ctx Γ (.bvar n) τ ctx'
+  -- unrestricted binding: available any number of times
+  | bvar_type_many : ∀ ctx Γ n τ,
+      (h : n < (ctx.types).length) →
+      ctx[n]? = some (τ, Usage.many) →
+      HasType ctx Γ (.bvar n) τ ctx
   | fvar_type : ∀ ctx Γ name τ,
       lookupTyp Γ name = some τ →
       HasType ctx Γ (.fvar name) τ ctx
@@ -367,36 +388,44 @@ inductive HasType : LinCtx → TypEnv → Morph.Syntax.Expr → Morph.Core.Typ �
   | unop_notb : ∀ ctx Γ e,
       HasType ctx Γ e .intType ctx →
       HasType ctx Γ (.unop .notb e) .intType ctx
-  | binop_arith : ∀ ctx Γ op e1 e2,
+  | binop_arith : ∀ ctx Γ op e1 e2 cmid,
       isArithOp op →
-      HasType ctx Γ e1 .intType ctx → HasType ctx Γ e2 .intType ctx →
-      HasType ctx Γ (.binop op e1 e2) .intType ctx
-  | binop_comp : ∀ ctx Γ op e1 e2,
+      HasType ctx Γ e1 .intType cmid →
+      HasType cmid Γ e2 .intType cmid →
+      HasType ctx Γ (.binop op e1 e2) .intType cmid
+  | binop_comp : ∀ ctx Γ op e1 e2 cmid,
       isCompOp op →
-      HasType ctx Γ e1 .intType ctx → HasType ctx Γ e2 .intType ctx →
-      HasType ctx Γ (.binop op e1 e2) .boolType ctx
-  | binop_logic : ∀ ctx Γ op e1 e2,
+      HasType ctx Γ e1 .intType cmid →
+      HasType cmid Γ e2 .intType cmid →
+      HasType ctx Γ (.binop op e1 e2) .boolType cmid
+  | binop_logic : ∀ ctx Γ op e1 e2 cmid,
       isLogicOp op →
-      HasType ctx Γ e1 .boolType ctx → HasType ctx Γ e2 .boolType ctx →
-      HasType ctx Γ (.binop op e1 e2) .boolType ctx
-  | binop_bitwise : ∀ ctx Γ op e1 e2,
+      HasType ctx Γ e1 .boolType cmid →
+      HasType cmid Γ e2 .boolType cmid →
+      HasType ctx Γ (.binop op e1 e2) .boolType cmid
+  | binop_bitwise : ∀ ctx Γ op e1 e2 cmid,
       isBitwiseOp op →
-      HasType ctx Γ e1 .intType ctx → HasType ctx Γ e2 .intType ctx →
-      HasType ctx Γ (.binop op e1 e2) .intType ctx
-  | binop_ptr_arith : ∀ ctx Γ op e1 e2,
+      HasType ctx Γ e1 .intType cmid →
+      HasType cmid Γ e2 .intType cmid →
+      HasType ctx Γ (.binop op e1 e2) .intType cmid
+  | binop_ptr_arith : ∀ ctx Γ op e1 e2 cmid,
       isPtrArithOp op →
-      HasType ctx Γ e1 .pointerType ctx → HasType ctx Γ e2 .intType ctx →
-      HasType ctx Γ (.binop op e1 e2) .pointerType ctx
-  | binop_ptr_load : ∀ ctx Γ e1 e2,
-      HasType ctx Γ e1 .pointerType ctx → HasType ctx Γ e2 .unitType ctx →
-      HasType ctx Γ (.binop .ptrLoad e1 e2) .unitType ctx
-  | binop_ptr_store : ∀ ctx Γ e1 e2,
-      HasType ctx Γ e1 .pointerType ctx → HasType ctx Γ e2 .intType ctx →
-      HasType ctx Γ (.binop .ptrStore e1 e2) .unitType ctx
-  | binop_string_concat : ∀ ctx Γ op e1 e2,
+      HasType ctx Γ e1 .pointerType cmid →
+      HasType cmid Γ e2 .intType cmid →
+      HasType ctx Γ (.binop op e1 e2) .pointerType cmid
+  | binop_ptr_load : ∀ ctx Γ e1 e2 cmid,
+      HasType ctx Γ e1 .pointerType cmid →
+      HasType cmid Γ e2 .unitType cmid →
+      HasType ctx Γ (.binop .ptrLoad e1 e2) .unitType cmid
+  | binop_ptr_store : ∀ ctx Γ e1 e2 cmid,
+      HasType ctx Γ e1 .pointerType cmid →
+      HasType cmid Γ e2 .intType cmid →
+      HasType ctx Γ (.binop .ptrStore e1 e2) .unitType cmid
+  | binop_string_concat : ∀ ctx Γ op e1 e2 cmid,
       op = .add →
-      HasType ctx Γ e1 .stringType ctx → HasType ctx Γ e2 .stringType ctx →
-      HasType ctx Γ (.binop op e1 e2) .stringType ctx
+      HasType ctx Γ e1 .stringType cmid →
+      HasType cmid Γ e2 .stringType cmid →
+      HasType ctx Γ (.binop op e1 e2) .stringType cmid
   | lam_type : ∀ ctx Γ n body paramTys retTy,
       n = paramTys.length →
       HasType (LinCtx.pushMany ctx paramTys.reverse) Γ body retTy

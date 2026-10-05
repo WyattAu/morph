@@ -165,134 +165,110 @@ private theorem HasType_subst_depth (pfx : List Typ) (ctx : LinCtx) (Γ : TypEnv
     (hV : HasType ctx Γ v τ1 ctx) :
     HasType (LinCtx.pushMany ctx pfx) Γ (subst' pfx.length e v) τ (LinCtx.pushMany ctx pfx) := by
   match hE with
-  | .bvar_type _ _ n hLen =>
+  -- A consuming `bvar_type` output context differs from its input, so it cannot
+  -- occur under the `ctx = ctx` hypothesis (ADR-010 1c-β-2).
+  | .bvar_type _ _ _ _ _ _ hEnt hEq =>
+    exact absurd hEq.symm (LinCtx.consume_ne hEnt)
+  | .bvar_type_many _ _ n τ hLen hEnt =>
     unfold subst'
     split
     · -- n < pfx.length: both contexts read pfx[n]
       next hNlt =>
-      have hTyIns : LinCtx.types ((τ1, LinCtx.initialUsage τ1) :: ctx) = τ1 :: LinCtx.types ctx := rfl
       have hLen2 : n < (LinCtx.pushMany ctx pfx).types.length := by
         rw [LinCtx.types_pushMany] at hLen ⊢
-        rw [hTyIns] at hLen
+        rw [show LinCtx.types ((τ1, LinCtx.initialUsage τ1) :: ctx) = τ1 :: LinCtx.types ctx from rfl] at hLen
         simp only [List.length_append] at hLen ⊢
         omega
-      have hBT := HasType.bvar_type (LinCtx.pushMany ctx pfx) Γ n hLen2
-      have eqTy := LinCtx.types_pushMany_push_index_low ctx pfx τ1 n hNlt
-      exact Eq.subst (motive := fun t => HasType _ Γ (.bvar n) t _) (Eq.symm eqTy) hBT
+      rw [LinCtx.entry_pushMany_index_low pfx ((τ1, LinCtx.initialUsage τ1) :: ctx) ctx n hNlt] at hEnt
+      exact HasType.bvar_type_many (LinCtx.pushMany ctx pfx) Γ n τ hLen2 hEnt
     · split
       · -- n = pfx.length: substitute with lift pfx.length v
-        next hEq =>
-        subst hEq
-        have hTyIns : LinCtx.types ((τ1, LinCtx.initialUsage τ1) :: ctx) = τ1 :: LinCtx.types ctx := rfl
-        have hA : (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx) pfx).types
-            = pfx ++ τ1 :: LinCtx.types ctx := by
-          rw [LinCtx.types_pushMany, hTyIns]
-        have hB : (pfx ++ τ1 :: LinCtx.types ctx)[pfx.length]? = some τ1 := by
-          rw [List.getElem?_append_right (by
-            have h := List.length_append (as := pfx) (bs := τ1 :: LinCtx.types ctx)
-            simp only [List.length_cons] at h
-            omega)]
-          simp
-        have hIdxO : (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx) pfx).types[pfx.length]? = some τ1 := by
-          rw [hA]; exact hB
-        have hIdxEq : (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx) pfx).types[pfx.length]'hLen = τ1 := by
-          obtain ⟨_, hEq'⟩ := List.getElem?_eq_some_iff.mp hIdxO
-          exact hEq'
-        rw [hIdxEq]
-        exact weaken_many_at_depth [] pfx ctx Γ v τ1 hV
+        next hEqn =>
+        subst hEqn
+        have hTyEq : τ = τ1 := by
+          have h2 := hEnt
+          rw [LinCtx.entry_pushMany_cons_index_high pfx ctx (τ1, LinCtx.initialUsage τ1) pfx.length
+            (Nat.le_refl _)] at h2
+          simp at h2
+          exact h2.1.symm
+        have hV' : HasType (LinCtx.pushMany ctx pfx) Γ (lift pfx.length v) τ
+            (LinCtx.pushMany ctx pfx) := by
+          rw [hTyEq]
+          exact weaken_many_at_depth [] pfx ctx Γ v τ1 hV
+        exact hV'
       · -- n > pfx.length: shift to .bvar (n - 1)
         next hNeq =>
-        have hTyIns : LinCtx.types ((τ1, LinCtx.initialUsage τ1) :: ctx) = τ1 :: LinCtx.types ctx := rfl
         have hNMinus1 : n - 1 < (LinCtx.pushMany ctx pfx).types.length := by
           rw [LinCtx.types_pushMany] at hLen ⊢
-          rw [hTyIns] at hLen
+          rw [show LinCtx.types ((τ1, LinCtx.initialUsage τ1) :: ctx) = τ1 :: LinCtx.types ctx from rfl] at hLen
           simp only [List.length_append] at hLen ⊢
           have hLC := @List.length_cons Typ τ1 (LinCtx.types ctx)
           omega
-        have hPfxLeN1 : pfx.length ≤ n - 1 := by omega
-        have hCons : ((n - 1) - pfx.length) + 1 < (LinCtx.types ((τ1, LinCtx.initialUsage τ1) :: ctx)).length := by
-          rw [hTyIns]
-          have hLenA : (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx) pfx).types.length
-              = pfx.length + (τ1 :: LinCtx.types ctx).length := by
-            rw [LinCtx.types_pushMany, hTyIns, List.length_append]
-          have hLC := @List.length_cons Typ τ1 (LinCtx.types ctx)
-          omega
-        have hOpt := LinCtx.types_pushMany_push_index_high ctx pfx τ1 (n - 1) hPfxLeN1 hCons
-        rw [show n - 1 + 1 = n from by omega] at hOpt
-        have s1 : (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx) pfx).types[n]? =
-            some ((LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx) pfx).types[n]'hLen) :=
-          List.getElem?_eq_some_iff.mpr ⟨hLen, rfl⟩
-        have s2 : (LinCtx.pushMany ctx pfx).types[n - 1]? =
-            some ((LinCtx.pushMany ctx pfx).types[n - 1]'hNMinus1) :=
-          List.getElem?_eq_some_iff.mpr ⟨hNMinus1, rfl⟩
-        have hChain : (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx) pfx).types[n]? =
-            some ((LinCtx.pushMany ctx pfx).types[n - 1]'hNMinus1) := by rw [hOpt]; exact s2
-        obtain ⟨_, hEqT⟩ := List.getElem?_eq_some_iff.mp hChain
-        have hBT := HasType.bvar_type (LinCtx.pushMany ctx pfx) Γ (n - 1) hNMinus1
-        exact Eq.subst (motive := fun t => HasType _ Γ (.bvar (n - 1)) t _)
-          (Eq.symm hEqT) hBT
-  | .fvar_type _ _ name τ hLookup =>
+        rw [LinCtx.entry_shift pfx ctx τ1 n (by omega)] at hEnt
+        exact HasType.bvar_type_many (LinCtx.pushMany ctx pfx) Γ (n - 1) τ hNMinus1 hEnt
+  | HasType.fvar_type _ _ name τ hLookup =>
     simp only [subst']; exact HasType.fvar_type _ _ name τ hLookup
-  | .lit_int _ _ _ => simp only [subst']; exact HasType.lit_int _ _ _
-  | .lit_bool _ _ _ => simp only [subst']; exact HasType.lit_bool _ _ _
-  | .lit_string _ _ _ => simp only [subst']; exact HasType.lit_string _ _ _
-  | .lit_unit _ _ => simp only [subst']; exact HasType.lit_unit _ _
-   | .lit_pointer _ _ _ => simp only [subst']; exact HasType.lit_pointer _ _ _
-   | .lit_float _ _ _ _ => simp only [subst']; exact HasType.lit_float _ _ _ _
-   | .lit_int_width _ _ _ _ => simp only [subst']; exact HasType.lit_int_width _ _ _ _
-   | .lit_some _ _ _ τ => simp only [subst']; exact HasType.lit_some _ _ _ τ
-   | .lit_none _ _ τ => simp only [subst']; exact HasType.lit_none _ _ τ
-   | .lit_ok _ _ _ τ_ok τ_err => simp only [subst']; exact HasType.lit_ok _ _ _ τ_ok τ_err
-   | .lit_err _ _ _ τ_err τ_ok => simp only [subst']; exact HasType.lit_err _ _ _ τ_err τ_ok
-   | .unop_not _ _ e' hE' =>
+  | HasType.lit_int _ _ _ => simp only [subst']; exact HasType.lit_int _ _ _
+  | HasType.lit_bool _ _ _ => simp only [subst']; exact HasType.lit_bool _ _ _
+  | HasType.lit_string _ _ _ => simp only [subst']; exact HasType.lit_string _ _ _
+  | HasType.lit_unit _ _ => simp only [subst']; exact HasType.lit_unit _ _
+   | HasType.lit_pointer _ _ _ => simp only [subst']; exact HasType.lit_pointer _ _ _
+   | HasType.lit_float _ _ _ _ => simp only [subst']; exact HasType.lit_float _ _ _ _
+   | HasType.lit_int_width _ _ _ _ => simp only [subst']; exact HasType.lit_int_width _ _ _ _
+   | HasType.lit_some _ _ _ τ => simp only [subst']; exact HasType.lit_some _ _ _ τ
+   | HasType.lit_none _ _ τ => simp only [subst']; exact HasType.lit_none _ _ τ
+   | HasType.lit_ok _ _ _ τ_ok τ_err => simp only [subst']; exact HasType.lit_ok _ _ _ τ_ok τ_err
+   | HasType.lit_err _ _ _ τ_err τ_ok => simp only [subst']; exact HasType.lit_err _ _ _ τ_err τ_ok
+   | HasType.unop_not _ _ e' hE' =>
     simp only [subst']
     exact HasType.unop_not _ _ _ (HasType_subst_depth pfx ctx Γ e' v τ1 .boolType hE' hV)
-  | .unop_notb _ _ e' hE' =>
+  | HasType.unop_notb _ _ e' hE' =>
     simp only [subst']
     exact HasType.unop_notb _ _ _ (HasType_subst_depth pfx ctx Γ e' v τ1 .intType hE' hV)
-  | .binop_arith _ _ op e1 e2 hArith hE1 hE2 =>
+  | HasType.binop_arith _ _ op e1 e2 _ hArith hE1 hE2 =>
     simp only [subst']
-    exact HasType.binop_arith _ _ op _ _ hArith
+    exact HasType.binop_arith _ _ op _ _ _ hArith
       (HasType_subst_depth pfx ctx Γ e1 v τ1 .intType hE1 hV)
       (HasType_subst_depth pfx ctx Γ e2 v τ1 .intType hE2 hV)
-  | .binop_comp _ _ op e1 e2 hComp hE1 hE2 =>
+  | HasType.binop_comp _ _ op e1 e2 _ hComp hE1 hE2 =>
     simp only [subst']
-    exact HasType.binop_comp _ _ op _ _ hComp
+    exact HasType.binop_comp _ _ op _ _ _ hComp
       (HasType_subst_depth pfx ctx Γ e1 v τ1 .intType hE1 hV)
       (HasType_subst_depth pfx ctx Γ e2 v τ1 .intType hE2 hV)
-  | .binop_logic _ _ op e1 e2 hLogic hE1 hE2 =>
+  | HasType.binop_logic _ _ op e1 e2 _ hLogic hE1 hE2 =>
     simp only [subst']
-    exact HasType.binop_logic _ _ op _ _ hLogic
+    exact HasType.binop_logic _ _ op _ _ _ hLogic
       (HasType_subst_depth pfx ctx Γ e1 v τ1 .boolType hE1 hV)
       (HasType_subst_depth pfx ctx Γ e2 v τ1 .boolType hE2 hV)
-  | .binop_bitwise _ _ op e1 e2 hBit hE1 hE2 =>
+  | HasType.binop_bitwise _ _ op e1 e2 _ hBit hE1 hE2 =>
     simp only [subst']
-    exact HasType.binop_bitwise _ _ op _ _ hBit
+    exact HasType.binop_bitwise _ _ op _ _ _ hBit
       (HasType_subst_depth pfx ctx Γ e1 v τ1 .intType hE1 hV)
       (HasType_subst_depth pfx ctx Γ e2 v τ1 .intType hE2 hV)
-  | .binop_ptr_arith _ _ op e1 e2 hPtr hE1 hE2 =>
+  | HasType.binop_ptr_arith _ _ op e1 e2 _ hPtr hE1 hE2 =>
     simp only [subst']
-    exact HasType.binop_ptr_arith _ _ op _ _ hPtr
+    exact HasType.binop_ptr_arith _ _ op _ _ _ hPtr
       (HasType_subst_depth pfx ctx Γ e1 v τ1 .pointerType hE1 hV)
       (HasType_subst_depth pfx ctx Γ e2 v τ1 .intType hE2 hV)
-  | .binop_ptr_load _ _ e1 e2 hE1 hE2 =>
+  | HasType.binop_ptr_load _ _ e1 e2 _ hE1 hE2 =>
     simp only [subst']
-    exact HasType.binop_ptr_load _ _ _ _
+    exact HasType.binop_ptr_load _ _ _ _ _
       (HasType_subst_depth pfx ctx Γ e1 v τ1 .pointerType hE1 hV)
       (HasType_subst_depth pfx ctx Γ e2 v τ1 .unitType hE2 hV)
-  | .binop_ptr_store _ _ e1 e2 hE1 hE2 =>
+  | HasType.binop_ptr_store _ _ e1 e2 _ hE1 hE2 =>
     simp only [subst']
-    exact HasType.binop_ptr_store _ _ _ _
+    exact HasType.binop_ptr_store _ _ _ _ _
       (HasType_subst_depth pfx ctx Γ e1 v τ1 .pointerType hE1 hV)
       (HasType_subst_depth pfx ctx Γ e2 v τ1 .intType hE2 hV)
-  | .binop_string_concat _ _ op e1 e2 hOp hE1 hE2 =>
+  | HasType.binop_string_concat _ _ op e1 e2 _ hOp hE1 hE2 =>
     simp only [subst']
     exact HasType.binop_string_concat (LinCtx.pushMany ctx pfx) Γ op
       (subst' pfx.length e1 v) (subst' pfx.length e2 v)
+      _
       hOp
       (HasType_subst_depth pfx ctx Γ e1 v τ1 .stringType hE1 hV)
       (HasType_subst_depth pfx ctx Γ e2 v τ1 .stringType hE2 hV)
-  | .lam_type _ _ n body paramTys retTy hLen hBody =>
+  | HasType.lam_type _ _ n body paramTys retTy hLen hBody =>
     simp only [subst']
     have hBody' : HasType (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx)
         (paramTys.reverse ++ pfx)) Γ body retTy
@@ -305,18 +281,18 @@ private theorem HasType_subst_depth (pfx : List Typ) (ctx : LinCtx) (Γ : TypEnv
     rw [hLenEq, Nat.add_comm n pfx.length] at hResult
     rw [← LinCtx.pushMany_pushMany_append] at hResult
     exact HasType.lam_type (LinCtx.pushMany ctx pfx) Γ n (subst' (pfx.length + n) body v) paramTys retTy hLen hResult
-  | .app_type _ _ fn args τs τ hFn hArgs =>
+  | HasType.app_type _ _ fn args τs τ hFn hArgs =>
     simp only [subst']
     exact HasType.app_type _ _ _ _ τs τ
       (HasType_subst_depth pfx ctx Γ fn v τ1 (.functionType τs τ) hFn hV)
       (HasTypeAll_subst_depth pfx ctx Γ args v τ1 τs hArgs hV)
-  | .if_type _ _ c t f τ hC hT hF =>
+  | HasType.if_type _ _ c t f τ hC hT hF =>
     simp only [subst']
     exact HasType.if_type _ _ _ _ _ τ
       (HasType_subst_depth pfx ctx Γ c v τ1 .boolType hC hV)
       (HasType_subst_depth pfx ctx Γ t v τ1 τ hT hV)
       (HasType_subst_depth pfx ctx Γ f v τ1 τ hF hV)
-  | .let_type _ _ e1 e2 τ1' τ2' hE1 hE2 =>
+  | HasType.let_type _ _ e1 e2 τ1' τ2' hE1 hE2 =>
     simp only [subst']
     have hE2' : HasType (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx) (τ1' :: pfx)) Γ e2 τ2'
         (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx) (τ1' :: pfx)) := hE2
@@ -325,7 +301,7 @@ private theorem HasType_subst_depth (pfx : List Typ) (ctx : LinCtx) (Γ : TypEnv
     exact HasType.let_type (LinCtx.pushMany ctx pfx) Γ (subst' pfx.length e1 v) (subst' (pfx.length + 1) e2 v) τ1' τ2'
       (HasType_subst_depth pfx ctx Γ e1 v τ1 τ1' hE1 hV)
       hResult
-  | .for_type _ _ s e body hS hE hBody =>
+  | HasType.for_type _ _ s e body hS hE hBody =>
     simp only [subst']
     have hBody' : HasTypeAll (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx) (.intType :: pfx))
         Γ body [.unitType] (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx) (.intType :: pfx)) := hBody
@@ -335,77 +311,77 @@ private theorem HasType_subst_depth (pfx : List Typ) (ctx : LinCtx) (Γ : TypEnv
       (HasType_subst_depth pfx ctx Γ s v τ1 .intType hS hV)
       (HasType_subst_depth pfx ctx Γ e v τ1 .intType hE hV)
       hBodyResult
-   | .pipe_type _ _ e f τ_arg _ hE hF =>
+   | HasType.pipe_type _ _ e f τ_arg _ hE hF =>
     simp only [subst']
     exact HasType.pipe_type _ _ (subst' pfx.length e v) (subst' pfx.length f v) τ_arg _
       (HasType_subst_depth pfx ctx Γ e v τ1 τ_arg hE hV)
       (HasType_subst_depth pfx ctx Γ f v τ1 (.functionType [τ_arg] _ ) hF hV)
-   | .typeAsc_type _ _ e τ hE =>
+   | HasType.typeAsc_type _ _ e τ hE =>
     simp only [subst']
     exact HasType.typeAsc_type _ _ (subst' pfx.length e v) τ
       (HasType_subst_depth pfx ctx Γ e v τ1 τ hE hV)
-   | .some_type _ _ e τ_inner hE =>
+   | HasType.some_type _ _ e τ_inner hE =>
     simp only [subst']
     exact HasType.some_type _ _ (subst' pfx.length e v) τ_inner
       (HasType_subst_depth pfx ctx Γ e v τ1 τ_inner hE hV)
-   | .none_type _ _ τ =>
+   | HasType.none_type _ _ τ =>
     simp only [subst']; exact HasType.none_type _ _ τ
-   | .ok_type _ _ e τ_ok τ_err hE =>
+   | HasType.ok_type _ _ e τ_ok τ_err hE =>
     simp only [subst']
     exact HasType.ok_type _ _ (subst' pfx.length e v) τ_ok τ_err
       (HasType_subst_depth pfx ctx Γ e v τ1 τ_ok hE hV)
-   | .err_type _ _ e τ_err τ_ok hE =>
+   | HasType.err_type _ _ e τ_err τ_ok hE =>
     simp only [subst']
     exact HasType.err_type _ _ (subst' pfx.length e v) τ_err τ_ok
       (HasType_subst_depth pfx ctx Γ e v τ1 τ_err hE hV)
-   | .null_coalesce_type _ _ e1 e2 τ hE1 hE2 =>
+   | HasType.null_coalesce_type _ _ e1 e2 τ hE1 hE2 =>
     simp only [subst']
     exact HasType.null_coalesce_type _ _ (subst' pfx.length e1 v) (subst' pfx.length e2 v) τ
       (HasType_subst_depth pfx ctx Γ e1 v τ1 (.optionType τ) hE1 hV)
       (HasType_subst_depth pfx ctx Γ e2 v τ1 (.optionType τ) hE2 hV)
-   | .tuple_type _ _ elems tys hTys =>
+   | HasType.tuple_type _ _ elems tys hTys =>
      simp only [subst']
      exact HasType.tuple_type _ _ (elems.map (subst' pfx.length · v)) tys
        (HasTypeAll_subst_depth pfx ctx Γ elems v τ1 tys hTys hV)
-   | .field_access_type _ _ e fname sname fields τ hE hField =>
+   | HasType.field_access_type _ _ e fname sname fields τ hE hField =>
      simp only [subst']
      exact HasType.field_access_type (LinCtx.pushMany ctx pfx) Γ (subst' pfx.length e v) fname sname fields τ
        (HasType_subst_depth pfx ctx Γ e v τ1 (.structType sname fields) hE hV)
        hField
-   | .match_type _ _ scrut arms ts tr hScrut hArms =>
+   | HasType.match_type _ _ scrut arms ts tr hScrut hArms =>
       simp only [subst']
       exact HasType.match_type _ _ (subst' pfx.length scrut v) (substArms pfx.length v arms) _ _
         (HasType_subst_depth pfx ctx Γ scrut v τ1 ts hScrut hV)
         (ArmsTyped_subst_depth pfx ctx Γ arms v τ1 ts tr hArms hV)
-   | .arrayLit_type _ _ elems τ' n hElems hLen hn =>
+   | HasType.arrayLit_type _ _ elems τ' n hElems hLen hn =>
      simp only [subst']
      have hLen' : n = (List.map (fun e => subst' pfx.length e v) elems).length := by
        simp [List.length_map, hLen]
      exact HasType.arrayLit_type (LinCtx.pushMany ctx pfx) Γ (elems.map (fun e => subst' pfx.length e v)) τ' n
        (HasTypeAll_subst_depth pfx ctx Γ elems v τ1 (List.replicate n τ') hElems hV)
        hLen' (by omega)
-   | .arrayIndex_type _ _ arr idx τ' n hArr hIdx =>
+   | HasType.arrayIndex_type _ _ arr idx τ' n hArr hIdx =>
      simp only [subst']
      exact HasType.arrayIndex_type (LinCtx.pushMany ctx pfx) Γ (subst' pfx.length arr v) (subst' pfx.length idx v) τ' n
        (HasType_subst_depth pfx ctx Γ arr v τ1 (.arrayType τ' n) hArr hV)
        (HasType_subst_depth pfx ctx Γ idx v τ1 .intType hIdx hV)
-   | .block_type _ _ exprs τs τ hAll =>
+   | HasType.block_type _ _ exprs τs τ hAll =>
     simp only [subst']
     exact HasType.block_type _ _ _ τs τ
       (HasTypeAll_subst_depth pfx ctx Γ exprs v τ1 (τs ++ [τ]) hAll hV)
-   | .refCreate_type _ _ e cap τ hE =>
+   | HasType.refCreate_type _ _ e cap τ hE =>
      simp only [subst']
      exact HasType.refCreate_type _ _ _ cap τ (HasType_subst_depth pfx ctx Γ e v τ1 τ hE hV)
-   | .refLoad_type _ _ e cap τ hE =>
+   | HasType.refLoad_type _ _ e cap τ hE =>
      simp only [subst']
      exact HasType.refLoad_type _ _ _ cap τ (HasType_subst_depth pfx ctx Γ e v τ1 (.refType cap τ) hE hV)
-   | .refStore_type _ _ e v' cap τ hE hV' hCap =>
+   | HasType.refStore_type _ _ e v' cap τ hE hV' hCap =>
      simp only [subst']
      exact HasType.refStore_type _ _ _ _ cap τ
        (HasType_subst_depth pfx ctx Γ e v τ1 (.refType cap τ) hE hV)
        (HasType_subst_depth pfx ctx Γ v' v τ1 τ hV' hV)
        hCap
-   | .refFree_type _ _ e τ hE =>
+   | HasType.refFree_type _ _ e τ hE =>
      simp only [subst']
      exact HasType.refFree_type _ _ _ τ (HasType_subst_depth pfx ctx Γ e v τ1 (.refType .iso τ) hE hV)
 
@@ -490,7 +466,9 @@ private theorem HasType_substAll (pfx σs : List Typ) (ctx : LinCtx) (Γ : TypEn
     HasType (LinCtx.pushMany ctx pfx) Γ (substAll' pfx.length vs.reverse e) τ
       (LinCtx.pushMany ctx pfx) := by
   match hE with
-  | .bvar_type _ _ n hLenCtx =>
+  | .bvar_type _ _ _ _ _ _ hEnt hEq =>
+    exact absurd hEq.symm (LinCtx.consume_ne hEnt)
+  | .bvar_type_many _ _ n τ hLenCtx hEnt =>
     unfold substAll'
     split
     · next hNlt =>
@@ -499,18 +477,8 @@ private theorem HasType_substAll (pfx σs : List Typ) (ctx : LinCtx) (Γ : TypEn
         rw [LinCtx.types_pushMany] at hLenCtx ⊢
         simp only [List.length_append] at hLenCtx ⊢
         omega
-      have hBT := HasType.bvar_type (LinCtx.pushMany ctx pfx) Γ n hLen'
-      have hOpt := LinCtx.types_pushMany_pushMany_index_low ctx pfx σs n hNlt
-      have s1 : (LinCtx.pushMany (LinCtx.pushMany ctx σs) pfx).types[n]? =
-          some ((LinCtx.pushMany (LinCtx.pushMany ctx σs) pfx).types[n]'hLenCtx) :=
-        List.getElem?_eq_some_iff.mpr ⟨hLenCtx, rfl⟩
-      have s2 : (LinCtx.pushMany ctx pfx).types[n]? =
-          some ((LinCtx.pushMany ctx pfx).types[n]'hLen') :=
-        List.getElem?_eq_some_iff.mpr ⟨hLen', rfl⟩
-      have hChain : (LinCtx.pushMany (LinCtx.pushMany ctx σs) pfx).types[n]? =
-          some ((LinCtx.pushMany ctx pfx).types[n]'hLen') := by rw [hOpt]; exact s2
-      obtain ⟨_, hEqT⟩ := List.getElem?_eq_some_iff.mp hChain
-      exact Eq.subst (motive := fun t => HasType _ Γ (.bvar n) t _) (Eq.symm hEqT) hBT
+      rw [LinCtx.entry_pushMany_pushMany_index_low ctx pfx σs n hNlt] at hEnt
+      exact HasType.bvar_type_many (LinCtx.pushMany ctx pfx) Γ n τ hLen' hEnt
     · next hNe1 =>
       split
       · next hIn =>
@@ -525,15 +493,20 @@ private theorem HasType_substAll (pfx σs : List Typ) (ctx : LinCtx) (Γ : TypEn
           exact (List.reverse_reverse σs) ▸ h
         have hVal : HasType ctx Γ (vs.reverse[n - pfx.length]) σs[n - pfx.length] ctx :=
           HasTypeAll_getElem ctx Γ vs.reverse σs (n - pfx.length) hVsRev hKPos hK
-        have hIdxEqS : (LinCtx.pushMany (LinCtx.pushMany ctx σs) pfx).types[n]'hLenCtx
-            = (σs[n - pfx.length]'hK) := by
-          have hOpt := LinCtx.types_pushMany_pushMany_index_mid ctx pfx σs (n - pfx.length) hK
-          rw [show pfx.length + (n - pfx.length) = n from by omega] at hOpt
-          obtain ⟨_, hEqT⟩ := List.getElem?_eq_some_iff.mp hOpt
-          exact hEqT
+        -- the entry read is `(σs[k], initialUsage σs[k])`, so `τ` must be `σs[k]`
+        have h2 : (LinCtx.pushMany (LinCtx.pushMany ctx σs) pfx)[pfx.length + (n - pfx.length)]?
+            = some (τ, Morph.Usage.many) := by
+          rw [show pfx.length + (n - pfx.length) = n from by omega]
+          exact hEnt
+        have h3 := LinCtx.entry_pushMany_pushMany_index_mid ctx pfx σs (n - pfx.length) hK
+        rw [h2] at h3
+        have hTyEq : τ = σs[n - pfx.length]'hK := congrArg Prod.fst (Option.some.inj h3)
         have hWeakened := weaken_many_at_depth [] pfx ctx Γ
           (vs.reverse[n - pfx.length]) (σs[n - pfx.length]'hK) hVal
-        exact hIdxEqS.symm ▸ hWeakened
+        show HasType (LinCtx.pushMany ctx pfx) Γ
+          (lift pfx.length (vs.reverse[n - pfx.length])) τ (LinCtx.pushMany ctx pfx)
+        rw [hTyEq]
+        exact hWeakened
       · next hGe2 =>
         -- n ≥ pfx.length + σs.length: shifts down by σs.length
         have hRevLen : vs.reverse.length = σs.length := by
@@ -544,77 +517,71 @@ private theorem HasType_substAll (pfx σs : List Typ) (ctx : LinCtx) (Γ : TypEn
           simp only [LinCtx.types_pushMany] at hLenCtx ⊢
           simp only [List.length_append] at hLenCtx ⊢
           omega
-        have hBT := HasType.bvar_type (LinCtx.pushMany ctx pfx) Γ (n - σs.length) hNMinus
-        have hOpt := LinCtx.types_pushMany_pushMany_index_high ctx pfx σs n hNHigh
-        have s2 : (LinCtx.pushMany ctx pfx).types[n - σs.length]? =
-            some ((LinCtx.pushMany ctx pfx).types[n - σs.length]'hNMinus) :=
-          List.getElem?_eq_some_iff.mpr ⟨hNMinus, rfl⟩
-        have hChain : (LinCtx.pushMany (LinCtx.pushMany ctx σs) pfx).types[n]? =
-            some ((LinCtx.pushMany ctx pfx).types[n - σs.length]'hNMinus) := by rw [hOpt]; exact s2
-        obtain ⟨_, hEqT⟩ := List.getElem?_eq_some_iff.mp hChain
-        exact Eq.subst (motive := fun t => HasType _ Γ (.bvar (n - σs.length)) t _) (Eq.symm hEqT) hBT
-  | .fvar_type _ _ name τ hLookup =>
+        rw [LinCtx.entry_pushMany_pushMany_index_high ctx pfx σs n hNHigh] at hEnt
+        exact HasType.bvar_type_many (LinCtx.pushMany ctx pfx) Γ (n - σs.length) τ hNMinus hEnt
+  | HasType.fvar_type _ _ name τ hLookup =>
     unfold substAll'; exact HasType.fvar_type _ _ name τ hLookup
-  | .lit_int _ _ _ => unfold substAll'; exact HasType.lit_int _ _ _
-  | .lit_bool _ _ _ => unfold substAll'; exact HasType.lit_bool _ _ _
-  | .lit_string _ _ _ => unfold substAll'; exact HasType.lit_string _ _ _
-  | .lit_unit _ _ => unfold substAll'; exact HasType.lit_unit _ _
-  | .lit_pointer _ _ _ => unfold substAll'; exact HasType.lit_pointer _ _ _
-  | .lit_float _ _ _ _ => unfold substAll'; exact HasType.lit_float _ _ _ _
-  | .lit_int_width _ _ _ _ => unfold substAll'; exact HasType.lit_int_width _ _ _ _
-  | .lit_some _ _ _ τ => unfold substAll'; exact HasType.lit_some _ _ _ τ
-  | .lit_none _ _ τ => unfold substAll'; exact HasType.lit_none _ _ τ
-  | .lit_ok _ _ _ τ_ok τ_err => unfold substAll'; exact HasType.lit_ok _ _ _ τ_ok τ_err
-  | .lit_err _ _ _ τ_err τ_ok => unfold substAll'; exact HasType.lit_err _ _ _ τ_err τ_ok
-  | .unop_not _ _ e' hE' =>
+  | HasType.lit_int _ _ _ => unfold substAll'; exact HasType.lit_int _ _ _
+  | HasType.lit_bool _ _ _ => unfold substAll'; exact HasType.lit_bool _ _ _
+  | HasType.lit_string _ _ _ => unfold substAll'; exact HasType.lit_string _ _ _
+  | HasType.lit_unit _ _ => unfold substAll'; exact HasType.lit_unit _ _
+  | HasType.lit_pointer _ _ _ => unfold substAll'; exact HasType.lit_pointer _ _ _
+  | HasType.lit_float _ _ _ _ => unfold substAll'; exact HasType.lit_float _ _ _ _
+  | HasType.lit_int_width _ _ _ _ => unfold substAll'; exact HasType.lit_int_width _ _ _ _
+  | HasType.lit_some _ _ _ τ => unfold substAll'; exact HasType.lit_some _ _ _ τ
+  | HasType.lit_none _ _ τ => unfold substAll'; exact HasType.lit_none _ _ τ
+  | HasType.lit_ok _ _ _ τ_ok τ_err => unfold substAll'; exact HasType.lit_ok _ _ _ τ_ok τ_err
+  | HasType.lit_err _ _ _ τ_err τ_ok => unfold substAll'; exact HasType.lit_err _ _ _ τ_err τ_ok
+  | HasType.unop_not _ _ e' hE' =>
     unfold substAll'
     exact HasType.unop_not _ _ _ (HasType_substAll pfx σs ctx Γ vs e' .boolType hE' hVs hLen)
-  | .unop_notb _ _ e' hE' =>
+  | HasType.unop_notb _ _ e' hE' =>
     unfold substAll'
     exact HasType.unop_notb _ _ _ (HasType_substAll pfx σs ctx Γ vs e' .intType hE' hVs hLen)
-  | .binop_arith _ _ op e1 e2 hArith hE1 hE2 =>
+  | HasType.binop_arith _ _ op e1 e2 _ hArith hE1 hE2 =>
     unfold substAll'
-    exact HasType.binop_arith _ _ op _ _ hArith
+    exact HasType.binop_arith _ _ op _ _ _ hArith
       (HasType_substAll pfx σs ctx Γ vs e1 .intType hE1 hVs hLen)
       (HasType_substAll pfx σs ctx Γ vs e2 .intType hE2 hVs hLen)
-  | .binop_comp _ _ op e1 e2 hComp hE1 hE2 =>
+  | HasType.binop_comp _ _ op e1 e2 _ hComp hE1 hE2 =>
     unfold substAll'
-    exact HasType.binop_comp _ _ op _ _ hComp
+    exact HasType.binop_comp _ _ op _ _ _ hComp
       (HasType_substAll pfx σs ctx Γ vs e1 .intType hE1 hVs hLen)
       (HasType_substAll pfx σs ctx Γ vs e2 .intType hE2 hVs hLen)
-  | .binop_logic _ _ op e1 e2 hLogic hE1 hE2 =>
+  | HasType.binop_logic _ _ op e1 e2 _ hLogic hE1 hE2 =>
     unfold substAll'
-    exact HasType.binop_logic _ _ op _ _ hLogic
+    exact HasType.binop_logic _ _ op _ _ _ hLogic
       (HasType_substAll pfx σs ctx Γ vs e1 .boolType hE1 hVs hLen)
       (HasType_substAll pfx σs ctx Γ vs e2 .boolType hE2 hVs hLen)
-  | .binop_bitwise _ _ op e1 e2 hBit hE1 hE2 =>
+  | HasType.binop_bitwise _ _ op e1 e2 _ hBit hE1 hE2 =>
     unfold substAll'
-    exact HasType.binop_bitwise _ _ op _ _ hBit
+    exact HasType.binop_bitwise _ _ op _ _ _ hBit
       (HasType_substAll pfx σs ctx Γ vs e1 .intType hE1 hVs hLen)
       (HasType_substAll pfx σs ctx Γ vs e2 .intType hE2 hVs hLen)
-  | .binop_ptr_arith _ _ op e1 e2 hPtr hE1 hE2 =>
+  | HasType.binop_ptr_arith _ _ op e1 e2 _ hPtr hE1 hE2 =>
     unfold substAll'
-    exact HasType.binop_ptr_arith _ _ op _ _ hPtr
+    exact HasType.binop_ptr_arith _ _ op _ _ _ hPtr
       (HasType_substAll pfx σs ctx Γ vs e1 .pointerType hE1 hVs hLen)
       (HasType_substAll pfx σs ctx Γ vs e2 .intType hE2 hVs hLen)
-  | .binop_ptr_load _ _ e1 e2 hE1 hE2 =>
+  | HasType.binop_ptr_load _ _ e1 e2 _ hE1 hE2 =>
     unfold substAll'
-    exact HasType.binop_ptr_load _ _ _ _
+    exact HasType.binop_ptr_load _ _ _ _ _
       (HasType_substAll pfx σs ctx Γ vs e1 .pointerType hE1 hVs hLen)
       (HasType_substAll pfx σs ctx Γ vs e2 .unitType hE2 hVs hLen)
-  | .binop_ptr_store _ _ e1 e2 hE1 hE2 =>
+  | HasType.binop_ptr_store _ _ e1 e2 _ hE1 hE2 =>
     unfold substAll'
-    exact HasType.binop_ptr_store _ _ _ _
+    exact HasType.binop_ptr_store _ _ _ _ _
       (HasType_substAll pfx σs ctx Γ vs e1 .pointerType hE1 hVs hLen)
       (HasType_substAll pfx σs ctx Γ vs e2 .intType hE2 hVs hLen)
-  | .binop_string_concat _ _ op e1 e2 hOp hE1 hE2 =>
+  | HasType.binop_string_concat _ _ op e1 e2 _ hOp hE1 hE2 =>
     unfold substAll'
     exact HasType.binop_string_concat (LinCtx.pushMany ctx pfx) Γ op
       (substAll' pfx.length vs.reverse e1) (substAll' pfx.length vs.reverse e2)
+      _
       hOp
       (HasType_substAll pfx σs ctx Γ vs e1 .stringType hE1 hVs hLen)
       (HasType_substAll pfx σs ctx Γ vs e2 .stringType hE2 hVs hLen)
-  | .lam_type _ _ m body paramTys retTy hLenM hBody =>
+  | HasType.lam_type _ _ m body paramTys retTy hLenM hBody =>
     unfold substAll'
     have hBody' : HasType (LinCtx.pushMany (LinCtx.pushMany ctx σs)
         (paramTys.reverse ++ pfx)) Γ body retTy
@@ -633,18 +600,18 @@ private theorem HasType_substAll (pfx σs : List Typ) (ctx : LinCtx) (Γ : TypEn
     exact HasType.lam_type (LinCtx.pushMany ctx pfx) Γ m
       (substAll' (pfx.length + m) vs.reverse body) paramTys retTy hLenM hResult
     
-  | .app_type _ _ fn args τs τ hFn hArgs =>
+  | HasType.app_type _ _ fn args τs τ hFn hArgs =>
     unfold substAll'
     exact HasType.app_type _ _ _ _ τs τ
       (HasType_substAll pfx σs ctx Γ vs fn (.functionType τs τ) hFn hVs hLen)
       (HasTypeAll_substAll pfx σs ctx Γ vs args τs hArgs hVs hLen)
-  | .if_type _ _ c t f τ hC hT hF =>
+  | HasType.if_type _ _ c t f τ hC hT hF =>
     unfold substAll'
     exact HasType.if_type _ _ _ _ _ τ
       (HasType_substAll pfx σs ctx Γ vs c .boolType hC hVs hLen)
       (HasType_substAll pfx σs ctx Γ vs t τ hT hVs hLen)
       (HasType_substAll pfx σs ctx Γ vs f τ hF hVs hLen)
-  | .let_type _ _ e1 e2 τ1' τ2' hE1 hE2 =>
+  | HasType.let_type _ _ e1 e2 τ1' τ2' hE1 hE2 =>
     unfold substAll'
     have hE2' : HasType (LinCtx.pushMany (LinCtx.pushMany ctx σs) (τ1' :: pfx)) Γ e2 τ2'
         (LinCtx.pushMany (LinCtx.pushMany ctx σs) (τ1' :: pfx)) := hE2
@@ -654,7 +621,7 @@ private theorem HasType_substAll (pfx σs : List Typ) (ctx : LinCtx) (Γ : TypEn
       (substAll' pfx.length vs.reverse e1) (substAll' (pfx.length + 1) vs.reverse e2) τ1' τ2'
       (HasType_substAll pfx σs ctx Γ vs e1 τ1' hE1 hVs hLen)
       hResult
-  | .for_type _ _ s e body hS hE hBody =>
+  | HasType.for_type _ _ s e body hS hE hBody =>
     unfold substAll'
     have hBody' : HasTypeAll (LinCtx.pushMany (LinCtx.pushMany ctx σs) (.intType :: pfx)) Γ body
         [.unitType] (LinCtx.pushMany (LinCtx.pushMany ctx σs) (.intType :: pfx)) := hBody
@@ -666,78 +633,78 @@ private theorem HasType_substAll (pfx σs : List Typ) (ctx : LinCtx) (Γ : TypEn
       (HasType_substAll pfx σs ctx Γ vs s .intType hS hVs hLen)
       (HasType_substAll pfx σs ctx Γ vs e .intType hE hVs hLen)
       hBodyResult
-  | .pipe_type _ _ e f τ_arg _ hE hF =>
+  | HasType.pipe_type _ _ e f τ_arg _ hE hF =>
     unfold substAll'
     exact HasType.pipe_type _ _ (substAll' pfx.length vs.reverse e) (substAll' pfx.length vs.reverse f) τ_arg _
       (HasType_substAll pfx σs ctx Γ vs e τ_arg hE hVs hLen)
       (HasType_substAll pfx σs ctx Γ vs f (.functionType [τ_arg] _ ) hF hVs hLen)
-  | .typeAsc_type _ _ e τ hE =>
+  | HasType.typeAsc_type _ _ e τ hE =>
     unfold substAll'
     exact HasType.typeAsc_type _ _ (substAll' pfx.length vs.reverse e) τ
       (HasType_substAll pfx σs ctx Γ vs e τ hE hVs hLen)
-  | .some_type _ _ e τ_inner hE =>
+  | HasType.some_type _ _ e τ_inner hE =>
     unfold substAll'
     exact HasType.some_type _ _ (substAll' pfx.length vs.reverse e) τ_inner
       (HasType_substAll pfx σs ctx Γ vs e τ_inner hE hVs hLen)
-  | .none_type _ _ τ =>
+  | HasType.none_type _ _ τ =>
     unfold substAll'; exact HasType.none_type _ _ τ
-  | .ok_type _ _ e τ_ok τ_err hE =>
+  | HasType.ok_type _ _ e τ_ok τ_err hE =>
     unfold substAll'
     exact HasType.ok_type _ _ (substAll' pfx.length vs.reverse e) τ_ok τ_err
       (HasType_substAll pfx σs ctx Γ vs e τ_ok hE hVs hLen)
-  | .err_type _ _ e τ_err τ_ok hE =>
+  | HasType.err_type _ _ e τ_err τ_ok hE =>
     unfold substAll'
     exact HasType.err_type _ _ (substAll' pfx.length vs.reverse e) τ_err τ_ok
       (HasType_substAll pfx σs ctx Γ vs e τ_err hE hVs hLen)
-  | .null_coalesce_type _ _ e1 e2 τ hE1 hE2 =>
+  | HasType.null_coalesce_type _ _ e1 e2 τ hE1 hE2 =>
     unfold substAll'
     exact HasType.null_coalesce_type _ _
       (substAll' pfx.length vs.reverse e1) (substAll' pfx.length vs.reverse e2) τ
       (HasType_substAll pfx σs ctx Γ vs e1 (.optionType τ) hE1 hVs hLen)
       (HasType_substAll pfx σs ctx Γ vs e2 (.optionType τ) hE2 hVs hLen)
-   | .tuple_type _ _ elems tys hTys =>
+   | HasType.tuple_type _ _ elems tys hTys =>
      unfold substAll'
      exact HasType.tuple_type _ _ (elems.map (substAll' pfx.length vs.reverse)) tys
        (HasTypeAll_substAll pfx σs ctx Γ vs elems tys hTys hVs hLen)
-    | .field_access_type _ _ e fname sname fields τ hE hField =>
+    | field_access_type _ _ e fname sname fields τ hE hField =>
       unfold substAll'
       exact HasType.field_access_type (LinCtx.pushMany ctx pfx) Γ (substAll' pfx.length vs.reverse e) fname sname fields τ
         (HasType_substAll pfx σs ctx Γ vs e (.structType sname fields) hE hVs hLen)
         hField
-     | .match_type _ _ scrut arms ts tr hScrut hArms =>
+     | match_type _ _ scrut arms ts tr hScrut hArms =>
        unfold substAll'
        exact HasType.match_type _ _ (substAll' pfx.length vs.reverse scrut) (substAllArms pfx.length vs.reverse arms) ts tr
          (HasType_substAll pfx σs ctx Γ vs scrut ts hScrut hVs hLen)
                    (ArmsTyped_substAll pfx σs ctx Γ vs arms ts tr hArms hVs hLen)
-     | .arrayLit_type _ _ elems τ' n hElems hLen' hn =>
+     | arrayLit_type _ _ elems τ' n hElems hLen' hn =>
        unfold substAll'
        have hLen'' : n = (List.map (fun e => substAll' pfx.length vs.reverse e) elems).length := by
          simp [List.length_map, hLen']
        exact HasType.arrayLit_type (LinCtx.pushMany ctx pfx) Γ (elems.map (fun e => substAll' pfx.length vs.reverse e)) τ' n
          (HasTypeAll_substAll pfx σs ctx Γ vs elems (List.replicate n τ') hElems hVs hLen)
          hLen'' (by omega)
-     | .arrayIndex_type _ _ arr idx τ' n hArr hIdx =>
+     | arrayIndex_type _ _ arr idx τ' n hArr hIdx =>
        unfold substAll'
        exact HasType.arrayIndex_type (LinCtx.pushMany ctx pfx) Γ (substAll' pfx.length vs.reverse arr) (substAll' pfx.length vs.reverse idx) τ' n
          (HasType_substAll pfx σs ctx Γ vs arr (.arrayType τ' n) hArr hVs hLen)
          (HasType_substAll pfx σs ctx Γ vs idx .intType hIdx hVs hLen)
-     | .block_type _ _ exprs τs' τ hAll =>
+     | block_type _ _ exprs τs' τ hAll =>
      unfold substAll'
      exact HasType.block_type _ _ _ τs' τ
        (HasTypeAll_substAll pfx σs ctx Γ vs exprs (τs' ++ [τ]) hAll hVs hLen)
-     | .refCreate_type _ _ e cap τ hE =>
+     | refCreate_type _ _ e cap τ hE =>
        unfold substAll'
        exact HasType.refCreate_type _ _ _ cap τ (HasType_substAll pfx σs ctx Γ vs e τ hE hVs hLen)
-     | .refLoad_type _ _ e cap τ hE =>
+     | refLoad_type _ _ e cap τ hE =>
        unfold substAll'
        exact HasType.refLoad_type _ _ _ cap τ (HasType_substAll pfx σs ctx Γ vs e (.refType cap τ) hE hVs hLen)
-     | .refStore_type _ _ e v' cap τ hE hV' hCap =>
+     | refStore_type _ _ e v' cap τ hE hV' hCap =>
        unfold substAll'
        exact HasType.refStore_type _ _ _ _ cap τ
          (HasType_substAll pfx σs ctx Γ vs e (.refType cap τ) hE hVs hLen)
          (HasType_substAll pfx σs ctx Γ vs v' τ hV' hVs hLen)
          hCap
-     | .refFree_type _ _ e τ hE =>
+     | refFree_type _ _ e τ hE =>
        unfold substAll'
        exact HasType.refFree_type _ _ _ τ (HasType_substAll pfx σs ctx Γ vs e (.refType .iso τ) hE hVs hLen)
 
@@ -792,7 +759,7 @@ private theorem HasType_tuple_inv {ctx : LinCtx} {Γ : TypEnv} {rest : List Expr
   | tuple_type _ _ _ _ hAll => exact hAll
   | _ => contradiction
 
-set_option maxHeartbeats 1000000 in
+set_option maxHeartbeats 4000000 in
 mutual
 
 theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {ctx : LinCtx} {Γ : TypEnv}
@@ -802,83 +769,114 @@ theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {ctx : L
   cases hStep with
   | binop_left op e1 e1' e2 hStep1 =>
     cases hType with
-    | binop_arith => exact HasType.binop_arith _ _ op e1' e2 (by assumption) (preservation (by assumption) hStep1) (by assumption)
-    | binop_comp => exact HasType.binop_comp _ _ op e1' e2 (by assumption) (preservation (by assumption) hStep1) (by assumption)
-    | binop_logic => exact HasType.binop_logic _ _ op e1' e2 (by assumption) (preservation (by assumption) hStep1) (by assumption)
-    | binop_bitwise => exact HasType.binop_bitwise _ _ op e1' e2 (by assumption) (preservation (by assumption) hStep1) (by assumption)
-    | binop_ptr_arith => exact HasType.binop_ptr_arith _ _ op e1' e2 (by assumption) (preservation (by assumption) hStep1) (by assumption)
-    | binop_ptr_load => exact HasType.binop_ptr_load _ _ e1' e2 (preservation (by assumption) hStep1) (by assumption)
-    | binop_ptr_store => exact HasType.binop_ptr_store _ _ e1' e2 (preservation (by assumption) hStep1) (by assumption)
-    | binop_string_concat => exact HasType.binop_string_concat _ _ op e1' e2 (by assumption) (preservation (by assumption) hStep1) (by assumption)
+    | binop_arith => exact HasType.binop_arith _ _ op e1' e2 _ (by assumption) (preservation (by assumption) hStep1) (by assumption)
+    | binop_comp => exact HasType.binop_comp _ _ op e1' e2 _ (by assumption) (preservation (by assumption) hStep1) (by assumption)
+    | binop_logic => exact HasType.binop_logic _ _ op e1' e2 _ (by assumption) (preservation (by assumption) hStep1) (by assumption)
+    | binop_bitwise => exact HasType.binop_bitwise _ _ op e1' e2 _ (by assumption) (preservation (by assumption) hStep1) (by assumption)
+    | binop_ptr_arith => exact HasType.binop_ptr_arith _ _ op e1' e2 _ (by assumption) (preservation (by assumption) hStep1) (by assumption)
+    | binop_ptr_load => exact HasType.binop_ptr_load _ _ e1' e2 _ (preservation (by assumption) hStep1) (by assumption)
+    | binop_ptr_store => exact HasType.binop_ptr_store _ _ e1' e2 _ (preservation (by assumption) hStep1) (by assumption)
+    | binop_string_concat => exact HasType.binop_string_concat _ _ op e1' e2 _ (by assumption) (preservation (by assumption) hStep1) (by assumption)
     | _ => contradiction
   | binop_right op v1 e2 e2' _ hStep2 =>
     cases hType with
-    | binop_arith => exact HasType.binop_arith _ _ op (.lit v1) e2' (by assumption) (by assumption) (preservation (by assumption) hStep2)
-    | binop_comp => exact HasType.binop_comp _ _ op (.lit v1) e2' (by assumption) (by assumption) (preservation (by assumption) hStep2)
-    | binop_logic => exact HasType.binop_logic _ _ op (.lit v1) e2' (by assumption) (by assumption) (preservation (by assumption) hStep2)
-    | binop_bitwise => exact HasType.binop_bitwise _ _ op (.lit v1) e2' (by assumption) (by assumption) (preservation (by assumption) hStep2)
-    | binop_ptr_arith => exact HasType.binop_ptr_arith _ _ op (.lit v1) e2' (by assumption) (by assumption) (preservation (by assumption) hStep2)
-    | binop_ptr_load => exact HasType.binop_ptr_load _ _ (.lit v1) e2' (by assumption) (preservation (by assumption) hStep2)
-    | binop_ptr_store => exact HasType.binop_ptr_store _ _ (.lit v1) e2' (by assumption) (preservation (by assumption) hStep2)
-    | binop_string_concat => exact HasType.binop_string_concat _ _ op (.lit v1) e2' (by assumption) (by assumption) (preservation (by assumption) hStep2)
+    | binop_arith => exact HasType.binop_arith _ _ op (.lit v1) e2' _ (by assumption) (by assumption) (preservation (by assumption) hStep2)
+    | binop_comp => exact HasType.binop_comp _ _ op (.lit v1) e2' _ (by assumption) (by assumption) (preservation (by assumption) hStep2)
+    | binop_logic => exact HasType.binop_logic _ _ op (.lit v1) e2' _ (by assumption) (by assumption) (preservation (by assumption) hStep2)
+    | binop_bitwise => exact HasType.binop_bitwise _ _ op (.lit v1) e2' _ (by assumption) (by assumption) (preservation (by assumption) hStep2)
+    | binop_ptr_arith => exact HasType.binop_ptr_arith _ _ op (.lit v1) e2' _ (by assumption) (by assumption) (preservation (by assumption) hStep2)
+    | binop_ptr_load => exact HasType.binop_ptr_load _ _ (.lit v1) e2' _ (by assumption) (preservation (by assumption) hStep2)
+    | binop_ptr_store => exact HasType.binop_ptr_store _ _ (.lit v1) e2' _ (by assumption) (preservation (by assumption) hStep2)
+    | binop_string_concat => exact HasType.binop_string_concat _ _ op (.lit v1) e2' _ (by assumption) (by assumption) (preservation (by assumption) hStep2)
     | _ => contradiction
   | binop_arith _ _ _ r hArith _ =>
     cases hType with
-    | binop_arith => exact HasType.lit_int _ _ r
-    | binop_comp => exfalso; exact sem_isArithOp_not_spec_isCompOp _ hArith (by assumption)
-    | binop_bitwise => exact HasType.lit_int _ _ r
-    | binop_ptr_arith _ _ _ _ _ hOp _ _ => exfalso; exact sem_isArithOp_not_spec_isPtrArithOp _ hArith hOp
-    | binop_ptr_load _ _ _ _ hE1 _ => cases hE1
-    | binop_ptr_store _ _ _ _ hE1 _ => cases hE1
+    -- a literal operand types in a context equal to its input, so the binop's mid
+    -- context is `ctx` and the reduction result is typable in `ctx` (ADR-010 1c-β-2).
+    | binop_arith _ _ _ _ _ _ hA hE1 hE2 =>
+      cases hE1
+      exact HasType.lit_int _ _ r
+    | binop_comp _ _ _ _ _ _ hA hE1 hE2 =>
+      exfalso; exact sem_isArithOp_not_spec_isCompOp _ hArith hA
+    | binop_bitwise _ _ _ _ _ _ hA hE1 hE2 =>
+      cases hE1
+      exact HasType.lit_int _ _ r
+    | binop_ptr_arith _ _ _ _ _ _ hOp _ _ => exfalso; exact sem_isArithOp_not_spec_isPtrArithOp _ hArith hOp
+    | binop_ptr_load _ _ _ _ _ hE1 _ => cases hE1
+    | binop_ptr_store _ _ _ _ _ hE1 _ => cases hE1
     | _ => contradiction
   | binop_comp _ _ _ hComp =>
     cases hType with
-    | binop_arith => exfalso; exact sem_isCompOp_not_spec_isArithOp _ hComp (by assumption)
-    | binop_comp => exact HasType.lit_bool _ _ (evalCompOp _ _ _)
-    | binop_bitwise => exfalso; exact sem_isCompOp_not_spec_isBitwiseOp _ hComp (by assumption)
-    | binop_ptr_arith _ _ _ _ _ hOp _ _ => exfalso; exact sem_isCompOp_not_spec_isPtrArithOp _ hComp hOp
-    | binop_ptr_load _ _ _ _ hE1 _ => cases hE1
-    | binop_ptr_store _ _ _ _ hE1 _ => cases hE1
+    | binop_arith _ _ _ _ _ _ hA hE1 hE2 =>
+      exfalso; exact sem_isCompOp_not_spec_isArithOp _ hComp hA
+    | binop_comp _ _ _ _ _ _ hA hE1 hE2 =>
+      cases hE1
+      exact HasType.lit_bool _ _ (evalCompOp _ _ _)
+    | binop_bitwise _ _ _ _ _ _ hA hE1 hE2 =>
+      exfalso; exact sem_isCompOp_not_spec_isBitwiseOp _ hComp hA
+    | binop_ptr_arith _ _ _ _ _ _ hOp _ _ => exfalso; exact sem_isCompOp_not_spec_isPtrArithOp _ hComp hOp
+    | binop_ptr_load _ _ _ _ _ hE1 _ => cases hE1
+    | binop_ptr_store _ _ _ _ _ hE1 _ => cases hE1
     | _ => contradiction
-  | binop_logic _ _ _ _ _ =>
+  | binop_logic _ _ _ _ hLogic _ =>
     cases hType with
-    | binop_logic => exact HasType.lit_bool _ _ (by assumption)
-    | binop_ptr_arith _ _ _ _ _ hOp _ _ => exfalso; exact sem_isLogicOp_not_spec_isPtrArithOp _ (by assumption) hOp
+    | binop_logic _ _ _ _ _ _ hA hE1 hE2 =>
+      cases hE1
+      exact HasType.lit_bool _ _ (by assumption)
+    | binop_ptr_arith _ _ _ _ _ _ hOp _ _ =>
+      exfalso; exact sem_isLogicOp_not_spec_isPtrArithOp _ hLogic hOp
     | _ => contradiction
   | binop_bitwise _ _ _ r hBit _ =>
     cases hType with
-    | binop_arith => exact HasType.lit_int _ _ r
-    | binop_comp => exfalso; exact sem_isBitwiseOp_not_spec_isCompOp _ hBit (by assumption)
-    | binop_bitwise => exact HasType.lit_int _ _ r
-    | binop_ptr_arith _ _ _ _ _ hOp _ _ => exfalso; exact sem_isBitwiseOp_not_spec_isPtrArithOp _ hBit hOp
-    | binop_ptr_load _ _ _ _ hE1 _ => cases hE1
-    | binop_ptr_store _ _ _ _ hE1 _ => cases hE1
+    | binop_arith _ _ _ _ _ _ hA hE1 hE2 =>
+      cases hE1
+      exact HasType.lit_int _ _ r
+    | binop_comp _ _ _ _ _ _ hA hE1 hE2 =>
+      exfalso; exact sem_isBitwiseOp_not_spec_isCompOp _ hBit hA
+    | binop_bitwise _ _ _ _ _ _ hA hE1 hE2 =>
+      cases hE1
+      exact HasType.lit_int _ _ r
+    | binop_ptr_arith _ _ _ _ _ _ hOp _ _ => exfalso; exact sem_isBitwiseOp_not_spec_isPtrArithOp _ hBit hOp
+    | binop_ptr_load _ _ _ _ _ hE1 _ => cases hE1
+    | binop_ptr_store _ _ _ _ _ hE1 _ => cases hE1
     | _ => contradiction
   | binop_ptr_arith _ _ _ r hPtr _ =>
     cases hType with
-    | binop_ptr_arith => exact HasType.lit_pointer _ _ r
+    | binop_ptr_arith _ _ _ _ _ _ hA hE1 hE2 =>
+      cases hE1
+      exact HasType.lit_pointer _ _ r
     | _ => contradiction
   | binop_ptr_load _ =>
     cases hType with
-    | binop_ptr_load => exact HasType.lit_unit _ _
+    | binop_ptr_load _ _ _ _ _ hE1 _ =>
+      cases hE1
+      exact HasType.lit_unit _ _
     | _ => contradiction
   | binop_ptr_store _ _ =>
     cases hType with
-    | binop_ptr_store => exact HasType.lit_unit _ _
+    | binop_ptr_store _ _ _ _ _ hE1 _ =>
+      cases hE1
+      exact HasType.lit_unit _ _
     | _ => contradiction
   | binop_string_concat s1 s2 =>
     cases hType with
-    | binop_string_concat => exact HasType.lit_string _ _ (s1 ++ s2)
+    | binop_string_concat _ _ _ _ _ _ hOp hE1 hE2 =>
+      cases hE1
+      exact HasType.lit_string _ _ (s1 ++ s2)
     | _ => contradiction
   | binop_div_zero _ =>
     cases hType with
-    | binop_arith => exact HasType.lit_int _ _ 0
-    | binop_ptr_arith _ _ _ _ _ hOp _ _ => exfalso; cases hOp
+    | binop_arith _ _ _ _ _ _ hA hE1 hE2 =>
+      cases hE1
+      exact HasType.lit_int _ _ 0
+    | binop_ptr_arith _ _ _ _ _ _ hOp _ _ => exfalso; cases hOp
     | _ => contradiction
   | binop_mod_zero _ =>
     cases hType with
-    | binop_arith => exact HasType.lit_int _ _ 0
-    | binop_ptr_arith _ _ _ _ _ hOp _ _ => exfalso; cases hOp
+    | binop_arith _ _ _ _ _ _ hA hE1 hE2 =>
+      cases hE1
+      exact HasType.lit_int _ _ 0
+    | binop_ptr_arith _ _ _ _ _ _ hOp _ _ => exfalso; cases hOp
     | _ => contradiction
   | unop_step op e e' hStep1 =>
     cases hType with

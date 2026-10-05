@@ -14,15 +14,147 @@ open Morph.Syntax
 
 /-! ## Inversion Lemmas -/
 
--- NOTE: bvar_type produces HasType ctx Γ (.bvar n) ctx[n], so any
--- HasType ctx Γ (.bvar n) τ must have τ = ctx.types[n] with n < (ctx.types).length.
+-- NOTE: both bvar rules bound n by the length of the context, so any
+-- HasType ctx Γ (.bvar n) τ ctx' must have n < (ctx.types).length.
 -- We split into two lemmas to avoid dependent indexing issues.
 theorem HasType_bvar_has_length (ctx : LinCtx) (Γ : TypEnv) (n : Nat) (τ : Typ)
     {ctx' : LinCtx} :
     HasType ctx Γ (.bvar n) τ ctx' → n < (ctx.types).length := by
   intro h
   cases h with
-  | bvar_type _ _ _ hLen => exact hLen
+  | bvar_type _ _ _ _ _ hLen _ _ => exact hLen
+  | bvar_type_many _ _ _ _ hLen _ => exact hLen
+
+/-! ## Consumption Facts -/
+
+/-- Consuming index `n` rewrites the entry at `n` to `(τ, .one)`. -/
+theorem LinCtx.consume_getElem?_self (ctx : LinCtx) (n : Nat) :
+    (LinCtx.consume ctx n)[n]? = (ctx[n]?).map (fun e => (e.1, Morph.Usage.one)) := by
+  induction ctx generalizing n with
+  | nil => rfl
+  | cons entry tail ih =>
+    cases n with
+    | zero => rfl
+    | succ n =>
+      simp only [LinCtx.consume, LinCtx.setUsage, Nat.add_sub_cancel, Nat.succ_ne_zero,
+        if_false, List.getElem?_cons_succ, Option.map]
+      rw [show LinCtx.setUsage tail n Morph.Usage.one = LinCtx.consume tail n from rfl, ih n]
+      rfl
+
+/-- Consuming a `.zero` slot really changes the context, so a `bvar_type`
+derivation can never have the output context equal to its input context. This is
+what makes `HasType ctx Γ e τ ctx` a genuinely *non-consuming* judgment. -/
+theorem LinCtx.consume_ne {ctx : LinCtx} {n : Nat} {τ : Typ}
+    (h : ctx[n]? = some (τ, Morph.Usage.zero)) : LinCtx.consume ctx n ≠ ctx := by
+  intro hc
+  have h1 : ctx[n]? = (LinCtx.consume ctx n)[n]? := by rw [hc]
+  rw [LinCtx.consume_getElem?_self, h, Option.map] at h1
+  exact Morph.Usage.noConfusion (congrArg Prod.snd (Option.some.inj h1))
+
+/-- Entry-level index bridge for weakening: inserting `(σ, initialUsage σ)`
+between the pushed prefix `xs` and the base context leaves the entry at
+`n < xs.length` untouched (both sides land inside the prefix). -/
+theorem LinCtx.entry_pushMany_push_index_low (ctx : LinCtx) (xs : List Typ) (σ : Typ)
+    (n : Nat) (h : n < xs.length) :
+    (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs)[n]?
+      = (LinCtx.pushMany ctx xs)[n]? := by
+  simp only [LinCtx.pushMany]
+  rw [List.getElem?_append_left (by simpa using h), List.getElem?_append_left (by simpa using h)]
+
+/-- Entry-level index bridge for weakening: index `n + 1` of the weakened context
+reads index `n` of the original one (the inserted entry shifts everything above
+the prefix by one). -/
+theorem LinCtx.entry_pushMany_push_index_high (ctx : LinCtx) (xs : List Typ) (σ : Typ)
+    (n : Nat) (hNge : n ≥ xs.length) :
+    (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs)[n + 1]?
+      = (LinCtx.pushMany ctx xs)[n]? := by
+  obtain ⟨i, rfl⟩ : ∃ i, n = i + xs.length := ⟨n - xs.length, by omega⟩
+  simp only [LinCtx.pushMany]
+  rw [List.getElem?_append_right (l₂ := (σ, LinCtx.initialUsage σ) :: ctx) (by simp; omega)]
+  simp only [List.length_map]
+  rw [show i + xs.length + 1 - xs.length = i + 1 from by omega, List.getElem?_cons_succ]
+  rw [List.getElem?_append_right (l₂ := ctx) (by simp only [List.length_map]; omega)]
+  simp only [List.length_map]
+  rw [show i + xs.length - xs.length = i from by omega]
+
+/-- Entry-level index bridge for substitution: below the pushed prefix `pfx`
+both contexts read the same entry. -/
+theorem LinCtx.entry_pushMany_index_low (pfx : List Typ) (base1 base2 : LinCtx) (n : Nat)
+    (h : n < pfx.length) :
+    (LinCtx.pushMany base1 pfx)[n]? = (LinCtx.pushMany base2 pfx)[n]? := by
+  simp only [LinCtx.pushMany]
+  rw [List.getElem?_append_left (by simpa using h), List.getElem?_append_left (by simpa using h)]
+
+/-- Entry-level index bridge for substitution: at or above the pushed prefix,
+the extended context reads index `n - pfx.length` of its base. -/
+theorem LinCtx.entry_pushMany_index_high (pfx : List Typ) (base : LinCtx) (n : Nat)
+    (h : pfx.length ≤ n) :
+    (LinCtx.pushMany base pfx)[n]? = base[n - pfx.length]? := by
+  simp only [LinCtx.pushMany]
+  rw [List.getElem?_append_right (l₂ := base) (by simp only [List.length_map]; omega)]
+  simp only [List.length_map]
+
+theorem LinCtx.entry_pushMany_cons_index_high (pfx : List Typ) (base : LinCtx) (e : LinEntry)
+    (n : Nat) (h : pfx.length ≤ n) :
+    (LinCtx.pushMany (e :: base) pfx)[n]? = (e :: base)[n - pfx.length]? := by
+  simp only [LinCtx.pushMany]
+  rw [List.getElem?_append_right (l₂ := e :: base) (by simp only [List.length_map]; omega)]
+  simp only [List.length_map]
+
+theorem LinCtx.entry_cons_succ (e : LinEntry) (base : LinCtx) (k : Nat) :
+    (e :: base)[k + 1]? = base[k]? := List.getElem?_cons_succ
+
+/-- Entry-level bridge for `substAll'`: below the pushed prefix `pfx` both
+contexts read the same entry. -/
+theorem LinCtx.entry_pushMany_pushMany_index_low (ctx : LinCtx) (pfx σs : List Typ) (n : Nat)
+    (h : n < pfx.length) :
+    (LinCtx.pushMany (LinCtx.pushMany ctx σs) pfx)[n]? = (LinCtx.pushMany ctx pfx)[n]? := by
+  simp only [LinCtx.pushMany]
+  rw [List.getElem?_append_left (by simpa using h), List.getElem?_append_left (by simpa using h)]
+
+/-- Entry-level bridge for `substAll'`: index `pfx.length + k` reads the entry
+for `σs[k]`, carrying that entry's initial usage. -/
+theorem LinCtx.entry_pushMany_pushMany_index_mid (ctx : LinCtx) (pfx σs : List Typ) (k : Nat)
+    (h : k < σs.length) :
+    (LinCtx.pushMany (LinCtx.pushMany ctx σs) pfx)[pfx.length + k]?
+      = some (σs[k]'h, LinCtx.initialUsage (σs[k]'h)) := by
+  rw [LinCtx.entry_pushMany_index_high pfx (LinCtx.pushMany ctx σs) (pfx.length + k) (by omega)]
+  rw [show pfx.length + k - pfx.length = k from by omega]
+  simp only [LinCtx.pushMany]
+  rw [List.getElem?_append_left (by simpa using h)]
+  rw [List.getElem?_map, List.getElem?_eq_some_iff.mpr ⟨h, rfl⟩]
+  rfl
+
+/-- Entry-level bridge for `substAll'`: above both pushed blocks the entry shifts
+down by `σs.length`. -/
+theorem LinCtx.entry_pushMany_pushMany_index_high (ctx : LinCtx) (pfx σs : List Typ) (n : Nat)
+    (h : n ≥ pfx.length + σs.length) :
+    (LinCtx.pushMany (LinCtx.pushMany ctx σs) pfx)[n]? = (LinCtx.pushMany ctx pfx)[n - σs.length]? := by
+  rw [LinCtx.entry_pushMany_index_high pfx (LinCtx.pushMany ctx σs) n (by omega)]
+  rw [LinCtx.entry_pushMany_index_high pfx ctx (n - σs.length) (by omega)]
+  rw [LinCtx.entry_pushMany_index_high σs ctx (n - pfx.length) (by omega)]
+  rw [show n - pfx.length - σs.length = n - σs.length - pfx.length from by omega]
+
+/-- Substitution bridge: removing the head entry shifts every index strictly
+above the pushed prefix `pfx` down by one. -/
+theorem LinCtx.entry_shift (pfx : List Typ) (base : LinCtx) (σ : Typ) (n : Nat)
+    (h : pfx.length < n) :
+    (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: base) pfx)[n]?
+      = (LinCtx.pushMany base pfx)[n - 1]? := by
+  rw [LinCtx.entry_pushMany_cons_index_high pfx base (σ, LinCtx.initialUsage σ) n (by omega)]
+  rw [show n - pfx.length = (n - pfx.length - 1) + 1 from by omega, LinCtx.entry_cons_succ]
+  rw [LinCtx.entry_pushMany_index_high pfx base (n - 1) (by omega)]
+  rw [show n - 1 - pfx.length = n - pfx.length - 1 from by omega]
+
+/-- An entry `some (τ, u)` at index `n` witnesses the type at index `n`. -/
+theorem LinCtx.types_of_entry_getElem? {ctx : LinCtx} {n : Nat} {τ : Typ} {u : Morph.Usage}
+    (h : ctx[n]? = some (τ, u)) (hn : n < (ctx.types).length) :
+    (ctx.types)[n]'hn = τ := by
+  have hOpt : ctx.types[n]? = some τ := by
+    rw [LinCtx.types, List.getElem?_map, h, Option.map]
+  obtain ⟨hn', heq⟩ := List.getElem?_eq_some_iff.mp hOpt
+  show (ctx.types)[n]'hn = _
+  exact heq
 
 theorem HasType_fvar_inv (ctx : LinCtx) (Γ : TypEnv) (name : String) (τ : Typ)
     {ctx' : LinCtx} :
@@ -321,6 +453,237 @@ end
 theorem lift_comp (k1 k2 : Nat) (e : Expr) :
     lift k1 (lift k2 e) = lift (k1 + k2) e := liftUnder_comp 0 k1 k2 e
 
+/-! ## Closed Typing Keeps the Context Empty
+
+With an empty input context there is nothing to consume (`bvar_type` needs
+`n < 0`), and the `binop_*` rules pass through their first operand's output
+context, so every derivation starting from `[]` ends at `[]`. This is what lets
+`progress` apply its induction hypothesis to the *second* operand of a threaded
+`binop` (ADR-010 Phase 1c-β-2). -/
+/-- A derivation either leaves the context alone, or it is a `bvar_type` that
+consumes exactly one linear slot. -/
+theorem HasType_ctx_step {Γ : TypEnv} {e : Expr} {τ : Morph.Core.Typ} {ctx ctx' : Morph.LinCtx}
+    (h : HasType ctx Γ e τ ctx') :
+    ctx' = ctx ∨ ∃ (n : Nat) (σ : Morph.Core.Typ),
+      ctx[n]? = some (σ, Morph.Usage.zero) ∧ ctx' = Morph.LinCtx.consume ctx n := by
+  refine HasType.rec
+    (motive_1 := fun ctx _ _ _ ctx' _ => ctx' = ctx ∨ ∃ (n : Nat) (σ : Morph.Core.Typ),
+      ctx[n]? = some (σ, Morph.Usage.zero) ∧ ctx' = Morph.LinCtx.consume ctx n)
+    (motive_2 := fun _ _ _ _ _ _ => True)
+    (motive_3 := fun _ _ _ _ _ _ _ => True)
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    ?_
+    h
+  case refine_1 =>
+    intros
+    exact Or.inr ⟨_, _, by assumption, by assumption⟩
+  case refine_2 =>
+    intros
+    exact Or.inl rfl
+  case refine_3 =>
+    intros
+    exact Or.inl rfl
+  case refine_4 =>
+    intros
+    exact Or.inl rfl
+  case refine_5 =>
+    intros
+    exact Or.inl rfl
+  case refine_6 =>
+    intros
+    exact Or.inl rfl
+  case refine_7 =>
+    intros
+    exact Or.inl rfl
+  case refine_8 =>
+    intros
+    exact Or.inl rfl
+  case refine_9 =>
+    intros
+    exact Or.inl rfl
+  case refine_10 =>
+    intros
+    exact Or.inl rfl
+  case refine_11 =>
+    intros
+    exact Or.inl rfl
+  case refine_12 =>
+    intros
+    exact Or.inl rfl
+  case refine_13 =>
+    intros
+    exact Or.inl rfl
+  case refine_14 =>
+    intros
+    exact Or.inl rfl
+  case refine_15 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_16 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_17 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_18 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_19 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_20 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_21 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_22 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_23 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_24 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_25 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_26 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_27 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_28 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_29 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_30 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_31 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_32 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_33 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_34 =>
+    intros
+    exact Or.inl rfl
+  case refine_35 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_36 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_37 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_38 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_39 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_40 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_41 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_42 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_43 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_44 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_45 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_46 =>
+    intros
+    first | exact Or.inl rfl | assumption
+  case refine_47 =>
+    intros
+    trivial
+  case refine_48 =>
+    intros
+    trivial
+  case refine_49 =>
+    intros
+    trivial
+  case refine_50 =>
+    intros
+    trivial
+
+/-- With an empty input context nothing can be consumed, and the `binop_*`
+rules pass through their first operand's output context, so every derivation
+that starts at `[]` also ends at `[]`. This is what lets `progress` apply its
+induction hypothesis to the *second* operand of a threaded `binop`
+(ADR-010 Phase 1c-β-2). -/
+theorem HasType_empty_ctx_out {Γ : TypEnv} {e : Expr} {τ : Typ} {ctx' : LinCtx}
+    (h : HasType [] Γ e τ ctx') : ctx' = [] := by
+  rcases HasType_ctx_step h with hEq | ⟨n, σ, hEnt, _⟩
+  · exact hEq
+  · exact absurd hEnt (by simp)
+
 /-! ## Weakening (Trivial with de Bruijn)
 
 With de Bruijn indices, weakening is simply prepending a type to `ctx`.
@@ -359,12 +722,15 @@ theorem weakening_at_depth (xs : List Typ) (ctx : LinCtx) (Γ : TypEnv)
         (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) := by
   intro h
   cases h with
-  | bvar_type _ _ n hLen =>
+  -- A `bvar_type` derivation consumes its slot, so its output context differs
+  -- from its input context and it can never occur under the `ctx = ctx`
+  -- hypothesis of weakening.  Eliminated by contradiction (ADR-010 1c-β-2).
+  | bvar_type _ _ _ _ _ _ hEnt hEq =>
+    exact absurd hEq.symm (LinCtx.consume_ne hEnt)
+  | bvar_type_many _ _ n τ hLen hEnt =>
     simp only [liftUnder]
     split
     · rename_i hNlt
-      have hLen2 := hLen
-      rw [LinCtx.types_pushMany] at hLen2
       have hP1 : n < (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs).types.length := by
         rw [LinCtx.types_pushMany]
         show n < (xs ++ σ :: ctx.types).length
@@ -373,22 +739,12 @@ theorem weakening_at_depth (xs : List Typ) (ctx : LinCtx) (Γ : TypEnv)
         have h2 : (σ :: ctx.types).length = ctx.types.length + 1 := List.length_cons
         have h3 : (xs ++ ctx.types).length = xs.length + ctx.types.length :=
           List.length_append
-        have h4 : n < (xs ++ ctx.types).length := hLen2
+        have h4 : n < (xs ++ ctx.types).length := by rw [LinCtx.types_pushMany] at hLen; exact hLen
         omega
-      have hBT := HasType.bvar_type (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) Γ n hP1
-      have eqTy := LinCtx.types_pushMany_push_index_low ctx xs σ n hNlt
-      exact Eq.subst (motive := fun t => HasType _ Γ (.bvar n) t _) eqTy hBT
+      exact HasType.bvar_type_many (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) Γ n τ hP1
+        (by rw [LinCtx.entry_pushMany_push_index_low ctx xs σ n hNlt]; exact hEnt)
     · rename_i hNge
       have hNge' : n ≥ xs.length := Nat.ge_of_not_lt hNge
-      have hLen2 := hLen
-      rw [LinCtx.types_pushMany] at hLen2
-      have hLIdx : n - xs.length < ctx.types.length :=
-        nat_sub_lt_of_lt_add n ctx.types.length xs.length hNge' (by
-          have h3 : (LinCtx.pushMany ctx xs).types.length = xs.length + ctx.types.length := by
-            rw [LinCtx.types_pushMany]; rw [List.length_append]
-          omega)
-      have hlc := @List.length_cons Typ σ ctx.types
-      have hCons : (n - xs.length) + 1 < (σ :: ctx.types).length := by omega
       have hP1 : n + 1 < (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs).types.length := by
         rw [LinCtx.types_pushMany]
         show n + 1 < (xs ++ σ :: ctx.types).length
@@ -397,17 +753,10 @@ theorem weakening_at_depth (xs : List Typ) (ctx : LinCtx) (Γ : TypEnv)
         have h2 : (σ :: ctx.types).length = ctx.types.length + 1 := List.length_cons
         have h3 : (xs ++ ctx.types).length = xs.length + ctx.types.length :=
           List.length_append
-        have h4 : n < (xs ++ ctx.types).length := hLen2
+        have h4 : n < (xs ++ ctx.types).length := by rw [LinCtx.types_pushMany] at hLen; exact hLen
         omega
-      have hBT := HasType.bvar_type (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) Γ (n + 1) hP1
-      have hOpt := LinCtx.types_pushMany_push_index_high ctx xs σ n hNge' hCons
-      have s2 : (LinCtx.pushMany ctx xs).types[n]? =
-          some ((LinCtx.pushMany ctx xs).types[n]'hLen) :=
-        List.getElem?_eq_some_iff.mpr ⟨hLen, rfl⟩
-      have hChain : (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs).types[n + 1]? =
-          some ((LinCtx.pushMany ctx xs).types[n]'hLen) := by rw [hOpt]; exact s2
-      obtain ⟨_, hEq⟩ := List.getElem?_eq_some_iff.mp hChain
-      exact Eq.subst (motive := fun t => HasType _ Γ (.bvar (n + 1)) t _) hEq hBT
+      exact HasType.bvar_type_many (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) Γ (n + 1) τ hP1
+        (by rw [LinCtx.entry_pushMany_push_index_high ctx xs σ n hNge']; exact hEnt)
   | fvar_type _ _ name τ hLookup =>
     simp only [liftUnder]
     exact HasType.fvar_type (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) Γ name τ hLookup
@@ -424,52 +773,60 @@ theorem weakening_at_depth (xs : List Typ) (ctx : LinCtx) (Γ : TypEnv)
     simp only [liftUnder]
     exact HasType.unop_notb (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) Γ (liftUnder xs.length 1 e')
       (weakening_at_depth xs ctx Γ e' .intType σ hE')
-  | binop_arith _ _ op e1 e2 hArith hE1 hE2 =>
+  | binop_arith _ _ op e1 e2 cmid hArith hE1 hE2 =>
     simp only [liftUnder]
     exact HasType.binop_arith (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) Γ op (liftUnder xs.length 1 e1)
-      (liftUnder xs.length 1 e2) hArith
+      (liftUnder xs.length 1 e2)
+      (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) hArith
       (weakening_at_depth xs ctx Γ e1 .intType σ hE1)
       (weakening_at_depth xs ctx Γ e2 .intType σ hE2)
-  | binop_comp _ _ op e1 e2 hComp hE1 hE2 =>
+  | binop_comp _ _ op e1 e2 cmid hComp hE1 hE2 =>
     simp only [liftUnder]
     exact HasType.binop_comp (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) Γ op (liftUnder xs.length 1 e1)
-      (liftUnder xs.length 1 e2) hComp
+      (liftUnder xs.length 1 e2)
+      (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) hComp
       (weakening_at_depth xs ctx Γ e1 .intType σ hE1)
       (weakening_at_depth xs ctx Γ e2 .intType σ hE2)
-  | binop_logic _ _ op e1 e2 hLogic hE1 hE2 =>
+  | binop_logic _ _ op e1 e2 cmid hLogic hE1 hE2 =>
     simp only [liftUnder]
     exact HasType.binop_logic (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) Γ op (liftUnder xs.length 1 e1)
-      (liftUnder xs.length 1 e2) hLogic
+      (liftUnder xs.length 1 e2)
+      (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) hLogic
       (weakening_at_depth xs ctx Γ e1 .boolType σ hE1)
       (weakening_at_depth xs ctx Γ e2 .boolType σ hE2)
-  | binop_bitwise _ _ op e1 e2 hBit hE1 hE2 =>
+  | binop_bitwise _ _ op e1 e2 cmid hBit hE1 hE2 =>
     simp only [liftUnder]
     exact HasType.binop_bitwise (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) Γ op (liftUnder xs.length 1 e1)
-      (liftUnder xs.length 1 e2) hBit
+      (liftUnder xs.length 1 e2)
+      (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) hBit
       (weakening_at_depth xs ctx Γ e1 .intType σ hE1)
       (weakening_at_depth xs ctx Γ e2 .intType σ hE2)
-  | binop_ptr_arith _ _ op e1 e2 hPtr hE1 hE2 =>
+  | binop_ptr_arith _ _ op e1 e2 cmid hPtr hE1 hE2 =>
     simp only [liftUnder]
     exact HasType.binop_ptr_arith (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) Γ op (liftUnder xs.length 1 e1)
-      (liftUnder xs.length 1 e2) hPtr
+      (liftUnder xs.length 1 e2)
+      (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) hPtr
       (weakening_at_depth xs ctx Γ e1 .pointerType σ hE1)
       (weakening_at_depth xs ctx Γ e2 .intType σ hE2)
-  | binop_ptr_load _ _ e1 e2 hE1 hE2 =>
+  | binop_ptr_load _ _ e1 e2 cmid hE1 hE2 =>
     simp only [liftUnder]
     exact HasType.binop_ptr_load (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) Γ (liftUnder xs.length 1 e1)
       (liftUnder xs.length 1 e2)
+      (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs)
       (weakening_at_depth xs ctx Γ e1 .pointerType σ hE1)
       (weakening_at_depth xs ctx Γ e2 .unitType σ hE2)
-  | binop_ptr_store _ _ e1 e2 hE1 hE2 =>
+  | binop_ptr_store _ _ e1 e2 cmid hE1 hE2 =>
     simp only [liftUnder]
     exact HasType.binop_ptr_store (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) Γ (liftUnder xs.length 1 e1)
       (liftUnder xs.length 1 e2)
+      (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs)
       (weakening_at_depth xs ctx Γ e1 .pointerType σ hE1)
       (weakening_at_depth xs ctx Γ e2 .intType σ hE2)
-  | binop_string_concat _ _ op e1 e2 hOp hE1 hE2 =>
+  | binop_string_concat _ _ op e1 e2 cmid hOp hE1 hE2 =>
     simp only [liftUnder]
     exact HasType.binop_string_concat (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) Γ op
       (liftUnder xs.length 1 e1) (liftUnder xs.length 1 e2)
+      (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs)
       hOp
       (weakening_at_depth xs ctx Γ e1 .stringType σ hE1)
       (weakening_at_depth xs ctx Γ e2 .stringType σ hE2)
@@ -670,187 +1027,197 @@ theorem ArmsTyped_weakening (σ : Typ)
   simp only [LinCtx.pushMany, List.map_nil, List.nil_append, List.length_nil] at h
   exact h
 
+set_option maxHeartbeats 1000000 in
 mutual
 
 theorem weakening (ctx : LinCtx) (Γ : TypEnv) (e : Expr) (τ : Typ) (σ : Typ) :
     HasType ctx Γ e τ ctx → HasType ((σ, LinCtx.initialUsage σ) :: ctx) Γ (lift 1 e) τ
       ((σ, LinCtx.initialUsage σ) :: ctx) := by
   intro h
-  match h with
-  | HasType.bvar_type ctx Γ n h =>
+  cases h with
+  -- consuming derivations are excluded by the `ctx = ctx` hypothesis
+  | bvar_type _ _ _ _ _ _ hEnt hEq =>
+    exact absurd hEq.symm (LinCtx.consume_ne hEnt)
+  | bvar_type_many ctx Γ n τ h hEnt =>
     have hLen' : n + 1 < (LinCtx.types ((σ, LinCtx.initialUsage σ) :: ctx)).length := by
       have h' := h
       simp only [LinCtx.types, List.map_cons, List.length_cons] at h' ⊢
       omega
     rw [lift_bvar]
-    have hEq : (LinCtx.types ((σ, LinCtx.initialUsage σ) :: ctx))[n + 1]'hLen'
-        = (LinCtx.types ctx)[n]'h :=
-      List.getElem_cons_succ σ (LinCtx.types ctx) n hLen'
-    exact hEq ▸ HasType.bvar_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ (n + 1) hLen'
-  | HasType.fvar_type ctx Γ name τ hLookup =>
+    exact HasType.bvar_type_many ((σ, LinCtx.initialUsage σ) :: ctx) Γ (n + 1) τ hLen'
+      (by rw [List.getElem?_cons_succ]; exact hEnt)
+  | fvar_type ctx Γ name τ hLookup =>
     rw [lift_fvar]
     exact HasType.fvar_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ name τ hLookup
-  | HasType.lit_int ctx Γ n =>
+  | lit_int ctx Γ n =>
     rw [lift_lit]
     exact HasType.lit_int ((σ, LinCtx.initialUsage σ) :: ctx) Γ n
-  | HasType.lit_bool ctx Γ b =>
+  | lit_bool ctx Γ b =>
     rw [lift_lit]
     exact HasType.lit_bool ((σ, LinCtx.initialUsage σ) :: ctx) Γ b
-  | HasType.lit_string ctx Γ s =>
+  | lit_string ctx Γ s =>
     rw [lift_lit]
     exact HasType.lit_string ((σ, LinCtx.initialUsage σ) :: ctx) Γ s
-  | HasType.lit_unit ctx Γ =>
+  | lit_unit ctx Γ =>
     rw [lift_lit]
     exact HasType.lit_unit ((σ, LinCtx.initialUsage σ) :: ctx) Γ
-  | HasType.lit_pointer ctx Γ p =>
+  | lit_pointer ctx Γ p =>
     rw [lift_lit]
     exact HasType.lit_pointer ((σ, LinCtx.initialUsage σ) :: ctx) Γ p
-  | HasType.unop_not ctx Γ e hE =>
+  | unop_not ctx Γ e hE =>
     rw [lift_unop]
     exact HasType.unop_not ((σ, LinCtx.initialUsage σ) :: ctx) Γ (lift 1 e) (weakening _ _ _ _ σ hE)
-  | HasType.unop_notb ctx Γ e hE =>
+  | unop_notb ctx Γ e hE =>
     rw [lift_unop]
     exact HasType.unop_notb ((σ, LinCtx.initialUsage σ) :: ctx) Γ (lift 1 e) (weakening _ _ _ _ σ hE)
-  | HasType.binop_arith ctx Γ op e1 e2 hArith hE1 hE2 =>
+  | binop_arith ctx Γ op e1 e2 cmid hArith hE1 hE2 =>
     rw [lift_binop]
-    exact HasType.binop_arith ((σ, LinCtx.initialUsage σ) :: ctx) Γ op (lift 1 e1) (lift 1 e2) hArith
+    exact HasType.binop_arith ((σ, LinCtx.initialUsage σ) :: ctx) Γ op (lift 1 e1) (lift 1 e2)
+      ((σ, LinCtx.initialUsage σ) :: ctx) hArith
       (weakening _ _ _ _ σ hE1) (weakening _ _ _ _ σ hE2)
-  | HasType.binop_comp ctx Γ op e1 e2 hComp hE1 hE2 =>
+  | binop_comp ctx Γ op e1 e2 cmid hComp hE1 hE2 =>
     rw [lift_binop]
-    exact HasType.binop_comp ((σ, LinCtx.initialUsage σ) :: ctx) Γ op (lift 1 e1) (lift 1 e2) hComp
+    exact HasType.binop_comp ((σ, LinCtx.initialUsage σ) :: ctx) Γ op (lift 1 e1) (lift 1 e2)
+      ((σ, LinCtx.initialUsage σ) :: ctx) hComp
       (weakening _ _ _ _ σ hE1) (weakening _ _ _ _ σ hE2)
-  | HasType.binop_logic ctx Γ op e1 e2 hLogic hE1 hE2 =>
+  | binop_logic ctx Γ op e1 e2 cmid hLogic hE1 hE2 =>
     rw [lift_binop]
-    exact HasType.binop_logic ((σ, LinCtx.initialUsage σ) :: ctx) Γ op (lift 1 e1) (lift 1 e2) hLogic
+    exact HasType.binop_logic ((σ, LinCtx.initialUsage σ) :: ctx) Γ op (lift 1 e1) (lift 1 e2)
+      ((σ, LinCtx.initialUsage σ) :: ctx) hLogic
       (weakening _ _ _ _ σ hE1) (weakening _ _ _ _ σ hE2)
-  | HasType.binop_bitwise ctx Γ op e1 e2 hBit hE1 hE2 =>
+  | binop_bitwise ctx Γ op e1 e2 cmid hBit hE1 hE2 =>
     rw [lift_binop]
-    exact HasType.binop_bitwise ((σ, LinCtx.initialUsage σ) :: ctx) Γ op (lift 1 e1) (lift 1 e2) hBit
+    exact HasType.binop_bitwise ((σ, LinCtx.initialUsage σ) :: ctx) Γ op (lift 1 e1) (lift 1 e2)
+      ((σ, LinCtx.initialUsage σ) :: ctx) hBit
       (weakening _ _ _ _ σ hE1) (weakening _ _ _ _ σ hE2)
-  | HasType.binop_ptr_arith ctx Γ op e1 e2 hPtr hE1 hE2 =>
+  | binop_ptr_arith ctx Γ op e1 e2 cmid hPtr hE1 hE2 =>
     rw [lift_binop]
-    exact HasType.binop_ptr_arith ((σ, LinCtx.initialUsage σ) :: ctx) Γ op (lift 1 e1) (lift 1 e2) hPtr
+    exact HasType.binop_ptr_arith ((σ, LinCtx.initialUsage σ) :: ctx) Γ op (lift 1 e1) (lift 1 e2)
+      ((σ, LinCtx.initialUsage σ) :: ctx) hPtr
       (weakening _ _ _ _ σ hE1) (weakening _ _ _ _ σ hE2)
-  | HasType.binop_ptr_load ctx Γ e1 e2 hE1 hE2 =>
+  | binop_ptr_load ctx Γ e1 e2 cmid hE1 hE2 =>
     rw [lift_binop]
     exact HasType.binop_ptr_load ((σ, LinCtx.initialUsage σ) :: ctx) Γ (lift 1 e1) (lift 1 e2)
+      ((σ, LinCtx.initialUsage σ) :: ctx)
       (weakening _ _ _ _ σ hE1) (weakening _ _ _ _ σ hE2)
-  | HasType.binop_ptr_store ctx Γ e1 e2 hE1 hE2 =>
+  | binop_ptr_store ctx Γ e1 e2 cmid hE1 hE2 =>
     rw [lift_binop]
     exact HasType.binop_ptr_store ((σ, LinCtx.initialUsage σ) :: ctx) Γ (lift 1 e1) (lift 1 e2)
+      ((σ, LinCtx.initialUsage σ) :: ctx)
       (weakening _ _ _ _ σ hE1) (weakening _ _ _ _ σ hE2)
-  | HasType.binop_string_concat ctx Γ op e1 e2 hOp hE1 hE2 =>
+  | binop_string_concat ctx Γ op e1 e2 cmid hOp hE1 hE2 =>
     rw [lift_binop]
     exact HasType.binop_string_concat ((σ, LinCtx.initialUsage σ) :: ctx) Γ op
       (lift 1 e1) (lift 1 e2)
+      ((σ, LinCtx.initialUsage σ) :: ctx)
       hOp
       (weakening _ _ _ _ σ hE1)
       (weakening _ _ _ _ σ hE2)
-  | HasType.lam_type ctx Γ n body paramTys retTy hLen hBody =>
+  | lam_type ctx Γ n body paramTys retTy hLen hBody =>
     rw [lift_lam]
     have hLenEq1 := @List.length_reverse Typ paramTys
     have hLenEq2 : paramTys.reverse.length = n := hLenEq1.trans hLen.symm
     have hBody' := weakening_at_depth paramTys.reverse ctx Γ body retTy σ hBody
     exact HasType.lam_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ n (liftUnder n 1 body) paramTys retTy hLen
       (Eq.subst (motive := fun i => HasType _ Γ (liftUnder i 1 body) retTy _) hLenEq2 hBody')
-  | HasType.app_type ctx Γ fn args τs τ hFn hArgs =>
+  | app_type ctx Γ fn args τs τ hFn hArgs =>
     rw [lift_app]
     exact HasType.app_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ (lift 1 fn) (List.map (lift 1) args) τs τ
       (weakening _ _ _ _ σ hFn) (weakening_all _ _ _ _ σ hArgs)
-  | HasType.let_type ctx Γ e1 e2 τ1 τ2 hE1 hE2 =>
+  | let_type ctx Γ e1 e2 τ1 _ hE1 hE2 =>
     rw [lift_let]
-    exact HasType.let_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ (lift 1 e1) (liftUnder 1 1 e2) τ1 τ2
-      (weakening _ _ _ _ σ hE1) (weakening_at_depth [τ1] ctx Γ e2 τ2 σ hE2)
-  | HasType.if_type ctx Γ c t f τ hC hT hF =>
+    exact HasType.let_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ (lift 1 e1) (liftUnder 1 1 e2) τ1 _
+      (weakening _ _ _ _ σ hE1) (weakening_at_depth [τ1] ctx Γ e2 _ σ hE2)
+  | if_type ctx Γ c t f τ hC hT hF =>
     rw [lift_if]
     exact HasType.if_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ (lift 1 c) (lift 1 t) (lift 1 f) τ
       (weakening _ _ _ _ σ hC) (weakening _ _ _ _ σ hT) (weakening _ _ _ _ σ hF)
-  | HasType.for_type ctx Γ s e body hS hE hBody =>
+  | for_type ctx Γ s e body hS hE hBody =>
     rw [lift_for]
     exact HasType.for_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ (lift 1 s) (lift 1 e) (body.map (liftUnder 1 1))
       (weakening _ _ _ _ σ hS) (weakening _ _ _ _ σ hE)
       (weakening_at_depth_all [.intType] ctx Γ body [.unitType] σ hBody)
-  | HasType.block_type ctx Γ exprs τs τ hExprs =>
+  | block_type ctx Γ exprs τs τ hExprs =>
     rw [lift_block]
     exact HasType.block_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ (List.map (lift 1) exprs) τs τ
       (weakening_all _ _ _ _ σ hExprs)
-  | HasType.lit_float ctx Γ w f =>
+  | lit_float ctx Γ w f =>
     rw [lift_lit]
     exact HasType.lit_float ((σ, LinCtx.initialUsage σ) :: ctx) Γ w f
-  | HasType.lit_int_width ctx Γ w n =>
+  | lit_int_width ctx Γ w n =>
     rw [lift_lit]
     exact HasType.lit_int_width ((σ, LinCtx.initialUsage σ) :: ctx) Γ w n
-  | HasType.lit_some ctx Γ v τ =>
+  | lit_some ctx Γ v τ =>
     rw [lift_lit]
     exact HasType.lit_some ((σ, LinCtx.initialUsage σ) :: ctx) Γ v τ
-  | HasType.lit_none ctx Γ τ =>
+  | lit_none ctx Γ τ =>
     rw [lift_lit]
     exact HasType.lit_none ((σ, LinCtx.initialUsage σ) :: ctx) Γ τ
-  | HasType.lit_ok ctx Γ v τ_ok τ_err =>
+  | lit_ok ctx Γ v τ_ok τ_err =>
     rw [lift_lit]
     exact HasType.lit_ok ((σ, LinCtx.initialUsage σ) :: ctx) Γ v τ_ok τ_err
-   | HasType.lit_err ctx Γ v τ_err τ_ok =>
+   | lit_err ctx Γ v τ_err τ_ok =>
      rw [lift_lit]
      exact HasType.lit_err ((σ, LinCtx.initialUsage σ) :: ctx) Γ v τ_err τ_ok
-   | HasType.pipe_type ctx Γ e f τ_arg τ hE hF =>
+   | pipe_type ctx Γ e f τ_arg τ hE hF =>
     rw [lift_pipe]
     exact HasType.pipe_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ (lift 1 e) (lift 1 f) τ_arg τ
       (weakening _ _ _ _ σ hE) (weakening _ _ _ _ σ hF)
-  | HasType.typeAsc_type ctx Γ e τ hE =>
+  | typeAsc_type ctx Γ e τ hE =>
     rw [lift_typeAsc]
     exact HasType.typeAsc_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ (lift 1 e) τ (weakening _ _ _ _ σ hE)
-  | HasType.some_type ctx Γ e τ_inner hE =>
+  | some_type ctx Γ e τ_inner hE =>
     rw [lift_some]
     exact HasType.some_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ (lift 1 e) τ_inner (weakening _ _ _ _ σ hE)
-  | HasType.none_type ctx Γ τ =>
+  | none_type ctx Γ τ =>
     rw [lift_none]
     exact HasType.none_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ τ
-  | HasType.ok_type ctx Γ e τ_ok τ_err hE =>
+  | ok_type ctx Γ e τ_ok τ_err hE =>
     rw [lift_ok]
     exact HasType.ok_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ (lift 1 e) τ_ok τ_err (weakening _ _ _ _ σ hE)
-  | HasType.err_type ctx Γ e τ_err τ_ok hE =>
+  | err_type ctx Γ e τ_err τ_ok hE =>
     rw [lift_err]
     exact HasType.err_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ (lift 1 e) τ_err τ_ok (weakening _ _ _ _ σ hE)
-  | HasType.null_coalesce_type ctx Γ e1 e2 τ hE1 hE2 =>
+  | null_coalesce_type ctx Γ e1 e2 τ hE1 hE2 =>
     rw [lift_nullCoalesce]
     exact HasType.null_coalesce_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ (lift 1 e1) (lift 1 e2) τ
       (weakening _ _ _ _ σ hE1) (weakening _ _ _ _ σ hE2)
-   | HasType.tuple_type ctx Γ elems tys hTys =>
+   | tuple_type ctx Γ elems tys hTys =>
      rw [lift_tuple]
      exact HasType.tuple_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ (elems.map (lift 1)) tys
        (weakening_all _ _ _ _ σ hTys)
-   | HasType.field_access_type ctx Γ e fname sname fields τ hE hField =>
+   | field_access_type ctx Γ e fname sname fields τ hE hField =>
      rw [lift_field]
      exact HasType.field_access_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ (lift 1 e) fname sname fields τ
        (weakening _ _ _ _ σ hE) hField
-   | HasType.match_type ctx Γ scrut arms τ_scrut τ_result hScrut hArms =>
+   | match_type ctx Γ scrut arms τ_scrut _ hScrut hArms =>
       simp only [liftUnder]
-      exact HasType.match_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ (lift 1 scrut) (liftUnderArms 0 1 arms) τ_scrut τ_result
+      exact HasType.match_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ (lift 1 scrut) (liftUnderArms 0 1 arms) τ_scrut _
         (weakening _ _ _ _ σ hScrut)
         (ArmsTyped_weakening σ hArms)
-   | HasType.arrayLit_type ctx Γ elems τ n hElems hLen hn =>
+   | arrayLit_type ctx Γ elems τ n hElems hLen hn =>
      rw [lift_arrayLit]
      have hLen' : n = (List.map (lift 1) elems).length := by
        rw [List.length_map]; exact hLen
      exact HasType.arrayLit_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ (elems.map (lift 1)) τ n
        (weakening_all _ _ _ _ σ hElems) hLen' hn
-   | HasType.arrayIndex_type ctx Γ arr idx τ n hArr hIdx =>
+   | arrayIndex_type ctx Γ arr idx τ n hArr hIdx =>
      rw [lift_arrayIndex]
      exact HasType.arrayIndex_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ (lift 1 arr) (lift 1 idx) τ n
        (weakening _ _ _ _ σ hArr) (weakening _ _ _ _ σ hIdx)
-   | HasType.refCreate_type ctx Γ e cap τ hE =>
+   | refCreate_type ctx Γ e cap τ hE =>
      rw [lift_refCreate]
      exact HasType.refCreate_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ (lift 1 e) cap τ
        (weakening _ _ _ _ σ hE)
-   | HasType.refLoad_type ctx Γ e cap τ hE =>
+   | refLoad_type ctx Γ e cap τ hE =>
      rw [lift_refLoad]
      exact HasType.refLoad_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ (lift 1 e) cap τ
        (weakening _ _ _ _ σ hE)
-   | HasType.refStore_type ctx Γ e v cap τ hE hV hCap =>
+   | refStore_type ctx Γ e v cap τ hE hV hCap =>
      rw [lift_refStore]
      exact HasType.refStore_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ (lift 1 e) (lift 1 v) cap τ
        (weakening _ _ _ _ σ hE) (weakening _ _ _ _ σ hV) hCap
-   | HasType.refFree_type ctx Γ e τ hE =>
+   | refFree_type ctx Γ e τ hE =>
      rw [lift_refFree]
      exact HasType.refFree_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ (lift 1 e) τ
        (weakening _ _ _ _ σ hE)

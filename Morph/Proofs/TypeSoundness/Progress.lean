@@ -410,7 +410,10 @@ private theorem progress_strong :
   | succ d ih =>
     intro e hDepth τ cout hType
     cases hType with
-    | bvar_type _ _ n hLen =>
+    | bvar_type _ _ _ _ _ _ hEnt _ =>
+      exfalso
+      exact absurd hEnt (by simp)
+    | bvar_type_many _ _ _ _ hLen _ =>
       exfalso
       exact absurd hLen (Nat.not_lt_zero _)
     | fvar_type _ _ name τ_val hLookup =>
@@ -443,7 +446,9 @@ private theorem progress_strong :
       | inr hStep =>
         obtain ⟨e', hs⟩ := hStep
         right; exact ⟨.unop .notb e', Step.unop_step σ .notb eSub e' hs⟩
-    | binop_arith _ _ op e1 e2 hArith hSub1 hSub2 =>
+    | binop_arith _ _ op e1 e2 _ hArith hSub1 hSub2 =>
+      have hcmid := HasType_empty_ctx_out hSub1
+      rw [hcmid] at hSub2
       have h1 := ih e1 (Nat.lt_of_lt_of_le (depth_binop_l op) (Nat.le_of_lt_succ hDepth)) .intType hSub1
       have h2 := ih e2 (Nat.lt_of_lt_of_le (depth_binop_r op) (Nat.le_of_lt_succ hDepth)) .intType hSub2
       cases h1 with
@@ -483,7 +488,9 @@ private theorem progress_strong :
       | inr hStep1 =>
         obtain ⟨e1', hs⟩ := hStep1
         right; exact ⟨.binop op e1' e2, Step.binop_left σ op e1 e1' e2 hs⟩
-    | binop_comp _ _ op e1 e2 hComp hSub1 hSub2 =>
+    | binop_comp _ _ op e1 e2 _ hComp hSub1 hSub2 =>
+      have hcmid := HasType_empty_ctx_out hSub1
+      rw [hcmid] at hSub2
       have h1 := ih e1 (Nat.lt_of_lt_of_le (depth_binop_l op) (Nat.le_of_lt_succ hDepth)) .intType hSub1
       have h2 := ih e2 (Nat.lt_of_lt_of_le (depth_binop_r op) (Nat.le_of_lt_succ hDepth)) .intType hSub2
       cases h1 with
@@ -503,7 +510,9 @@ private theorem progress_strong :
       | inr hStep1 =>
         obtain ⟨e1', hs⟩ := hStep1
         right; exact ⟨.binop op e1' e2, Step.binop_left σ op e1 e1' e2 hs⟩
-    | binop_logic _ _ op e1 e2 hLogic hSub1 hSub2 =>
+    | binop_logic _ _ op e1 e2 _ hLogic hSub1 hSub2 =>
+      have hcmid := HasType_empty_ctx_out hSub1
+      rw [hcmid] at hSub2
       have h1 := ih e1 (Nat.lt_of_lt_of_le (depth_binop_l op) (Nat.le_of_lt_succ hDepth)) .boolType hSub1
       have h2 := ih e2 (Nat.lt_of_lt_of_le (depth_binop_r op) (Nat.le_of_lt_succ hDepth)) .boolType hSub2
       cases h1 with
@@ -529,7 +538,9 @@ private theorem progress_strong :
       | inr hStep1 =>
         obtain ⟨e1', hs⟩ := hStep1
         right; exact ⟨.binop op e1' e2, Step.binop_left σ op e1 e1' e2 hs⟩
-    | binop_bitwise _ _ op e1 e2 hBitwise hSub1 hSub2 =>
+    | binop_bitwise _ _ op e1 e2 _ hBitwise hSub1 hSub2 =>
+      have hcmid := HasType_empty_ctx_out hSub1
+      rw [hcmid] at hSub2
       have h1 := ih e1 (Nat.lt_of_lt_of_le (depth_binop_l op) (Nat.le_of_lt_succ hDepth)) .intType hSub1
       have h2 := ih e2 (Nat.lt_of_lt_of_le (depth_binop_r op) (Nat.le_of_lt_succ hDepth)) .intType hSub2
       cases h1 with
@@ -555,7 +566,9 @@ private theorem progress_strong :
       | inr hStep1 =>
         obtain ⟨e1', hs⟩ := hStep1
         right; exact ⟨.binop op e1' e2, Step.binop_left σ op e1 e1' e2 hs⟩
-    | binop_ptr_arith _ _ op e1 e2 hPtr hSub1 hSub2 =>
+    | binop_ptr_arith _ _ op e1 e2 _ hPtr hSub1 hSub2 =>
+      have hcmid := HasType_empty_ctx_out hSub1
+      rw [hcmid] at hSub2
       have h1 := ih e1 (Nat.lt_of_lt_of_le (depth_binop_l op) (Nat.le_of_lt_succ hDepth)) .pointerType hSub1
       have h2 := ih e2 (Nat.lt_of_lt_of_le (depth_binop_r op) (Nat.le_of_lt_succ hDepth)) .intType hSub2
       cases h1 with
@@ -595,7 +608,9 @@ private theorem progress_strong :
        | inr hStep1 =>
          obtain ⟨e1', hs⟩ := hStep1
          right; exact ⟨.binop op e1' e2, Step.binop_left σ op e1 e1' e2 hs⟩
-     | binop_ptr_load _ _ e1 e2 hSub1 hSub2 =>
+     | binop_ptr_load _ _ e1 e2 _ hSub1 hSub2 =>
+      have hcmid := HasType_empty_ctx_out hSub1
+      rw [hcmid] at hSub2
       have h1 := ih e1 (Nat.lt_of_lt_of_le (depth_binop_l .ptrLoad) (Nat.le_of_lt_succ hDepth)) .pointerType hSub1
       cases h1 with
       | inl hv1 =>
@@ -635,7 +650,9 @@ private theorem progress_strong :
       | inr hStep1 =>
         obtain ⟨e1', hs⟩ := hStep1
         right; exact ⟨.binop .ptrLoad e1' e2, Step.binop_left σ .ptrLoad e1 e1' e2 hs⟩
-     | binop_ptr_store _ _ e1 e2 hSub1 hSub2 =>
+     | binop_ptr_store _ _ e1 e2 _ hSub1 hSub2 =>
+      have hcmid := HasType_empty_ctx_out hSub1
+      rw [hcmid] at hSub2
       have h1 := ih e1 (Nat.lt_of_lt_of_le (depth_binop_l .ptrStore) (Nat.le_of_lt_succ hDepth)) .pointerType hSub1
       cases h1 with
       | inl hv1 =>
@@ -665,7 +682,9 @@ private theorem progress_strong :
        | inr hStep1 =>
          obtain ⟨e1', hs⟩ := hStep1
          right; exact ⟨.binop .ptrStore e1' e2, Step.binop_left σ .ptrStore e1 e1' e2 hs⟩
-     | binop_string_concat _ _ op e1 e2 hOp hSub1 hSub2 =>
+     | binop_string_concat _ _ op e1 e2 _ hOp hSub1 hSub2 =>
+      have hcmid := HasType_empty_ctx_out hSub1
+      rw [hcmid] at hSub2
       have h1 := ih e1 (Nat.lt_of_lt_of_le (depth_binop_l op) (Nat.le_of_lt_succ hDepth)) .stringType hSub1
       have h2 := ih e2 (Nat.lt_of_lt_of_le (depth_binop_r op) (Nat.le_of_lt_succ hDepth)) .stringType hSub2
       subst hOp

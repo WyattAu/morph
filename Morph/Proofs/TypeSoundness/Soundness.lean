@@ -208,6 +208,7 @@ theorem closed_no_bvar : forall {e : Expr} {τ : Typ} {cout : LinCtx},
     HasType [] [] e τ cout -> forall n, ¬HasType [] [] (.bvar n) τ [] := by
   intro e τ cout hType n hBvar
   cases hBvar with
-  | bvar_type _ _ _ hLen => exact absurd hLen (Nat.not_lt_zero _)
+  | bvar_type _ _ _ _ _ _ hEnt _ => exact absurd hEnt (by simp)
+  | bvar_type_many _ _ _ _ hLen _ => exact absurd hLen (Nat.not_lt_zero _)
 
 end Morph.Proofs.TypeSoundness
