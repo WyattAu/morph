@@ -34,10 +34,15 @@ plain `bvs : List Typ`, enabling enforcement of linearity constraints.
 
 ## Migration Path
 
-Phase 1 (current): Types defined, not yet integrated into HasType.
-Phase 2: HasType signature changes from `bvs : List Typ` to `ctx : LinCtx`.
-Phase 3: Consumption rules added for iso/val types.
-Phase 4: Full linear soundness proof.
+Phase 1: Types defined.
+Phase 2 (done): HasType signature changed from `bvs : List Typ` to `ctx : LinCtx`.
+Phase 3 (done): HasType threads the context, `HasType ctx Γ e τ ctx'`
+(ADR-010 Phase 1c-β-1). Every rule currently returns `ctx` unchanged; the
+threading exists so that later phases can consume entries without reshaping the
+judgment.
+Phase 4: Consumption rules added for iso/val types, so `ctx'` may differ from
+`ctx`.
+Phase 5: Full linear soundness proof.
 
 -/
 

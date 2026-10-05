@@ -16,9 +16,10 @@ using de Bruijn indices for bound variables.
 
 ## Key Design Decisions
 
-- `HasType ctx Γ e τ`: The first parameter `ctx : LinCtx` tracks the types
+- `HasType ctx Γ e τ ctx'`: The first parameter `ctx : LinCtx` tracks the types
   and usages of currently-bound de Bruijn indices. `ctx.types[0]` is the
-  type of bvar 0, etc.
+  type of bvar 0, etc. The last parameter `ctx'` is the context *after*
+  typing `e`; currently every rule returns `ctx` unchanged (ADR-010 Phase 1c-β-1).
 - `TypEnv` maps free variable names to types (unchanged from named-variable system).
 - `inferType ctx env e`: Executable type inference with bound-variable context.
 - Weakening is trivial: just prepend entries via `LinCtx.pushMany`.
@@ -324,166 +325,186 @@ def isPtrArithOp (op : Morph.Core.Operator) : Prop :=
 
 /-! ## Typing Judgments
 
-`HasType ctx Γ e τ`:
+`HasType ctx Γ e τ ctx'`:
 - `ctx : LinCtx` — linear context of bound de Bruijn indices
   (ctx.types[0] = type of bvar 0, the most recent binder)
 - `Γ : TypEnv` — types of free variables by name
 - `e : Expr` — the expression
- - `τ : Typ` — the inferred type
+- `τ : Typ` — the inferred type
+- `ctx' : LinCtx` — the linear context *after* typing `e` (ADR-010)
+
+The judgment is a *state transformer on contexts*: it consumes the input
+context `ctx` and produces the output context `ctx'`. Phase 1c-β-1 only installs
+the plumbing — **every rule returns the context it was given unchanged**
+(`ctx' = ctx`; a rule that pushes binders threads the extended context, which is
+itself returned unchanged). Phase 1c-β-2 adds the consumption rules that actually
+mutate the context, and later phases merge contexts at branching points.
 -/
 
 mutual
 
-inductive HasType : LinCtx → TypEnv → Morph.Syntax.Expr → Morph.Core.Typ → Prop where
+inductive HasType : LinCtx → TypEnv → Morph.Syntax.Expr → Morph.Core.Typ → LinCtx → Prop where
   | bvar_type : ∀ ctx Γ n,
       (h : n < (ctx.types).length) →
-      HasType ctx Γ (.bvar n) (ctx.types)[n]
+      HasType ctx Γ (.bvar n) (ctx.types)[n] ctx
   | fvar_type : ∀ ctx Γ name τ,
       lookupTyp Γ name = some τ →
-      HasType ctx Γ (.fvar name) τ
-  | lit_int : ∀ ctx Γ n, HasType ctx Γ (.lit (.int n)) .intType
-  | lit_bool : ∀ ctx Γ b, HasType ctx Γ (.lit (.bool b)) .boolType
-  | lit_string : ∀ ctx Γ s, HasType ctx Γ (.lit (.string s)) .stringType
-  | lit_unit : ∀ ctx Γ, HasType ctx Γ (.lit .unit) .unitType
-  | lit_pointer : ∀ ctx Γ p, HasType ctx Γ (.lit (.pointer p)) .pointerType
-  | lit_float : ∀ ctx Γ w f, HasType ctx Γ (.lit (.float f)) (.floatType w)
-  | lit_int_width : ∀ ctx Γ w n, HasType ctx Γ (.lit (.int n)) (.intWidthType w)
-  | lit_some : ∀ ctx Γ v τ, HasType ctx Γ (.lit (.some v)) (.optionType τ)
-  | lit_none : ∀ ctx Γ τ, HasType ctx Γ (.lit .none) (.optionType τ)
-  | lit_ok : ∀ ctx Γ v τ_ok τ_err, HasType ctx Γ (.lit (.ok v)) (.resultType τ_ok τ_err)
-  | lit_err : ∀ ctx Γ v τ_err τ_ok, HasType ctx Γ (.lit (.err v)) (.resultType τ_ok τ_err)
+      HasType ctx Γ (.fvar name) τ ctx
+  | lit_int : ∀ ctx Γ n, HasType ctx Γ (.lit (.int n)) .intType ctx
+  | lit_bool : ∀ ctx Γ b, HasType ctx Γ (.lit (.bool b)) .boolType ctx
+  | lit_string : ∀ ctx Γ s, HasType ctx Γ (.lit (.string s)) .stringType ctx
+  | lit_unit : ∀ ctx Γ, HasType ctx Γ (.lit .unit) .unitType ctx
+  | lit_pointer : ∀ ctx Γ p, HasType ctx Γ (.lit (.pointer p)) .pointerType ctx
+  | lit_float : ∀ ctx Γ w f, HasType ctx Γ (.lit (.float f)) (.floatType w) ctx
+  | lit_int_width : ∀ ctx Γ w n, HasType ctx Γ (.lit (.int n)) (.intWidthType w) ctx
+  | lit_some : ∀ ctx Γ v τ, HasType ctx Γ (.lit (.some v)) (.optionType τ) ctx
+  | lit_none : ∀ ctx Γ τ, HasType ctx Γ (.lit .none) (.optionType τ) ctx
+  | lit_ok : ∀ ctx Γ v τ_ok τ_err, HasType ctx Γ (.lit (.ok v)) (.resultType τ_ok τ_err) ctx
+  | lit_err : ∀ ctx Γ v τ_err τ_ok, HasType ctx Γ (.lit (.err v)) (.resultType τ_ok τ_err) ctx
   | unop_not : ∀ ctx Γ e,
-      HasType ctx Γ e .boolType →
-      HasType ctx Γ (.unop .not e) .boolType
+      HasType ctx Γ e .boolType ctx →
+      HasType ctx Γ (.unop .not e) .boolType ctx
   | unop_notb : ∀ ctx Γ e,
-      HasType ctx Γ e .intType →
-      HasType ctx Γ (.unop .notb e) .intType
+      HasType ctx Γ e .intType ctx →
+      HasType ctx Γ (.unop .notb e) .intType ctx
   | binop_arith : ∀ ctx Γ op e1 e2,
       isArithOp op →
-      HasType ctx Γ e1 .intType → HasType ctx Γ e2 .intType →
-      HasType ctx Γ (.binop op e1 e2) .intType
+      HasType ctx Γ e1 .intType ctx → HasType ctx Γ e2 .intType ctx →
+      HasType ctx Γ (.binop op e1 e2) .intType ctx
   | binop_comp : ∀ ctx Γ op e1 e2,
       isCompOp op →
-      HasType ctx Γ e1 .intType → HasType ctx Γ e2 .intType →
-      HasType ctx Γ (.binop op e1 e2) .boolType
+      HasType ctx Γ e1 .intType ctx → HasType ctx Γ e2 .intType ctx →
+      HasType ctx Γ (.binop op e1 e2) .boolType ctx
   | binop_logic : ∀ ctx Γ op e1 e2,
       isLogicOp op →
-      HasType ctx Γ e1 .boolType → HasType ctx Γ e2 .boolType →
-      HasType ctx Γ (.binop op e1 e2) .boolType
+      HasType ctx Γ e1 .boolType ctx → HasType ctx Γ e2 .boolType ctx →
+      HasType ctx Γ (.binop op e1 e2) .boolType ctx
   | binop_bitwise : ∀ ctx Γ op e1 e2,
       isBitwiseOp op →
-      HasType ctx Γ e1 .intType → HasType ctx Γ e2 .intType →
-      HasType ctx Γ (.binop op e1 e2) .intType
+      HasType ctx Γ e1 .intType ctx → HasType ctx Γ e2 .intType ctx →
+      HasType ctx Γ (.binop op e1 e2) .intType ctx
   | binop_ptr_arith : ∀ ctx Γ op e1 e2,
       isPtrArithOp op →
-      HasType ctx Γ e1 .pointerType → HasType ctx Γ e2 .intType →
-      HasType ctx Γ (.binop op e1 e2) .pointerType
+      HasType ctx Γ e1 .pointerType ctx → HasType ctx Γ e2 .intType ctx →
+      HasType ctx Γ (.binop op e1 e2) .pointerType ctx
   | binop_ptr_load : ∀ ctx Γ e1 e2,
-      HasType ctx Γ e1 .pointerType → HasType ctx Γ e2 .unitType →
-      HasType ctx Γ (.binop .ptrLoad e1 e2) .unitType
+      HasType ctx Γ e1 .pointerType ctx → HasType ctx Γ e2 .unitType ctx →
+      HasType ctx Γ (.binop .ptrLoad e1 e2) .unitType ctx
   | binop_ptr_store : ∀ ctx Γ e1 e2,
-      HasType ctx Γ e1 .pointerType → HasType ctx Γ e2 .intType →
-      HasType ctx Γ (.binop .ptrStore e1 e2) .unitType
+      HasType ctx Γ e1 .pointerType ctx → HasType ctx Γ e2 .intType ctx →
+      HasType ctx Γ (.binop .ptrStore e1 e2) .unitType ctx
   | binop_string_concat : ∀ ctx Γ op e1 e2,
       op = .add →
-      HasType ctx Γ e1 .stringType → HasType ctx Γ e2 .stringType →
-      HasType ctx Γ (.binop op e1 e2) .stringType
+      HasType ctx Γ e1 .stringType ctx → HasType ctx Γ e2 .stringType ctx →
+      HasType ctx Γ (.binop op e1 e2) .stringType ctx
   | lam_type : ∀ ctx Γ n body paramTys retTy,
       n = paramTys.length →
-      HasType (LinCtx.pushMany ctx paramTys.reverse) Γ body retTy →
-      HasType ctx Γ (.lam n body) (.functionType paramTys retTy)
+      HasType (LinCtx.pushMany ctx paramTys.reverse) Γ body retTy
+          (LinCtx.pushMany ctx paramTys.reverse) →
+      HasType ctx Γ (.lam n body) (.functionType paramTys retTy) ctx
   | app_type : ∀ ctx Γ fn args τs τ,
-      HasType ctx Γ fn (.functionType τs τ) →
-      HasTypeAll ctx Γ args τs →
-      HasType ctx Γ (.app fn args) τ
+      HasType ctx Γ fn (.functionType τs τ) ctx →
+      HasTypeAll ctx Γ args τs ctx →
+      HasType ctx Γ (.app fn args) τ ctx
   | let_type : ∀ ctx Γ e1 e2 τ1 τ2,
-      HasType ctx Γ e1 τ1 →
-      HasType ((τ1, LinCtx.initialUsage τ1) :: ctx) Γ e2 τ2 →
-      HasType ctx Γ (.let_ e1 e2) τ2
+      HasType ctx Γ e1 τ1 ctx →
+      HasType ((τ1, LinCtx.initialUsage τ1) :: ctx) Γ e2 τ2
+          ((τ1, LinCtx.initialUsage τ1) :: ctx) →
+      HasType ctx Γ (.let_ e1 e2) τ2 ctx
   | if_type : ∀ ctx Γ c t f τ,
-      HasType ctx Γ c .boolType →
-      HasType ctx Γ t τ → HasType ctx Γ f τ →
-      HasType ctx Γ (.ifThenElse c t f) τ
+      HasType ctx Γ c .boolType ctx →
+      HasType ctx Γ t τ ctx → HasType ctx Γ f τ ctx →
+      HasType ctx Γ (.ifThenElse c t f) τ ctx
   | for_type : ∀ ctx Γ s e body,
-      HasType ctx Γ s .intType → HasType ctx Γ e .intType →
-      HasTypeAll ((.intType, LinCtx.initialUsage .intType) :: ctx) Γ body [.unitType] →
-      HasType ctx Γ (.forLoop s e body) .unitType
+      HasType ctx Γ s .intType ctx → HasType ctx Γ e .intType ctx →
+      HasTypeAll ((.intType, LinCtx.initialUsage .intType) :: ctx) Γ body [.unitType]
+          ((.intType, LinCtx.initialUsage .intType) :: ctx) →
+      HasType ctx Γ (.forLoop s e body) .unitType ctx
   | block_type : ∀ ctx Γ exprs τs τ,
-      HasTypeAll ctx Γ exprs (τs ++ [τ]) →
-      HasType ctx Γ (.block exprs) τ
+      HasTypeAll ctx Γ exprs (τs ++ [τ]) ctx →
+      HasType ctx Γ (.block exprs) τ ctx
   | pipe_type : ∀ ctx Γ e f τ_arg τ_ret,
-      HasType ctx Γ e τ_arg →
-      HasType ctx Γ f (.functionType [τ_arg] τ_ret) →
-      HasType ctx Γ (.pipe e f) τ_ret
+      HasType ctx Γ e τ_arg ctx →
+      HasType ctx Γ f (.functionType [τ_arg] τ_ret) ctx →
+      HasType ctx Γ (.pipe e f) τ_ret ctx
   | typeAsc_type : ∀ ctx Γ e τ,
-      HasType ctx Γ e τ →
-      HasType ctx Γ (.typeAsc e τ) τ
+      HasType ctx Γ e τ ctx →
+      HasType ctx Γ (.typeAsc e τ) τ ctx
   | some_type : ∀ ctx Γ e τ_inner,
-      HasType ctx Γ e τ_inner →
-      HasType ctx Γ (.some_ e) (.optionType τ_inner)
+      HasType ctx Γ e τ_inner ctx →
+      HasType ctx Γ (.some_ e) (.optionType τ_inner) ctx
   | none_type : ∀ ctx Γ τ,
-      HasType ctx Γ .none_ (.optionType τ)
+      HasType ctx Γ .none_ (.optionType τ) ctx
   | ok_type : ∀ ctx Γ e τ_ok τ_err,
-      HasType ctx Γ e τ_ok →
-      HasType ctx Γ (.ok_ e) (.resultType τ_ok τ_err)
+      HasType ctx Γ e τ_ok ctx →
+      HasType ctx Γ (.ok_ e) (.resultType τ_ok τ_err) ctx
   | err_type : ∀ ctx Γ e τ_err τ_ok,
-      HasType ctx Γ e τ_err →
-      HasType ctx Γ (.err_ e) (.resultType τ_ok τ_err)
+      HasType ctx Γ e τ_err ctx →
+      HasType ctx Γ (.err_ e) (.resultType τ_ok τ_err) ctx
   | null_coalesce_type : ∀ ctx Γ e1 e2 τ,
-      HasType ctx Γ e1 (.optionType τ) →
-      HasType ctx Γ e2 (.optionType τ) →
-      HasType ctx Γ (.nullCoalesce e1 e2) (.optionType τ)
+      HasType ctx Γ e1 (.optionType τ) ctx →
+      HasType ctx Γ e2 (.optionType τ) ctx →
+      HasType ctx Γ (.nullCoalesce e1 e2) (.optionType τ) ctx
   | tuple_type : ∀ ctx Γ elems tys,
-      HasTypeAll ctx Γ elems tys →
-      HasType ctx Γ (.tuple_ elems) (.tupleType tys)
+      HasTypeAll ctx Γ elems tys ctx →
+      HasType ctx Γ (.tuple_ elems) (.tupleType tys) ctx
   | arrayLit_type : ∀ ctx Γ elems τ n,
-      HasTypeAll ctx Γ elems (List.replicate n τ) →
+      HasTypeAll ctx Γ elems (List.replicate n τ) ctx →
       n = elems.length →
       n > 0 →
-      HasType ctx Γ (.arrayLit elems) (.arrayType τ n)
+      HasType ctx Γ (.arrayLit elems) (.arrayType τ n) ctx
   | arrayIndex_type : ∀ ctx Γ arr idx τ n,
-      HasType ctx Γ arr (.arrayType τ n) →
-      HasType ctx Γ idx .intType →
-      HasType ctx Γ (.arrayIndex arr idx) τ
+      HasType ctx Γ arr (.arrayType τ n) ctx →
+      HasType ctx Γ idx .intType ctx →
+      HasType ctx Γ (.arrayIndex arr idx) τ ctx
   -- Reference operations (storeless placeholders, ADR-010)
   | refCreate_type : ∀ ctx Γ e cap τ,
-      HasType ctx Γ e τ →
-      HasType ctx Γ (.refCreate e cap τ) (.refType cap τ)
+      HasType ctx Γ e τ ctx →
+      HasType ctx Γ (.refCreate e cap τ) (.refType cap τ) ctx
   | refLoad_type : ∀ ctx Γ e cap τ,
-      HasType ctx Γ e (.refType cap τ) →
-      HasType ctx Γ (.refLoad e) τ
+      HasType ctx Γ e (.refType cap τ) ctx →
+      HasType ctx Γ (.refLoad e) τ ctx
   | refStore_type : ∀ ctx Γ e v cap τ,
-      HasType ctx Γ e (.refType cap τ) →
-      HasType ctx Γ v τ →
+      HasType ctx Γ e (.refType cap τ) ctx →
+      HasType ctx Γ v τ ctx →
       cap ≠ .val →  -- cannot store through immutable reference
-      HasType ctx Γ (.refStore e v τ) .unitType
+      HasType ctx Γ (.refStore e v τ) .unitType ctx
   | refFree_type : ∀ ctx Γ e τ,
-      HasType ctx Γ e (.refType .iso τ) →
-      HasType ctx Γ (.refFree e) .unitType
+      HasType ctx Γ e (.refType .iso τ) ctx →
+      HasType ctx Γ (.refFree e) .unitType ctx
   | field_access_type : ∀ ctx Γ e fname sname fields τ,
-      HasType ctx Γ e (.structType sname fields) →
+      HasType ctx Γ e (.structType sname fields) ctx →
       structFieldType fields fname = some τ →
-      HasType ctx Γ (.field_ e fname) τ
+      HasType ctx Γ (.field_ e fname) τ ctx
   | match_type : ∀ ctx Γ scrut arms τ_scrut τ_result,
-      HasType ctx Γ scrut τ_scrut →
-      ArmsTyped ctx Γ τ_scrut arms τ_result →
-      HasType ctx Γ (.match_ scrut arms) τ_result
+      HasType ctx Γ scrut τ_scrut ctx →
+      ArmsTyped ctx Γ τ_scrut arms τ_result ctx →
+      HasType ctx Γ (.match_ scrut arms) τ_result ctx
 
-
-inductive HasTypeAll : LinCtx → TypEnv → List Morph.Syntax.Expr → List Morph.Core.Typ → Prop where
+/-- `HasTypeAll ctx Γ es τs ctx'`: a list is typable element by element, threading
+    the context: each element consumes what it needs and hands the resulting
+    context to the next one, with a single output context for the whole list. -/
+inductive HasTypeAll : LinCtx → TypEnv → List Morph.Syntax.Expr → List Morph.Core.Typ → LinCtx → Prop where
   | nil : ∀ ctx Γ,
-      HasTypeAll ctx Γ [] []
-  | cons : ∀ ctx Γ e es τ τs,
-      HasType ctx Γ e τ → HasTypeAll ctx Γ es τs →
-      HasTypeAll ctx Γ (e :: es) (τ :: τs)
+      HasTypeAll ctx Γ [] [] ctx
+  | cons : ∀ ctx Γ cout e es τ τs,
+      HasType ctx Γ e τ cout → HasTypeAll cout Γ es τs cout →
+      HasTypeAll ctx Γ (e :: es) (τ :: τs) cout
 
-inductive ArmsTyped : LinCtx → TypEnv → Morph.Core.Typ → List (List String × Morph.Syntax.Expr) → Morph.Core.Typ → Prop where
+/-- `ArmsTyped ctx Γ τ_scrut arms τ_result ctx'`: every arm body is typable in the
+    scrutinee context extended with its pattern variables.
+
+    Phase 1c-β-1: arms do not consume anything, so all arms keep the same
+    context and the arms are *not* merged — a later phase (1c-β-2) will thread
+    each arm's output context and merge them pointwise. -/
+inductive ArmsTyped : LinCtx → TypEnv → Morph.Core.Typ → List (List String × Morph.Syntax.Expr) → Morph.Core.Typ → LinCtx → Prop where
   | nil : ∀ ctx Γ τ_scrut,
-      ArmsTyped ctx Γ τ_scrut [] .unitType
+      ArmsTyped ctx Γ τ_scrut [] .unitType ctx
   | cons : ∀ ctx Γ vars body rest τ_scrut τ_result,
-      HasType (LinCtx.pushMany ctx (List.replicate vars.length τ_scrut)) Γ body τ_result →
-      ArmsTyped ctx Γ τ_scrut rest τ_result →
-      ArmsTyped ctx Γ τ_scrut ((vars, body) :: rest) τ_result
+      HasType (LinCtx.pushMany ctx (List.replicate vars.length τ_scrut)) Γ body τ_result
+          (LinCtx.pushMany ctx (List.replicate vars.length τ_scrut)) →
+      ArmsTyped ctx Γ τ_scrut rest τ_result ctx →
+      ArmsTyped ctx Γ τ_scrut ((vars, body) :: rest) τ_result ctx
 
 end
 

@@ -17,49 +17,58 @@ open Morph.Syntax
 -- NOTE: bvar_type produces HasType ctx Γ (.bvar n) ctx[n], so any
 -- HasType ctx Γ (.bvar n) τ must have τ = ctx.types[n] with n < (ctx.types).length.
 -- We split into two lemmas to avoid dependent indexing issues.
-theorem HasType_bvar_has_length (ctx : LinCtx) (Γ : TypEnv) (n : Nat) (τ : Typ) :
-    HasType ctx Γ (.bvar n) τ → n < (ctx.types).length := by
+theorem HasType_bvar_has_length (ctx : LinCtx) (Γ : TypEnv) (n : Nat) (τ : Typ)
+    {ctx' : LinCtx} :
+    HasType ctx Γ (.bvar n) τ ctx' → n < (ctx.types).length := by
   intro h
   cases h with
   | bvar_type _ _ _ hLen => exact hLen
 
-theorem HasType_fvar_inv (ctx : LinCtx) (Γ : TypEnv) (name : String) (τ : Typ) :
-    HasType ctx Γ (.fvar name) τ → lookupTyp Γ name = some τ := by
+theorem HasType_fvar_inv (ctx : LinCtx) (Γ : TypEnv) (name : String) (τ : Typ)
+    {ctx' : LinCtx} :
+    HasType ctx Γ (.fvar name) τ ctx' → lookupTyp Γ name = some τ := by
   intro h; cases h with | fvar_type => assumption
 
-theorem HasType_lit_int_inv (ctx : LinCtx) (Γ : TypEnv) (n : Int) (τ : Typ) :
-    HasType ctx Γ (.lit (.int n)) τ → τ = .intType ∨ (∃ w, τ = .intWidthType w) := by
+theorem HasType_lit_int_inv (ctx : LinCtx) (Γ : TypEnv) (n : Int) (τ : Typ)
+    {ctx' : LinCtx} :
+    HasType ctx Γ (.lit (.int n)) τ ctx' → τ = .intType ∨ (∃ w, τ = .intWidthType w) := by
   intro h; cases h with
   | lit_int => left; rfl
   | lit_int_width _ _ w _ => right; exact ⟨w, rfl⟩
 
-theorem HasType_lit_bool_inv (ctx : LinCtx) (Γ : TypEnv) (b : Bool) (τ : Typ) :
-    HasType ctx Γ (.lit (.bool b)) τ → τ = .boolType := by
+theorem HasType_lit_bool_inv (ctx : LinCtx) (Γ : TypEnv) (b : Bool) (τ : Typ)
+    {ctx' : LinCtx} :
+    HasType ctx Γ (.lit (.bool b)) τ ctx' → τ = .boolType := by
   intro h; cases h with | lit_bool => rfl
 
-theorem HasType_lit_string_inv (ctx : LinCtx) (Γ : TypEnv) (s : String) (τ : Typ) :
-    HasType ctx Γ (.lit (.string s)) τ → τ = .stringType := by
+theorem HasType_lit_string_inv (ctx : LinCtx) (Γ : TypEnv) (s : String) (τ : Typ)
+    {ctx' : LinCtx} :
+    HasType ctx Γ (.lit (.string s)) τ ctx' → τ = .stringType := by
   intro h; cases h with | lit_string => rfl
 
-theorem HasType_lit_unit_inv (ctx : LinCtx) (Γ : TypEnv) (τ : Typ) :
-    HasType ctx Γ (.lit .unit) τ → τ = .unitType := by
+theorem HasType_lit_unit_inv (ctx : LinCtx) (Γ : TypEnv) (τ : Typ) {ctx' : LinCtx} :
+    HasType ctx Γ (.lit .unit) τ ctx' → τ = .unitType := by
   intro h; cases h with | lit_unit => rfl
 
-theorem HasType_lit_pointer_inv (ctx : LinCtx) (Γ : TypEnv) (p : Pointer) (τ : Typ) :
-    HasType ctx Γ (.lit (.pointer p)) τ → τ = .pointerType := by
+theorem HasType_lit_pointer_inv (ctx : LinCtx) (Γ : TypEnv) (p : Pointer) (τ : Typ)
+    {ctx' : LinCtx} :
+    HasType ctx Γ (.lit (.pointer p)) τ ctx' → τ = .pointerType := by
   intro h; cases h with | lit_pointer => rfl
 
-theorem HasType_lit_float_inv (ctx : LinCtx) (Γ : TypEnv) (f : Float) (τ : Typ) :
-    HasType ctx Γ (.lit (.float f)) τ → ∃ w, τ = .floatType w := by
+theorem HasType_lit_float_inv (ctx : LinCtx) (Γ : TypEnv) (f : Float) (τ : Typ)
+    {ctx' : LinCtx} :
+    HasType ctx Γ (.lit (.float f)) τ ctx' → ∃ w, τ = .floatType w := by
   intro h; cases h with
   | lit_float _ _ w _ => exact ⟨w, rfl⟩
 
-theorem HasType_unop_not_inv (ctx : LinCtx) (Γ : TypEnv) (e : Expr) (τ : Typ) :
-    HasType ctx Γ (.unop .not e) τ → τ = .boolType := by
+theorem HasType_unop_not_inv (ctx : LinCtx) (Γ : TypEnv) (e : Expr) (τ : Typ)
+    {ctx' : LinCtx} :
+    HasType ctx Γ (.unop .not e) τ ctx' → τ = .boolType := by
   intro h; cases h with | unop_not => rfl
 
-theorem HasType_unop_notb_inv (ctx : LinCtx) (Γ : TypEnv) (e : Expr) (τ : Typ) :
-    HasType ctx Γ (.unop .notb e) τ → τ = .intType := by
+theorem HasType_unop_notb_inv (ctx : LinCtx) (Γ : TypEnv) (e : Expr) (τ : Typ)
+    {ctx' : LinCtx} :
+    HasType ctx Γ (.unop .notb e) τ ctx' → τ = .intType := by
   intro h; cases h with | unop_notb => rfl
 
 /-! ## Lift Simplification Lemmas
@@ -345,7 +354,9 @@ mutual
 
 theorem weakening_at_depth (xs : List Typ) (ctx : LinCtx) (Γ : TypEnv)
     (e : Expr) (τ σ : Typ) :
-    HasType (LinCtx.pushMany ctx xs) Γ e τ → HasType (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) Γ (liftUnder xs.length 1 e) τ := by
+    HasType (LinCtx.pushMany ctx xs) Γ e τ (LinCtx.pushMany ctx xs) →
+      HasType (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) Γ (liftUnder xs.length 1 e) τ
+        (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) := by
   intro h
   cases h with
   | bvar_type _ _ n hLen =>
@@ -366,7 +377,7 @@ theorem weakening_at_depth (xs : List Typ) (ctx : LinCtx) (Γ : TypEnv)
         omega
       have hBT := HasType.bvar_type (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) Γ n hP1
       have eqTy := LinCtx.types_pushMany_push_index_low ctx xs σ n hNlt
-      exact Eq.subst (motive := fun t => HasType _ Γ (.bvar n) t) eqTy hBT
+      exact Eq.subst (motive := fun t => HasType _ Γ (.bvar n) t _) eqTy hBT
     · rename_i hNge
       have hNge' : n ≥ xs.length := Nat.ge_of_not_lt hNge
       have hLen2 := hLen
@@ -396,7 +407,7 @@ theorem weakening_at_depth (xs : List Typ) (ctx : LinCtx) (Γ : TypEnv)
       have hChain : (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs).types[n + 1]? =
           some ((LinCtx.pushMany ctx xs).types[n]'hLen) := by rw [hOpt]; exact s2
       obtain ⟨_, hEq⟩ := List.getElem?_eq_some_iff.mp hChain
-      exact Eq.subst (motive := fun t => HasType _ Γ (.bvar (n + 1)) t) hEq hBT
+      exact Eq.subst (motive := fun t => HasType _ Γ (.bvar (n + 1)) t _) hEq hBT
   | fvar_type _ _ name τ hLookup =>
     simp only [liftUnder]
     exact HasType.fvar_type (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) Γ name τ hLookup
@@ -587,8 +598,10 @@ theorem weakening_at_depth (xs : List Typ) (ctx : LinCtx) (Γ : TypEnv)
 theorem ArmsTyped_weakening_at_depth (xs : List Typ) (σ : Typ)
     {ctx : LinCtx} {Γ : TypEnv} {τ_scrut : Typ}
     {arms : List (List String × Expr)} {τ_result : Typ}
-    (h : ArmsTyped (LinCtx.pushMany ctx xs) Γ τ_scrut arms τ_result) :
-    ArmsTyped (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) Γ τ_scrut (liftUnderArms xs.length 1 arms) τ_result := by
+    (h : ArmsTyped (LinCtx.pushMany ctx xs) Γ τ_scrut arms τ_result (LinCtx.pushMany ctx xs)) :
+    ArmsTyped (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) Γ τ_scrut
+      (liftUnderArms xs.length 1 arms) τ_result
+      (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) := by
   cases h with
   | nil => simp only [liftUnderArms]; constructor
   | cons ctx Γ vars body rest τ_scrut τ_result hBody hRest =>
@@ -601,17 +614,20 @@ theorem ArmsTyped_weakening_at_depth (xs : List Typ) (σ : Typ)
       show HasType (LinCtx.pushMany (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs)
           (List.replicate vars.length τ_scrut)) Γ
           (liftUnder (xs.length + vars.length) 1 body) τ_result
+          (LinCtx.pushMany (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs)
+            (List.replicate vars.length τ_scrut))
       rw [LinCtx.pushMany_pushMany_append]; exact hBody'
     · exact ArmsTyped_weakening_at_depth xs σ hRest
 
  theorem weakening_at_depth_all (xs : List Typ) (ctx : LinCtx) (Γ : TypEnv)
     (es : List Expr) (τs : List Typ) (σ : Typ)
-    (h : HasTypeAll (LinCtx.pushMany ctx xs) Γ es τs) :
-    HasTypeAll (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) Γ (es.map (liftUnder xs.length 1)) τs := by
+    (h : HasTypeAll (LinCtx.pushMany ctx xs) Γ es τs (LinCtx.pushMany ctx xs)) :
+    HasTypeAll (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) Γ (es.map (liftUnder xs.length 1)) τs
+      (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) := by
   cases h with
   | nil _ _ => exact HasTypeAll.nil _ _
-  | cons _ _ e es' τ τs' hE hRest =>
-    exact HasTypeAll.cons _ _ _ _ _ _
+  | cons _ _ _ e es' τ τs' hE hRest =>
+    exact HasTypeAll.cons _ _ _ _ _ _ _
       (weakening_at_depth xs ctx Γ e τ σ hE)
       (weakening_at_depth_all xs ctx Γ es' τs' σ hRest)
 
@@ -626,8 +642,9 @@ Uses `weakening_at_depth` iterated `xs.length` times, with `liftUnder_comp` to c
 
 theorem weaken_many_at_depth (pfx xs : List Typ) (ctx : LinCtx) (Γ : TypEnv)
     (e : Expr) (τ : Typ)
-    (hE : HasType (LinCtx.pushMany ctx pfx) Γ e τ)
-    : HasType (LinCtx.pushMany (LinCtx.pushMany ctx xs) pfx) Γ (liftUnder pfx.length xs.length e) τ := by
+    (hE : HasType (LinCtx.pushMany ctx pfx) Γ e τ (LinCtx.pushMany ctx pfx))
+    : HasType (LinCtx.pushMany (LinCtx.pushMany ctx xs) pfx) Γ (liftUnder pfx.length xs.length e) τ
+        (LinCtx.pushMany (LinCtx.pushMany ctx xs) pfx) := by
   induction xs generalizing ctx e with
   | nil =>
     simp only [LinCtx.pushMany, List.map_nil, List.nil_append]
@@ -646,8 +663,9 @@ theorem weaken_many_at_depth (pfx xs : List Typ) (ctx : LinCtx) (Γ : TypEnv)
 theorem ArmsTyped_weakening (σ : Typ)
     {ctx : LinCtx} {Γ : TypEnv} {τ_scrut : Typ}
     {arms : List (List String × Expr)} {τ_result : Typ}
-    (h : ArmsTyped ctx Γ τ_scrut arms τ_result) :
-    ArmsTyped ((σ, LinCtx.initialUsage σ) :: ctx) Γ τ_scrut (liftUnderArms 0 1 arms) τ_result := by
+    (h : ArmsTyped ctx Γ τ_scrut arms τ_result ctx) :
+    ArmsTyped ((σ, LinCtx.initialUsage σ) :: ctx) Γ τ_scrut (liftUnderArms 0 1 arms) τ_result
+      ((σ, LinCtx.initialUsage σ) :: ctx) := by
   have h := ArmsTyped_weakening_at_depth [] σ h
   simp only [LinCtx.pushMany, List.map_nil, List.nil_append, List.length_nil] at h
   exact h
@@ -655,7 +673,8 @@ theorem ArmsTyped_weakening (σ : Typ)
 mutual
 
 theorem weakening (ctx : LinCtx) (Γ : TypEnv) (e : Expr) (τ : Typ) (σ : Typ) :
-    HasType ctx Γ e τ → HasType ((σ, LinCtx.initialUsage σ) :: ctx) Γ (lift 1 e) τ := by
+    HasType ctx Γ e τ ctx → HasType ((σ, LinCtx.initialUsage σ) :: ctx) Γ (lift 1 e) τ
+      ((σ, LinCtx.initialUsage σ) :: ctx) := by
   intro h
   match h with
   | HasType.bvar_type ctx Γ n h =>
@@ -733,7 +752,7 @@ theorem weakening (ctx : LinCtx) (Γ : TypEnv) (e : Expr) (τ : Typ) (σ : Typ) 
     have hLenEq2 : paramTys.reverse.length = n := hLenEq1.trans hLen.symm
     have hBody' := weakening_at_depth paramTys.reverse ctx Γ body retTy σ hBody
     exact HasType.lam_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ n (liftUnder n 1 body) paramTys retTy hLen
-      (Eq.subst (motive := fun i => HasType _ Γ (liftUnder i 1 body) retTy) hLenEq2 hBody')
+      (Eq.subst (motive := fun i => HasType _ Γ (liftUnder i 1 body) retTy _) hLenEq2 hBody')
   | HasType.app_type ctx Γ fn args τs τ hFn hArgs =>
     rw [lift_app]
     exact HasType.app_type ((σ, LinCtx.initialUsage σ) :: ctx) Γ (lift 1 fn) (List.map (lift 1) args) τs τ
@@ -837,11 +856,12 @@ theorem weakening (ctx : LinCtx) (Γ : TypEnv) (e : Expr) (τ : Typ) (σ : Typ) 
        (weakening _ _ _ _ σ hE)
 
 theorem weakening_all (ctx : LinCtx) (Γ : TypEnv) (es : List Expr) (τs : List Typ)
-    (σ : Typ) (h : HasTypeAll ctx Γ es τs) : HasTypeAll ((σ, LinCtx.initialUsage σ) :: ctx) Γ (es.map (lift 1)) τs := by
+    (σ : Typ) (h : HasTypeAll ctx Γ es τs ctx) : HasTypeAll ((σ, LinCtx.initialUsage σ) :: ctx) Γ
+      (es.map (lift 1)) τs ((σ, LinCtx.initialUsage σ) :: ctx) := by
   match h with
   | HasTypeAll.nil _ _ => exact HasTypeAll.nil _ _
-  | HasTypeAll.cons _ _ e es' τ τs' hE hRest =>
-    exact HasTypeAll.cons _ _ _ _ _ _
+  | HasTypeAll.cons _ _ _ e es' τ τs' hE hRest =>
+    exact HasTypeAll.cons _ _ _ _ _ _ _
       (weakening _ _ _ _ σ hE)
       (weakening_all _ _ _ _ σ hRest)
 
@@ -854,12 +874,12 @@ Append two HasTypeAll proofs.
 -/
 
 theorem HasTypeAll_append {ctx : LinCtx} {Γ : TypEnv} {es₁ es₂ : List Expr} {τs₁ τs₂ : List Typ}
-    (h₁ : HasTypeAll ctx Γ es₁ τs₁) (h₂ : HasTypeAll ctx Γ es₂ τs₂) :
-    HasTypeAll ctx Γ (es₁ ++ es₂) (τs₁ ++ τs₂) := by
+    (h₁ : HasTypeAll ctx Γ es₁ τs₁ ctx) (h₂ : HasTypeAll ctx Γ es₂ τs₂ ctx) :
+    HasTypeAll ctx Γ (es₁ ++ es₂) (τs₁ ++ τs₂) ctx := by
   match h₁ with
   | HasTypeAll.nil _ _ => exact h₂
-  | HasTypeAll.cons _ _ e es τ τs hE hRest =>
-    exact HasTypeAll.cons _ _ e (es ++ es₂) τ (τs ++ τs₂) hE (HasTypeAll_append hRest h₂)
+  | HasTypeAll.cons _ _ _ e es τ τs hE hRest =>
+    exact HasTypeAll.cons _ _ _ e (es ++ es₂) τ (τs ++ τs₂) hE (HasTypeAll_append hRest h₂)
 
 /-!
 ## HasTypeAll Reverse
@@ -868,14 +888,14 @@ Reversing both the expression list and the type list preserves HasTypeAll.
 -/
 
 theorem HasTypeAll_reverse (ctx : LinCtx) (Γ : TypEnv) (es : List Expr) (τs : List Typ)
-    (h : HasTypeAll ctx Γ es τs) : HasTypeAll ctx Γ es.reverse τs.reverse := by
+    (h : HasTypeAll ctx Γ es τs ctx) : HasTypeAll ctx Γ es.reverse τs.reverse ctx := by
   match h with
   | HasTypeAll.nil _ _ => exact HasTypeAll.nil _ _
-  | HasTypeAll.cons _ _ e es' τ τs' hE hRest =>
+  | HasTypeAll.cons _ _ _ e es' τ τs' hE hRest =>
     have ih := HasTypeAll_reverse ctx Γ es' τs' hRest
-    show HasTypeAll ctx Γ (e :: es').reverse (τ :: τs').reverse
+    show HasTypeAll ctx Γ (e :: es').reverse (τ :: τs').reverse ctx
     rw [List.reverse_cons, List.reverse_cons]
-    exact HasTypeAll_append ih (HasTypeAll.cons _ _ e [] τ [] hE (HasTypeAll.nil _ _))
+    exact HasTypeAll_append ih (HasTypeAll.cons _ _ _ e [] τ [] hE (HasTypeAll.nil _ _))
 
 /-!
 ## HasTypeAll Index Access
@@ -884,9 +904,9 @@ Extract the i-th element type from a HasTypeAll proof.
 -/
 
 theorem HasTypeAll_getElem (ctx : LinCtx) (Γ : TypEnv) (es : List Expr) (τs : List Typ)
-    (i : Nat) (h : HasTypeAll ctx Γ es τs)
+    (i : Nat) (h : HasTypeAll ctx Γ es τs ctx)
     (hi : i < es.length) (hiτ : i < τs.length) :
-    HasType ctx Γ es[i] τs[i] := by
+    HasType ctx Γ es[i] τs[i] ctx := by
   cases i with
   | zero =>
     cases es with
@@ -896,7 +916,7 @@ theorem HasTypeAll_getElem (ctx : LinCtx) (Γ : TypEnv) (es : List Expr) (τs : 
       | nil => simp at hiτ
       | cons τ τs' =>
         simp only [List.getElem_cons_zero]
-        match h with | HasTypeAll.cons _ _ _ _ _ _ hE _ => exact hE
+        match h with | HasTypeAll.cons _ _ _ _ _ _ _ hE _ => exact hE
   | succ n =>
     cases es with
     | nil => simp at hi
@@ -906,7 +926,7 @@ theorem HasTypeAll_getElem (ctx : LinCtx) (Γ : TypEnv) (es : List Expr) (τs : 
       | cons τ τs' =>
         simp only [List.getElem_cons_succ]
         match h with
-        | HasTypeAll.cons _ _ _ _ _ _ _ hRest =>
+        | HasTypeAll.cons _ _ _ _ _ _ _ _ hRest =>
           exact HasTypeAll_getElem ctx Γ es' τs' n hRest (by simp at hi; omega) (by simp at hiτ; omega)
 
 /-! ## Canonical Forms -/

@@ -26,17 +26,17 @@ private theorem getElem_cons_succ_of_pos {α : Type _} {a : α} {as : List α} {
   | succ n => simp [List.getElem_cons_succ]
 
 private theorem HasTypeAll_cons_head {ctx : LinCtx} {Γ : TypEnv} {e : Expr} {es : List Expr}
-    {τ : Typ} {τs : List Typ} (h : HasTypeAll ctx Γ (e :: es) (τ :: τs)) : HasType ctx Γ e τ := by
+    {τ : Typ} {τs : List Typ} (h : HasTypeAll ctx Γ (e :: es) (τ :: τs) ctx) : HasType ctx Γ e τ ctx := by
   match h with
-  | HasTypeAll.cons _ _ _ _ _ _ hE _ => exact hE
+  | HasTypeAll.cons _ _ _ _ _ _ _ hE _ => exact hE
 
 private theorem HasTypeAll_cons_tail {ctx : LinCtx} {Γ : TypEnv} {e : Expr} {es : List Expr}
-    {τ : Typ} {τs : List Typ} (h : HasTypeAll ctx Γ (e :: es) (τ :: τs)) : HasTypeAll ctx Γ es τs := by
+    {τ : Typ} {τs : List Typ} (h : HasTypeAll ctx Γ (e :: es) (τ :: τs) ctx) : HasTypeAll ctx Γ es τs ctx := by
   match h with
-  | HasTypeAll.cons _ _ _ _ _ _ _ hRest => exact hRest
+  | HasTypeAll.cons _ _ _ _ _ _ _ _ hRest => exact hRest
 
 private theorem HasTypeAll_nil_types {ctx : LinCtx} {Γ : TypEnv} {τs : List Typ} :
-    HasTypeAll ctx Γ [] τs -> τs = [] := by
+    HasTypeAll ctx Γ [] τs ctx -> τs = [] := by
   intro h; match h with | HasTypeAll.nil _ _ => rfl
 
 private theorem append_singleton_ne_nil (τs : List Typ) (τ : Typ) : τs ++ [τ] ≠ [] := by
@@ -46,7 +46,7 @@ private theorem append_singleton_ne_nil (τs : List Typ) (τ : Typ) : τs ++ [τ
   | cons _ _ => exact absurd h (by contradiction)
 
 private theorem HasTypeAll_length (ctx : LinCtx) (Γ : TypEnv) (es : List Expr) (τs : List Typ) :
-    HasTypeAll ctx Γ es τs -> es.length = τs.length := by
+    HasTypeAll ctx Γ es τs ctx -> es.length = τs.length := by
   intro h
   cases es with
   | nil => match h with | HasTypeAll.nil _ _ => rfl
@@ -55,8 +55,8 @@ private theorem HasTypeAll_length (ctx : LinCtx) (Γ : TypEnv) (es : List Expr) 
     | nil => cases h
     | cons τ τs' =>
       simp only [List.length_cons]
-      have ⟨_, hTail⟩ : HasType ctx Γ e τ ∧ HasTypeAll ctx Γ es' τs' := by
-        match h with | HasTypeAll.cons _ _ _ _ _ _ hH hT => exact ⟨hH, hT⟩
+      have ⟨_, hTail⟩ : HasType ctx Γ e τ ctx ∧ HasTypeAll ctx Γ es' τs' ctx := by
+        match h with | HasTypeAll.cons _ _ _ _ _ _ _ hH hT => exact ⟨hH, hT⟩
       exact congrArg (· + 1) (HasTypeAll_length ctx Γ es' τs' hTail)
 
 private theorem sem_isArithOp_not_spec_isCompOp (op : Operator) :
@@ -106,7 +106,7 @@ private theorem sem_isBitwiseOp_not_spec_isPtrArithOp (op : Operator) :
 -/
 
 private theorem HasTypeAll_replicate (ctx : LinCtx) (Γ : TypEnv) (e : Expr) (τ : Typ)
-    (h : HasType ctx Γ e τ) : ∀ n, HasTypeAll ctx Γ (List.replicate n e) (List.replicate n τ)
+    (h : HasType ctx Γ e τ ctx) : ∀ n, HasTypeAll ctx Γ (List.replicate n e) (List.replicate n τ) ctx
   | 0 => by simp; constructor
   | n + 1 => by simp [List.replicate_succ]; constructor; exact h; exact HasTypeAll_replicate ctx Γ e τ h n
 
@@ -122,11 +122,11 @@ private theorem list_reverse_replicate (α : Type _) (a : α) (n : Nat) :
     | succ n IH2 => simp [List.replicate_succ, List.cons_append, IH2]
 
 private theorem lift_zero_preserves_type (ctx : LinCtx) (Γ : TypEnv) (e : Expr) (τ : Typ)
-    (h : HasType ctx Γ e τ) : HasType ctx Γ (lift 0 e) τ := by
+    (h : HasType ctx Γ e τ ctx) : HasType ctx Γ (lift 0 e) τ ctx := by
   rw [lift_zero_eq]; exact h
 
 private theorem HasTypeAll_lift_zero (ctx : LinCtx) (Γ : TypEnv) (es : List Expr) (τs : List Typ)
-    (h : HasTypeAll ctx Γ es τs) : HasTypeAll ctx Γ (es.map (lift 0)) τs := by
+    (h : HasTypeAll ctx Γ es τs ctx) : HasTypeAll ctx Γ (es.map (lift 0)) τs ctx := by
   rw [show es.map (lift 0) = es from liftUnder_zero_eq_list 0 es]; exact h
 
 /-!
@@ -146,21 +146,24 @@ mutual
 
 private theorem HasTypeAll_subst_depth (pfx : List Typ) (ctx : LinCtx) (Γ : TypEnv)
     (es : List Expr) (v : Expr) (τ1 : Typ) (τs : List Typ)
-    (hArgs : HasTypeAll (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx) pfx) Γ es τs)
-    (hV : HasType ctx Γ v τ1) :
-    HasTypeAll (LinCtx.pushMany ctx pfx) Γ (es.map (fun e => subst' pfx.length e v)) τs := by
+    (hArgs : HasTypeAll (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx) pfx) Γ es τs
+      (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx) pfx))
+    (hV : HasType ctx Γ v τ1 ctx) :
+    HasTypeAll (LinCtx.pushMany ctx pfx) Γ (es.map (fun e => subst' pfx.length e v)) τs
+      (LinCtx.pushMany ctx pfx) := by
   match hArgs with
   | HasTypeAll.nil _ _ => exact HasTypeAll.nil _ _
-  | HasTypeAll.cons _ _ e es' τ τs' hE hRest =>
-    exact HasTypeAll.cons _ _ _ _ _ _
+  | HasTypeAll.cons _ _ _ e es' τ τs' hE hRest =>
+    exact HasTypeAll.cons _ _ _ _ _ _ _
       (HasType_subst_depth pfx ctx Γ e v τ1 τ hE hV)
       (HasTypeAll_subst_depth pfx ctx Γ es' v τ1 τs' hRest hV)
 
 private theorem HasType_subst_depth (pfx : List Typ) (ctx : LinCtx) (Γ : TypEnv)
     (e v : Expr) (τ1 τ : Typ)
-    (hE : HasType (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx) pfx) Γ e τ)
-    (hV : HasType ctx Γ v τ1) :
-    HasType (LinCtx.pushMany ctx pfx) Γ (subst' pfx.length e v) τ := by
+    (hE : HasType (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx) pfx) Γ e τ
+      (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx) pfx))
+    (hV : HasType ctx Γ v τ1 ctx) :
+    HasType (LinCtx.pushMany ctx pfx) Γ (subst' pfx.length e v) τ (LinCtx.pushMany ctx pfx) := by
   match hE with
   | .bvar_type _ _ n hLen =>
     unfold subst'
@@ -175,7 +178,7 @@ private theorem HasType_subst_depth (pfx : List Typ) (ctx : LinCtx) (Γ : TypEnv
         omega
       have hBT := HasType.bvar_type (LinCtx.pushMany ctx pfx) Γ n hLen2
       have eqTy := LinCtx.types_pushMany_push_index_low ctx pfx τ1 n hNlt
-      exact Eq.subst (motive := fun t => HasType _ Γ (.bvar n) t) (Eq.symm eqTy) hBT
+      exact Eq.subst (motive := fun t => HasType _ Γ (.bvar n) t _) (Eq.symm eqTy) hBT
     · split
       · -- n = pfx.length: substitute with lift pfx.length v
         next hEq =>
@@ -226,7 +229,7 @@ private theorem HasType_subst_depth (pfx : List Typ) (ctx : LinCtx) (Γ : TypEnv
             some ((LinCtx.pushMany ctx pfx).types[n - 1]'hNMinus1) := by rw [hOpt]; exact s2
         obtain ⟨_, hEqT⟩ := List.getElem?_eq_some_iff.mp hChain
         have hBT := HasType.bvar_type (LinCtx.pushMany ctx pfx) Γ (n - 1) hNMinus1
-        exact Eq.subst (motive := fun t => HasType _ Γ (.bvar (n - 1)) t)
+        exact Eq.subst (motive := fun t => HasType _ Γ (.bvar (n - 1)) t _)
           (Eq.symm hEqT) hBT
   | .fvar_type _ _ name τ hLookup =>
     simp only [subst']; exact HasType.fvar_type _ _ name τ hLookup
@@ -292,7 +295,9 @@ private theorem HasType_subst_depth (pfx : List Typ) (ctx : LinCtx) (Γ : TypEnv
   | .lam_type _ _ n body paramTys retTy hLen hBody =>
     simp only [subst']
     have hBody' : HasType (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx)
-        (paramTys.reverse ++ pfx)) Γ body retTy := by
+        (paramTys.reverse ++ pfx)) Γ body retTy
+        (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx)
+          (paramTys.reverse ++ pfx)) := by
       rw [← LinCtx.pushMany_pushMany_append]; exact hBody
     have hResult := HasType_subst_depth (paramTys.reverse ++ pfx) ctx Γ body v τ1 retTy hBody' hV
     simp only [List.length_append] at hResult
@@ -313,7 +318,8 @@ private theorem HasType_subst_depth (pfx : List Typ) (ctx : LinCtx) (Γ : TypEnv
       (HasType_subst_depth pfx ctx Γ f v τ1 τ hF hV)
   | .let_type _ _ e1 e2 τ1' τ2' hE1 hE2 =>
     simp only [subst']
-    have hE2' : HasType (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx) (τ1' :: pfx)) Γ e2 τ2' := hE2
+    have hE2' : HasType (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx) (τ1' :: pfx)) Γ e2 τ2'
+        (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx) (τ1' :: pfx)) := hE2
     have hResult := HasType_subst_depth (τ1' :: pfx) ctx Γ e2 v τ1 τ2' hE2' hV
     simp only [List.length_cons] at hResult
     exact HasType.let_type (LinCtx.pushMany ctx pfx) Γ (subst' pfx.length e1 v) (subst' (pfx.length + 1) e2 v) τ1' τ2'
@@ -321,7 +327,8 @@ private theorem HasType_subst_depth (pfx : List Typ) (ctx : LinCtx) (Γ : TypEnv
       hResult
   | .for_type _ _ s e body hS hE hBody =>
     simp only [subst']
-    have hBody' : HasTypeAll (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx) (.intType :: pfx)) Γ body [.unitType] := hBody
+    have hBody' : HasTypeAll (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx) (.intType :: pfx))
+        Γ body [.unitType] (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx) (.intType :: pfx)) := hBody
     have hBodyResult := HasTypeAll_subst_depth (.intType :: pfx) ctx Γ body v τ1 [.unitType] hBody' hV
     simp only [List.length_cons] at hBodyResult
     exact HasType.for_type (LinCtx.pushMany ctx pfx) Γ (subst' pfx.length s v) (subst' pfx.length e v) (List.map (fun x => subst' (pfx.length + 1) x v) body)
@@ -404,22 +411,27 @@ private theorem HasType_subst_depth (pfx : List Typ) (ctx : LinCtx) (Γ : TypEnv
 
 private theorem ArmsTyped_subst_depth (pfx : List Typ) (ctx : LinCtx) (Γ : TypEnv)
     (arms : List (List String × Expr)) (v : Expr) (τ1 ts tr : Typ)
-    (hArms : ArmsTyped (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx) pfx) Γ ts arms tr)
-    (hV : HasType ctx Γ v τ1) :
-    ArmsTyped (LinCtx.pushMany ctx pfx) Γ ts (substArms pfx.length v arms) tr := by
+    (hArms : ArmsTyped (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx) pfx) Γ ts arms tr
+      (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx) pfx))
+    (hV : HasType ctx Γ v τ1 ctx) :
+    ArmsTyped (LinCtx.pushMany ctx pfx) Γ ts (substArms pfx.length v arms) tr
+      (LinCtx.pushMany ctx pfx) := by
   cases hArms with
   | nil => simp only [substArms]; constructor
   | cons ctx' Γ vars body rest ts tr hBody hRest =>
     simp only [substArms]
     constructor
     · have hBody' : HasType (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx)
-        (List.replicate vars.length ts ++ pfx)) Γ body tr := by
+        (List.replicate vars.length ts ++ pfx)) Γ body tr
+        (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx)
+          (List.replicate vars.length ts ++ pfx)) := by
         rw [← LinCtx.pushMany_pushMany_append]; exact hBody
       have hResult := HasType_subst_depth (List.replicate vars.length ts ++ pfx) ctx Γ body v τ1 tr hBody' hV
       simp only [List.length_append, List.length_replicate] at hResult
       rw [Nat.add_comm] at hResult
       show HasType (LinCtx.pushMany (LinCtx.pushMany ctx pfx) (List.replicate vars.length ts)) Γ
           (subst' (pfx.length + vars.length) body v) tr
+          (LinCtx.pushMany (LinCtx.pushMany ctx pfx) (List.replicate vars.length ts))
       rw [LinCtx.pushMany_pushMany_append]; exact hResult
     · exact ArmsTyped_subst_depth pfx ctx Γ rest v τ1 ts tr hRest hV
 
@@ -427,16 +439,18 @@ end
 
 -- Depth-0 specialization: HasType_subst
 private theorem HasType_subst (ctx : LinCtx) (Γ : TypEnv) (e v : Expr) (τ1 τ : Typ)
-    (hE : HasType ((τ1, LinCtx.initialUsage τ1) :: ctx) Γ e τ)
-    (hV : HasType ctx Γ v τ1) :
-    HasType ctx Γ (Morph.Syntax.subst e v) τ :=
+    (hE : HasType ((τ1, LinCtx.initialUsage τ1) :: ctx) Γ e τ
+      ((τ1, LinCtx.initialUsage τ1) :: ctx))
+    (hV : HasType ctx Γ v τ1 ctx) :
+    HasType ctx Γ (Morph.Syntax.subst e v) τ ctx :=
   HasType_subst_depth [] ctx Γ e v τ1 τ hE hV
 
 private theorem HasTypeAll_subst_all (ctx : LinCtx) (Γ : TypEnv) (es : List Expr)
     (v : Expr) (τ1 : Typ) (τs : List Typ)
-    (hArgs : HasTypeAll ((τ1, LinCtx.initialUsage τ1) :: ctx) Γ es τs)
-    (hV : HasType ctx Γ v τ1) :
-    HasTypeAll ctx Γ (es.map (fun e => Morph.Syntax.subst e v)) τs :=
+    (hArgs : HasTypeAll ((τ1, LinCtx.initialUsage τ1) :: ctx) Γ es τs
+      ((τ1, LinCtx.initialUsage τ1) :: ctx))
+    (hV : HasType ctx Γ v τ1 ctx) :
+    HasTypeAll ctx Γ (es.map (fun e => Morph.Syntax.subst e v)) τs ctx :=
   HasTypeAll_subst_depth [] ctx Γ es v τ1 τs hArgs hV
 
 /-!
@@ -454,23 +468,27 @@ mutual
 
 private theorem HasTypeAll_substAll (pfx σs : List Typ) (ctx : LinCtx) (Γ : TypEnv)
     (vs : List Expr) (es : List Expr) (τs : List Typ)
-    (hEs : HasTypeAll (LinCtx.pushMany (LinCtx.pushMany ctx σs) pfx) Γ es τs)
-    (hVs : HasTypeAll ctx Γ vs σs.reverse)
+    (hEs : HasTypeAll (LinCtx.pushMany (LinCtx.pushMany ctx σs) pfx) Γ es τs
+      (LinCtx.pushMany (LinCtx.pushMany ctx σs) pfx))
+    (hVs : HasTypeAll ctx Γ vs σs.reverse ctx)
     (hLen : vs.length = σs.length) :
-    HasTypeAll (LinCtx.pushMany ctx pfx) Γ (es.map (substAll' pfx.length vs.reverse)) τs := by
+    HasTypeAll (LinCtx.pushMany ctx pfx) Γ (es.map (substAll' pfx.length vs.reverse)) τs
+      (LinCtx.pushMany ctx pfx) := by
   match hEs with
   | HasTypeAll.nil _ _ => exact HasTypeAll.nil _ _
-  | HasTypeAll.cons _ _ e es' τ τs' hE hRest =>
-    exact HasTypeAll.cons _ _ _ _ _ _
+  | HasTypeAll.cons _ _ _ e es' τ τs' hE hRest =>
+    exact HasTypeAll.cons _ _ _ _ _ _ _
       (HasType_substAll pfx σs ctx Γ vs e τ hE hVs hLen)
       (HasTypeAll_substAll pfx σs ctx Γ vs es' τs' hRest hVs hLen)
 
 private theorem HasType_substAll (pfx σs : List Typ) (ctx : LinCtx) (Γ : TypEnv)
     (vs : List Expr) (e : Expr) (τ : Typ)
-    (hE : HasType (LinCtx.pushMany (LinCtx.pushMany ctx σs) pfx) Γ e τ)
-    (hVs : HasTypeAll ctx Γ vs σs.reverse)
+    (hE : HasType (LinCtx.pushMany (LinCtx.pushMany ctx σs) pfx) Γ e τ
+      (LinCtx.pushMany (LinCtx.pushMany ctx σs) pfx))
+    (hVs : HasTypeAll ctx Γ vs σs.reverse ctx)
     (hLen : vs.length = σs.length) :
-    HasType (LinCtx.pushMany ctx pfx) Γ (substAll' pfx.length vs.reverse e) τ := by
+    HasType (LinCtx.pushMany ctx pfx) Γ (substAll' pfx.length vs.reverse e) τ
+      (LinCtx.pushMany ctx pfx) := by
   match hE with
   | .bvar_type _ _ n hLenCtx =>
     unfold substAll'
@@ -492,7 +510,7 @@ private theorem HasType_substAll (pfx σs : List Typ) (ctx : LinCtx) (Γ : TypEn
       have hChain : (LinCtx.pushMany (LinCtx.pushMany ctx σs) pfx).types[n]? =
           some ((LinCtx.pushMany ctx pfx).types[n]'hLen') := by rw [hOpt]; exact s2
       obtain ⟨_, hEqT⟩ := List.getElem?_eq_some_iff.mp hChain
-      exact Eq.subst (motive := fun t => HasType _ Γ (.bvar n) t) (Eq.symm hEqT) hBT
+      exact Eq.subst (motive := fun t => HasType _ Γ (.bvar n) t _) (Eq.symm hEqT) hBT
     · next hNe1 =>
       split
       · next hIn =>
@@ -502,10 +520,10 @@ private theorem HasType_substAll (pfx σs : List Typ) (ctx : LinCtx) (Γ : TypEn
         have hNLePfx : pfx.length ≤ n := Nat.ge_of_not_lt hNe1
         have hK : n - pfx.length < σs.length := by omega
         have hKPos : n - pfx.length < vs.reverse.length := by omega
-        have hVsRev : HasTypeAll ctx Γ vs.reverse σs := by
+        have hVsRev : HasTypeAll ctx Γ vs.reverse σs ctx := by
           have h := HasTypeAll_reverse ctx Γ vs σs.reverse hVs
           exact (List.reverse_reverse σs) ▸ h
-        have hVal : HasType ctx Γ (vs.reverse[n - pfx.length]) σs[n - pfx.length] :=
+        have hVal : HasType ctx Γ (vs.reverse[n - pfx.length]) σs[n - pfx.length] ctx :=
           HasTypeAll_getElem ctx Γ vs.reverse σs (n - pfx.length) hVsRev hKPos hK
         have hIdxEqS : (LinCtx.pushMany (LinCtx.pushMany ctx σs) pfx).types[n]'hLenCtx
             = (σs[n - pfx.length]'hK) := by
@@ -534,7 +552,7 @@ private theorem HasType_substAll (pfx σs : List Typ) (ctx : LinCtx) (Γ : TypEn
         have hChain : (LinCtx.pushMany (LinCtx.pushMany ctx σs) pfx).types[n]? =
             some ((LinCtx.pushMany ctx pfx).types[n - σs.length]'hNMinus) := by rw [hOpt]; exact s2
         obtain ⟨_, hEqT⟩ := List.getElem?_eq_some_iff.mp hChain
-        exact Eq.subst (motive := fun t => HasType _ Γ (.bvar (n - σs.length)) t) (Eq.symm hEqT) hBT
+        exact Eq.subst (motive := fun t => HasType _ Γ (.bvar (n - σs.length)) t _) (Eq.symm hEqT) hBT
   | .fvar_type _ _ name τ hLookup =>
     unfold substAll'; exact HasType.fvar_type _ _ name τ hLookup
   | .lit_int _ _ _ => unfold substAll'; exact HasType.lit_int _ _ _
@@ -599,7 +617,9 @@ private theorem HasType_substAll (pfx σs : List Typ) (ctx : LinCtx) (Γ : TypEn
   | .lam_type _ _ m body paramTys retTy hLenM hBody =>
     unfold substAll'
     have hBody' : HasType (LinCtx.pushMany (LinCtx.pushMany ctx σs)
-        (paramTys.reverse ++ pfx)) Γ body retTy := by
+        (paramTys.reverse ++ pfx)) Γ body retTy
+        (LinCtx.pushMany (LinCtx.pushMany ctx σs)
+          (paramTys.reverse ++ pfx)) := by
       rw [← LinCtx.pushMany_pushMany_append]; exact hBody
     have hResult := HasType_substAll (paramTys.reverse ++ pfx) σs ctx Γ vs body retTy
       hBody' hVs hLen
@@ -626,7 +646,8 @@ private theorem HasType_substAll (pfx σs : List Typ) (ctx : LinCtx) (Γ : TypEn
       (HasType_substAll pfx σs ctx Γ vs f τ hF hVs hLen)
   | .let_type _ _ e1 e2 τ1' τ2' hE1 hE2 =>
     unfold substAll'
-    have hE2' : HasType (LinCtx.pushMany (LinCtx.pushMany ctx σs) (τ1' :: pfx)) Γ e2 τ2' := hE2
+    have hE2' : HasType (LinCtx.pushMany (LinCtx.pushMany ctx σs) (τ1' :: pfx)) Γ e2 τ2'
+        (LinCtx.pushMany (LinCtx.pushMany ctx σs) (τ1' :: pfx)) := hE2
     have hResult := HasType_substAll (τ1' :: pfx) σs ctx Γ vs e2 τ2' hE2' hVs hLen
     simp only [List.length_cons] at hResult
     exact HasType.let_type (LinCtx.pushMany ctx pfx) Γ
@@ -636,7 +657,7 @@ private theorem HasType_substAll (pfx σs : List Typ) (ctx : LinCtx) (Γ : TypEn
   | .for_type _ _ s e body hS hE hBody =>
     unfold substAll'
     have hBody' : HasTypeAll (LinCtx.pushMany (LinCtx.pushMany ctx σs) (.intType :: pfx)) Γ body
-        [.unitType] := hBody
+        [.unitType] (LinCtx.pushMany (LinCtx.pushMany ctx σs) (.intType :: pfx)) := hBody
     have hBodyResult := HasTypeAll_substAll (.intType :: pfx) σs ctx Γ vs body [.unitType]
       hBody' hVs hLen
     simp only [List.length_cons] at hBodyResult
@@ -722,10 +743,12 @@ private theorem HasType_substAll (pfx σs : List Typ) (ctx : LinCtx) (Γ : TypEn
 
 private theorem ArmsTyped_substAll (pfx σs : List Typ) (ctx : LinCtx) (Γ : TypEnv)
     (vs : List Expr) (arms : List (List String × Expr)) (ts tr : Typ)
-    (hArms : ArmsTyped (LinCtx.pushMany (LinCtx.pushMany ctx σs) pfx) Γ ts arms tr)
-    (hVs : HasTypeAll ctx Γ vs σs.reverse)
+    (hArms : ArmsTyped (LinCtx.pushMany (LinCtx.pushMany ctx σs) pfx) Γ ts arms tr
+      (LinCtx.pushMany (LinCtx.pushMany ctx σs) pfx))
+    (hVs : HasTypeAll ctx Γ vs σs.reverse ctx)
     (hLen : vs.length = σs.length) :
-    ArmsTyped (LinCtx.pushMany ctx pfx) Γ ts (substAllArms pfx.length vs.reverse arms) tr := by
+    ArmsTyped (LinCtx.pushMany ctx pfx) Γ ts (substAllArms pfx.length vs.reverse arms) tr
+      (LinCtx.pushMany ctx pfx) := by
   cases hArms with
   | nil => simp only [substAllArms]; constructor
   | cons ctx' Γ vars body rest ts tr hBody hRest =>
@@ -737,7 +760,9 @@ private theorem ArmsTyped_substAll (pfx σs : List Typ) (ctx : LinCtx) (Γ : Typ
           (List.replicate vars.length ts) := by
         simp only [LinCtx.pushMany, List.map_append, List.append_assoc]
       have hBody' : HasType (LinCtx.pushMany (LinCtx.pushMany ctx σs)
-          (List.replicate vars.length ts ++ pfx)) Γ body tr := hCtxEq.symm ▸ hBody
+          (List.replicate vars.length ts ++ pfx)) Γ body tr
+          (LinCtx.pushMany (LinCtx.pushMany ctx σs)
+            (List.replicate vars.length ts ++ pfx)) := hCtxEq.symm ▸ hBody
       have hResult := HasType_substAll (List.replicate vars.length ts ++ pfx) σs ctx Γ vs body tr hBody' hVs hLen
       simp only [List.length_append, List.length_replicate] at hResult
       rw [Nat.add_comm] at hResult
@@ -750,10 +775,10 @@ end
 -- Depth-0 wrapper for app_lam
 private theorem HasType_iterSubst (σs : List Typ) (ctx : LinCtx) (Γ : TypEnv)
     (vs : List Expr) (e : Expr) (τ : Typ)
-    (hE : HasType (LinCtx.pushMany ctx σs) Γ e τ)
-    (hVs : HasTypeAll ctx Γ vs σs.reverse)
+    (hE : HasType (LinCtx.pushMany ctx σs) Γ e τ (LinCtx.pushMany ctx σs))
+    (hVs : HasTypeAll ctx Γ vs σs.reverse ctx)
     (hLen : vs.length = σs.length) :
-    HasType ctx Γ (substAll' 0 vs.reverse e) τ :=
+    HasType ctx Γ (substAll' 0 vs.reverse e) τ ctx :=
   HasType_substAll [] σs ctx Γ vs e τ hE hVs hLen
 
 /-!
@@ -761,7 +786,7 @@ private theorem HasType_iterSubst (σs : List Typ) (ctx : LinCtx) (Γ : TypEnv)
 -/
 
 private theorem HasType_tuple_inv {ctx : LinCtx} {Γ : TypEnv} {rest : List Expr} {τs : List Typ} :
-    HasType ctx Γ (.tuple_ rest) (.tupleType τs) → HasTypeAll ctx Γ rest τs := by
+    HasType ctx Γ (.tuple_ rest) (.tupleType τs) ctx → HasTypeAll ctx Γ rest τs ctx := by
   intro h
   cases h with
   | tuple_type _ _ _ _ hAll => exact hAll
@@ -770,9 +795,10 @@ private theorem HasType_tuple_inv {ctx : LinCtx} {Γ : TypEnv} {rest : List Expr
 set_option maxHeartbeats 1000000 in
 mutual
 
-theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {ctx : LinCtx} {Γ : TypEnv},
-    HasType ctx Γ e τ -> Step σ e σ' e' -> HasType ctx Γ e' τ := by
-  intro σ σ' e e' τ ctx Γ hType hStep
+theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {ctx : LinCtx} {Γ : TypEnv}
+    {cout : LinCtx},
+    HasType ctx Γ e τ cout -> Step σ e σ' e' -> HasType ctx Γ e' τ cout := by
+  intro σ σ' e e' τ ctx Γ cout hType hStep
   cases hStep with
   | binop_left op e1 e1' e2 hStep1 =>
     cases hType with
@@ -899,10 +925,13 @@ theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {ctx : L
     cases hType with
     | for_type _ _ _ _ _ hS hE hBody =>
       have hInnerBody : HasTypeAll ((.intType, LinCtx.initialUsage .intType) ::
-          (.intType, LinCtx.initialUsage .intType) :: ctx) Γ (body.map (lift 1)) [.unitType] :=
+          (.intType, LinCtx.initialUsage .intType) :: ctx) Γ (body.map (lift 1)) [.unitType]
+          ((.intType, LinCtx.initialUsage .intType) ::
+          (.intType, LinCtx.initialUsage .intType) :: ctx) :=
         weakening_all ((.intType, LinCtx.initialUsage .intType) :: ctx) Γ body [.unitType] .intType hBody
       have hInnerFor : HasType ((.intType, LinCtx.initialUsage .intType) :: ctx) Γ
-          (.forLoop (.lit (.int (n + 1))) (.lit (.int m)) (body.map (lift 1))) .unitType :=
+          (.forLoop (.lit (.int (n + 1))) (.lit (.int m)) (body.map (lift 1))) .unitType
+          ((.intType, LinCtx.initialUsage .intType) :: ctx) :=
         HasType.for_type ((.intType, LinCtx.initialUsage .intType) :: ctx) Γ (.lit (.int (n + 1))) (.lit (.int m))
           (body.map (lift 1))
           (HasType.lit_int _ _ (n + 1))
@@ -910,9 +939,9 @@ theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {ctx : L
           hInnerBody
       have hBlockAll : HasTypeAll ((.intType, LinCtx.initialUsage .intType) :: ctx) Γ
           (body ++ [.forLoop (.lit (.int (n + 1))) (.lit (.int m)) (body.map (lift 1))])
-          [.unitType, .unitType] :=
+          [.unitType, .unitType] ((.intType, LinCtx.initialUsage .intType) :: ctx) :=
         HasTypeAll_append hBody
-          (HasTypeAll.cons _ _ _ _ _ _ hInnerFor (HasTypeAll.nil _ _))
+          (HasTypeAll.cons _ _ _ _ _ _ _ hInnerFor (HasTypeAll.nil _ _))
       exact HasType.let_type ctx Γ (.lit (.int n))
         (.block (body ++ [.forLoop (.lit (.int (n + 1))) (.lit (.int m)) (body.map (lift 1))]))
         .intType .unitType hS
@@ -930,10 +959,10 @@ theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {ctx : L
       cases τs with
       | nil =>
         exact HasType.block_type _ _ (e'' :: rest) [] τ
-          (HasTypeAll.cons _ _ _ _ _ _ (preservation (HasTypeAll_cons_head hAll) hStep1) (HasTypeAll_cons_tail hAll))
+          (HasTypeAll.cons _ _ _ _ _ _ _ (preservation (HasTypeAll_cons_head hAll) hStep1) (HasTypeAll_cons_tail hAll))
       | cons τ' τs' =>
         exact HasType.block_type _ _ (e'' :: rest) (τ' :: τs') τ
-          (HasTypeAll.cons _ _ _ _ _ _ (preservation (HasTypeAll_cons_head hAll) hStep1) (HasTypeAll_cons_tail hAll))
+          (HasTypeAll.cons _ _ _ _ _ _ _ (preservation (HasTypeAll_cons_head hAll) hStep1) (HasTypeAll_cons_tail hAll))
     | _ => contradiction
   | block_singleton v _ =>
     cases hType with
@@ -1070,7 +1099,7 @@ theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {ctx : L
         omega
       | cons τhead τtail =>
         exact HasType.app_type _ _ fn (a' :: rest) (τhead :: τtail) τ hFn
-          (HasTypeAll.cons _ _ _ _ _ _ (preservation (HasTypeAll_cons_head hAll) hs) (HasTypeAll_cons_tail hAll))
+          (HasTypeAll.cons _ _ _ _ _ _ _ (preservation (HasTypeAll_cons_head hAll) hs) (HasTypeAll_cons_tail hAll))
   | app_lam n body args hLen =>
     match hType with
     | HasType.app_type _ _ _ _ _ _ hFn hAll =>
@@ -1078,7 +1107,7 @@ theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {ctx : L
       | HasType.lam_type _ _ _ _ paramTys retTy hLen' hBodyP =>
         have hLenEq : args.length = paramTys.reverse.length := by
           rw [List.length_reverse]; exact hLen ▸ hLen'
-        have hVs : HasTypeAll ctx Γ args (paramTys.reverse).reverse := by
+        have hVs : HasTypeAll ctx Γ args (paramTys.reverse).reverse ctx := by
           simp [List.reverse_reverse]; exact hAll
         exact HasType_iterSubst paramTys.reverse ctx Γ args body retTy
           hBodyP hVs hLenEq
@@ -1094,7 +1123,7 @@ theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {ctx : L
     cases hType with
     | pipe_type =>
       exact HasType.app_type _ _ f [v] [_] _ (by assumption)
-        (HasTypeAll.cons _ _ _ _ _ _ (by assumption) (HasTypeAll.nil _ _))
+        (HasTypeAll.cons _ _ _ _ _ _ _ (by assumption) (HasTypeAll.nil _ _))
     | _ => contradiction
   | typeAsc_step e e' τ hStep1 =>
     cases hType with
@@ -1116,12 +1145,12 @@ theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {ctx : L
       | .cons _ _ _ body2 _ ts tr hBody2 _ =>
         have hRepLen : (List.replicate vars.length e).length = (List.replicate vars.length ts).length := by
           simp [List.length_replicate]
-        have hRepVs : HasTypeAll ctx Γ (List.replicate vars.length e) (List.replicate vars.length ts).reverse := by
+        have hRepVs : HasTypeAll ctx Γ (List.replicate vars.length e) (List.replicate vars.length ts).reverse ctx := by
           rw [list_reverse_replicate]
           exact HasTypeAll_replicate ctx Γ e ts hScrut vars.length
         have hResult := HasType_iterSubst (List.replicate vars.length ts) ctx Γ
           (List.replicate vars.length e) body2 tr hBody2 hRepVs hRepLen
-        show HasType ctx Γ (substAll' 0 (List.replicate vars.length e) body2) tr
+        show HasType ctx Γ (substAll' 0 (List.replicate vars.length e) body2) tr ctx
         rw [list_reverse_replicate] at hResult
         exact hResult
     | _ => contradiction
@@ -1204,18 +1233,18 @@ theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {ctx : L
       cases hType with
       | tuple_type _ _ _ _ hAll =>
         cases hAll with
-        | cons _ _ _ _ _ _ hE_head hAll_rest =>
+        | cons _ _ _ _ _ _ _ hE_head hAll_rest =>
           exact HasType.tuple_type _ _ _ _
-            (HasTypeAll.cons _ _ _ _ _ _ (preservation hE_head hs) hAll_rest)
+            (HasTypeAll.cons _ _ _ _ _ _ _ (preservation hE_head hs) hAll_rest)
       | _ => contradiction
     | tuple_step_rest head rest rest' hv hs =>
       cases hType with
       | tuple_type _ _ _ _ hAll =>
         cases hAll with
-        | cons _ _ _ _ _ _ hE_head hAll_rest =>
+        | cons _ _ _ _ _ _ _ hE_head hAll_rest =>
           have hAll_rest' := HasType_tuple_inv (preservation (HasType.tuple_type _ _ _ _ hAll_rest) hs)
           exact HasType.tuple_type _ _ _ _
-            (HasTypeAll.cons _ _ _ _ _ _ hE_head hAll_rest')
+            (HasTypeAll.cons _ _ _ _ _ _ _ hE_head hAll_rest')
       | _ => contradiction
     | array_step_head head head' rest hs =>
       cases hType with
@@ -1225,9 +1254,9 @@ theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {ctx : L
         | succ n' =>
           simp only [List.replicate_succ] at hAll ⊢
           cases hAll with
-          | cons _ _ _ _ _ _ hE_head hAll_rest =>
+          | cons _ _ _ _ _ _ _ hE_head hAll_rest =>
             exact HasType.arrayLit_type _ _ (head' :: rest) τ (Nat.succ n')
-              (HasTypeAll.cons _ _ _ _ _ _ (preservation hE_head hs) hAll_rest)
+              (HasTypeAll.cons _ _ _ _ _ _ _ (preservation hE_head hs) hAll_rest)
               (by simp only [List.length_cons] at hLen ⊢; omega) (by omega)
       | _ => contradiction
     | array_step_rest head rest rest' hv hs =>
@@ -1238,21 +1267,21 @@ theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {ctx : L
         | succ n' =>
           simp only [List.replicate_succ] at hAll ⊢
           cases hAll with
-          | cons _ _ _ _ _ _ hE_head hAll_rest =>
+          | cons _ _ _ _ _ _ _ hE_head hAll_rest =>
             cases n' with
             | zero =>
               have : rest = [] := List.eq_nil_of_length_eq_zero (Nat.succ.inj hLen).symm
               subst this
               cases hs
             | succ n'' =>
-              have hRestType : HasType ctx Γ (.arrayLit rest) (.arrayType τ (Nat.succ n'')) :=
+              have hRestType : HasType ctx Γ (.arrayLit rest) (.arrayType τ (Nat.succ n'')) ctx :=
                 HasType.arrayLit_type _ _ rest τ (Nat.succ n'') hAll_rest
                   (Nat.succ.inj hLen) (Nat.succ_pos n'')
               have hRestType' := preservation hRestType hs
               cases hRestType' with
               | arrayLit_type _ _ _ _ _ hAll_rest' hLen' hn' =>
                 exact HasType.arrayLit_type _ _ (head :: rest') τ (Nat.succ (Nat.succ n''))
-                  (HasTypeAll.cons _ _ _ _ _ _ hE_head hAll_rest')
+                  (HasTypeAll.cons _ _ _ _ _ _ _ hE_head hAll_rest')
                   (congrArg Nat.succ hLen') (Nat.succ_pos _)
               | _ => contradiction
       | _ => contradiction
@@ -1271,8 +1300,8 @@ theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {ctx : L
       | arrayIndex_type _ _ _ _ τ m hArr hIdx =>
         cases hArr with
         | arrayLit_type _ _ _ _ _ hAll hLen hn =>
-          have hGet : ∀ es n, HasTypeAll ctx Γ es (List.replicate n τ) →
-            ∀ i (_ : i < es.length), HasType ctx Γ (es.getD i (.lit .unit)) τ := by
+          have hGet : ∀ es n, HasTypeAll ctx Γ es (List.replicate n τ) ctx →
+            ∀ i (_ : i < es.length), HasType ctx Γ (es.getD i (.lit .unit)) τ ctx := by
             intro es n hAll'
             induction es generalizing n with
             | nil => intro i h; simp at h
@@ -1282,7 +1311,7 @@ theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {ctx : L
               | succ n' =>
                 intro i h
                 cases hAll' with
-                | cons _ _ _ _ _ _ hE_head hE_tail =>
+                | cons _ _ _ _ _ _ _ hE_head hE_tail =>
                   cases i with
                   | zero => simp [List.getD]; exact hE_head
                   | succ i' => simp only [List.getD_cons_succ]; exact ih n' hE_tail i' (by simp at h; omega)
@@ -1299,7 +1328,7 @@ theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {ctx : L
           | succ m' =>
             simp only [List.replicate_succ] at hAll
             cases hAll with
-            | cons _ _ _ _ _ _ hE_head _ => simp [List.getD]; exact hE_head
+            | cons _ _ _ _ _ _ _ hE_head _ => simp [List.getD]; exact hE_head
         | _ => contradiction
       | _ => contradiction
      | array_index_neg elems hvs m hPos =>
@@ -1312,7 +1341,7 @@ theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {ctx : L
            | succ n' =>
              simp only [List.replicate_succ] at hAll
              cases hAll with
-             | cons _ _ _ _ _ _ hE_head _ => simp [List.getD]; exact hE_head
+             | cons _ _ _ _ _ _ _ hE_head _ => simp [List.getD]; exact hE_head
          | _ => contradiction
        | _ => contradiction
     | ref_create_step e e' cap τ hStep1 =>

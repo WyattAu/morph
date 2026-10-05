@@ -26,9 +26,9 @@ Closed means: empty bound-variable context (bvs = []) and empty free-variable en
 
 /-! ## Canonical Forms -/
 
-theorem canonical_bool : forall {e : Expr},
-    IsValue e -> HasType [] [] e .boolType -> exists b, e = .lit (.bool b) := by
-  intro e hv ht
+theorem canonical_bool : forall {e : Expr} {ctx' : LinCtx},
+    IsValue e -> HasType [] [] e .boolType ctx' -> exists b, e = .lit (.bool b) := by
+  intro e ctx' hv ht
   cases hv with
   | lit v => cases v with
     | bool b => exact ⟨b, rfl⟩
@@ -42,9 +42,9 @@ theorem canonical_bool : forall {e : Expr},
   | array_ _ _ => cases ht
   | refCreate _ _ _ _ => cases ht
 
-theorem canonical_int : forall {e : Expr},
-    IsValue e -> HasType [] [] e .intType -> exists n, e = .lit (.int n) := by
-  intro e hv ht
+theorem canonical_int : forall {e : Expr} {ctx' : LinCtx},
+    IsValue e -> HasType [] [] e .intType ctx' -> exists n, e = .lit (.int n) := by
+  intro e ctx' hv ht
   cases hv with
   | lit v => cases v with
     | int n => exact ⟨n, rfl⟩
@@ -58,9 +58,9 @@ theorem canonical_int : forall {e : Expr},
   | array_ _ _ => cases ht
   | refCreate _ _ _ _ => cases ht
 
-theorem canonical_string : forall {e : Expr},
-    IsValue e -> HasType [] [] e .stringType -> exists s, e = .lit (.string s) := by
-  intro e hv ht
+theorem canonical_string : forall {e : Expr} {ctx' : LinCtx},
+    IsValue e -> HasType [] [] e .stringType ctx' -> exists s, e = .lit (.string s) := by
+  intro e ctx' hv ht
   cases hv with
   | lit v => cases v with
     | string s => exact ⟨s, rfl⟩
@@ -74,9 +74,9 @@ theorem canonical_string : forall {e : Expr},
   | array_ _ _ => cases ht
   | refCreate _ _ _ _ => cases ht
 
-theorem canonical_float : forall {e : Expr} {w : FloatWidth},
-    IsValue e -> HasType [] [] e (.floatType w) -> exists f, e = .lit (.float f) := by
-  intro e w hv ht
+theorem canonical_float : forall {e : Expr} {w : FloatWidth} {ctx' : LinCtx},
+    IsValue e -> HasType [] [] e (.floatType w) ctx' -> exists f, e = .lit (.float f) := by
+  intro e w ctx' hv ht
   cases hv with
   | lit v => cases v with
     | float f => exact ⟨f, rfl⟩
@@ -90,9 +90,9 @@ theorem canonical_float : forall {e : Expr} {w : FloatWidth},
   | array_ _ _ => cases ht
   | refCreate _ _ _ _ => cases ht
 
-theorem canonical_intWidth : forall {e : Expr} {w : IntWidth},
-    IsValue e -> HasType [] [] e (.intWidthType w) -> exists n, e = .lit (.int n) := by
-  intro e w hv ht
+theorem canonical_intWidth : forall {e : Expr} {w : IntWidth} {ctx' : LinCtx},
+    IsValue e -> HasType [] [] e (.intWidthType w) ctx' -> exists n, e = .lit (.int n) := by
+  intro e w ctx' hv ht
   cases hv with
   | lit v => cases v with
     | int n => exact ⟨n, rfl⟩
@@ -106,10 +106,10 @@ theorem canonical_intWidth : forall {e : Expr} {w : IntWidth},
   | array_ _ _ => cases ht
   | refCreate _ _ _ _ => cases ht
 
-theorem canonical_ref : forall {e : Expr} {cap τ},
-    IsValue e -> HasType [] [] e (.refType cap τ) ->
-    ∃ e', e = .refCreate e' cap τ ∧ HasType [] [] e' τ ∧ IsValue e' := by
-  intro e cap τ hv ht
+theorem canonical_ref : forall {e : Expr} {cap τ} {ctx' : LinCtx},
+    IsValue e -> HasType [] [] e (.refType cap τ) ctx' ->
+    ∃ e', e = .refCreate e' cap τ ∧ HasType [] [] e' τ [] ∧ IsValue e' := by
+  intro e cap τ ctx' hv ht
   cases hv with
   | lit v => cases ht
   | lam _ _ => cases ht
@@ -235,14 +235,15 @@ private theorem depth_refFree {e} :
     exprDepth e < exprDepth (.refFree e) := by
   simp only [exprDepth]; exact Nat.lt_succ_self _
 
-private theorem HasTypeAll_nil_types {ctx : LinCtx} {Γ : TypEnv} {tys : List Typ} :
-    HasTypeAll ctx Γ [] tys → tys = [] := by
+private theorem HasTypeAll_nil_types {ctx : LinCtx} {Γ : TypEnv} {tys : List Typ} {out : LinCtx} :
+    HasTypeAll ctx Γ [] tys out → tys = [] := by
   intro h
   cases h with
   | nil => rfl
 
-private theorem HasTypeAll_length (ctx : LinCtx) (Γ : TypEnv) (es : List Expr) (τs : List Typ) :
-    HasTypeAll ctx Γ es τs → es.length = τs.length := by
+private theorem HasTypeAll_length (ctx : LinCtx) (Γ : TypEnv) (es : List Expr) (τs : List Typ)
+    {out : LinCtx} :
+    HasTypeAll ctx Γ es τs out → es.length = τs.length := by
   intro h
   cases es with
   | nil =>
@@ -257,30 +258,30 @@ private theorem HasTypeAll_length (ctx : LinCtx) (Γ : TypEnv) (es : List Expr) 
     | cons τ τs' =>
       simp only [List.length_cons]
       match h with
-      | HasTypeAll.cons _ _ _ _ _ _ _ hRest =>
-        exact congrArg (· + 1) (HasTypeAll_length ctx Γ es' τs' hRest)
+      | HasTypeAll.cons _ _ _ _ _ _ _ _ hRest =>
+        exact congrArg (· + 1) (HasTypeAll_length out Γ es' τs' hRest)
 
 private theorem HasTypeAll_append_cons_head {ctx : LinCtx} {Γ : TypEnv} {e : Expr} {es : List Expr}
-    {τs : List Typ} {τ : Typ} (h : HasTypeAll ctx Γ (e :: es) (τs ++ [τ])) :
-    ∃ τ_h, HasType ctx Γ e τ_h := by
+    {τs : List Typ} {τ : Typ} {out : LinCtx} (h : HasTypeAll ctx Γ (e :: es) (τs ++ [τ]) out) :
+    ∃ τ_h, HasType ctx Γ e τ_h out := by
   cases τs with
   | nil =>
-    change HasTypeAll ctx Γ (e :: es) [τ] at h
+    change HasTypeAll ctx Γ (e :: es) [τ] out at h
     cases h with
-    | cons _ _ _ _ _ _ hE _ => exact ⟨_, hE⟩
+    | cons _ _ _ _ _ _ _ hE _ => exact ⟨_, hE⟩
   | cons τ' τs' =>
-    change HasTypeAll ctx Γ (e :: es) (τ' :: (τs' ++ [τ])) at h
+    change HasTypeAll ctx Γ (e :: es) (τ' :: (τs' ++ [τ])) out at h
     cases h with
-     | cons _ _ _ _ _ _ hE _ => exact ⟨_, hE⟩
+     | cons _ _ _ _ _ _ _ hE _ => exact ⟨_, hE⟩
 
 private theorem HasTypeAll_mem {ctx : LinCtx} {Γ : TypEnv} {es : List Expr}
-    {τs : List Typ} (hAll : HasTypeAll ctx Γ es τs) (e : Expr) (he : e ∈ es) :
-    ∃ τ, HasType ctx Γ e τ := by
+    {τs : List Typ} (hAll : HasTypeAll ctx Γ es τs ctx) (e : Expr) (he : e ∈ es) :
+    ∃ τ, HasType ctx Γ e τ ctx := by
   cases es with
   | nil => cases he
   | cons head rest =>
     match hAll with
-    | HasTypeAll.cons _ _ _ _ _ _ hE hRest =>
+    | HasTypeAll.cons _ _ _ _ _ _ _ hE hRest =>
       cases he with
       | head _ => exact ⟨_, hE⟩
       | tail _ h => exact HasTypeAll_mem hRest e h
@@ -331,9 +332,9 @@ private theorem listExprDepth_mem {e : Expr} {rest : List Expr} (he : e ∈ rest
     | tail _ h => simp only [listExprDepth]; exact Nat.le_trans (ih h) (Nat.le_max_right (exprDepth head) (listExprDepth rest))
 
 private theorem tuple_progress_list {d : Nat}
-    (ih : ∀ (e : Expr), exprDepth e < d → ∀ (τ : Typ), HasType [] [] e τ → IsValue e ∨ (∃ e', Step σ e σ e'))
+    (ih : ∀ (e : Expr), exprDepth e < d → ∀ (τ : Typ) {c : LinCtx}, HasType [] [] e τ c → IsValue e ∨ (∃ e', Step σ e σ e'))
     (elems : List Expr) (τs : List Typ)
-    (hAll : HasTypeAll [] [] elems τs)
+    (hAll : HasTypeAll [] [] elems τs [])
     (hd : ∀ e ∈ elems, exprDepth e < d) :
     (∃ elems', Step σ (.tuple_ elems) σ (.tuple_ elems')) ∨ (∀ e ∈ elems, IsValue e) := by
   revert τs hAll hd
@@ -342,7 +343,7 @@ private theorem tuple_progress_list {d : Nat}
   | cons head rest ih_elems =>
     intro τs hAll hd
     cases hAll with
-    | cons _ _ _ _ τ_h τs' hE_head hAll_rest =>
+    | cons _ _ _ _ _ τ_h τs' hE_head hAll_rest =>
       have hRes := ih head (hd head (List.Mem.head rest)) τ_h hE_head
       cases hRes with
       | inr hStep =>
@@ -365,9 +366,9 @@ private theorem tuple_progress_list {d : Nat}
           | tail _ h => exact hVals x h
 
 private theorem array_progress_list {d : Nat}
-    (ih : ∀ (e : Expr), exprDepth e < d → ∀ (τ : Typ), HasType [] [] e τ → IsValue e ∨ (∃ e', Step σ e σ e'))
+    (ih : ∀ (e : Expr), exprDepth e < d → ∀ (τ : Typ) {c : LinCtx}, HasType [] [] e τ c → IsValue e ∨ (∃ e', Step σ e σ e'))
     (elems : List Expr) (τs : List Typ)
-    (hAll : HasTypeAll [] [] elems τs)
+    (hAll : HasTypeAll [] [] elems τs [])
     (hd : ∀ e ∈ elems, exprDepth e < d) :
     (∃ elems', Step σ (.arrayLit elems) σ (.arrayLit elems')) ∨ (∀ e ∈ elems, IsValue e) := by
   revert τs hAll hd
@@ -376,7 +377,7 @@ private theorem array_progress_list {d : Nat}
   | cons head rest ih_elems =>
     intro τs hAll hd
     cases hAll with
-    | cons _ _ _ _ τ_h τs' hE_head hAll_rest =>
+    | cons _ _ _ _ _ τ_h τs' hE_head hAll_rest =>
       have hRes := ih head (hd head (List.Mem.head rest)) τ_h hE_head
       cases hRes with
       | inr hStep =>
@@ -400,14 +401,14 @@ private theorem array_progress_list {d : Nat}
 
 private theorem progress_strong :
     forall {σ : Store} (d : Nat) (e : Expr), exprDepth e < d ->
-    forall (τ : Typ), HasType [] [] e τ -> IsValue e \/ exists e', Step σ e σ e' := by
+    forall (τ : Typ) {cout : LinCtx}, HasType [] [] e τ cout -> IsValue e \/ exists e', Step σ e σ e' := by
   intro σ d
   induction d with
   | zero =>
     intro e hDepth _ _
     exact absurd hDepth (Nat.not_lt_zero _)
   | succ d ih =>
-    intro e hDepth τ hType
+    intro e hDepth τ cout hType
     cases hType with
     | bvar_type _ _ n hLen =>
       exfalso
@@ -1024,9 +1025,9 @@ private theorem progress_strong :
 
 /-! ## Main Theorem -/
 
-theorem progress : forall {σ : Store} {e : Expr} {τ : Typ},
-    HasType [] [] e τ -> IsValue e \/ exists e', Step σ e σ e' := by
-  intro σ e τ h
+theorem progress : forall {σ : Store} {e : Expr} {τ : Typ} {cout : LinCtx},
+    HasType [] [] e τ cout -> IsValue e \/ exists e', Step σ e σ e' := by
+  intro σ e τ cout h
   exact progress_strong (exprDepth e + 1) e (Nat.lt_succ_self _) τ h
 
 end Morph.Proofs.TypeSoundness

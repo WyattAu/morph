@@ -192,29 +192,29 @@ Full inversion coverage is in Morph/Tests/Typing.lean.
 section TypeInversionProperties
 
 -- Lit int inversion: concrete test (now returns disjunction since lit_int_width also matches)
-example : ∀ (ctx : Morph.LinCtx) (n : Int) (τ : Typ),
-    HasType ctx [] (.lit (.int n)) τ → τ = Typ.intType ∨ (exists w, τ = .intWidthType w) := by
-  intro ctx n τ h; exact HasType_lit_int_inv ctx [] n τ h
+example : ∀ (ctx : Morph.LinCtx) (n : Int) (τ : Typ) {c : Morph.LinCtx},
+    HasType ctx [] (.lit (.int n)) τ c → τ = Typ.intType ∨ (exists w, τ = .intWidthType w) := by
+  intro ctx n τ c h; exact HasType_lit_int_inv ctx [] n τ h
 
 -- Lit bool inversion: concrete test
-example : ∀ (ctx : Morph.LinCtx) (b : Bool) (τ : Typ),
-    HasType ctx [] (.lit (.bool b)) τ → τ = Typ.boolType := by
-  intro ctx b τ h; exact HasType_lit_bool_inv ctx [] b τ h
+example : ∀ (ctx : Morph.LinCtx) (b : Bool) (τ : Typ) {c : Morph.LinCtx},
+    HasType ctx [] (.lit (.bool b)) τ c → τ = Typ.boolType := by
+  intro ctx b τ c h; exact HasType_lit_bool_inv ctx [] b τ h
 
 -- Lit unit inversion
-example : ∀ (ctx : Morph.LinCtx) (τ : Typ),
-    HasType ctx [] (.lit .unit) τ → τ = Typ.unitType := by
-  intro ctx τ h; exact HasType_lit_unit_inv ctx [] τ h
+example : ∀ (ctx : Morph.LinCtx) (τ : Typ) {c : Morph.LinCtx},
+    HasType ctx [] (.lit .unit) τ c → τ = Typ.unitType := by
+  intro ctx τ c h; exact HasType_lit_unit_inv ctx [] τ h
 
 -- Unop not result is always boolType
-example : ∀ (ctx : Morph.LinCtx) (e : Expr) (τ : Typ),
-    HasType ctx [] (.unop .not e) τ → τ = Typ.boolType := by
-  intro ctx e τ h; exact HasType_unop_not_inv ctx [] e τ h
+example : ∀ (ctx : Morph.LinCtx) (e : Expr) (τ : Typ) {c : Morph.LinCtx},
+    HasType ctx [] (.unop .not e) τ c → τ = Typ.boolType := by
+  intro ctx e τ c h; exact HasType_unop_not_inv ctx [] e τ h
 
 -- Unop notb result is always intType
-example : ∀ (ctx : Morph.LinCtx) (e : Expr) (τ : Typ),
-    HasType ctx [] (.unop .notb e) τ → τ = Typ.intType := by
-  intro ctx e τ h; exact HasType_unop_notb_inv ctx [] e τ h
+example : ∀ (ctx : Morph.LinCtx) (e : Expr) (τ : Typ) {c : Morph.LinCtx},
+    HasType ctx [] (.unop .notb e) τ c → τ = Typ.intType := by
+  intro ctx e τ c h; exact HasType_unop_notb_inv ctx [] e τ h
 
 end TypeInversionProperties
 

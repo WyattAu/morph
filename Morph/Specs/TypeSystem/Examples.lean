@@ -109,30 +109,30 @@ example : isBitwiseOp .andb = True := rfl
 example : isBitwiseOp .and = False := rfl
 
 /-- A variable has type intType when bound to intType in the environment. -/
-example : HasType [] env_x_int (.fvar "x") .intType := by
+example : HasType [] env_x_int (.fvar "x") .intType [] := by
   apply HasType.fvar_type
   show lookupTyp env_x_int "x" = some .intType
   unfold lookupTyp
   simp [env_x_int]
 
 /-- A literal integer has type intType in any environment. -/
-example (Γ : TypEnv) : HasType [] Γ (.lit (.int 7)) .intType :=
+example (Γ : TypEnv) : HasType [] Γ (.lit (.int 7)) .intType [] :=
   HasType.lit_int [] Γ 7
 
 /-- A literal boolean has type boolType in any environment. -/
-example (Γ : TypEnv) : HasType [] Γ (.lit (.bool false)) .boolType :=
+example (Γ : TypEnv) : HasType [] Γ (.lit (.bool false)) .boolType [] :=
   HasType.lit_bool [] Γ false
 
 /-- A literal string has type stringType in any environment. -/
-example (Γ : TypEnv) : HasType [] Γ (.lit (.string "test")) .stringType :=
+example (Γ : TypEnv) : HasType [] Γ (.lit (.string "test")) .stringType [] :=
   HasType.lit_string [] Γ "test"
 
 /-- A literal unit has type unitType in any environment. -/
-example (Γ : TypEnv) : HasType [] Γ (.lit .unit) .unitType :=
+example (Γ : TypEnv) : HasType [] Γ (.lit .unit) .unitType [] :=
   HasType.lit_unit [] Γ
 
 /-- HasTypeAll holds for empty lists. -/
-example (Γ : TypEnv) : HasTypeAll [] Γ [] [] :=
+example (Γ : TypEnv) : HasTypeAll [] Γ [] [] [] :=
   HasTypeAll.nil [] Γ
 
 end Morph.Specs.TypeSystem

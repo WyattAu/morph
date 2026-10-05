@@ -87,7 +87,7 @@ open Morph.Semantics
 
 inductive HasTypeS : StoreTyp → LinCtx → TypEnv → Morph.Syntax.Expr → Morph.Core.Typ → Prop where
   /-- Anything typable without the store is typable with it. -/
-  | lift : ∀ Δ ctx Γ e τ, HasType ctx Γ e τ → HasTypeS Δ ctx Γ e τ
+  | lift : ∀ Δ ctx Γ e τ, HasType ctx Γ e τ ctx → HasTypeS Δ ctx Γ e τ
   /-- Value literals, including location values. -/
   | lit_val : ∀ Δ ctx Γ v τ, ValueType Δ v τ → HasTypeS Δ ctx Γ (.lit v) τ
   /-- Dereferencing a declared location. -/
@@ -130,8 +130,8 @@ theorem not_step_lit (σ σ' : Store) (v : Value) (e' : Expr) :
   intro h
   cases h
 
-theorem not_hasType_loc {ctx : LinCtx} {Γ : TypEnv} {l : Loc} {τ : Typ} :
-    ¬ HasType ctx Γ (.lit (.loc l)) τ := by
+theorem not_hasType_loc {ctx : LinCtx} {Γ : TypEnv} {l : Loc} {τ : Typ} {c : LinCtx} :
+    ¬ HasType ctx Γ (.lit (.loc l)) τ c := by
   intro h
   cases h
 
@@ -147,69 +147,69 @@ theorem not_isValue_refFree (e : Expr) : ¬ IsValue (.refFree e) := by
   intro h
   cases h
 
-theorem not_hasType_refLoadLit {ctx : LinCtx} {Γ : TypEnv} {l : Loc} {τ : Typ} :
-    ¬ HasType ctx Γ (.refLoad (.lit (.loc l))) τ := by
+theorem not_hasType_refLoadLit {ctx : LinCtx} {Γ : TypEnv} {l : Loc} {τ : Typ} {c : LinCtx} :
+    ¬ HasType ctx Γ (.refLoad (.lit (.loc l))) τ c := by
   intro h
   cases h with
   | refLoad_type _ _ _ _ _ hE => exact not_hasType_loc hE
 
 theorem not_hasType_refStoreLit {ctx : LinCtx} {Γ : TypEnv} {l : Loc} {v : Expr} {τ : Typ}
-    {τ' : Typ} : ¬ HasType ctx Γ (.refStore (.lit (.loc l)) v τ) τ' := by
+    {τ' : Typ} {c : LinCtx} : ¬ HasType ctx Γ (.refStore (.lit (.loc l)) v τ) τ' c := by
   intro h
   cases h with
   | refStore_type _ _ _ _ _ _ hE _ => exact not_hasType_loc hE
 
-theorem not_hasType_refFreeLit {ctx : LinCtx} {Γ : TypEnv} {l : Loc} {τ' : Typ} :
-    ¬ HasType ctx Γ (.refFree (.lit (.loc l))) τ' := by
+theorem not_hasType_refFreeLit {ctx : LinCtx} {Γ : TypEnv} {l : Loc} {τ' : Typ} {c : LinCtx} :
+    ¬ HasType ctx Γ (.refFree (.lit (.loc l))) τ' c := by
   intro h
   cases h with
   | refFree_type _ _ _ _ hE => exact not_hasType_loc hE
 
 /-- Ordinary typing cannot give a function a reference type. -/
 theorem not_hasType_lam_ref {n : Nat} {body : Expr} {cap : Capability} {τ : Typ} :
-    ¬ HasType [] [] (.lam n body) (.refType cap τ) := by
+    ¬ HasType [] [] (.lam n body) (.refType cap τ) [] := by
   intro h
   cases h
 
 /-- Ordinary typing cannot give `none_` a reference type. -/
 theorem not_hasType_none__ref {cap : Capability} {τ : Typ} :
-    ¬ HasType [] [] .none_ (.refType cap τ) := by
+    ¬ HasType [] [] .none_ (.refType cap τ) [] := by
   intro h
   cases h
 
 /-- Ordinary typing cannot give `ok_ e` a reference type. -/
 theorem not_hasType_ok__ref {e : Expr} {cap : Capability} {τ : Typ} :
-    ¬ HasType [] [] (.ok_ e) (.refType cap τ) := by
+    ¬ HasType [] [] (.ok_ e) (.refType cap τ) [] := by
   intro h
   cases h
 
 /-- Ordinary typing cannot give `err_ e` a reference type. -/
 theorem not_hasType_err__ref {e : Expr} {cap : Capability} {τ : Typ} :
-    ¬ HasType [] [] (.err_ e) (.refType cap τ) := by
+    ¬ HasType [] [] (.err_ e) (.refType cap τ) [] := by
   intro h
   cases h
 
 /-- Ordinary typing cannot give `some_ e` a reference type. -/
 theorem not_hasType_some__ref {e : Expr} {cap : Capability} {τ : Typ} :
-    ¬ HasType [] [] (.some_ e) (.refType cap τ) := by
+    ¬ HasType [] [] (.some_ e) (.refType cap τ) [] := by
   intro h
   cases h
 
 /-- Ordinary typing cannot give a tuple a reference type. -/
 theorem not_hasType_tuple__ref {elems : List Expr} {cap : Capability} {τ : Typ} :
-    ¬ HasType [] [] (.tuple_ elems) (.refType cap τ) := by
+    ¬ HasType [] [] (.tuple_ elems) (.refType cap τ) [] := by
   intro h
   cases h
 
 /-- Ordinary typing cannot give an array literal a reference type. -/
 theorem not_hasType_arrayLit_ref {elems : List Expr} {cap : Capability} {τ : Typ} :
-    ¬ HasType [] [] (.arrayLit elems) (.refType cap τ) := by
+    ¬ HasType [] [] (.arrayLit elems) (.refType cap τ) [] := by
   intro h
   cases h
 
 /-- Ordinary typing cannot give a value literal a reference type. -/
 theorem not_hasType_lit_ref {v : Value} {cap : Capability} {τ : Typ} :
-    ¬ HasType [] [] (.lit v) (.refType cap τ) := by
+    ¬ HasType [] [] (.lit v) (.refType cap τ) [] := by
   intro h
   cases h
 
@@ -241,7 +241,7 @@ theorem hasTypeS_refFree_iso {Δ : StoreTyp} {ctx : LinCtx} {Γ : TypEnv} {l : L
     ∃ τ, Δ l = some (.refType .iso τ) := by
   cases h
   · exact False.elim (not_hasType_refFreeLit
-      (by assumption : HasType _ _ (.refFree (.lit (.loc l))) _))
+      (by assumption : HasType _ _ (.refFree (.lit (.loc l))) _ _))
   · exact ⟨_, by assumption⟩
   · exact ⟨_, hasTypeS_lit_loc_ref (by assumption)⟩
 
@@ -250,7 +250,7 @@ theorem refCreate_inner_typed {Δ : StoreTyp} {ctx : LinCtx} {Γ : TypEnv} {e : 
     {cap : Capability} {τ : Typ} (h : HasTypeS Δ ctx Γ (.refCreate e cap τ) (.refType cap τ)) :
     HasTypeS Δ ctx Γ e τ := by
   cases h
-  · have hT : HasType ctx Γ (Expr.refCreate e cap τ) (.refType cap τ) := by assumption
+  · have hT : HasType ctx Γ (Expr.refCreate e cap τ) (.refType cap τ) ctx := by assumption
     cases hT
     exact .lift _ _ _ _ _ (by assumption)
   · exact by assumption
@@ -318,7 +318,7 @@ theorem canonical_refS {Δ : StoreTyp} {cap : Capability} {τ : Typ} {e : Expr}
       exact absurd (by assumption) not_hasType_arrayLit_ref
   | refCreate e cap τ hv' =>
       cases ht
-      · cases (by assumption : HasType _ _ _ _)
+      · cases (by assumption : HasType _ _ _ _ _)
         exact Or.inr ⟨_, rfl, hv'⟩
       · exact Or.inr ⟨_, rfl, IsValue.lit _⟩
 
@@ -328,9 +328,9 @@ An expression typable without the store can never be a store operation that
 *changes* the store: the three store-changing rules all mention a location
 value, and `HasType` cannot type one. This is what lets `HasTypeS.lift` reuse the
 store-free `preservation`. -/
-theorem lift_step {σ σ' : Store} {ctx : LinCtx} {Γ : TypEnv} {e e' : Expr} {τ : Typ}
-    (hT : HasType ctx Γ e τ) (hStep : Step σ e σ' e') :
-    σ' = σ ∧ HasType ctx Γ e' τ := by
+theorem lift_step {σ σ' : Store} {ctx : LinCtx} {Γ : TypEnv} {e e' : Expr} {τ : Typ} {cout : LinCtx}
+    (hT : HasType ctx Γ e τ cout) (hStep : Step σ e σ' e') :
+    σ' = σ ∧ HasType ctx Γ e' τ cout := by
   have hT' := Morph.Proofs.TypeSoundness.preservation hT hStep
   refine ⟨?_, hT'⟩
   cases hStep with
