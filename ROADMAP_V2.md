@@ -251,14 +251,45 @@ After each Lean extension, update the Rust compiler to match:
 
 | Phase | Description | Status | Effort |
 |-------|-------------|--------|--------|
-| 1.8a | Value.loc constructor in Core.lean | ⏳ PENDING | 1 day |
-| 1.8b | Step signature: `Store → Expr → Store → Expr → Prop` | ⏳ PENDING | 1 week |
-| 1.8c | Existing rules carry σ unchanged | ⏳ PENDING | 1 week |
-| 1.8d | Expr.refCreate/refLoad/refStore/refFree | ⏳ PENDING | 2 weeks |
-| 1.8e | HasType for reference operations | ⏳ PENDING | 2 weeks |
-| 1.8f | Store-typed Progress + Preservation | ⏳ PENDING | 3 weeks |
-| 1.8g | LinearContext integration into HasType | ⏳ PENDING | 3 weeks |
-| 1.8h | Memory safety proofs (no-use-after-free, no-double-free, acyclicity) | ⏳ PENDING | 6 weeks |
+| 1.8a | Value.loc constructor in Core.lean | ✅ DONE | 1 day |
+| 1.8b | Step signature: `Store → Expr → Store → Expr → Prop` | ✅ DONE | 1 week |
+| 1.8c | Existing rules carry σ unchanged | ✅ DONE | 1 week |
+| 1.8d | Expr.refCreate/refLoad/refStore/refFree | ✅ DONE | 2 weeks |
+| 1.8e | HasType for reference operations | ✅ DONE | 2 weeks |
+| 1.8f | Store-typed Progress + Preservation (`progressS`, `preservationS`) | ✅ DONE | 3 weeks |
+| 1.8g | LinearContext integration into HasType (α: carried, β-1: threaded, β-2: bvar consumes) | ✅ DONE | 3 weeks |
+| 1.8h | Memory safety proofs (`safety_load/store/free_not_stuck`, `safety_no_use_after_free`, `safety_freed_not_dereferenceable`) | ✅ DONE | 6 weeks |
+
+**Deliberate limitation.** 1.8g landed enforcement that is sound but *strict*:
+a program that consumes a linear binding is currently **rejected** rather than
+accepted unchecked. The binder rules (`lam_type`, `let_type`, `for_type`,
+`ArmsTyped.cons`) still demand the body return the context it was given. Opening
+consumption requires a consumption-aware substitution lemma for `let_subst` /
+`app_lam`; `LinCtx.drop` and `value_does_not_consume` are in place as enablers.
+See ADR-010 "Implementation Status" for the exact remaining statements.
+
+**Ownership checking proper is not here.** Path-sensitive checking needs an
+explicit CFG and belongs in the MIR borrow checker (ADR-011), not in `HasType`.
+What Phase 1 supplies is the discipline that feeds it: which bindings are linear,
+and that each may be consumed at most once.
+
+### 1.9 MIR Pipeline (ADR-011)
+
+> **Goal:** Verified compilation to LLVM and Cranelift, one verified front end.
+
+| Phase | Description | Status | Effort |
+|-------|-------------|--------|--------|
+| 1.9a | MIR data type (CFG + SSA value graph) | ⏳ PENDING | 2 weeks |
+| 1.9b | ADR-012: closure representation | ⏳ PENDING | 1 week |
+| 1.9c | Stage 1 — lambda lifting, `lowering_correct` | ⏳ PENDING | 8 weeks |
+| 1.9d | Stage 2 — borrow checker, `analysis_sound` | ⏳ PENDING | 12 weeks |
+| 1.9e | Stage 3 — SSA construction, `ssa_correct` | ⏳ PENDING | 4 weeks |
+| 1.9f | Stage 4a — LLVM backend | ⏳ PENDING | 6 weeks |
+| 1.9g | Stage 4b — Cranelift backend | ⏳ PENDING | 4 weeks |
+
+1.9d is the critical path for the whole project: it is where consumption under
+control flow is discharged, and therefore where the 1.8g limitation is finally
+lifted.
 
 ### Phase 1 Effort Summary
 

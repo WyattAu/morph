@@ -301,6 +301,81 @@ def EvalM := StateT Store (ExceptT Panic Identity)
 - **Automated adaptation:** Most existing proofs can be adapted by inserting `σ` at the right positions. This is mechanical, not creative.
 - **Two proof tracks:** Keep old proofs working in a `Morph/Proofs/Storeless/` directory while new proofs are built in `Morph/Proofs/Store/`. Merge when ready.
 
+## Implementation Status (2026-09)
+
+Phases 1a through 1d are complete. The linear-context migration and memory
+safety are formalized; **linearity is sound but not yet usable**, which is the
+deliberate trade.
+
+### Landed
+
+| Phase | Status | Notes |
+|---|---|---|
+| 1a — `Step` carries `Store` | done | 74 constructors, store unchanged |
+| 1b — store "done" rules | done | `ref_load_done`, `ref_store_done`, `ref_free_done` |
+| 1c-α — `HasType` over `LinCtx` | done | `Usage` carried, not enforced |
+| 1c-β-1 — context threading | done | `HasType : LinCtx → TypEnv → Expr → Typ → LinCtx → Prop` |
+| 1c-β-2 part 1 — consumption | done | `bvar_type` consumes, `binop_*` thread |
+| 1d — store typing + safety | done | `HasTypeS`, `progressS`, `preservationS`, 5 `safety_*` theorems |
+
+### The current limitation, stated precisely
+
+`bvar_type` consumes its slot and `bvar_type_many` does not, so usage is
+enforced for expressions whose context is threaded. But the binder rules
+(`lam_type`, `let_type`, `for_type`, `ArmsTyped.cons`) still require the body to
+return *exactly* the context it was given, while a body that consumes returns a
+different one. The consequence:
+
+```morph
+lam 1 (refFree (bvar 0))    // rejected
+```
+
+is **untypeable**. Consuming a linear binding is refused, not silently
+accepted. That is the conservative direction: the Phase 1c-α behaviour
+(linear programs accepted but unchecked) was unsound, and the current behaviour
+is sound-but-incomplete. We would rather reject than trust.
+
+### The remaining piece of 1c-β-2
+
+Three pieces, in dependency order:
+
+1. **Binder rules project.** `lam_type` concludes
+   `HasType … cbody → … (cbody.drop paramTys.length)`; `let_type` uses
+   `cbody.drop 1`; `for_type` likewise; `ArmsTyped.cons` drops `vars.length`.
+   The `drop` machinery (`LinCtx.drop`, `types_drop`, `length_drop`) is in
+   place for exactly this.
+
+2. **Consumption-aware substitution.** The missing lemma, stated in the shape
+   the semantics demands:
+   ```lean
+   HasType ((τ1, u1) :: cmid) Γ e2 τ cbody →
+   HasType cmid Γ v τ1 →
+   HasType cmid Γ (subst' (pfx.length + 1) e2 v) τ (cbody.drop (pfx.length + 1))
+   ```
+   The `bvar_type` (consuming) branch *replaces* a slot with `v` and so removes
+   it from the output context; the `bvar_type_many` branch leaves it. This
+   lemma is what `let_subst` and `app_lam` in Preservation need.
+
+3. **Branch merging.** `if_type` and `match` take both branches from the same
+   post-condition context and output `LinCtx.merge ct cf`. Note that
+   `LinCtx.merge`'s current rule `zero + one = zero` is a syntactic
+   approximation and is wrong for path-sensitive checking — expect ADR-013 to
+   replace it.
+
+### Why this is acceptable to defer
+
+`value_does_not_consume` is already proven, which is what makes (2)
+well-posed: because values never consume, the substituted expression inherits
+precisely the context the let-bound value was typed in, which coincides with
+the body context minus the binder's slot.
+
+More importantly, ADR-011 places *ownership checking* in the MIR borrow
+checker, not in `HasType`, precisely because path sensitivity needs an explicit
+CFG. What `HasType` must supply is the discipline we now have: which bindings
+are linear, and that each may be consumed at most once. The remaining
+substitution lemma is needed for β-reduction under consumption, which the MIR
+pipeline performs as a lowering step with its own preservation proof.
+
 ## Related Standards
 
 - Memory model spec §2.4: Affine type semantics
