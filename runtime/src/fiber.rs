@@ -4,33 +4,54 @@ use crate::io::IoRequest;
 
 const INITIAL_STACK_SIZE: usize = 4096;
 
+/// The lifecycle position of a [`Fiber`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FiberState {
+    /// Created but not yet resumed.
     Ready,
+    /// Currently executing its closure.
     Running,
+    /// Yielded and waiting on the given reason.
     Suspended(SuspendReason),
+    /// Finished successfully.
     Completed,
+    /// Finished with an error.
     Panicked,
 }
 
+/// Why a [`Fiber`] yielded control back to the scheduler.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SuspendReason {
+    /// Waiting for the given I/O operation to become ready.
     IOWait(IoRequest),
+    /// Waiting for a message from the given actor.
     WaitingForMessage(ActorId),
+    /// Waiting for the given future to complete.
     WaitingForFuture(FutureId),
+    /// Descheduled by the scheduler, eligible to run again later.
     Preempted,
+    /// Blocked on a resource that is not yet available.
     Blocked,
 }
 
+/// The result of one step of a fiber's executor.
 pub enum FiberYield {
+    /// The fiber finished with the given outcome.
     Complete(Result<(), RuntimeError>),
+    /// The fiber yielded and must be resumed later.
     Suspend(SuspendReason),
 }
 
+/// Mutable state handed to a fiber's executor on every step.
 pub struct FiberContext {
+    /// The id of the fiber being executed.
     pub fiber_id: FiberId,
 }
 
+/// A cooperatively scheduled green thread.
+///
+/// A fiber owns a byte stack that grows on demand and an executor closure that
+/// is stepped by [`Fiber::resume`] until it completes or suspends.
 pub struct Fiber {
     id: FiberId,
     state: FiberState,
@@ -42,6 +63,10 @@ pub struct Fiber {
 }
 
 impl Fiber {
+    /// Creates a fiber in the [`FiberState::Ready`] state.
+    ///
+    /// The fiber is given a fresh stack and will run `executor` on each call to
+    /// [`Fiber::resume`].
     pub fn new(executor: impl FnMut(&mut FiberContext) -> FiberYield + Send + 'static) -> Self {
         Fiber {
             id: FiberId::new(),
@@ -53,14 +78,25 @@ impl Fiber {
         }
     }
 
+    /// Returns this fiber's id.
     pub fn id(&self) -> FiberId {
         self.id
     }
 
+    /// Returns the fiber's current state.
     pub fn state(&self) -> FiberState {
         self.state
     }
 
+    /// Runs the executor for one step.
+    ///
+    /// On completion the executor is dropped, so a completed fiber cannot be
+    /// stepped again. The return value is the new [`FiberState`].
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`RuntimeError::Panic`] if the fiber is already running, has
+    /// already completed or panicked, or has lost its executor.
     pub fn resume(&mut self) -> Result<FiberState, RuntimeError> {
         match self.state {
             FiberState::Ready | FiberState::Suspended(_) => {
@@ -100,19 +136,26 @@ impl Fiber {
         }
     }
 
+    /// Returns the total capacity of the fiber's stack in bytes.
     pub fn stack_size(&self) -> usize {
         self.stack.len()
     }
 
+    /// Returns how many bytes of the fiber's stack are currently in use.
     pub fn stack_used(&self) -> usize {
         self.stack.len() - self.stack_ptr
     }
 
+    /// Doubles the capacity of the fiber's stack.
+    ///
+    /// Any addresses previously handed out by the fiber become stale, so this
+    /// must only be called at a suspension point.
     pub fn grow_stack(&mut self) {
         let new_size = self.stack.len() * 2;
         self.stack.resize(new_size, 0);
     }
 
+    /// Returns the recorded outcome, or `None` if the fiber has not finished.
     pub fn result(&self) -> Option<&Result<(), RuntimeError>> {
         self.result.as_ref()
     }

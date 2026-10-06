@@ -1,27 +1,56 @@
 use crate::ast::*;
 use crate::lexer::token::{Span, Token, TokenKind};
 
+/// Failures reported while parsing a token stream.
+///
+/// Parsing continues after an error by skipping to a synchronisation point, so
+/// several [`ParseError`]s can be produced from one run.
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum ParseError {
+    /// The current token was not the one the grammar required.
     #[error("unexpected token '{found}', expected {expected} at line {line}, column {col}")]
     UnexpectedToken {
+        /// How the offending token was rendered.
         found: String,
+        /// What the grammar expected instead.
         expected: String,
+        /// 1-based line number of the offending token.
         line: u32,
+        /// 1-based column number of the offending token.
         col: u32,
+        /// Source location of the offending token.
         span: Span,
     },
+    /// Input ended before the grammar was satisfied.
     #[error("unexpected end of file, expected {expected}")]
-    UnexpectedEof { expected: String, span: Span },
+    UnexpectedEof {
+        /// What the grammar expected before the input ran out.
+        expected: String,
+        /// A zero-width span at the end of input.
+        span: Span,
+    },
+    /// Two items declared the same name in one scope.
     #[error("duplicate definition of '{name}' at line {line}, column {col}")]
     DuplicateDefinition {
+        /// The repeated name.
         name: String,
+        /// 1-based line number of the later definition.
         line: u32,
+        /// 1-based column number of the later definition.
         col: u32,
+        /// Source location of the later definition.
         span: Span,
     },
+    /// The tokens in a position did not form any valid expression.
     #[error("invalid expression at line {line}, column {col}")]
-    InvalidExpression { line: u32, col: u32, span: Span },
+    InvalidExpression {
+        /// 1-based line number of the offending tokens.
+        line: u32,
+        /// 1-based column number of the offending tokens.
+        col: u32,
+        /// Source location of the offending tokens.
+        span: Span,
+    },
 }
 
 struct Parser {
@@ -1559,11 +1588,21 @@ impl Parser {
     }
 }
 
+/// Parses a token stream into top-level items.
+///
+/// Returns the items that were parsed along with every [`ParseError`] hit along
+/// the way; the errors are returned rather than returned as `Err` so that the
+/// driver can report all of them at once.
 pub fn parse(tokens: Vec<Token>) -> (Vec<Node<Item>>, Vec<ParseError>) {
     let mut parser = Parser::new(tokens);
     parser.parse_program()
 }
 
+/// Lexes and parses `source` in one step.
+///
+/// Returns the parsed items, any lexical errors, and any parse errors. The
+/// `Err` case is the unit type: compilation failure is expressed by the error
+/// vectors, not by an error return.
 #[allow(clippy::type_complexity, clippy::result_unit_err)]
 pub fn parse_source(
     source: &str,

@@ -16,6 +16,14 @@ use crate::typeck::types::{
 };
 use crate::typeck::unification::{self, Substitution};
 
+/// Infers types and effect sets for a parsed program.
+///
+/// A checker walks the AST once per item kind, recording inferred types and
+/// effects into maps keyed by [`NodeId`] so later passes can look them up.
+/// Diagnostics are accumulated rather than returned immediately, so one run
+/// reports every problem it can find.
+///
+/// [`TypeChecker::check_program`] is the usual entry point.
 pub struct TypeChecker {
     env: TypeEnv,
     diagnostics: Vec<Diagnostic>,
@@ -53,12 +61,14 @@ struct FnSigInfo {
 }
 
 impl Default for TypeChecker {
+    /// Creates a checker with no diagnostics collected, as [`TypeChecker::new`] does.
     fn default() -> Self {
         Self::new()
     }
 }
 
 impl TypeChecker {
+    /// Creates a checker with an empty environment and no inferred types.
     pub fn new() -> Self {
         Self {
             env: TypeEnv::new(),
@@ -74,6 +84,15 @@ impl TypeChecker {
         }
     }
 
+    /// Type checks a whole program.
+    ///
+    /// Declarations are collected first so that items may refer to types and
+    /// functions declared later in the file.
+    ///
+    /// # Errors
+    ///
+    /// Returns every [`Diagnostic`] raised, including warnings, if any error was
+    /// found. Warnings accumulate into the [`TypeCheckResult`] on success.
     pub fn check_program(items: &[Node<Item>]) -> Result<TypeCheckResult, Vec<Diagnostic>> {
         let mut checker = Self::new();
         checker.collect_items(items);
@@ -1244,6 +1263,9 @@ impl TypeChecker {
         Ty::TypeVar(v)
     }
 
+    /// Reports whether `ty` may be sent across an actor boundary.
+    ///
+    /// Emits a diagnostic at `span` and returns `false` when it may not.
     pub fn check_sendable(&mut self, ty: &Ty, span: Span) -> bool {
         if ty.is_sendable() {
             true
@@ -1263,6 +1285,10 @@ impl TypeChecker {
         }
     }
 
+    /// Checks that a capability may be moved from `from` to `to`.
+    ///
+    /// Downgrades are always allowed; upgrades are not. Emits a diagnostic at
+    /// `span` and returns `false` when the transition is invalid.
     pub fn check_capability_transition(
         &mut self,
         from: types::Capability,
@@ -1290,6 +1316,11 @@ impl TypeChecker {
         valid
     }
 
+    /// Checks that a callee's effects are permitted at the call site.
+    ///
+    /// A pure caller may not invoke an effectful callee at all; otherwise every
+    /// effect the callee performs must appear in `caller`. Each offending
+    /// effect is reported separately at `span`.
     pub fn check_effects(&mut self, caller: &EffectSet, callee: &EffectSet, span: Span) {
         if caller.is_pure() && !callee.is_pure() {
             for eff in callee.iter() {

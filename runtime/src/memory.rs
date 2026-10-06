@@ -1,17 +1,37 @@
 use std::alloc::{self, Layout};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+/// A bump allocator interface used by the runtime for raw memory blocks.
+///
+/// Implementations hand out raw pointers, so callers are responsible for
+/// pairing every successful [`Allocator::alloc`] with a [`Allocator::dealloc`]
+/// carrying the same `size` and `align`.
 pub trait Allocator {
+    /// Reserves `size` bytes aligned to `align`.
+    ///
+    /// Returns a null pointer when `size` is `0` or the request cannot be
+    /// satisfied; the caller must treat null as failure and must not
+    /// [`Allocator::dealloc`] it.
     fn alloc(&self, size: usize, align: usize) -> *mut u8;
+
+    /// Returns a block previously obtained from [`Allocator::alloc`].
+    ///
+    /// `size` and `align` must match the values used to allocate `ptr`.
     fn dealloc(&self, ptr: *mut u8, size: usize, align: usize);
 }
 
+/// A fixed-capacity bump allocator supporting lock-free concurrent allocation.
+///
+/// The arena owns one heap buffer and hands out ever-increasing offsets. It
+/// never reclaims individual blocks; [`ArenaAllocator::reset`] rewinds the bump
+/// pointer to make the whole buffer available again.
 pub struct ArenaAllocator {
     buffer: Vec<u8>,
     offset: AtomicUsize,
 }
 
 impl ArenaAllocator {
+    /// Creates an arena backed by a zeroed buffer of `capacity` bytes.
     pub fn new(capacity: usize) -> Self {
         ArenaAllocator {
             buffer: vec![0u8; capacity],
@@ -19,24 +39,35 @@ impl ArenaAllocator {
         }
     }
 
+    /// Returns the number of bytes currently handed out.
     pub fn used(&self) -> usize {
         self.offset.load(Ordering::Relaxed)
     }
 
+    /// Returns the total size of the backing buffer in bytes.
     pub fn capacity(&self) -> usize {
         self.buffer.len()
     }
 
+    /// Returns how many bytes are still available without a [`ArenaAllocator::reset`].
     pub fn remaining(&self) -> usize {
         self.buffer.len().saturating_sub(self.used())
     }
 
+    /// Rewinds the bump pointer so the entire buffer becomes available again.
+    ///
+    /// Any pointer previously returned by [`Allocator::alloc`] is invalidated;
+    /// callers must not use or deallocate those blocks afterwards.
     pub fn reset(&self) {
         self.offset.store(0, Ordering::Relaxed);
     }
 }
 
 impl Allocator for ArenaAllocator {
+    /// Bump-allocates `size` bytes aligned to `align`.
+    ///
+    /// Returns a null pointer if `size` is `0` or the request would exceed the
+    /// arena capacity. Blocks are never individually reclaimed.
     fn alloc(&self, size: usize, align: usize) -> *mut u8 {
         if size == 0 {
             return std::ptr::null_mut();
@@ -61,12 +92,18 @@ impl Allocator for ArenaAllocator {
         }
     }
 
+    /// No-op: the arena reclaims memory only through [`ArenaAllocator::reset`].
     fn dealloc(&self, _ptr: *mut u8, _size: usize, _align: usize) {}
 }
 
+/// An [`Allocator`] backed by the global `std` allocator.
 pub struct GlobalAllocator;
 
 impl Allocator for GlobalAllocator {
+    /// Allocates `size` bytes aligned to `align` in the global heap.
+    ///
+    /// Returns a null pointer when `size` is `0` or when `size` and `align`
+    /// cannot form a valid [`Layout`].
     fn alloc(&self, size: usize, align: usize) -> *mut u8 {
         if size == 0 {
             return std::ptr::null_mut();
@@ -78,6 +115,10 @@ impl Allocator for GlobalAllocator {
         }
     }
 
+    /// Frees a block back to the global heap.
+    ///
+    /// Null pointers and zero-sized requests are ignored, as are requests whose
+    /// `size`/`align` do not form a valid [`Layout`].
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
     fn dealloc(&self, ptr: *mut u8, size: usize, align: usize) {
         if ptr.is_null() || size == 0 {

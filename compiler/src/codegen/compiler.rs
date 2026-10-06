@@ -37,6 +37,12 @@ impl LocalScope {
     }
 }
 
+/// Lowers a typed AST into a [`MorphIRModule`].
+///
+/// One `CodeGen` holds the whole compilation state: the inferred type and
+/// effect maps keyed by [`crate::ast::NodeId`], the scope stack of in-progress
+/// function locals, the string literal table, and the struct/enum type
+/// registry used for layout.
 pub struct CodeGen {
     module: MorphIRModule,
     type_map: FxHashMap<crate::ast::NodeId, Ty>,
@@ -58,6 +64,7 @@ struct FnSig {
 }
 
 impl CodeGen {
+    /// Creates a generator with no effect information.
     pub fn new(type_map: FxHashMap<crate::ast::NodeId, Ty>) -> Self {
         Self {
             module: MorphIRModule::new("main".to_string()),
@@ -72,6 +79,10 @@ impl CodeGen {
         }
     }
 
+    /// Creates a generator that also consults inferred effect sets.
+    ///
+    /// Prefer this over [`CodeGen::new`] when effect information is available:
+    /// without it, effect-dependent lowering falls back to defaults.
     pub fn with_effects(
         type_map: FxHashMap<crate::ast::NodeId, Ty>,
         effect_map: FxHashMap<crate::ast::NodeId, EffectSet>,
@@ -81,6 +92,16 @@ impl CodeGen {
         cg
     }
 
+    /// Lowers `items` into a module.
+    ///
+    /// Types and function signatures are collected in a first pass so that
+    /// mutually recursive functions can be resolved regardless of declaration
+    /// order.
+    ///
+    /// # Errors
+    ///
+    /// Returns every [`CodeGenError`] encountered; items that fail to lower are
+    /// skipped so the remaining ones still produce IR.
     pub fn compile(
         items: &[crate::ast::Node<Item>],
         type_map: FxHashMap<crate::ast::NodeId, Ty>,
@@ -104,6 +125,14 @@ impl CodeGen {
         }
     }
 
+    /// Lowers `items` into a module, using inferred effect sets.
+    ///
+    /// Behaves exactly like [`CodeGen::compile`] but keeps the effect map, which
+    /// drives lowering of effectful constructs.
+    ///
+    /// # Errors
+    ///
+    /// Returns every [`CodeGenError`] encountered, as [`CodeGen::compile`] does.
     pub fn compile_with_effects(
         items: &[crate::ast::Node<Item>],
         type_map: FxHashMap<crate::ast::NodeId, Ty>,
@@ -1011,10 +1040,12 @@ impl CodeGen {
         }
     }
 
+    /// Consumes the generator and returns the module built so far.
     pub fn into_module(self) -> MorphIRModule {
         self.module
     }
 
+    /// Borrows the struct and enum type registry gathered during lowering.
     pub fn registry(&self) -> &TypeRegistry {
         &self.registry
     }

@@ -4,8 +4,15 @@ use crate::lexer::token::Span;
 use crate::typeck::errors::TypeError;
 use crate::typeck::types::Ty;
 
+/// Maps a [`Ty::TypeVar`] index to the type it was resolved to.
+///
+/// A variable absent from the map is still unresolved.
 pub type Substitution = FxHashMap<u32, Ty>;
 
+/// Returns `true` if `var` appears anywhere inside `ty`.
+///
+/// This is the occurs check that stops unification from building an infinite
+/// type such as `?0 = [?0]`.
 pub fn occurs(var: u32, ty: &Ty) -> bool {
     match ty {
         Ty::TypeVar(v) => *v == var,
@@ -27,6 +34,10 @@ pub fn occurs(var: u32, ty: &Ty) -> bool {
     }
 }
 
+/// Substitutes resolved type variables throughout `ty`.
+///
+/// Unresolved variables are left in place. Chained bindings are followed
+/// recursively, so a variable that maps to another variable is fully resolved.
 pub fn apply_subst(subst: &Substitution, ty: &Ty) -> Ty {
     match ty {
         Ty::TypeVar(v) => match subst.get(v) {
@@ -61,6 +72,17 @@ pub fn apply_subst(subst: &Substitution, ty: &Ty) -> Ty {
     }
 }
 
+/// Unifies `t1` with `t2`, extending `subst` with any bindings learned.
+///
+/// Both types are first rewritten by `subst`, so this is safe to call repeatedly
+/// as inference proceeds. `span` is used to report any mismatch against the
+/// source text.
+///
+/// # Errors
+///
+/// Returns a [`TypeError`] describing the conflict: a [`TypeError::Mismatch`] if
+/// the heads disagree, a [`TypeError::OccursCheck`] if binding would create an
+/// infinite type, or a structural mismatch for differing arities.
 #[allow(clippy::result_large_err)]
 pub fn unify(t1: &Ty, t2: &Ty, subst: &mut Substitution, span: Span) -> Result<(), TypeError> {
     let t1 = apply_subst(subst, t1);
@@ -182,6 +204,11 @@ pub fn unify(t1: &Ty, t2: &Ty, subst: &mut Substitution, span: Span) -> Result<(
     }
 }
 
+/// Composes two substitutions into one equivalent to applying `s1` then `s2`.
+///
+/// Every right-hand side coming from `s2` is rewritten by `s1`; bindings only
+/// present in `s1` are carried over unchanged. Keys defined in both keep the
+/// `s2` binding.
 pub fn compose_subst(s1: &Substitution, s2: &Substitution) -> Substitution {
     let mut result: Substitution = s2.iter().map(|(k, v)| (*k, apply_subst(s1, v))).collect();
     for (k, v) in s1 {

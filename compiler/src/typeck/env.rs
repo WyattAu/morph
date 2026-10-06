@@ -4,6 +4,12 @@ use crate::ast::Visibility;
 use crate::lexer::token::Span;
 use crate::typeck::types::Ty;
 
+/// A lexically scoped environment mapping names to their inferred types.
+///
+/// Scopes nest: [`TypeEnv::enter_scope`] produces a child that delegates
+/// lookups to its parent, so an inner binding shadows an outer one of the same
+/// name. The environment also tracks *consumed* (linear) names, which are
+/// treated as out of scope so that using them after a move is an error.
 pub struct TypeEnv {
     bindings: FxHashMap<String, (Ty, Visibility, Option<Span>)>,
     parent: Option<Box<TypeEnv>>,
@@ -11,12 +17,14 @@ pub struct TypeEnv {
 }
 
 impl Default for TypeEnv {
+    /// Creates a root scope, exactly as [`TypeEnv::new`] does.
     fn default() -> Self {
         Self::new()
     }
 }
 
 impl TypeEnv {
+    /// Creates an empty root scope with no parent.
     pub fn new() -> Self {
         Self {
             bindings: FxHashMap::default(),
@@ -25,6 +33,7 @@ impl TypeEnv {
         }
     }
 
+    /// Creates a scope nested inside `parent`.
     pub fn with_parent(parent: TypeEnv) -> Self {
         Self {
             bindings: FxHashMap::default(),
@@ -33,6 +42,9 @@ impl TypeEnv {
         }
     }
 
+    /// Returns a new child scope of this one, starting with no bindings.
+    ///
+    /// The parent is cloned, so the child can be inspected independently.
     pub fn enter_scope(&self) -> Self {
         Self {
             bindings: FxHashMap::default(),
@@ -41,10 +53,14 @@ impl TypeEnv {
         }
     }
 
+    /// Returns the enclosing scope, or `None` if this is the root scope.
     pub fn exit_scope(self) -> Option<TypeEnv> {
         self.parent.map(|p| *p)
     }
 
+    /// Looks up `name` in this scope and then its ancestors.
+    ///
+    /// Returns `None` if the name is unbound or has been consumed.
     pub fn lookup(&self, name: &str) -> Option<&Ty> {
         if self.consumed.contains(name) {
             return None;
@@ -58,14 +74,22 @@ impl TypeEnv {
         }
     }
 
+    /// Binds `name` with an explicit visibility and declaration span.
+    ///
+    /// An existing binding for `name` in this scope is replaced.
     pub fn insert(&mut self, name: String, ty: Ty, visibility: Visibility, span: Option<Span>) {
         self.bindings.insert(name, (ty, visibility, span));
     }
 
+    /// Binds `name` as a private local with no recorded declaration span.
     pub fn insert_var(&mut self, name: String, ty: Ty) {
         self.bindings.insert(name, (ty, Visibility::Private, None));
     }
 
+    /// Marks the linear value `name` as consumed.
+    ///
+    /// Returns `true` if this call performed the consumption, and `false` if the
+    /// name is unbound or was already consumed. Consuming is never undone.
     pub fn consume_var(&mut self, name: &str) -> bool {
         if self.bindings.contains_key(name) && !self.consumed.contains(name) {
             self.consumed.insert(name.to_string());
@@ -77,6 +101,7 @@ impl TypeEnv {
         }
     }
 
+    /// Returns `true` if `name` has been consumed in this scope or an ancestor.
     pub fn is_consumed(&self, name: &str) -> bool {
         if self.consumed.contains(name) {
             return true;
@@ -88,10 +113,15 @@ impl TypeEnv {
         }
     }
 
+    /// Rebinds `name` to `ty`, shadowing any binding of the same name.
     pub fn shadow(&mut self, name: String, ty: Ty) {
         self.bindings.insert(name, (ty, Visibility::Private, None));
     }
 
+    /// Looks up `name` and returns its type and visibility.
+    ///
+    /// Unlike [`TypeEnv::lookup`] this ignores consumption, so it can be used to
+    /// inspect a binding that has already been moved out of.
     pub fn lookup_binding(&self, name: &str) -> Option<(&Ty, Visibility)> {
         if let Some((ty, vis, _)) = self.bindings.get(name) {
             Some((ty, *vis))
@@ -102,12 +132,14 @@ impl TypeEnv {
         }
     }
 
+    /// Returns a mutable handle to the enclosing scope, if there is one.
     pub fn parent_mut(&mut self) -> Option<&mut TypeEnv> {
         self.parent.as_deref_mut()
     }
 }
 
 impl Clone for TypeEnv {
+    /// Deep-copies the whole scope chain, so the copy can diverge freely.
     fn clone(&self) -> Self {
         Self {
             bindings: self.bindings.clone(),

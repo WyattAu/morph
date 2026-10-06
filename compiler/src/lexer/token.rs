@@ -1,14 +1,23 @@
 use std::fmt;
 
+/// The source location of a token, as byte offsets plus a line/column pair.
+///
+/// `start` and `end` are byte offsets into the source; `line` and `col` are
+/// 1-based and describe `start` only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Span {
+    /// Byte offset of the first character.
     pub start: usize,
+    /// Byte offset one past the last character.
     pub end: usize,
+    /// 1-based line number of `start`.
     pub line: u32,
+    /// 1-based column number of `start`.
     pub col: u32,
 }
 
 impl Span {
+    /// Builds a span from explicit offsets and a line/column pair.
     pub fn new(start: usize, end: usize, line: u32, col: u32) -> Self {
         Self {
             start,
@@ -18,10 +27,17 @@ impl Span {
         }
     }
 
+    /// Returns a zero-width span at the start of the file.
+    ///
+    /// Used where a location is required but the token is synthetic.
     pub fn dummy() -> Self {
         Self::new(0, 0, 1, 1)
     }
 
+    /// Returns the smallest span covering both `self` and `other`.
+    ///
+    /// The returned line and column are taken from whichever span starts
+    /// earlier, so they still describe the merged span's `start`.
     pub fn merge(self, other: Span) -> Span {
         Span {
             start: self.start.min(other.start),
@@ -36,98 +52,179 @@ impl Span {
     }
 }
 
+/// A lexical token: a keyword, literal, identifier, or punctuation symbol.
+///
+/// [`Display`](fmt::Display) renders each variant back to its source spelling,
+/// which is what parser error messages quote.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TokenKind {
+    /// The `fn` keyword.
     Fn,
+    /// The `ret` keyword.
     Ret,
+    /// The `use` keyword.
     Use,
+    /// The `pub` keyword.
     Pub,
+    /// The `mut` keyword.
     Mut,
+    /// The `type` keyword.
     Type,
+    /// The `act` keyword, which begins an actor declaration.
     Act,
+    /// The `state` keyword, which begins an actor state block.
     State,
+    /// The `event` keyword, which declares a message type.
     Event,
+    /// The `on` keyword, which begins an event handler.
     On,
+    /// The `spawn` keyword.
     Spawn,
+    /// The `async` keyword.
     Async,
+    /// The `fix` keyword, marking a block that returns a fixed value.
     Fix,
+    /// The `if` keyword.
     If,
+    /// The `else` keyword.
     Else,
+    /// The `loop` keyword.
     Loop,
+    /// The `defer` keyword.
     Defer,
+    /// The `const` keyword.
     Const,
+    /// The `void` keyword.
     Void,
+    /// The `in` keyword.
     In,
+    /// The `is` keyword, the dynamic type test.
     Is,
+    /// The `as` keyword, the downcast operator.
     As,
 
+    /// An integer literal, with its parsed value.
     IntLiteral(i64),
+    /// A float literal, retained as text to avoid precision loss.
     FloatLiteral(String),
+    /// A string literal, already unescaped.
     StringLiteral(String),
+    /// A `true` or `false` literal.
     BoolLiteral(bool),
+    /// The `null` literal.
     Null,
 
+    /// An identifier or keyword-like name.
     Identifier(String),
 
+    /// The `+` operator.
     Plus,
+    /// The `-` operator.
     Minus,
+    /// The `*` operator.
     Star,
+    /// The `/` operator.
     Slash,
+    /// The `%` operator.
     Percent,
+    /// The `==` operator.
     EqEq,
+    /// The `!=` operator.
     BangEq,
+    /// The `<` operator.
     Lt,
+    /// The `>` operator.
     Gt,
+    /// The `<=` operator.
     LtEq,
+    /// The `>=` operator.
     GtEq,
+    /// The `&&` operator.
     AmpAmp,
+    /// The `||` operator.
     PipePipe,
+    /// The `!` operator.
     Bang,
+    /// The `|` operator.
     Pipe,
+    /// The `|>` pipe operator.
     PipeGt,
+    /// The `:=` walrus assignment.
     Walrus,
+    /// The `??` null-coalescing operator.
     QuestionQuestion,
+    /// The `?` error-propagation or optional marker.
     Question,
+    /// The `->` return type arrow.
     Arrow,
+    /// The `=>` match arm arrow.
     FatArrow,
+    /// The `=` assignment.
     Assign,
 
+    /// The `(` delimiter.
     LParen,
+    /// The `)` delimiter.
     RParen,
+    /// The `{` delimiter.
     LBrace,
+    /// The `}` delimiter.
     RBrace,
+    /// The `[` delimiter.
     LBracket,
+    /// The `]` delimiter.
     RBracket,
+    /// The `,` separator.
     Comma,
+    /// The `;` terminator.
     Semicolon,
+    /// The `:` separator.
     Colon,
+    /// The `::` path separator.
     ColonColon,
+    /// The `.` field access operator.
     Dot,
+    /// The `_` wildcard.
     Underscore,
 
+    /// The `^` capability-isolating borrow marker.
     Caret,
+    /// The `#` value-capability marker.
     Hash,
+    /// The `&` reference-capability marker.
     Amp,
 
+    /// A `<` recognised as the start of a generic argument list.
     LtGeneric,
+    /// A `>` recognised as the end of a generic argument list.
     GtGeneric,
 
+    /// The `@` annotation marker.
     At,
 
+    /// The end of the token stream; always the last token produced.
     Eof,
 }
 
+/// A lexed token together with the source text it came from.
 #[derive(Debug, Clone)]
 pub struct Token {
+    /// What kind of token this is.
     pub kind: TokenKind,
+    /// Where the token appears in the source.
     pub span: Span,
 }
 
 impl Token {
+    /// Pairs a token kind with its source location.
     pub fn new(kind: TokenKind, span: Span) -> Self {
         Self { kind, span }
     }
 
+    /// Returns `true` if this token is one of the language's reserved words.
+    ///
+    /// Keywords cannot be used as identifiers; the lexer still emits them as
+    /// their own kinds so the parser can accept them by name.
     pub fn is_keyword(&self) -> bool {
         matches!(
             self.kind,

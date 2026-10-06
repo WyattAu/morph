@@ -3,13 +3,21 @@ use rustc_hash::FxHashMap;
 use crate::ast::NodeId;
 use crate::typeck::types::{EffectSet, Ty};
 
+/// Everything a successful type check learns about a program.
+///
+/// The maps are keyed by [`NodeId`], so a consumer can look up the inferred
+/// type or effect of any expression by the id assigned during lowering.
 pub struct TypeCheckResult {
+    /// Inferred type for each checked node.
     pub type_map: FxHashMap<NodeId, Ty>,
+    /// Inferred effect set for each checked node.
     pub effect_map: FxHashMap<NodeId, EffectSet>,
+    /// Non-fatal diagnostics raised while checking.
     pub warnings: Vec<crate::diagnostic::Diagnostic>,
 }
 
 impl TypeCheckResult {
+    /// Creates a result from already-computed maps and warnings.
     pub fn new(
         type_map: FxHashMap<NodeId, Ty>,
         effect_map: FxHashMap<NodeId, EffectSet>,
@@ -22,6 +30,7 @@ impl TypeCheckResult {
         }
     }
 
+    /// Creates a result with empty maps and no warnings.
     pub fn empty() -> Self {
         Self {
             type_map: FxHashMap::default(),

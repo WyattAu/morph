@@ -1,36 +1,85 @@
+//! Lexical analysis: source text to a stream of tokens.
+//!
+//! Token and span types live in the `token` submodule.
+
+/// Token representation and source spans.
 pub mod token;
 
 use token::{Span, Token, TokenKind};
 
+/// Failures reported while scanning source text.
+///
+/// Lexing does not stop at the first error: [`Lexer::tokenize`] returns one
+/// result per token so that later tokens are still available for parsing.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 pub enum LexError {
+    /// A character that cannot begin any token.
     #[error("invalid character '{ch}' at line {line}, column {col}")]
     InvalidChar {
+        /// The offending character.
         ch: char,
+        /// 1-based line number.
         line: u32,
+        /// 1-based column number.
         col: u32,
+        /// Byte offset of the character.
         pos: usize,
     },
+    /// A string literal ran to the end of the line or file without a closing
+    /// quote.
     #[error("unterminated string literal at line {line}, column {col}")]
-    UnterminatedString { line: u32, col: u32, pos: usize },
+    UnterminatedString {
+        /// 1-based line number where the literal started.
+        line: u32,
+        /// 1-based column number where the literal started.
+        col: u32,
+        /// Byte offset where the literal started.
+        pos: usize,
+    },
+    /// A numeric literal that could not be parsed.
     #[error("invalid number literal '{text}' at line {line}, column {col}")]
     InvalidNumber {
+        /// The literal's source text.
         text: String,
+        /// 1-based line number where the literal started.
         line: u32,
+        /// 1-based column number where the literal started.
         col: u32,
+        /// Byte offset where the literal started.
         pos: usize,
     },
+    /// A block comment that was never closed.
     #[error("unterminated block comment at line {line}, column {col}")]
-    UnterminatedBlockComment { line: u32, col: u32, pos: usize },
+    UnterminatedBlockComment {
+        /// 1-based line number where the comment started.
+        line: u32,
+        /// 1-based column number where the comment started.
+        col: u32,
+        /// Byte offset where the comment started.
+        pos: usize,
+    },
+    /// An unknown backslash escape inside a string literal.
     #[error("invalid escape sequence '\\{ch}' at line {line}, column {col}")]
     InvalidEscape {
+        /// The character following the backslash.
         ch: char,
+        /// 1-based line number where the escape appeared.
         line: u32,
+        /// 1-based column number where the escape appeared.
         col: u32,
+        /// Byte offset of the backslash.
         pos: usize,
     },
+    /// A `\\u{...}` escape that is malformed or out of range.
     #[error("invalid unicode escape at line {line}, column {col}")]
-    InvalidUnicodeEscape { line: u32, col: u32, pos: usize },
+    InvalidUnicodeEscape {
+        /// 1-based line number where the escape appeared.
+        line: u32,
+        /// 1-based column number where the escape appeared.
+        col: u32,
+        /// Byte offset of the backslash.
+        pos: usize,
+    },
 }
 
 impl LexError {
@@ -861,13 +910,23 @@ impl<'a> LexerState<'a> {
     }
 }
 
+/// Turns Morph source text into a token stream.
+///
+/// The lexer is stateless: all scanning state is local to each call, so a
+/// [`Lexer`] can be created and discarded freely.
 pub struct Lexer;
 
 impl Lexer {
+    /// Creates a lexer.
     pub fn new() -> Self {
         Self
     }
 
+    /// Scans `source` into tokens.
+    ///
+    /// Returns one entry per token in source order. A lexical error occupies
+    /// the position of the token it interrupted, and scanning continues after
+    /// it where possible. The stream always ends with [`TokenKind::Eof`].
     #[inline]
     pub fn tokenize(source: &str) -> Vec<Result<Token, LexError>> {
         let mut state = LexerState::new(source);
@@ -1228,11 +1287,15 @@ impl Lexer {
 }
 
 impl Default for Lexer {
+    /// Creates a lexer, exactly as [`Lexer::new`] does.
     fn default() -> Self {
         Self::new()
     }
 }
 
+/// Convenience wrapper around [`Lexer::tokenize`].
+///
+/// Equivalent to calling [`Lexer::tokenize`] directly.
 pub fn tokenize(source: &str) -> Vec<Result<Token, LexError>> {
     Lexer::tokenize(source)
 }

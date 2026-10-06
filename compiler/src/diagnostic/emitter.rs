@@ -1,11 +1,16 @@
 use crate::diagnostic::{Diagnostic, DiagnosticLevel};
 
+/// Renders [`Diagnostic`]s against a source buffer.
+///
+/// The emitter borrows both the source text and the name shown in the
+/// `file:line:col` header, so it cannot outlive them.
 pub struct Emitter<'a> {
     source: &'a str,
     source_name: &'a str,
 }
 
 impl<'a> Emitter<'a> {
+    /// Creates an emitter for `source`, labelled `source_name` in output.
     pub fn new(source: &'a str, source_name: &'a str) -> Self {
         Self {
             source,
@@ -13,6 +18,10 @@ impl<'a> Emitter<'a> {
         }
     }
 
+    /// Renders one diagnostic, including the underlined source line.
+    ///
+    /// If the span's line is not present in the source, the header is emitted
+    /// without a snippet.
     pub fn emit(&self, diag: &Diagnostic) -> String {
         let mut out = String::new();
 
@@ -56,6 +65,7 @@ impl<'a> Emitter<'a> {
         out
     }
 
+    /// Renders every diagnostic, separated by a blank line.
     pub fn emit_all(&self, diagnostics: &[Diagnostic]) -> String {
         diagnostics
             .iter()

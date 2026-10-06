@@ -1,26 +1,47 @@
 use crate::ast::*;
 
+/// Depth-first traversal of AST nodes.
+///
+/// Every method has a default body that recurses into the node's children via
+/// the matching `walk_*` function, so an implementor need only override the
+/// node kinds it cares about. To keep recursing after an override, call the
+/// corresponding `walk_*` function from the override.
 pub trait Visitor {
+    /// Visits an expression, recursing into its operands by default.
     fn visit_expr(&mut self, node: &Node<Expr>) {
         walk_expr(self, node)
     }
+
+    /// Visits a statement, recursing into its parts by default.
     fn visit_stmt(&mut self, node: &Node<Stmt>) {
         walk_stmt(self, node)
     }
+
+    /// Visits an item, recursing into its parts by default.
     fn visit_item(&mut self, node: &Node<Item>) {
         walk_item(self, node)
     }
+
+    /// Visits a type, recursing into its components by default.
     fn visit_type(&mut self, node: &Node<Type>) {
         walk_type(self, node)
     }
+
+    /// Visits a pattern, recursing into its sub-patterns by default.
     fn visit_pattern(&mut self, node: &Node<Pattern>) {
         walk_pattern(self, node)
     }
+
+    /// Visits a parameter, visiting its type annotation if present.
     fn visit_param(&mut self, node: &Node<Param>) {
         walk_param(self, node)
     }
 }
 
+/// Visits the children of `node` in source order.
+///
+/// Leaves leaves such as literals and variable names unvisited, since they have
+/// no sub-expressions.
 pub fn walk_expr<V: Visitor + ?Sized>(v: &mut V, node: &Node<Expr>) {
     match &node.kind {
         Expr::Literal(_) => {}
@@ -113,6 +134,7 @@ pub fn walk_expr<V: Visitor + ?Sized>(v: &mut V, node: &Node<Expr>) {
     }
 }
 
+/// Visits the children of `node` in source order.
 pub fn walk_stmt<V: Visitor + ?Sized>(v: &mut V, node: &Node<Stmt>) {
     match &node.kind {
         Stmt::ExprStmt(expr) => {
@@ -148,6 +170,7 @@ pub fn walk_stmt<V: Visitor + ?Sized>(v: &mut V, node: &Node<Stmt>) {
     }
 }
 
+/// Visits the declaration inside `node`, recursing per item kind.
 pub fn walk_item<V: Visitor + ?Sized>(v: &mut V, node: &Node<Item>) {
     match &node.kind {
         Item::FnDecl(f) => {
@@ -182,6 +205,7 @@ pub fn walk_item<V: Visitor + ?Sized>(v: &mut V, node: &Node<Item>) {
     }
 }
 
+/// Visits a function declaration's parameters, return type, and body.
 pub fn walk_fn_decl<V: Visitor + ?Sized>(v: &mut V, f: &FnDecl) {
     for p in &f.params {
         v.visit_param(p);
@@ -192,6 +216,7 @@ pub fn walk_fn_decl<V: Visitor + ?Sized>(v: &mut V, f: &FnDecl) {
     v.visit_expr(&f.body);
 }
 
+/// Visits the field or variant types of a type declaration.
 pub fn walk_type_decl<V: Visitor + ?Sized>(v: &mut V, t: &TypeDecl) {
     match &t.body {
         TypeBody::Struct(fields) => {
@@ -215,6 +240,7 @@ pub fn walk_type_decl<V: Visitor + ?Sized>(v: &mut V, t: &TypeDecl) {
     }
 }
 
+/// Visits each member of an actor declaration in declaration order.
 pub fn walk_actor_decl<V: Visitor + ?Sized>(v: &mut V, a: &ActorDecl) {
     for member in &a.members {
         match &member.kind {
@@ -239,6 +265,8 @@ pub fn walk_actor_decl<V: Visitor + ?Sized>(v: &mut V, a: &ActorDecl) {
     }
 }
 
+/// Visits the component types of a type, such as type arguments or element
+/// types. Bare names, `never`, and `_` have no components.
 pub fn walk_type<V: Visitor + ?Sized>(v: &mut V, node: &Node<Type>) {
     match &node.kind {
         Type::Named(_) | Type::Never | Type::Wildcard => {}
@@ -270,6 +298,7 @@ pub fn walk_type<V: Visitor + ?Sized>(v: &mut V, node: &Node<Type>) {
     }
 }
 
+/// Visits the sub-patterns of `node` in source order.
 pub fn walk_pattern<V: Visitor + ?Sized>(v: &mut V, node: &Node<Pattern>) {
     match &node.kind {
         Pattern::Wildcard | Pattern::Var(_) | Pattern::Literal(_) | Pattern::Rest(_) => {}
@@ -295,6 +324,7 @@ pub fn walk_pattern<V: Visitor + ?Sized>(v: &mut V, node: &Node<Pattern>) {
     }
 }
 
+/// Visits the parameter's type annotation, if it has one.
 pub fn walk_param<V: Visitor + ?Sized>(v: &mut V, node: &Node<Param>) {
     if let Some(t) = &node.kind.type_ann {
         v.visit_type(t);

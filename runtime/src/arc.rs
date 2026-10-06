@@ -6,27 +6,47 @@ const _: () = assert!(
     "MorphArc requires at least 32-bit platform"
 );
 
+/// A reference-counted smart pointer with the same semantics as
+/// [`std::sync::Arc`].
+///
+/// The value is dropped once the last [`MorphArc`] handle referring to it is
+/// dropped. This is a distinct type from [`std::sync::Arc`] so that runtime
+/// values cannot be confused with unrelated shared ownership.
 pub struct MorphArc<T: ?Sized> {
     inner: StdArc<T>,
 }
 
+/// A non-owning reference to a [`MorphArc`] allocation.
+///
+/// A [`MorphWeak`] does not keep the value alive; it becomes un-upgradeable
+/// once the last [`MorphArc`] handle is dropped.
 pub struct MorphWeak<T: ?Sized> {
     inner: StdWeak<T>,
 }
 
 impl<T> MorphArc<T> {
+    /// Allocates a new shared value.
     pub fn new(value: T) -> Self {
         MorphArc {
             inner: StdArc::new(value),
         }
     }
 
+    /// Consumes `this` and returns a raw pointer to the value, leaking one
+    /// strong reference.
+    ///
+    /// The pointer must eventually be reclaimed with [`MorphArc::from_raw`];
+    /// until then the value will not be dropped.
     pub fn into_raw(this: Self) -> *const T {
         StdArc::into_raw(this.inner)
     }
 
     /// # Safety
     /// See [`std::sync::Arc::from_raw`].
+    ///
+    /// `ptr` must have been produced by [`MorphArc::into_raw`] and must not
+    /// have been passed to `from_raw` before; each allocation must be
+    /// reclaimed exactly once.
     pub unsafe fn from_raw(ptr: *const T) -> Self {
         MorphArc {
             // SAFETY: Caller must guarantee ptr was returned by MorphArc::into_raw,
@@ -35,28 +55,41 @@ impl<T> MorphArc<T> {
         }
     }
 
+    /// Creates a non-owning [`MorphWeak`] pointing at the same allocation.
     pub fn downgrade(this: &Self) -> MorphWeak<T> {
         MorphWeak {
             inner: StdArc::downgrade(&this.inner),
         }
     }
 
+    /// Returns the number of live [`MorphArc`] handles, including `this`.
     pub fn strong_count(this: &Self) -> usize {
         StdArc::strong_count(&this.inner)
     }
 
+    /// Returns the number of live [`MorphWeak`] handles for this allocation.
     pub fn weak_count(this: &Self) -> usize {
         StdArc::weak_count(&this.inner)
     }
 
+    /// Returns a mutable reference to the value if this is the only handle.
+    ///
+    /// Returns `None` if any other [`MorphArc`] or [`MorphWeak`] handle to the
+    /// same allocation is alive, in which case uniqueness cannot be proven.
     pub fn get_mut(this: &mut Self) -> Option<&mut T> {
         StdArc::get_mut(&mut this.inner)
     }
 
+    /// Consumes the handle and returns the value if it was the last one.
+    ///
+    /// Returns `None` (dropping the value) if other handles still exist.
     pub fn into_inner(this: Self) -> Option<T> {
         StdArc::into_inner(this.inner)
     }
 
+    /// Returns `true` if both handles point at the same allocation.
+    ///
+    /// This compares addresses, not the values they contain.
     pub fn ptr_eq(this: &Self, other: &Self) -> bool {
         StdArc::ptr_eq(&this.inner, &other.inner)
     }
@@ -117,14 +150,19 @@ impl<T: ?Sized + std::hash::Hash> std::hash::Hash for MorphArc<T> {
 }
 
 impl<T> MorphWeak<T> {
+    /// Attempts to reclaim an owning [`MorphArc`] handle.
+    ///
+    /// Returns `None` if the value has already been dropped.
     pub fn upgrade(&self) -> Option<MorphArc<T>> {
         self.inner.upgrade().map(|inner| MorphArc { inner })
     }
 
+    /// Returns the number of live [`MorphArc`] handles for this allocation.
     pub fn strong_count(&self) -> usize {
         StdWeak::strong_count(&self.inner)
     }
 
+    /// Returns the number of live [`MorphWeak`] handles, including `self`.
     pub fn weak_count(&self) -> usize {
         StdWeak::weak_count(&self.inner)
     }

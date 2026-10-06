@@ -1,12 +1,19 @@
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Mutex, RwLock as StdRwLock};
 
+/// A countdown counter that lets one or more threads wait for a set of tasks to
+/// finish.
+///
+/// Created with a count of `n`, the group is complete once [`WaitGroup::done`]
+/// has been called `n` times. A group created with `count == 0` is complete
+/// immediately.
 pub struct WaitGroup {
     count: AtomicUsize,
     notified: AtomicBool,
 }
 
 impl WaitGroup {
+    /// Creates a group that completes after `count` [`WaitGroup::done`] calls.
     pub fn new(count: usize) -> Self {
         let notified = count == 0;
         WaitGroup {
@@ -15,6 +22,12 @@ impl WaitGroup {
         }
     }
 
+    /// Decrements the remaining count and marks the group complete at zero.
+    ///
+    /// # Panics
+    ///
+    /// In debug builds this underflows if called more often than
+    /// [`WaitGroup::add`] registered.
     pub fn done(&self) {
         let prev = self.count.fetch_sub(1, Ordering::AcqRel);
         if prev == 1 {
@@ -22,32 +35,45 @@ impl WaitGroup {
         }
     }
 
+    /// Registers `delta` additional outstanding tasks.
+    ///
+    /// This resets the completion flag, so any thread already blocked in
+    /// [`WaitGroup::wait`] will resume waiting.
     pub fn add(&self, delta: usize) {
         self.count.fetch_add(delta, Ordering::AcqRel);
         self.notified.store(false, Ordering::Release);
     }
 
+    /// Blocks the calling thread until the group is complete.
     pub fn wait(&self) {
         while !self.notified.load(Ordering::Acquire) {
             std::thread::yield_now();
         }
     }
 
+    /// Returns the number of outstanding tasks.
     pub fn count(&self) -> usize {
         self.count.load(Ordering::Relaxed)
     }
 
+    /// Returns `true` once the group has completed.
+    /// Returns `true` if the closure has already run.
     pub fn is_done(&self) -> bool {
         self.notified.load(Ordering::Acquire)
     }
 }
 
+/// Runs an initialisation closure at most once.
+///
+/// Unlike [`std::sync::Once`], this type can be reset with [`Once::reset`] and
+/// reused.
 pub struct Once {
     done: AtomicBool,
     lock: Mutex<()>,
 }
 
 impl Once {
+    /// Creates a `Once` whose closure has not yet run.
     pub fn new() -> Self {
         Once {
             done: AtomicBool::new(false),
@@ -55,6 +81,10 @@ impl Once {
         }
     }
 
+    /// Runs `f` the first time this `Once` is used; later calls are no-ops.
+    ///
+    /// Concurrent callers block until the first one finishes, and `f` is
+    /// guaranteed to run exactly once.
     pub fn call_once<F: FnOnce()>(&self, f: F) {
         if self.done.load(Ordering::Acquire) {
             return;
@@ -66,10 +96,12 @@ impl Once {
         }
     }
 
+    /// Returns `true` if the closure has already run.
     pub fn is_done(&self) -> bool {
         self.done.load(Ordering::Acquire)
     }
 
+    /// Clears the completion flag so the next [`Once::call_once`] runs again.
     pub fn reset(&self) {
         let _guard = self.lock.lock().unwrap();
         self.done.store(false, Ordering::Release);
@@ -77,34 +109,60 @@ impl Once {
 }
 
 impl Default for Once {
+    /// Creates a fresh `Once`, exactly as [`Once::new`] does.
     fn default() -> Self {
         Self::new()
     }
 }
 
+/// A reader-writer lock guarding a single value.
+///
+/// Wraps [`std::sync::RwLock`] so that runtime code does not depend on the
+/// standard type directly.
 pub struct RwLock<T> {
     inner: StdRwLock<T>,
 }
 
 impl<T> RwLock<T> {
+    /// Wraps `value` in a new lock.
     pub fn new(value: T) -> Self {
         RwLock {
             inner: StdRwLock::new(value),
         }
     }
 
+    /// Acquires shared read access.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a previous writer left the lock poisoned.
     pub fn read(&self) -> std::sync::RwLockReadGuard<'_, T> {
         self.inner.read().unwrap()
     }
 
+    /// Acquires exclusive write access.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a previous holder panicked while holding the lock.
     pub fn write(&self) -> std::sync::RwLockWriteGuard<'_, T> {
         self.inner.write().unwrap()
     }
 
+    /// Consumes the lock and returns the guarded value.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a previous holder panicked while holding the lock.
     pub fn into_inner(self) -> T {
         self.inner.into_inner().unwrap()
     }
 
+    /// Returns mutable access to the guarded value without locking.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a previous holder panicked while holding the lock.
     pub fn get_mut(&mut self) -> &mut T {
         self.inner.get_mut().unwrap()
     }

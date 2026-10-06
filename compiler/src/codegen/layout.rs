@@ -4,18 +4,27 @@ use crate::typeck::types::{FloatKind, IntKind, Ty};
 
 use super::morph_ir::{FieldInfo, TypeInfo, TypeInfoKind, VariantInfo};
 
+/// The in-memory footprint of a type: how many bytes it occupies and how it
+/// must be aligned.
 #[derive(Debug, Clone)]
 pub struct TypeLayout {
+    /// Size in bytes.
     pub size: u32,
+    /// Required alignment in bytes.
     pub alignment: u32,
 }
 
 impl TypeLayout {
+    /// Builds a layout from an explicit size and alignment.
     pub fn new(size: u32, alignment: u32) -> Self {
         Self { size, alignment }
     }
 }
 
+/// Maps struct and enum type names to their declared fields, so
+/// [`compute_layout`] can resolve [`Ty::Named`].
+///
+/// An empty registry means every named type is treated as zero-sized.
 #[derive(Debug, Clone, Default)]
 pub struct TypeRegistry {
     structs: FxHashMap<String, Vec<(String, Ty)>>,
@@ -23,6 +32,7 @@ pub struct TypeRegistry {
 }
 
 impl TypeRegistry {
+    /// Creates an empty registry.
     pub fn new() -> Self {
         Self {
             structs: FxHashMap::default(),
@@ -30,23 +40,32 @@ impl TypeRegistry {
         }
     }
 
+    /// Records a struct's fields, replacing any previous entry for `name`.
     pub fn register_struct(&mut self, name: String, fields: Vec<(String, Ty)>) {
         self.structs.insert(name, fields);
     }
 
+    /// Records an enum's variants, replacing any previous entry for `name`.
     pub fn register_enum(&mut self, name: String, variants: Vec<(String, Vec<Ty>)>) {
         self.enums.insert(name, variants);
     }
 
+    /// Returns the fields registered for the struct `name`, if any.
     pub fn lookup_struct(&self, name: &str) -> Option<&Vec<(String, Ty)>> {
         self.structs.get(name)
     }
 
+    /// Returns the variants registered for the enum `name`, if any.
     pub fn lookup_enum(&self, name: &str) -> Option<&Vec<(String, Vec<Ty>)>> {
         self.enums.get(name)
     }
 }
 
+/// Computes the layout of `ty`, resolving named types through `registry`.
+///
+/// Types not present in the registry — including [`Ty::Error`] and unresolved
+/// type variables of unknown size — fall back to a pointer-sized or zero-sized
+/// layout rather than failing.
 pub fn compute_layout(ty: &Ty, registry: &TypeRegistry) -> TypeLayout {
     match ty {
         Ty::Bool => TypeLayout::new(1, 1),
@@ -149,6 +168,11 @@ fn tuple_layout(layouts: &[TypeLayout]) -> TypeLayout {
     TypeLayout::new(offset, max_align)
 }
 
+/// Lays out a struct's fields in declaration order.
+///
+/// Returns the total size, the struct's alignment, and each field's offset.
+/// The returned size is rounded up to a multiple of the alignment, so it can be
+/// used directly for stride in an array of the struct.
 pub fn compute_struct_layout(
     fields: &[(String, Ty)],
     registry: &TypeRegistry,
@@ -173,6 +197,11 @@ pub fn compute_struct_layout(
     (offset, max_align, field_infos)
 }
 
+/// Lays out an enum as a one-byte discriminant followed by a union-sized
+/// payload.
+///
+/// Returns the total size, the alignment, and a [`VariantInfo`] per variant.
+/// Variant tags are assigned by position, so the `i`-th variant gets tag `i`.
 pub fn compute_enum_layout_from_types(
     variants: &[(String, Vec<Ty>)],
     registry: &TypeRegistry,
@@ -213,6 +242,11 @@ pub fn compute_enum_layout_from_types(
     (total, max_align, variant_infos)
 }
 
+/// Builds the [`TypeInfo`] describing `ty`, if it has a describable shape.
+///
+/// Returns `None` for types that carry no layout information of their own,
+/// such as tuples, references, and function types; those are described by
+/// their element types instead.
 pub fn build_type_info(name: &str, ty: &Ty, registry: &TypeRegistry) -> Option<TypeInfo> {
     match ty {
         Ty::Bool | Ty::Int(_) | Ty::Float(_) | Ty::Str => {

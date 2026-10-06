@@ -1,132 +1,209 @@
 use std::collections::BTreeSet;
 use std::fmt;
 
+/// A type as inferred by the type checker.
+///
+/// [`Ty::TypeVar`] stands for an as-yet-unknown type; such variables are
+/// numbered and resolved by the unifier in [`crate::typeck::unification`].
+/// [`Ty::Error`] is the poison value used to keep checking after an error has
+/// already been reported.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Ty {
+    /// The `bool` type.
     Bool,
+    /// A signed or unsigned integer of the given width.
     Int(IntKind),
+    /// A floating point type of the given width.
     Float(FloatKind),
+    /// The string type.
     Str,
+    /// The type of a function that returns nothing meaningful.
     Void,
+    /// The bottom type: no value inhabits it.
     Never,
+    /// A heterogeneous tuple of the given element types.
     Tuple(Vec<Ty>),
+    /// A homogeneous array of `inner`.
     Array(Box<Ty>),
+    /// An optional (`inner?`) value.
     Optional(Box<Ty>),
+    /// A fallible computation with separate success and error types.
     Result {
+        /// Type of the success value.
         ok: Box<Ty>,
+        /// Type of the error value.
         err: Box<Ty>,
     },
+    /// A user-defined or builtin named type applied to `args`.
     Named {
+        /// The type's name as written in the source.
         name: String,
+        /// Type arguments, empty for a non-generic type.
         args: Vec<Ty>,
     },
+    /// A capability-guarded reference to `inner`.
     Ref {
+        /// The capability the reference is held at.
         cap: Capability,
+        /// The referent type.
         inner: Box<Ty>,
     },
+    /// A function type.
     Fn {
+        /// Parameter types.
         params: Vec<Ty>,
+        /// Return type.
         ret: Box<Ty>,
+        /// Effects the function is declared to perform.
         effects: EffectSet,
     },
+    /// A reference to an actor of the named type.
     Actor(String),
+    /// An unresolved inference variable, identified by its index.
     TypeVar(u32),
+    /// The type produced after a reported error; suppresses cascading errors.
     Error,
 }
 
+/// The width and signedness of a [`Ty::Int`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IntKind {
+    /// Signed 8-bit integer (`i8`).
     I8,
+    /// Signed 16-bit integer (`i16`).
     I16,
+    /// Signed 32-bit integer (`i32`).
     I32,
+    /// Signed 64-bit integer (`i64`).
     I64,
+    /// Unsigned 8-bit integer (`u8`).
     U8,
+    /// Unsigned 16-bit integer (`u16`).
     U16,
+    /// Unsigned 32-bit integer (`u32`).
     U32,
+    /// Unsigned 64-bit integer (`u64`).
     U64,
+    /// Pointer-sized signed integer (`isize`).
     ISize,
+    /// Pointer-sized unsigned integer (`usize`).
     USize,
 }
 
+/// The width of a [`Ty::Float`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FloatKind {
+    /// 32-bit floating point (`f32`).
     F32,
+    /// 64-bit floating point (`f64`).
     F64,
 }
 
+/// The capability a reference is held at.
+///
+/// Stronger capabilities can be weakened but not the reverse, so moving out of
+/// an `Iso` reference is allowed while moving out of a `Ref` is not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Capability {
+    /// Unique, transferable ownership; may be moved.
     Iso,
+    /// Shared read-only access to a value owned elsewhere.
     Val,
+    /// A borrowed reference; ownership stays with the issuer.
     Ref,
 }
 
+/// A tracked side effect that a function must declare before performing it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Effect {
+    /// Performing file, console, or other blocking I/O.
     IO,
+    /// Performing network I/O.
     Net,
+    /// Reading the clock or sleeping.
     Time,
+    /// Touching process-level facilities such as the environment.
     System,
 }
 
+/// An immutable set of [`Effect`]s, ordered so sets compare canonically.
+///
+/// An empty set means the function is `pure`.
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct EffectSet {
     effects: BTreeSet<Effect>,
 }
 
 impl EffectSet {
+    /// Creates the empty (pure) effect set.
     pub fn empty() -> Self {
         Self {
             effects: BTreeSet::new(),
         }
     }
 
+    /// Creates the empty (pure) effect set, exactly as [`EffectSet::empty`] does.
     pub fn pure() -> Self {
         Self::empty()
     }
 
+    /// Creates a set containing the given effects; duplicates are collapsed.
     pub fn new(effects: impl IntoIterator<Item = Effect>) -> Self {
         Self {
             effects: effects.into_iter().collect(),
         }
     }
 
+    /// Adds `effect` to the set.
     pub fn insert(&mut self, effect: Effect) {
         self.effects.insert(effect);
     }
 
+    /// Returns a set containing every effect in either set.
     pub fn union(&self, other: &EffectSet) -> EffectSet {
         EffectSet {
             effects: self.effects.union(&other.effects).copied().collect(),
         }
     }
 
+    /// Returns `true` if every effect in this set also appears in `other`.
+    ///
+    /// This is the check used to decide whether a call is permitted.
     pub fn is_subset_of(&self, other: &EffectSet) -> bool {
         self.effects.is_subset(&other.effects)
     }
 
+    /// Returns `true` if the set is empty, i.e. the function is pure.
     pub fn is_pure(&self) -> bool {
         self.effects.is_empty()
     }
 
+    /// Iterates the effects in ascending declaration order.
     pub fn iter(&self) -> impl Iterator<Item = Effect> + '_ {
         self.effects.iter().copied()
     }
 
+    /// Returns `true` if `effect` is a member of the set.
     pub fn contains(&self, effect: Effect) -> bool {
         self.effects.contains(&effect)
     }
 
+    /// Returns the number of effects in the set.
     pub fn len(&self) -> usize {
         self.effects.len()
     }
 
+    /// Returns `true` if the set contains no effects.
     pub fn is_empty(&self) -> bool {
         self.effects.is_empty()
     }
 }
 
 impl Ty {
+    /// Returns `true` if values of this type may cross an actor boundary.
+    ///
+    /// Function values and `Ref`-capability references may not; an `Iso`
+    /// reference may, because sending it transfers ownership.
     pub fn is_sendable(&self) -> bool {
         match self {
             Ty::Bool | Ty::Int(_) | Ty::Float(_) | Ty::Str | Ty::Void | Ty::Never | Ty::Error => {
@@ -148,14 +225,17 @@ impl Ty {
         }
     }
 
+    /// Returns `true` for [`Ty::Int`] and [`Ty::Float`].
     pub fn is_numeric(&self) -> bool {
         matches!(self, Ty::Int(_) | Ty::Float(_))
     }
 
+    /// Returns `true` for [`Ty::Int`].
     pub fn is_int(&self) -> bool {
         matches!(self, Ty::Int(_))
     }
 
+    /// Returns `true` for [`Ty::Float`].
     pub fn is_float(&self) -> bool {
         matches!(self, Ty::Float(_))
     }
@@ -281,6 +361,7 @@ impl fmt::Debug for EffectSet {
     }
 }
 
+/// Parses a source-level integer type name such as `"i32"` or `"usize"`.
 pub fn int_kind_from_name(name: &str) -> Option<IntKind> {
     match name {
         "i8" => Some(IntKind::I8),
@@ -297,6 +378,7 @@ pub fn int_kind_from_name(name: &str) -> Option<IntKind> {
     }
 }
 
+/// Parses a source-level float type name, `"f32"` or `"f64"`.
 pub fn float_kind_from_name(name: &str) -> Option<FloatKind> {
     match name {
         "f32" => Some(FloatKind::F32),
@@ -305,6 +387,10 @@ pub fn float_kind_from_name(name: &str) -> Option<FloatKind> {
     }
 }
 
+/// Returns `true` if the literal `value` fits in an integer of type `kind`.
+///
+/// Used when an unsuffixed integer literal is checked against a contextual
+/// type. `i64` always accepts, and `u64` accepts every non-negative value.
 pub fn can_coerce_int_literal(kind: IntKind, value: i64) -> bool {
     match kind {
         IntKind::I8 => value >= i8::MIN as i64 && value <= i8::MAX as i64,

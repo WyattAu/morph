@@ -7,20 +7,41 @@ use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
+/// Decides which [`Fiber`] runs next and when it is resumed.
+///
+/// Implementations must be usable from multiple threads, hence the
+/// `Send + Sync` bound.
 pub trait Scheduler: Send + Sync {
+    /// Queues `fiber` for execution and returns its id.
     fn spawn(&self, fiber: Fiber) -> FiberId;
+
+    /// Queues an actor's handler fiber and returns the actor's id.
+    ///
+    /// The actor itself is not retained by the scheduler.
     fn spawn_actor(&self, actor: Actor) -> ActorId;
+
+    /// Runs `fiber` to completion on the calling thread.
+    ///
+    /// # Errors
+    ///
+    /// Propagates whatever error the fiber's executor reported.
     fn block_on(&self, fiber: Fiber) -> Result<(), RuntimeError>;
+
+    /// Voluntarily gives up the rest of this thread's time slice.
     fn yield_now(&self);
+
+    /// Returns the id of the fiber running on this thread, if any.
     fn current_fiber_id(&self) -> Option<FiberId>;
 }
 
+/// One worker of a [`WorkStealingScheduler`], owning a private run queue.
 pub struct WorkerThread {
     id: usize,
     local_queue: ChaseLevDeque<Fiber>,
 }
 
 impl WorkerThread {
+    /// Creates worker `id` with an empty local queue.
     pub fn new(id: usize) -> Self {
         WorkerThread {
             id,
@@ -28,31 +49,41 @@ impl WorkerThread {
         }
     }
 
+    /// Adds a fiber to the owner end of the local queue.
     pub fn push(&self, fiber: Fiber) {
         self.local_queue.push(fiber);
     }
 
+    /// Takes a fiber from the owner end of the local queue.
     pub fn pop(&self) -> Option<Fiber> {
         self.local_queue.pop()
     }
 
+    /// Takes a fiber from the stealable end of the local queue.
     pub fn steal_from(&self) -> Option<Fiber> {
         self.local_queue.steal()
     }
 
+    /// Returns the number of queued fibers.
+    ///
+    /// The count is a snapshot and may be stale immediately.
     pub fn len(&self) -> usize {
         self.local_queue.len()
     }
 
+    /// Returns `true` if the local queue is empty.
     pub fn is_empty(&self) -> bool {
         self.local_queue.is_empty()
     }
 
+    /// Returns this worker's index.
     pub fn id(&self) -> usize {
         self.id
     }
 }
 
+/// A scheduler that keeps one run queue per worker and lets idle workers steal
+/// from a randomly chosen peer.
 pub struct WorkStealingScheduler {
     workers: Arc<RwLock<Vec<WorkerThread>>>,
     global_queue: ChaseLevDeque<Fiber>,
@@ -62,6 +93,7 @@ pub struct WorkStealingScheduler {
 }
 
 impl WorkStealingScheduler {
+    /// Creates a scheduler with `num_threads` workers, at least one.
     pub fn new(num_threads: usize) -> Self {
         let n = num_threads.max(1);
         let workers = (0..n).map(WorkerThread::new).collect();
@@ -84,6 +116,11 @@ impl WorkStealingScheduler {
         }
     }
 
+    /// Attempts to steal a fiber on behalf of worker `thief_id`.
+    ///
+    /// Picks a victim round-robin via a shared counter and returns `None` if
+    /// the victim has nothing to give, is the thief itself, or there is only
+    /// one worker.
     pub fn steal(&self, thief_id: usize) -> Option<Fiber> {
         if self.num_threads <= 1 {
             return None;
@@ -96,15 +133,20 @@ impl WorkStealingScheduler {
         workers.get(victim).and_then(|w| w.steal_from())
     }
 
+    /// Returns the number of workers.
     pub fn num_workers(&self) -> usize {
         self.num_threads
     }
 
+    /// Returns how many fibers are queued on worker `worker_id`.
+    ///
+    /// Returns `0` if `worker_id` is out of range.
     pub fn worker_queue_len(&self, worker_id: usize) -> usize {
         let workers = self.workers.read().unwrap();
         workers.get(worker_id).map(|w| w.len()).unwrap_or(0)
     }
 
+    /// Returns how many fibers are queued in the global overflow queue.
     pub fn global_queue_len(&self) -> usize {
         self.global_queue.len()
     }
@@ -157,12 +199,17 @@ impl Scheduler for WorkStealingScheduler {
     }
 }
 
+/// A scheduler that advances fibers in a fixed order, for reproducible runs.
+///
+/// Fibers are kept in a single FIFO queue and a logical clock is bumped once
+/// per fiber step, so a given program always yields the same interleaving.
 pub struct DeterministicScheduler {
     queue: Arc<Mutex<VecDeque<Fiber>>>,
     logical_clock: Arc<Mutex<u64>>,
 }
 
 impl DeterministicScheduler {
+    /// Creates an empty deterministic scheduler with its clock at zero.
     pub fn new() -> Self {
         DeterministicScheduler {
             queue: Arc::new(Mutex::new(VecDeque::new())),
@@ -170,16 +217,19 @@ impl DeterministicScheduler {
         }
     }
 
+    /// Advances the logical clock by one and returns the new value.
     pub fn tick(&self) -> u64 {
         let mut clock = self.logical_clock.lock().unwrap();
         *clock += 1;
         *clock
     }
 
+    /// Returns the current logical clock value.
     pub fn clock(&self) -> u64 {
         *self.logical_clock.lock().unwrap()
     }
 
+    /// Returns the number of fibers waiting to be run.
     pub fn queue_len(&self) -> usize {
         self.queue.lock().unwrap().len()
     }
