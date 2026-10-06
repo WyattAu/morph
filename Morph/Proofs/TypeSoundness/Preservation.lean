@@ -421,6 +421,27 @@ private theorem HasType_subst (ctx : LinCtx) (Γ : TypEnv) (e v : Expr) (τ1 τ 
     HasType ctx Γ (Morph.Syntax.subst e v) τ ctx :=
   HasType_subst_depth [] ctx Γ e v τ1 τ hE hV
 
+/-- **Key case of the consumption-aware substitution lemma.**
+
+    When the bound variable being substituted for is exactly the one the
+    `let` introduced, the substituted term *is* the value, and the output
+    context is the body context minus that binder's slot — which is the
+    value's own context, because `value_does_not_consume` says a value never
+    consumes anything.
+
+    This is the case that makes the general lemma well-posed rather than
+    circular: it is the reason the goal's output context (`cbody.drop 1`)
+    and the value's context coincide here. -/
+private theorem HasType_subst_consuming_bvar0
+    (v : Expr) (τ1 τ : Typ) (ctx cbody : LinCtx) (Γ : TypEnv) (cv : LinCtx)
+    (hV : HasType ctx Γ v τ1 cv)
+    (hv : Morph.Semantics.IsValue v)
+    (hE : HasType ((τ1, LinCtx.initialUsage τ1) :: ctx) Γ (.bvar 0) τ cbody) :
+    HasType ctx Γ v τ (cbody.drop 1) := by
+  have hvv : cv = ctx := value_does_not_consume hv hV
+  cases hE <;>
+    simp_all [LinCtx.drop, LinCtx.consume, LinCtx.setUsage, LinCtx.initialUsage]
+
 private theorem HasTypeAll_subst_all (ctx : LinCtx) (Γ : TypEnv) (es : List Expr)
     (v : Expr) (τ1 : Typ) (τs : List Typ)
     (hArgs : HasTypeAll ((τ1, LinCtx.initialUsage τ1) :: ctx) Γ es τs
