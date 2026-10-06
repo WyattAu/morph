@@ -23,9 +23,9 @@ This is what makes the consumption-aware substitution lemma well-posed: when
 `let_subst` replaces a bound variable by the value that was let-bound, the
 substituted expression inherits exactly the context the value was typed in. -/
 
-theorem value_does_not_consume : ∀ {e : Expr} {τ : Typ} {cin cout : LinCtx},
-    Morph.Semantics.IsValue e → HasType cin [] e τ cout → cout = cin := by
-  intro e τ cin cout hv ht
+theorem value_does_not_consume : ∀ {e : Expr} {τ : Typ} {cin cout : LinCtx} {Γ : TypEnv},
+    Morph.Semantics.IsValue e → HasType cin Γ e τ cout → cout = cin := by
+  intro e τ cin cout Γ hv ht
   cases hv <;> cases ht <;> simp_all
 
 /-! ## Inversion Lemmas -/
