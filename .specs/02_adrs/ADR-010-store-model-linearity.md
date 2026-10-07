@@ -356,26 +356,42 @@ Three pieces, in dependency order:
    it from the output context; the `bvar_type_many` branch leaves it. This
    lemma is what `let_subst` and `app_lam` in Preservation need.
 
-   **Why this needs a `pfx`-indexed mutual induction, not a plain one.**
-   A naive induction on the derivation of `e2` almost works: for sequencing
-   rules the invariant composes, because every sub-term of a derivation from
-   `((τ1,u) :: ctx)` is also typed in a context of that shape (`consume` only
-   touches slots below the head), so the inductive hypothesis applies and
-   `drop 1` lines up. It breaks at **nested binders**. For `e2 = let_ a b` under
-   the new rule, `b`'s own output is `Cb.drop 1`, and the induction hypothesis
-   yields `b'` typed in `Ca → Cb.drop 1`; but the inner `let_type` needs `b'`
-   typed in `((τ1a,u) :: Ca)` and concludes `(Cb.drop 1).drop 1` — one `drop`
-   too many. So the hypothesis must be indexed by a prefix, exactly as the
-   existing `HasType_subst_depth` is, giving the mutual induction over `pfx`
-   and the derivation together. That is a long proof, and it is why several
-   attempts at a "small" version of this lemma have stalled.
+   **The real obstacle: erasing the binder's slot does not compose.** It is
+   tempting to read this as "just index the hypothesis by a prefix, as
+   `HasType_subst_depth` already does". That is *not* sufficient, and the
+   reason is worth stating precisely, because it is not visible from the
+   statement.
+
+   A naive induction composes fine for the sequencing rules: every sub-term
+   of a derivation from `pfx.entries ++ ((τ1,u) :: ctx)` is also typed in a
+   context of that shape (`consume` only touches slots below the head), so
+   the hypothesis applies and the bookkeeping lines up. It breaks at nested
+   binders, but not for the reason one would guess.
+
+   Concretely, take `pfx = [A, B]` and a body containing an inner `let` that
+   binds `C`. The context is `[C, A, B, T, x]` where `T` is the slot being
+   substituted (at index `pfx.length + 1 = 3`). The induction hypothesis on
+   the inner body erases index 3, giving `[C, A, B, x]`; the inner `let` rule
+   then erases its own binder, giving `[A, B, x]` — which is correct. But if
+   the outer lemma's conclusion is phrased as "erase index `pfx.length`", then
+   applied to the already-shortened `[A, B, x]`, it erases index 2 and
+   produces `[A, B]`, dropping `x`.
+
+   So neither `drop (pfx.length + 1)` (which erases the `pfx` entries too)
+   nor `eraseIdx pfx.length` (which, re-applied, erases a *prefix* entry)
+   states the right relation. The lemma needs an operation keyed on *which
+   binding is being removed* rather than on a positional index, so that it is
+   idempotent under the recursion. Working out that operation — and proving
+   it commutes with `consume` and with `pushMany` — is the actual work here,
+   and it is the piece still outstanding.
 
    **What is already banked.** The `bvar 0` case — the one that makes the
    statement well-posed rather than circular — is proven and committed as
    `HasType_subst_consuming_bvar0`: substituting at exactly the binder position
    yields the value, typed in the body context minus that binder's slot, which
    is the value's own context by `value_does_not_consume`. It closes in one
-   line of `cases <;> simp_all`.
+   line of `cases <;> simp_all`. At `pfx = []` positional and keyed erasure
+   coincide, which is why this case is easy and the general one is not.
 
 3. **Branch merging.** `if_type` and `match` take both branches from the same
    post-condition context and output `LinCtx.merge ct cf`. Note that
