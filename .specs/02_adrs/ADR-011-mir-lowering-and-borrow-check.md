@@ -1,7 +1,14 @@
 # ADR-011: MIR Lowering, Ownership Checking, and Multi-Target Code Generation
 
 ## Status
-**Proposed**
+**Proposed** (Loop 1 research annotation, 2026-09-19: stage 2's role is
+**expressiveness**, not soundness. Oxide (PLDI 2019) shows borrow checking can
+be a declarative relation, and RustBelt (POPL 2018) shows soundness rests on
+*semantic typing* — which for Morph is `HasTypeS` + the store invariant, both
+already formalized. A program the surface checker and stage 2 both reject is
+rejected; a program stage 2 rejects was never guaranteed unsafe. This loop
+alsoqueues ADR-014, which removes the surface-level consumption machinery that
+stage 2 was assumed to complement.)
 
 ## Context
 
