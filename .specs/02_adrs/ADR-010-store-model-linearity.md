@@ -356,6 +356,27 @@ Three pieces, in dependency order:
    it from the output context; the `bvar_type_many` branch leaves it. This
    lemma is what `let_subst` and `app_lam` in Preservation need.
 
+   **Why this needs a `pfx`-indexed mutual induction, not a plain one.**
+   A naive induction on the derivation of `e2` almost works: for sequencing
+   rules the invariant composes, because every sub-term of a derivation from
+   `((τ1,u) :: ctx)` is also typed in a context of that shape (`consume` only
+   touches slots below the head), so the inductive hypothesis applies and
+   `drop 1` lines up. It breaks at **nested binders**. For `e2 = let_ a b` under
+   the new rule, `b`'s own output is `Cb.drop 1`, and the induction hypothesis
+   yields `b'` typed in `Ca → Cb.drop 1`; but the inner `let_type` needs `b'`
+   typed in `((τ1a,u) :: Ca)` and concludes `(Cb.drop 1).drop 1` — one `drop`
+   too many. So the hypothesis must be indexed by a prefix, exactly as the
+   existing `HasType_subst_depth` is, giving the mutual induction over `pfx`
+   and the derivation together. That is a long proof, and it is why several
+   attempts at a "small" version of this lemma have stalled.
+
+   **What is already banked.** The `bvar 0` case — the one that makes the
+   statement well-posed rather than circular — is proven and committed as
+   `HasType_subst_consuming_bvar0`: substituting at exactly the binder position
+   yields the value, typed in the body context minus that binder's slot, which
+   is the value's own context by `value_does_not_consume`. It closes in one
+   line of `cases <;> simp_all`.
+
 3. **Branch merging.** `if_type` and `match` take both branches from the same
    post-condition context and output `LinCtx.merge ct cf`. Note that
    `LinCtx.merge`'s current rule `zero + one = zero` is a syntactic
