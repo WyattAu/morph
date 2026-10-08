@@ -156,6 +156,7 @@ Types can be:
 - `unitType`: Unit type (void)
 - `arrayType`: Array type with element type and size
 - `functionType`: Function type with parameter types and return type
+- `linearFunctionType`: Linear function type — each parameter is used exactly once
 
 The type system supports both primitive types and composite types (arrays,
 functions). This provides a foundation for bidirectional typing (see ADR-004).
@@ -170,6 +171,7 @@ inductive Typ where
   | unitType : Typ
   | arrayType : Typ -> Nat -> Typ
   | functionType : List Typ -> Typ -> Typ
+  | linearFunctionType : List Typ → Typ → Typ
   | intWidthType : IntWidth → Typ
   | floatType : FloatWidth → Typ
   | neverType : Typ

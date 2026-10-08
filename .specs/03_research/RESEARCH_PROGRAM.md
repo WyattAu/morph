@@ -46,17 +46,18 @@ proofs to match.
 | # | Problem | Current approach | Known weakness | Status after loop |
 |---|---------|------------------|----------------|-------------------|
 | P1 | Consumption discipline in binders | `Usage` threading in `HasType`; `bvar_type` consumes; substitution lemma stalled 6× | Erasure of the binder's slot does not compose under prefix growth (ADR-010 "remaining piece") | **Loop 1: superseded by ADR-014** (multiplicity on binders; Linear Haskell mechanism) |
-| P2 | Variable/context representation | de Bruijn indices + hand-written lift/subst lemmas (~921 lines in Lemmas.lean) | Substitution proofs are the dominant cost; every language extension re-opens them | open |
+| P2 | Variable/context representation | de Bruijn indices + hand-written lift/subst lemmas (~921 lines in Lemmas.lean) | Substitution proofs are the dominant cost; every language extension re-opens them | **Loop 2: closed** — resolved by P1/ADR-014 (non-consuming substitution only); autosubst2 re-evaluated only if a future feature re-opens substitution |
 | P3 | Where borrow checking lives | ADR-011: MIR dataflow analysis (stage 2), surface `HasType` supplies discipline only | Unexamined whether a declarative (non-CFG) formulation exists that would let it live in the type system | **Loop 1: framing corrected** — Oxide shows a declarative relation exists; RustBelt shows soundness needs semantics only; stage 2 = expressiveness |
-| P4 | Capability model completeness | 3 capabilities: iso/val/ref; `refStore` requires `cap ≠ .val` | Compare against Pony's 6-capability matrix; no construction-time capability (`trn`); no deny-capabilities matrix | open |
-| P5 | Memory model verification level | CompCert-style typed store (`Store.lean`); freed list | No GC story for actors; store not related to a byte-level model for FFI | open |
-| P6 | Effects | `EffectSet` in Core.lean, unused | Decide: build an effect system (Koka/Unison-style) or delete `EffectSet` | open |
-| P7 | Verified compilation boundary | ADR-011: verify stages 1–3, trust backends at instruction selection | CakeML verifies end-to-end incl. GC; is our boundary justified or convenience? | open |
+| P4 | Capability model completeness | 3 capabilities: iso/val/ref; `refStore` requires `cap ≠ .val` | Compare against Pony's 6-capability matrix; no construction-time capability (`trn`); no deny-capabilities matrix | **Loop 2: ADAPT** — `SafeCast` relation specified in ADR-010 amendment; Loop 3 implements |
+| P5 | Memory model verification level | CompCert-style typed store (`Store.lean`); freed list | No GC story for actors; store not related to a byte-level model for FFI | **Loop 2: constraint recorded** — store must support both RC (Perceus-style, enabled by linearity) and GC (CakeML-style); decide at demo milestone |
+| P6 | Effects | `EffectSet` in Core.lean, unused | Decide: build an effect system (Koka/Unison-style) or delete `EffectSet` | **Loop 2: DEFER**, default REJECT by Loop 5 |
+| P7 | Verified compilation boundary | ADR-011: verify stages 1–3, trust backends at instruction selection | CakeML verifies end-to-end incl. GC; is our boundary justified or convenience? | **Loop 2: boundary justified as team-size trade** (CakeML falsifies impossibility); ADR-011 annotated |
 | P8 | Actor/async verification | `Runtime.lean` actors; spec has process algebra | No verification story (Actris exists for Iris; Pony's ORCA unverified) | open |
 | P9 | Generics + parametricity under capabilities | Not formalized | Variance/parametricity for capability-typed code is exactly where Rust struggled (RustBelt §) | open |
 | P10 | Error handling | `Result`/`Option` types; error propagation as surface sugar | Interaction with effects (P6) unexamined | open |
 | P11 | Conformance testing | `Executable.lean` interpreter as oracle | No differential-testing program against the Rust implementation | open |
-| P12 | Binder syntax features blocked on P1 | Walrus deferred (ADR-008) | Unblocks with P1 | open |
+| P12 | Binder syntax features blocked on P1 | Walrus deferred (ADR-008) | Unblocks with P1 | **Loop 1: unblocks with ADR-014** (non-consuming substitution) |
+| P13 | Type-inference soundness | `inferType`/`synthType` executable checkers, no soundness theorem | CakeML proves its inferencer sound AND complete against declarative specs | **Loop 2: added** — prove `synthType ctx Γ e = some τ → HasType ctx Γ e τ` (Loop 3+) |
 
 ## Ground Rules
 
@@ -77,3 +78,4 @@ proofs to match.
 | Loop | Date | Sources | Adjudications | Spec changes | Proof changes |
 |------|------|---------|---------------|--------------|---------------|
 | 1 | 2026-09-19 | 7 (2 fetched+verified, 5 knowledge/queued) | P1 ADOPT Linear-Haskell multiplicity (ADR-014 proposed); P2 ADAPT (deferred, autosubst2 fetch owed); P3 framing corrected (stage 2 = expressiveness); P4–P6 queued | ADR-014 proposed; ADR-011 annotated | none (Loop 2 implements ADR-014) |
+| 2 | 2026-09-19 | 4 (1 fetched+verified [CakeML], 1 fetched nav-only [Pony], 2 knowledge/queued) | P2 closed (resolved by P1); P4 ADAPT (SafeCast specified); P5 constraint recorded; P6 defer w/ default-REJECT; P7 boundary justified; P13 added | ADR-010 amended (SafeCast); ADR-011 honesty note | ADR-014 stage 1 (linear arrows + countUses) started |

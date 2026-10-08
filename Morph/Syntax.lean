@@ -303,6 +303,56 @@ end
 abbrev substAll (vs : List Expr) (e : Expr) : Expr := substAll' 0 vs e
 
 /-!
+## Occurrence Counting (ADR-014)
+
+`countUses e n`: the number of free occurrences of de Bruijn index `n` in `e`.
+Occurrences under `k` additional binders count as uses of index `n + k`
+(the same index convention as `liftUnder`/`subst'`: entering a binder of
+arity `m` shifts the target index by `m`).
+
+The linear arrow's typing rule (ADR-014 stage 1) uses `countUses` to enforce,
+syntactically, that every parameter of a `linearFunctionType` is used exactly
+once in the body. -/
+mutual
+def countUsesArms (n : Nat) : List (List String × Expr) → Nat
+  | [] => 0
+  | (vars, body) :: rest => countUses body (n + vars.length) + countUsesArms n rest
+
+def countUsesList : List Expr → Nat → Nat
+  | [], _ => 0
+  | e :: rest, n => countUses e n + countUsesList rest n
+
+def countUses : Expr → Nat → Nat
+  | .bvar m, n => if m = n then 1 else 0
+  | .fvar _, _ => 0
+  | .lit _, _ => 0
+  | .unop _ e, n => countUses e n
+  | .binop _ e1 e2, n => countUses e1 n + countUses e2 n
+  | .app fn args, n => countUses fn n + countUsesList args n
+  | .lam m body, n => countUses body (n + m)
+  | .let_ a b, n => countUses a n + countUses b (n + 1)
+  | .ifThenElse c t f, n => countUses c n + countUses t n + countUses f n
+  | .forLoop s e body, n => countUses s n + countUses e n + countUsesList body (n + 1)
+  | .block exprs, n => countUsesList exprs n
+  | .match_ scrut arms, n => countUses scrut n + countUsesArms n arms
+  | .field_ e _, n => countUses e n
+  | .pipe e f, n => countUses e n + countUses f n
+  | .typeAsc e _, n => countUses e n
+  | .some_ e, n => countUses e n
+  | .none_, _ => 0
+  | .ok_ e, n => countUses e n
+  | .err_ e, n => countUses e n
+  | .nullCoalesce e1 e2, n => countUses e1 n + countUses e2 n
+  | .tuple_ elems, n => countUsesList elems n
+  | .arrayLit elems, n => countUsesList elems n
+  | .arrayIndex arr idx, n => countUses arr n + countUses idx n
+  | .refCreate e _ _, n => countUses e n
+  | .refLoad e, n => countUses e n
+  | .refStore e v _, n => countUses e n + countUses v n
+  | .refFree e, n => countUses e n
+end
+
+/-!
 ## Free Variables
 
 Collects all free variable names (from `fvar` constructors) in an expression.

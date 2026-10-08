@@ -513,6 +513,10 @@ section SafetyTheoremTests
         ∃ (fn : Value), v = fn ∧
           ∃ (paramTypes : List Typ), paramTypes = params ∧
             ∃ (retType : Typ), retType = ret
+    | Typ.linearFunctionType params ret =>
+        ∃ (fn : Value), v = fn ∧
+          ∃ (paramTypes : List Typ), paramTypes = params ∧
+            ∃ (retType : Typ), retType = ret
     | Typ.intWidthType _ => ∃ (n : Int), v = Value.int n
     | Typ.floatType _ => ∃ (f : Float), v = Value.float f
     | Typ.optionType _ => v = Value.none ∨ ∃ (inner : Value), v = Value.some inner

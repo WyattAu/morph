@@ -57,6 +57,31 @@ def extendTypEnv (env : TypEnv) (name : String) (typ : Morph.Core.Typ) : TypEnv 
   (name, typ) :: env
 
 /-!
+## Linear Arrows (ADR-014 stage 1)
+
+`linPushMany ctx τs` pushes the parameter types `τs` as *unrestricted* entries
+(`Usage.many`). A `linearFunctionType` binder never consumes: the exactly-once
+obligation for each parameter is discharged syntactically by `countUses` in the
+`lam_linear_type` rule, mirroring Linear Haskell's design where the context is
+never mutated during typing. -/
+def linPushMany (ctx : LinCtx) (τs : List Morph.Core.Typ) : LinCtx :=
+  (τs.map (fun τ => (τ, Usage.many))) ++ ctx
+
+theorem types_linPushMany (ctx : LinCtx) (τs : List Morph.Core.Typ) :
+    LinCtx.types (linPushMany ctx τs) = τs ++ LinCtx.types ctx := by
+  have hmap : Prod.fst ∘ (fun (τ : Morph.Core.Typ) => (τ, Usage.many)) = id := by
+    funext x; rfl
+  simp [linPushMany, LinCtx.types, hmap]
+
+/-- The entry at index `k < τs.length` of `linPushMany ctx τs` is `(τs[k], .many)`. -/
+theorem entry_linPushMany_mid (ctx : LinCtx) (τs : List Morph.Core.Typ) (k : Nat)
+    (h : k < τs.length) :
+    (linPushMany ctx τs)[k]? = some (τs[k]'h, Usage.many) := by
+  simp only [linPushMany]
+  rw [List.getElem?_append_left (by simpa using h)]
+  simp
+
+/-!
 ## Type Well-Formedness
 -/
 inductive WellTyped : TypEnv -> Morph.Core.Typ -> Prop where
@@ -75,6 +100,10 @@ inductive WellTyped : TypEnv -> Morph.Core.Typ -> Prop where
       (forall paramTy, paramTy ∈ paramTys -> WellTyped env paramTy) ->
       WellTyped env retTy ->
       WellTyped env (.functionType paramTys retTy)
+  | linearFunctionType_wf : forall env paramTys retTy,
+      (forall paramTy, paramTy ∈ paramTys -> WellTyped env paramTy) ->
+      WellTyped env retTy ->
+      WellTyped env (.linearFunctionType paramTys retTy)
   | refType_wf : forall env cap innerTy,
       WellTyped env innerTy -> WellTyped env (.refType cap innerTy)
   | effectFunctionType_wf : forall env paramTys retTy effects,
@@ -190,6 +219,17 @@ def inferType (ctx : LinCtx) (env : TypEnv) : Morph.Syntax.Expr -> Option Morph.
   | .app fn args =>
     match inferType ctx env fn with
     | some (.functionType paramTys retTy) =>
+      if args.length == paramTys.length then
+        let argTys := args.map (inferType ctx env)
+        if argTys.all Option.isSome then
+          let ok := (argTys.zip paramTys).all (fun (aTy?, pTy) =>
+            match aTy? with
+            | some aTy => aTy == pTy
+            | none => false)
+          if ok then some retTy else none
+        else none
+      else none
+    | some (.linearFunctionType paramTys retTy) =>
       if args.length == paramTys.length then
         let argTys := args.map (inferType ctx env)
         if argTys.all Option.isSome then
@@ -433,6 +473,19 @@ inductive HasType : LinCtx → TypEnv → Morph.Syntax.Expr → Morph.Core.Typ �
       HasType ctx Γ (.lam n body) (.functionType paramTys retTy) ctx
   | app_type : ∀ ctx Γ fn args τs τ,
       HasType ctx Γ fn (.functionType τs τ) ctx →
+      HasTypeAll ctx Γ args τs ctx →
+      HasType ctx Γ (.app fn args) τ ctx
+  -- linear arrow (ADR-014 stage 1): parameters are pushed as unrestricted
+  -- entries (no consumption); the exactly-once obligation is discharged
+  -- syntactically by `countUses`.
+  | lam_linear_type : ∀ ctx Γ n body paramTys retTy,
+      n = paramTys.length →
+      HasType (linPushMany ctx paramTys.reverse) Γ body retTy
+          (linPushMany ctx paramTys.reverse) →
+      (∀ i, i < paramTys.length → Morph.Syntax.countUses body i = 1) →
+      HasType ctx Γ (.lam n body) (.linearFunctionType paramTys retTy) ctx
+  | app_linear_type : ∀ ctx Γ fn args τs τ,
+      HasType ctx Γ fn (.linearFunctionType τs τ) ctx →
       HasTypeAll ctx Γ args τs ctx →
       HasType ctx Γ (.app fn args) τ ctx
   | let_type : ∀ ctx Γ e1 e2 τ1 τ2,

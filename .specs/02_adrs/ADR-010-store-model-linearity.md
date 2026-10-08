@@ -413,6 +413,29 @@ are linear, and that each may be consumed at most once. The remaining
 substitution lemma is needed for β-reduction under consumption, which the MIR
 pipeline performs as a lowering step with its own preservation proof.
 
+## Amendment (Loop 2, research program): capability safe-casts
+
+ADR-010 named capability transitions and none were specified. The Pony
+deny-capability matrix, restricted to Morph's iso/val/ref, gives the safe-cast
+relation. The load-bearing entry is **iso → val**: uniqueness means no other
+observer exists, so freezing is sound without a scan. **ref → val stays
+denied**: other `ref` aliases may still write, so freezing is unsound — this is
+exactly the uniqueness property `StoreInv` already tracks.
+
+```lean
+/-- Safe capability transitions (the Morph deny-matrix). -/
+inductive SafeCast : Capability → Capability → Prop where
+  | refl_iso : SafeCast .iso .iso
+  | refl_val : SafeCast .val .val
+  | refl_ref : SafeCast .ref .ref
+  | iso_to_val : SafeCast .iso .val
+  | iso_to_ref : SafeCast .iso .ref
+```
+
+Loop 3 implements: a `refCast` step rule (rewrites the store entry's type under
+`SafeCast`), a typing rule, and the preservation case. `trn`/`box`/`tag` are
+expressiveness features, deferred; they are not safety features.
+
 ## Related Standards
 
 - Memory model spec §2.4: Affine type semantics

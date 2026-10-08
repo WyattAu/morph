@@ -10,6 +10,14 @@ rejected; a program stage 2 rejects was never guaranteed unsafe. This loop
 alsoqueues ADR-014, which removes the surface-level consumption machinery that
 stage 2 was assumed to complement.)
 
+**Loop 2 honesty note:** CakeML verifies compilation end-to-end to machine
+code (6 architectures, including a verified GC), and PureCake/Pancake
+generalize the pattern to language front-ends. End-to-end verification is
+therefore *feasible*, and this ADR's boundary at instruction selection is a
+**team-size trade, not an impossibility argument**. CakeML's verified parser
+and type inferencer (against declarative specs) also motivates register entry
+P13: soundness of `inferType`/`synthType` with respect to `HasType`.)
+
 ## Context
 
 Morph's surface language has a fully verified type system (`HasType` over `LinCtx`), a store-carrying operational semantics (`Step : Store → Expr → Store → Expr → Prop`), and store-typed safety theorems (`HasTypeS`, `progressS`, `preservationS`, and the `safety_*` corollaries). All of this is formalized in Lean 4 at the **surface syntax** level with de Bruijn indices.

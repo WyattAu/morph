@@ -372,6 +372,65 @@ section HasTypeConstructorTests
         (HasTypeAll.cons [] [] _ (.lit (.bool true)) [] Typ.boolType []
           (HasType.lit_bool [] [] true) (HasTypeAll.nil [] [])))
 
+  -- HT-33: lam_linear_type (ADR-014 stage 1) — the canonical linear-memory idiom,
+  -- rejected since Phase 1c-β-2 part 1: a lambda taking one iso reference and
+  -- freeing it. The parameter is used exactly once, discharged by `countUses`;
+  -- no context consumption is involved (the parameter is pushed as `.many`).
+  example : HasType [] [] (.lam 1 (.refFree (.bvar 0)))
+      (.linearFunctionType [Typ.refType .iso .intType] Typ.unitType) [] := by
+    refine HasType.lam_linear_type [] [] 1 (.refFree (.bvar 0))
+      [Typ.refType .iso .intType] Typ.unitType rfl ?_ ?_
+    · refine HasType.refFree_type _ _ (.bvar 0) .intType ?_
+      exact HasType.bvar_type_many
+        [(Typ.refType .iso .intType, Morph.Usage.many)] [] 0 (Typ.refType .iso .intType)
+        (by simp [Morph.LinCtx.types]) rfl
+    · intro i hi
+      simp only [Morph.Syntax.countUses]
+      have hL : ([Typ.refType .iso .intType] : List Typ).length = 1 := rfl
+      have hi0 : i = 0 := by omega
+      subst hi0
+      rfl
+
+  -- HT-34: lam_linear_type (two linear parameters, each used exactly once)
+  example : HasType [] [] (.lam 2 (.binop .add (.bvar 0) (.bvar 1)))
+      (.linearFunctionType [Typ.intType, Typ.intType] Typ.intType) [] := by
+    refine HasType.lam_linear_type [] [] 2 (.binop .add (.bvar 0) (.bvar 1))
+      [Typ.intType, Typ.intType] Typ.intType rfl ?_ ?_
+    · refine HasType.binop_arith
+        [(Typ.intType, Morph.Usage.many), (Typ.intType, Morph.Usage.many)] [] .add
+        (.bvar 0) (.bvar 1)
+        [(Typ.intType, Morph.Usage.many), (Typ.intType, Morph.Usage.many)]
+        (by unfold isArithOp; trivial) ?_ ?_
+      · exact HasType.bvar_type_many _ _ 0 Typ.intType (by simp [Morph.LinCtx.types]) rfl
+      · exact HasType.bvar_type_many _ _ 1 Typ.intType (by simp [Morph.LinCtx.types]) rfl
+    · intro i hi
+      simp only [Morph.Syntax.countUses]
+      cases i with
+      | zero => rfl
+      | succ n =>
+        cases n with
+        | zero => rfl
+        | succ m =>
+          exact absurd hi (by
+            have hL : ([Typ.intType, Typ.intType] : List Typ).length = 2 := rfl
+            omega)
+
+  -- HT-35: app_linear_type — a linear function applied to its argument
+  example : HasType [] [] (.app (.lam 1 (.bvar 0)) [.lit (.int 42)]) Typ.intType [] :=
+    HasType.app_linear_type [] [] (.lam 1 (.bvar 0)) [.lit (.int 42)] [Typ.intType] Typ.intType
+      (HasType.lam_linear_type [] [] 1 (.bvar 0) [Typ.intType] Typ.intType rfl
+        (HasType.bvar_type_many [(Typ.intType, Morph.Usage.many)] [] 0 Typ.intType
+          (by simp [Morph.LinCtx.types]) rfl)
+        (by
+          intro i hi
+          simp only [Morph.Syntax.countUses]
+          have hL : ([Typ.intType] : List Typ).length = 1 := rfl
+          have hi0 : i = 0 := by omega
+          subst hi0
+          rfl))
+      (HasTypeAll.cons [] [] _ (.lit (.int 42)) [] Typ.intType []
+        (HasType.lit_int [] [] 42) (HasTypeAll.nil [] []))
+
   -- HasTypeAll tests
 
   -- HT-ALL-01: nil

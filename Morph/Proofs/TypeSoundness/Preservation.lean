@@ -129,6 +129,378 @@ private theorem HasTypeAll_lift_zero (ctx : LinCtx) (Γ : TypEnv) (es : List Exp
     (h : HasTypeAll ctx Γ es τs ctx) : HasTypeAll ctx Γ (es.map (lift 0)) τs ctx := by
   rw [show es.map (lift 0) = es from liftUnder_zero_eq_list 0 es]; exact h
 
+/-- Weakening across an arbitrary frame of context entries. The frame's
+    entries are opaque (their usages are preserved), which is what the
+    linear-arrow frames need (`Usage.many` entries for `ref` types). -/
+private theorem weakening_entries (entries : List LinEntry) (ctx : LinCtx) (Γ : TypEnv)
+    (e : Expr) (τ : Typ) (h : HasType ctx Γ e τ ctx) :
+    HasType (entries ++ ctx) Γ (lift entries.length e) τ (entries ++ ctx) := by
+  induction entries with
+  | nil =>
+    rw [List.nil_append, List.length_nil, lift_zero_eq]
+    exact h
+  | cons en rest ih =>
+    have h2 := weakening_entries_at [] en (rest ++ ctx) Γ (lift rest.length e) τ ih
+    simp only [List.length_nil] at h2
+    rw [show lift rest.length e = liftUnder 0 rest.length e from rfl] at h2
+    rw [liftUnder_comp, Nat.add_comm 1 rest.length] at h2
+    simp only [lift, List.nil_append, List.cons_append] at h2 ⊢
+    exact h2
+
+mutual
+
+private theorem HasType_substAll_entries (entries mid : List LinEntry) (ctx : LinCtx) (Γ : TypEnv)
+    (vs : List Expr) (e : Expr) (τ : Typ)
+    (hE : HasType (entries ++ (mid ++ ctx)) Γ e τ (entries ++ (mid ++ ctx)))
+    (hVs : HasTypeAll ctx Γ vs (List.map (fun (en : LinEntry) => en.fst) mid.reverse) ctx)
+    (hLen : vs.length = mid.length) :
+    HasType (entries ++ ctx) Γ (substAll' entries.length vs.reverse e) τ (entries ++ ctx) := by
+  match hE with
+  | .bvar_type _ _ _ _ _ _ hEnt hEq =>
+    exact absurd hEq.symm (LinCtx.consume_ne hEnt)
+  | .bvar_type_many _ _ n τ hLenCtx hEnt =>
+    unfold substAll'
+    split
+    · next hNlt =>
+      have hTyLen : ∀ X : LinCtx, (LinCtx.types X).length = X.length := by
+        intro X; simp [LinCtx.types]
+      have hLen2 : n < (LinCtx.types (entries ++ ctx)).length := by
+        rw [hTyLen, List.length_append] at hLenCtx ⊢
+        omega
+      exact HasType.bvar_type_many (entries ++ ctx) Γ n τ hLen2 (by
+        rw [List.getElem?_append_left (l₁ := entries) (l₂ := ctx) (by simpa using hNlt)]
+        rw [List.getElem?_append_left (l₁ := entries) (l₂ := mid ++ ctx) (by simpa using hNlt)] at hEnt
+        exact hEnt)
+    · next hNe1 =>
+      split
+      · next hIn =>
+        have hRevLen : vs.reverse.length = mid.length := by
+          have := @List.length_reverse Expr vs; omega
+        have hNLePfx : entries.length ≤ n := Nat.ge_of_not_lt hNe1
+        have hK : n - entries.length < mid.length := by omega
+        have hKPos : n - entries.length < vs.reverse.length := by omega
+        have hVsRev : HasTypeAll ctx Γ vs.reverse
+            (List.map (fun (en : LinEntry) => en.fst) mid) ctx := by
+          have h := HasTypeAll_reverse ctx Γ vs (mid.reverse.map (fun (en : LinEntry) => en.fst)) hVs
+          simpa using h
+        have hVal : HasType ctx Γ (vs.reverse[n - entries.length])
+            ((List.map (fun (en : LinEntry) => en.fst) mid)[n - entries.length]'(by
+              rw [List.length_map]; exact hK)) ctx :=
+          HasTypeAll_getElem ctx Γ vs.reverse (List.map (fun (en : LinEntry) => en.fst) mid)
+            (n - entries.length) hVsRev hKPos (by rw [List.length_map]; exact hK)
+        have hEnt2 : (entries ++ (mid ++ ctx))[n]? = some (mid[n - entries.length]'hK) := by
+          rw [List.getElem?_append_right (l₁ := entries) (l₂ := mid ++ ctx) (by omega)]
+          rw [List.getElem?_append_left (l₁ := mid) (l₂ := ctx) hK]
+          exact List.getElem?_eq_some_iff.mpr ⟨hK, rfl⟩
+        rw [hEnt2] at hEnt
+        have hTyEq : τ = (mid[n - entries.length]'hK).fst :=
+          congrArg Prod.fst (Option.some.inj hEnt).symm
+        have hGet : (List.map (fun (en : LinEntry) => en.fst) mid)[n - entries.length]'(by
+            rw [List.length_map]; exact hK) = (mid[n - entries.length]'hK).fst := by
+          simp [List.getElem_map]
+        have hWeakened := weakening_entries entries ctx Γ
+          (vs.reverse[n - entries.length])
+          ((List.map (fun (en : LinEntry) => en.fst) mid)[n - entries.length]'(by
+            rw [List.length_map]; exact hK)) hVal
+        show HasType (entries ++ ctx) Γ
+          (lift entries.length (vs.reverse[n - entries.length])) τ (entries ++ ctx)
+        rw [hTyEq, ← hGet]
+        exact hWeakened
+      · next hGe2 =>
+        have hRevLen : vs.reverse.length = mid.length := by
+          have := @List.length_reverse Expr vs; omega
+        rw [hRevLen]
+        have hNHigh : n ≥ entries.length + mid.length := by omega
+        have hTyLen : ∀ X : LinCtx, (LinCtx.types X).length = X.length := by
+          intro X; simp [LinCtx.types]
+        have hLen2 : n - mid.length < (LinCtx.types (entries ++ ctx)).length := by
+          rw [hTyLen] at hLenCtx ⊢
+          simp only [List.length_append] at hLenCtx ⊢
+          omega
+        exact HasType.bvar_type_many (entries ++ ctx) Γ (n - mid.length) τ hLen2 (by
+          rw [List.getElem?_append_right (l₁ := entries) (l₂ := ctx) (by omega)]
+          rw [List.getElem?_append_right (l₁ := entries) (l₂ := mid ++ ctx) (by omega)] at hEnt
+          rw [List.getElem?_append_right (l₁ := mid) (l₂ := ctx) (by omega)] at hEnt
+          rw [show n - entries.length - mid.length = n - mid.length - entries.length from by omega] at hEnt
+          exact hEnt)
+  | .fvar_type _ _ name τ hLookup =>
+    unfold substAll'; exact .fvar_type _ _ name τ hLookup
+  | .lit_int _ _ _ => unfold substAll'; exact .lit_int _ _ _
+  | .lit_bool _ _ _ => unfold substAll'; exact .lit_bool _ _ _
+  | .lit_string _ _ _ => unfold substAll'; exact .lit_string _ _ _
+  | .lit_unit _ _ => unfold substAll'; exact .lit_unit _ _
+  | .lit_pointer _ _ _ => unfold substAll'; exact .lit_pointer _ _ _
+  | .lit_float _ _ _ _ => unfold substAll'; exact .lit_float _ _ _ _
+  | .lit_int_width _ _ _ _ => unfold substAll'; exact .lit_int_width _ _ _ _
+  | .lit_some _ _ _ τ => unfold substAll'; exact .lit_some _ _ _ τ
+  | .lit_none _ _ τ => unfold substAll'; exact .lit_none _ _ τ
+  | .lit_ok _ _ _ τ_ok τ_err => unfold substAll'; exact .lit_ok _ _ _ τ_ok τ_err
+  | .lit_err _ _ _ τ_err τ_ok => unfold substAll'; exact .lit_err _ _ _ τ_err τ_ok
+  | .unop_not _ _ e' hE' =>
+    unfold substAll'
+    exact .unop_not _ _ _ (HasType_substAll_entries entries mid ctx Γ vs e' .boolType hE' hVs hLen)
+  | .unop_notb _ _ e' hE' =>
+    unfold substAll'
+    exact .unop_notb _ _ _ (HasType_substAll_entries entries mid ctx Γ vs e' .intType hE' hVs hLen)
+  | .binop_arith _ _ op e1 e2 _ hArith hE1 hE2 =>
+    unfold substAll'
+    exact .binop_arith _ _ op _ _ _ hArith
+      (HasType_substAll_entries entries mid ctx Γ vs e1 .intType hE1 hVs hLen)
+      (HasType_substAll_entries entries mid ctx Γ vs e2 .intType hE2 hVs hLen)
+  | .binop_comp _ _ op e1 e2 _ hComp hE1 hE2 =>
+    unfold substAll'
+    exact .binop_comp _ _ op _ _ _ hComp
+      (HasType_substAll_entries entries mid ctx Γ vs e1 .intType hE1 hVs hLen)
+      (HasType_substAll_entries entries mid ctx Γ vs e2 .intType hE2 hVs hLen)
+  | .binop_logic _ _ op e1 e2 _ hLogic hE1 hE2 =>
+    unfold substAll'
+    exact .binop_logic _ _ op _ _ _ hLogic
+      (HasType_substAll_entries entries mid ctx Γ vs e1 .boolType hE1 hVs hLen)
+      (HasType_substAll_entries entries mid ctx Γ vs e2 .boolType hE2 hVs hLen)
+  | .binop_bitwise _ _ op e1 e2 _ hBit hE1 hE2 =>
+    unfold substAll'
+    exact .binop_bitwise _ _ op _ _ _ hBit
+      (HasType_substAll_entries entries mid ctx Γ vs e1 .intType hE1 hVs hLen)
+      (HasType_substAll_entries entries mid ctx Γ vs e2 .intType hE2 hVs hLen)
+  | .binop_ptr_arith _ _ op e1 e2 _ hPtr hE1 hE2 =>
+    unfold substAll'
+    exact .binop_ptr_arith _ _ op _ _ _ hPtr
+      (HasType_substAll_entries entries mid ctx Γ vs e1 .pointerType hE1 hVs hLen)
+      (HasType_substAll_entries entries mid ctx Γ vs e2 .intType hE2 hVs hLen)
+  | .binop_ptr_load _ _ e1 e2 _ hE1 hE2 =>
+    unfold substAll'
+    exact .binop_ptr_load _ _ _ _ _
+      (HasType_substAll_entries entries mid ctx Γ vs e1 .pointerType hE1 hVs hLen)
+      (HasType_substAll_entries entries mid ctx Γ vs e2 .unitType hE2 hVs hLen)
+  | .binop_ptr_store _ _ e1 e2 _ hE1 hE2 =>
+    unfold substAll'
+    exact .binop_ptr_store _ _ _ _ _
+      (HasType_substAll_entries entries mid ctx Γ vs e1 .pointerType hE1 hVs hLen)
+      (HasType_substAll_entries entries mid ctx Γ vs e2 .intType hE2 hVs hLen)
+  | .binop_string_concat _ _ op e1 e2 _ hOp hE1 hE2 =>
+    unfold substAll'
+    exact .binop_string_concat _ _ op _ _ _ hOp
+      (HasType_substAll_entries entries mid ctx Γ vs e1 .stringType hE1 hVs hLen)
+      (HasType_substAll_entries entries mid ctx Γ vs e2 .stringType hE2 hVs hLen)
+  | .lam_type _ _ n body paramTys retTy hLen hBody =>
+    subst hLen
+    unfold substAll'
+    have hFrame : LinCtx.pushMany (entries ++ (mid ++ ctx)) paramTys.reverse
+        = (paramTys.reverse.map (fun t => (t, LinCtx.initialUsage t)) ++ entries) ++ (mid ++ ctx) := by
+      simp only [LinCtx.pushMany, List.append_assoc]
+    rw [hFrame] at hBody
+    have hResult := HasType_substAll_entries
+      (paramTys.reverse.map (fun t => (t, LinCtx.initialUsage t)) ++ entries) mid ctx Γ vs body retTy
+      hBody hVs hLen
+    have hFrameLen : ((paramTys.reverse.map (fun t => (t, LinCtx.initialUsage t)) ++ entries)).length
+        = paramTys.length + entries.length := by
+      simp
+    rw [hFrameLen, Nat.add_comm] at hResult
+    refine HasType.lam_type (entries ++ ctx) Γ paramTys.length
+      (substAll' (entries.length + paramTys.length) vs.reverse body) paramTys retTy rfl ?_
+    have hFrame2 : LinCtx.pushMany (entries ++ ctx) paramTys.reverse
+        = (paramTys.reverse.map (fun t => (t, LinCtx.initialUsage t)) ++ entries) ++ ctx := by
+      simp only [LinCtx.pushMany, List.append_assoc]
+    rw [hFrame2]
+    exact hResult
+  | .lam_linear_type _ _ n body paramTys retTy hLen hBody hCount =>
+    subst hLen
+    unfold substAll'
+    have hFrame : linPushMany (entries ++ (mid ++ ctx)) paramTys.reverse
+        = ((paramTys.reverse.map (fun t => (t, Morph.Usage.many)) ++ entries) ++ (mid ++ ctx)) := by
+      simp only [linPushMany, List.append_assoc]
+    rw [hFrame] at hBody
+    have hCount' : ∀ i, i < paramTys.length →
+        Morph.Syntax.countUses (substAll' (entries.length + paramTys.length) vs.reverse body) i = 1 := by
+      intro i hi
+      rw [countUses_substAll'_below (entries.length + paramTys.length) i vs.reverse body (by omega)]
+      exact hCount i hi
+    have hResult := HasType_substAll_entries
+      ((paramTys.reverse.map (fun t => (t, Morph.Usage.many)) ++ entries)) mid ctx Γ vs body retTy
+      hBody hVs hLen
+    have hFrameLen : ((paramTys.reverse.map (fun t => (t, Morph.Usage.many)) ++ entries)).length
+        = paramTys.length + entries.length := by
+      simp
+    rw [hFrameLen, Nat.add_comm] at hResult
+    refine HasType.lam_linear_type (entries ++ ctx) Γ paramTys.length
+      (substAll' (entries.length + paramTys.length) vs.reverse body) paramTys retTy rfl ?_ hCount'
+    have hFrame2 : linPushMany (entries ++ ctx) paramTys.reverse
+        = ((paramTys.reverse.map (fun t => (t, Morph.Usage.many)) ++ entries) ++ ctx) := by
+      simp only [linPushMany, List.append_assoc]
+    rw [hFrame2]
+    exact hResult
+  | .app_type _ _ fn args τs τ hFn hArgs =>
+    unfold substAll'
+    exact .app_type _ _ _ _ τs τ
+      (HasType_substAll_entries entries mid ctx Γ vs fn (.functionType τs τ) hFn hVs hLen)
+      (HasTypeAll_substAll_entries entries mid ctx Γ vs args τs hArgs hVs hLen)
+  | .app_linear_type _ _ fn args τs τ hFn hArgs =>
+    unfold substAll'
+    exact .app_linear_type _ _ _ _ τs τ
+      (HasType_substAll_entries entries mid ctx Γ vs fn (.linearFunctionType τs τ) hFn hVs hLen)
+      (HasTypeAll_substAll_entries entries mid ctx Γ vs args τs hArgs hVs hLen)
+  | .let_type _ _ e1 e2 τ1' τ2' hE1 hE2 =>
+    unfold substAll'
+    exact .let_type _ _ _ _ τ1' τ2'
+      (HasType_substAll_entries entries mid ctx Γ vs e1 τ1' hE1 hVs hLen)
+      (HasType_substAll_entries ((τ1', LinCtx.initialUsage τ1') :: entries) mid ctx Γ vs e2 τ2' hE2 hVs hLen)
+  | .if_type _ _ c t f τ hC hT hF =>
+    unfold substAll'
+    exact .if_type _ _ _ _ _ τ
+      (HasType_substAll_entries entries mid ctx Γ vs c .boolType hC hVs hLen)
+      (HasType_substAll_entries entries mid ctx Γ vs t τ hT hVs hLen)
+      (HasType_substAll_entries entries mid ctx Γ vs f τ hF hVs hLen)
+  | .for_type _ _ s e body hS hE hBody =>
+    unfold substAll'
+    exact .for_type _ _ _ _ _
+      (HasType_substAll_entries entries mid ctx Γ vs s .intType hS hVs hLen)
+      (HasType_substAll_entries entries mid ctx Γ vs e .intType hE hVs hLen)
+      (HasTypeAll_substAll_entries
+        ((.intType, LinCtx.initialUsage .intType) :: entries) mid ctx Γ vs body [.unitType] hBody hVs hLen)
+  | .pipe_type _ _ e f τ_arg _ hE hF =>
+    unfold substAll'
+    exact .pipe_type _ _ _ _ τ_arg _
+      (HasType_substAll_entries entries mid ctx Γ vs e τ_arg hE hVs hLen)
+      (HasType_substAll_entries entries mid ctx Γ vs f (.functionType [τ_arg] _) hF hVs hLen)
+  | .typeAsc_type _ _ e τ hE =>
+    unfold substAll'
+    exact .typeAsc_type _ _ _ τ
+      (HasType_substAll_entries entries mid ctx Γ vs e τ hE hVs hLen)
+  | .some_type _ _ e τ_inner hE =>
+    unfold substAll'
+    exact .some_type _ _ _ τ_inner
+      (HasType_substAll_entries entries mid ctx Γ vs e τ_inner hE hVs hLen)
+  | .none_type _ _ τ =>
+    unfold substAll'; exact .none_type _ _ τ
+  | .ok_type _ _ e τ_ok τ_err hE =>
+    unfold substAll'
+    exact .ok_type _ _ _ τ_ok τ_err
+      (HasType_substAll_entries entries mid ctx Γ vs e τ_ok hE hVs hLen)
+  | .err_type _ _ e τ_err τ_ok hE =>
+    unfold substAll'
+    exact .err_type _ _ _ τ_err τ_ok
+      (HasType_substAll_entries entries mid ctx Γ vs e τ_err hE hVs hLen)
+  | .null_coalesce_type _ _ e1 e2 τ hE1 hE2 =>
+    unfold substAll'
+    exact .null_coalesce_type _ _ _ _ τ
+      (HasType_substAll_entries entries mid ctx Γ vs e1 (.optionType τ) hE1 hVs hLen)
+      (HasType_substAll_entries entries mid ctx Γ vs e2 (.optionType τ) hE2 hVs hLen)
+  | .tuple_type _ _ elems tys hTys =>
+    unfold substAll'
+    exact .tuple_type _ _ _ tys
+      (HasTypeAll_substAll_entries entries mid ctx Γ vs elems tys hTys hVs hLen)
+  | .field_access_type _ _ e fname sname fields τ hE hField =>
+    unfold substAll'
+    exact .field_access_type _ _ _ fname sname fields τ
+      (HasType_substAll_entries entries mid ctx Γ vs e (.structType sname fields) hE hVs hLen)
+      hField
+  | .match_type _ _ scrut arms ts tr hScrut hArms =>
+    unfold substAll'
+    exact .match_type _ _ _ (substAllArms entries.length vs.reverse arms) ts tr
+      (HasType_substAll_entries entries mid ctx Γ vs scrut ts hScrut hVs hLen)
+      (ArmsTyped_substAll_entries entries mid ctx Γ vs arms ts tr hArms hVs hLen)
+  | .arrayLit_type _ _ elems τ' n hElems hLen' hn =>
+    unfold substAll'
+    have hLen'' : n = (List.map (fun e => substAll' entries.length vs.reverse e) elems).length := by
+      simp [List.length_map, hLen']
+    exact .arrayLit_type _ _ _ τ' n
+      (HasTypeAll_substAll_entries entries mid ctx Γ vs elems (List.replicate n τ') hElems hVs hLen)
+      hLen'' hn
+  | .arrayIndex_type _ _ arr idx τ' n hArr hIdx =>
+    unfold substAll'
+    exact .arrayIndex_type _ _ _ _ τ' n
+      (HasType_substAll_entries entries mid ctx Γ vs arr (.arrayType τ' n) hArr hVs hLen)
+      (HasType_substAll_entries entries mid ctx Γ vs idx .intType hIdx hVs hLen)
+  | .block_type _ _ exprs τs' τ hAll =>
+    unfold substAll'
+    exact .block_type _ _ _ τs' τ
+      (HasTypeAll_substAll_entries entries mid ctx Γ vs exprs (τs' ++ [τ]) hAll hVs hLen)
+  | .refCreate_type _ _ e cap τ hE =>
+    unfold substAll'
+    exact .refCreate_type _ _ _ cap τ
+      (HasType_substAll_entries entries mid ctx Γ vs e τ hE hVs hLen)
+  | .refLoad_type _ _ e cap τ hE =>
+    unfold substAll'
+    exact .refLoad_type _ _ _ cap τ
+      (HasType_substAll_entries entries mid ctx Γ vs e (.refType cap τ) hE hVs hLen)
+  | .refStore_type _ _ e v' cap τ hE hV' hCap =>
+    unfold substAll'
+    exact .refStore_type _ _ _ _ cap τ
+      (HasType_substAll_entries entries mid ctx Γ vs e (.refType cap τ) hE hVs hLen)
+      (HasType_substAll_entries entries mid ctx Γ vs v' τ hV' hVs hLen)
+      hCap
+  | .refFree_type _ _ e τ hE =>
+    unfold substAll'
+    exact .refFree_type _ _ _ τ
+      (HasType_substAll_entries entries mid ctx Γ vs e (.refType .iso τ) hE hVs hLen)
+
+private theorem HasTypeAll_substAll_entries (entries mid : List LinEntry) (ctx : LinCtx) (Γ : TypEnv)
+    (vs : List Expr) (es : List Expr) (τs : List Typ)
+    (hEs : HasTypeAll (entries ++ (mid ++ ctx)) Γ es τs (entries ++ (mid ++ ctx)))
+    (hVs : HasTypeAll ctx Γ vs (List.map (fun (en : LinEntry) => en.fst) mid.reverse) ctx)
+    (hLen : vs.length = mid.length) :
+    HasTypeAll (entries ++ ctx) Γ (es.map (substAll' entries.length vs.reverse)) τs
+      (entries ++ ctx) := by
+  match hEs with
+  | .nil _ _ => exact HasTypeAll.nil _ _
+  | .cons _ _ _ e es' τ τs' hE hRest =>
+    exact HasTypeAll.cons _ _ _ _ _ _ _
+      (HasType_substAll_entries entries mid ctx Γ vs e τ hE hVs hLen)
+      (HasTypeAll_substAll_entries entries mid ctx Γ vs es' τs' hRest hVs hLen)
+
+private theorem ArmsTyped_substAll_entries (entries mid : List LinEntry) (ctx : LinCtx) (Γ : TypEnv)
+    (vs : List Expr) (arms : List (List String × Expr)) (ts tr : Typ)
+    (hArms : ArmsTyped (entries ++ (mid ++ ctx)) Γ ts arms tr (entries ++ (mid ++ ctx)))
+    (hVs : HasTypeAll ctx Γ vs (List.map (fun (en : LinEntry) => en.fst) mid.reverse) ctx)
+    (hLen : vs.length = mid.length) :
+    ArmsTyped (entries ++ ctx) Γ ts (substAllArms entries.length vs.reverse arms) tr
+      (entries ++ ctx) := by
+  match hArms with
+  | .nil _ _ _ => simp only [substAllArms]; constructor
+  | .cons _ _ vars body rest _ _ hBody hRest =>
+    simp only [substAllArms]
+    constructor
+    · have hFrame : LinCtx.pushMany (entries ++ (mid ++ ctx)) (List.replicate vars.length ts)
+        = (List.replicate vars.length ts).map (fun t => (t, LinCtx.initialUsage t))
+            ++ entries ++ (mid ++ ctx) := by
+        simp only [LinCtx.pushMany, List.append_assoc]
+      rw [hFrame] at hBody
+      have hResult := HasType_substAll_entries
+        ((List.replicate vars.length ts).map (fun t => (t, LinCtx.initialUsage t)) ++ entries)
+        mid ctx Γ vs body tr hBody hVs hLen
+      simp only [List.length_map, List.length_append, List.length_replicate] at hResult
+      rw [Nat.add_comm] at hResult
+      show HasType (LinCtx.pushMany (entries ++ ctx) (List.replicate vars.length ts))
+          Γ (substAll' (entries.length + vars.length) vs.reverse body) tr
+          (LinCtx.pushMany (entries ++ ctx) (List.replicate vars.length ts))
+      have hFrame2 : LinCtx.pushMany (entries ++ ctx) (List.replicate vars.length ts)
+        = (List.replicate vars.length ts).map (fun t => (t, LinCtx.initialUsage t)) ++ entries ++ ctx := by
+        simp only [LinCtx.pushMany, List.append_assoc]
+      rw [hFrame2]
+      exact hResult
+    · exact ArmsTyped_substAll_entries entries mid ctx Γ vs rest ts tr hRest hVs hLen
+
+end
+
+/-- Depth-0 wrapper for `app_lam` on a linear arrow (ADR-014): the parameters
+    are pushed as `.many` entries, so no consumption is involved and the same
+    simultaneous-substitution argument applies. -/
+private theorem HasType_iterSubst_lin (σs : List Typ) (ctx : LinCtx) (Γ : TypEnv)
+    (vs : List Expr) (e : Expr) (τ : Typ)
+    (hE : HasType (linPushMany ctx σs) Γ e τ (linPushMany ctx σs))
+    (hVs : HasTypeAll ctx Γ vs σs.reverse ctx)
+    (hLen : vs.length = σs.length) :
+    HasType ctx Γ (substAll' 0 vs.reverse e) τ ctx := by
+  have hEq : ((σs.map (fun t => (t, Morph.Usage.many))).reverse.map (fun (en : LinEntry) => en.fst))
+      = σs.reverse := by
+    simp [List.map_reverse, List.map_map, Function.comp_def]
+  have hVs' : HasTypeAll ctx Γ vs
+      ((σs.map (fun t => (t, Morph.Usage.many))).reverse.map (fun (en : LinEntry) => en.fst)) ctx := by
+    rw [hEq]; exact hVs
+  have hLen' : vs.length = (List.map (fun t => (t, Morph.Usage.many)) σs).length := by
+    simp [hLen]
+  exact HasType_substAll_entries [] (σs.map (fun t => (t, Morph.Usage.many))) ctx Γ vs e τ hE hVs' hLen'
+
 /-!
 ## Substitution Lemma (de Bruijn)
 
@@ -281,10 +653,53 @@ private theorem HasType_subst_depth (pfx : List Typ) (ctx : LinCtx) (Γ : TypEnv
     rw [hLenEq, Nat.add_comm n pfx.length] at hResult
     rw [← LinCtx.pushMany_pushMany_append] at hResult
     exact HasType.lam_type (LinCtx.pushMany ctx pfx) Γ n (subst' (pfx.length + n) body v) paramTys retTy hLen hResult
+  | HasType.lam_linear_type _ _ n body paramTys retTy hLen hBody hCount =>
+    subst hLen
+    simp only [subst']
+    have hFrame : linPushMany (LinCtx.pushMany ((τ1, LinCtx.initialUsage τ1) :: ctx) pfx) paramTys.reverse
+        = ((paramTys.reverse.map (fun t => (t, Morph.Usage.many))
+              ++ pfx.map (fun t => (t, LinCtx.initialUsage t)))
+            ++ ((τ1, LinCtx.initialUsage τ1) :: ctx)) := by
+      simp only [linPushMany, LinCtx.pushMany, List.append_assoc]
+    rw [hFrame] at hBody
+    have hVs : HasTypeAll ctx Γ [v] [τ1] ctx :=
+      HasTypeAll.cons _ _ _ _ _ _ _ hV (HasTypeAll.nil _ _)
+    have hLen1 : [v].length = ([(τ1, LinCtx.initialUsage τ1)] : List LinEntry).length := rfl
+    have hResult := HasType_substAll_entries
+      ((paramTys.reverse.map (fun t => (t, Morph.Usage.many))
+          ++ pfx.map (fun t => (t, LinCtx.initialUsage t))))
+      [(τ1, LinCtx.initialUsage τ1)] ctx Γ [v] body retTy hBody hVs hLen1
+    have hFrameLen : (((paramTys.reverse.map (fun t => (t, Morph.Usage.many))
+          ++ pfx.map (fun t => (t, LinCtx.initialUsage t))))).length
+        = paramTys.length + pfx.length := by
+      simp
+    rw [hFrameLen, Nat.add_comm] at hResult
+    have hRev : ([v].reverse : List Expr) = [v] := rfl
+    rw [hRev] at hResult
+    rw [substAll'_singleton] at hResult
+    have hCount' : ∀ i, i < paramTys.length →
+        Morph.Syntax.countUses (subst' (pfx.length + paramTys.length) body v) i = 1 := by
+      intro i hi
+      rw [← substAll'_singleton (pfx.length + paramTys.length) v body]
+      rw [countUses_substAll'_below (pfx.length + paramTys.length) i [v] body (by omega)]
+      exact hCount i hi
+    refine HasType.lam_linear_type (LinCtx.pushMany ctx pfx) Γ paramTys.length
+      (subst' (pfx.length + paramTys.length) body v) paramTys retTy rfl ?_ hCount'
+    have hFrame2 : linPushMany (LinCtx.pushMany ctx pfx) paramTys.reverse
+        = ((paramTys.reverse.map (fun t => (t, Morph.Usage.many))
+              ++ pfx.map (fun t => (t, LinCtx.initialUsage t))) ++ ctx) := by
+      simp only [linPushMany, LinCtx.pushMany, List.append_assoc]
+    rw [hFrame2]
+    exact hResult
   | HasType.app_type _ _ fn args τs τ hFn hArgs =>
     simp only [subst']
     exact HasType.app_type _ _ _ _ τs τ
       (HasType_subst_depth pfx ctx Γ fn v τ1 (.functionType τs τ) hFn hV)
+      (HasTypeAll_subst_depth pfx ctx Γ args v τ1 τs hArgs hV)
+  | HasType.app_linear_type _ _ fn args τs τ hFn hArgs =>
+    simp only [subst']
+    exact HasType.app_linear_type _ _ _ _ τs τ
+      (HasType_subst_depth pfx ctx Γ fn v τ1 (.linearFunctionType τs τ) hFn hV)
       (HasTypeAll_subst_depth pfx ctx Γ args v τ1 τs hArgs hV)
   | HasType.if_type _ _ c t f τ hC hT hF =>
     simp only [subst']
@@ -449,6 +864,17 @@ private theorem HasTypeAll_subst_all (ctx : LinCtx) (Γ : TypEnv) (es : List Exp
     (hV : HasType ctx Γ v τ1 ctx) :
     HasTypeAll ctx Γ (es.map (fun e => Morph.Syntax.subst e v)) τs ctx :=
   HasTypeAll_subst_depth [] ctx Γ es v τ1 τs hArgs hV
+
+/-!
+## Simultaneous Substitution Under an Entry Frame (ADR-014)
+
+`HasType_substAll_entries` is `HasType_substAll` generalized to an arbitrary
+frame of context entries: the substituted block sits directly above `ctx`,
+surrounded by `entries`. The linear-arrow case relies on
+`countUses_substAll'_below`: substitution only touches indices `≥ entries.length`,
+so the exactly-once premise `∀ i < paramTys.length, countUses body i = 1`
+survives verbatim. This is what lets `app_lam` reduce a `linearFunctionType`
+application with the existing β-reduction machinery (ADR-014 stage 1). -/
 
 /-!
 ## Simultaneous Substitution Preserves Types
@@ -620,11 +1046,56 @@ private theorem HasType_substAll (pfx σs : List Typ) (ctx : LinCtx) (Γ : TypEn
     rw [← LinCtx.pushMany_pushMany_append] at hResult
     exact HasType.lam_type (LinCtx.pushMany ctx pfx) Γ m
       (substAll' (pfx.length + m) vs.reverse body) paramTys retTy hLenM hResult
-    
+
+  | HasType.lam_linear_type _ _ n body paramTys retTy hLen hBody hCount =>
+    subst hLen
+    unfold substAll'
+    have hFrame : linPushMany (LinCtx.pushMany (LinCtx.pushMany ctx σs) pfx) paramTys.reverse
+        = ((paramTys.reverse.map (fun t => (t, Morph.Usage.many))
+              ++ pfx.map (fun t => (t, LinCtx.initialUsage t)))
+            ++ (σs.map (fun t => (t, LinCtx.initialUsage t)) ++ ctx)) := by
+      simp only [linPushMany, LinCtx.pushMany, List.append_assoc]
+    rw [hFrame] at hBody
+    have hCount' : ∀ i, i < paramTys.length →
+        Morph.Syntax.countUses
+          (substAll' (pfx.length + paramTys.length) vs.reverse body) i = 1 := by
+      intro i hi
+      rw [countUses_substAll'_below (pfx.length + paramTys.length) i vs.reverse body (by omega)]
+      exact hCount i hi
+    have hVsEq : ((σs.map (fun t => (t, LinCtx.initialUsage t))).reverse.map (fun (en : LinEntry) => en.fst))
+        = σs.reverse := by
+      simp [List.map_reverse, List.map_map, Function.comp_def]
+    have hVs' : HasTypeAll ctx Γ vs
+        ((σs.map (fun t => (t, LinCtx.initialUsage t))).reverse.map (fun (en : LinEntry) => en.fst)) ctx := by
+      rw [hVsEq]; exact hVs
+    have hLen' : vs.length = (List.map (fun t => (t, LinCtx.initialUsage t)) σs).length := by
+      simp [hLen]
+    have hResult := HasType_substAll_entries
+      ((paramTys.reverse.map (fun t => (t, Morph.Usage.many))
+          ++ pfx.map (fun t => (t, LinCtx.initialUsage t))))
+      (σs.map (fun t => (t, LinCtx.initialUsage t))) ctx Γ vs body retTy hBody hVs' hLen'
+    have hFrameLen : (((paramTys.reverse.map (fun t => (t, Morph.Usage.many))
+          ++ pfx.map (fun t => (t, LinCtx.initialUsage t))))).length
+        = paramTys.length + pfx.length := by
+      simp
+    rw [hFrameLen, Nat.add_comm] at hResult
+    refine HasType.lam_linear_type (LinCtx.pushMany ctx pfx) Γ paramTys.length
+      (substAll' (pfx.length + paramTys.length) vs.reverse body) paramTys retTy rfl ?_ hCount'
+    have hFrame2 : linPushMany (LinCtx.pushMany ctx pfx) paramTys.reverse
+        = ((paramTys.reverse.map (fun t => (t, Morph.Usage.many))
+              ++ pfx.map (fun t => (t, LinCtx.initialUsage t))) ++ ctx) := by
+      simp only [linPushMany, LinCtx.pushMany, List.append_assoc]
+    rw [hFrame2]
+    exact hResult
   | HasType.app_type _ _ fn args τs τ hFn hArgs =>
     unfold substAll'
     exact HasType.app_type _ _ _ _ τs τ
       (HasType_substAll pfx σs ctx Γ vs fn (.functionType τs τ) hFn hVs hLen)
+      (HasTypeAll_substAll pfx σs ctx Γ vs args τs hArgs hVs hLen)
+  | HasType.app_linear_type _ _ fn args τs τ hFn hArgs =>
+    unfold substAll'
+    exact HasType.app_linear_type _ _ _ _ τs τ
+      (HasType_substAll pfx σs ctx Γ vs fn (.linearFunctionType τs τ) hFn hVs hLen)
       (HasTypeAll_substAll pfx σs ctx Γ vs args τs hArgs hVs hLen)
   | HasType.if_type _ _ c t f τ hC hT hF =>
     unfold substAll'
@@ -1107,6 +1578,8 @@ theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {ctx : L
     match hType with
     | HasType.app_type _ _ _ _ τs τ hFn hArgs =>
       exact HasType.app_type _ _ fn' args τs τ (preservation hFn hs) hArgs
+    | HasType.app_linear_type _ _ _ _ τs τ hFn hArgs =>
+      exact HasType.app_linear_type _ _ fn' args τs τ (preservation hFn hs) hArgs
   | app_arg fn a a' rest _ hs =>
     match hType with
     | HasType.app_type _ _ _ _ τs _ hFn hAll =>
@@ -1119,6 +1592,16 @@ theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {ctx : L
       | cons τhead τtail =>
         exact HasType.app_type _ _ fn (a' :: rest) (τhead :: τtail) τ hFn
           (HasTypeAll.cons _ _ _ _ _ _ _ (preservation (HasTypeAll_cons_head hAll) hs) (HasTypeAll_cons_tail hAll))
+    | HasType.app_linear_type _ _ _ _ τs _ hFn hAll =>
+      cases τs with
+      | nil =>
+        exfalso
+        have hLen := HasTypeAll_length _ _ _ _ hAll
+        simp only [List.length_cons, List.length_nil] at hLen
+        omega
+      | cons τhead τtail =>
+        exact HasType.app_linear_type _ _ fn (a' :: rest) (τhead :: τtail) τ hFn
+          (HasTypeAll.cons _ _ _ _ _ _ _ (preservation (HasTypeAll_cons_head hAll) hs) (HasTypeAll_cons_tail hAll))
   | app_lam n body args hLen =>
     match hType with
     | HasType.app_type _ _ _ _ _ _ hFn hAll =>
@@ -1129,6 +1612,15 @@ theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {ctx : L
         have hVs : HasTypeAll ctx Γ args (paramTys.reverse).reverse ctx := by
           simp [List.reverse_reverse]; exact hAll
         exact HasType_iterSubst paramTys.reverse ctx Γ args body retTy
+          hBodyP hVs hLenEq
+    | HasType.app_linear_type _ _ _ _ _ _ hFn hAll =>
+      match hFn with
+      | HasType.lam_linear_type _ _ _ _ paramTys retTy hLen' hBodyP hCount =>
+        have hLenEq : args.length = paramTys.reverse.length := by
+          rw [List.length_reverse]; exact hLen ▸ hLen'
+        have hVs : HasTypeAll ctx Γ args (paramTys.reverse).reverse ctx := by
+          simp [List.reverse_reverse]; exact hAll
+        exact HasType_iterSubst_lin paramTys.reverse ctx Γ args body retTy
           hBodyP hVs hLenEq
   | pipe_left e e' f hStep1 =>
     cases hType with

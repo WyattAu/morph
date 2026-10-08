@@ -42,7 +42,11 @@ def synthType (ctx : LinCtx) (env : TypEnv) (e : Expr) : Option Typ :=
 /-- Check that an expression has the expected type in the given environment.
     For lambdas, this performs bidirectional checking: given an expected
     function type, the parameter types are used to extend the de Bruijn
-    context and check the body. -/
+    context and check the body.
+
+    For a `linearFunctionType` expectation the parameters are pushed as
+    unrestricted entries (ADR-014: no consumption) and each parameter must
+    occur exactly once in the body (`countUses`). -/
 def checkType (ctx : LinCtx) (env : TypEnv) (e : Expr) (expected : Typ) : Bool :=
   match e with
   | .lam n body =>
@@ -50,6 +54,11 @@ def checkType (ctx : LinCtx) (env : TypEnv) (e : Expr) (expected : Typ) : Bool :
     | .functionType paramTys retTy =>
       if _h : n = paramTys.length then
         checkType (LinCtx.pushMany ctx paramTys.reverse) env body retTy
+      else false
+    | .linearFunctionType paramTys retTy =>
+      if _h : n = paramTys.length then
+        checkType (linPushMany ctx paramTys.reverse) env body retTy &&
+          (List.range paramTys.length).all (fun i => countUses body i == 1)
       else false
     | _ => false
   | _ =>

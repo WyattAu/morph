@@ -48,6 +48,8 @@ inductive WellTypedValue : Expr → Typ → Prop where
   | lit_int_width : forall w n, WellTypedValue (.lit (.int n)) (.intWidthType w)
   | lam : forall n body paramTys retTy,
       WellTypedValue (.lam n body) (.functionType paramTys retTy)
+  | lam_linear : forall n body paramTys retTy,
+      WellTypedValue (.lam n body) (.linearFunctionType paramTys retTy)
   | lit_none : forall τ,
       WellTypedValue (.lit Value.none) (.optionType τ)
   | lit_some : forall v τ,
@@ -175,6 +177,7 @@ theorem value_is_well_typed : forall {e : Expr} {τ : Typ} {cout : LinCtx},
   | lam n body =>
     cases ht with
     | lam_type => exact WellTypedValue.lam n body _ _
+    | lam_linear_type => exact WellTypedValue.lam_linear n body _ _
     | _ => contradiction
   | none_ => cases ht with
     | none_type _ _ τ_inner => exact WellTypedValue.none_val τ_inner

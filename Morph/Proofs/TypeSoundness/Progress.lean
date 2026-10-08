@@ -704,7 +704,9 @@ private theorem progress_strong :
         obtain ⟨e1', hs⟩ := hStep1
         right; exact ⟨.binop .add e1' e2, Step.binop_left σ .add e1 e1' e2 hs⟩
      | lam_type _ _ n body paramTys retTy hLen hBody =>
-      left; exact IsValue.lam n body
+       left; exact IsValue.lam n body
+     | lam_linear_type _ _ n body paramTys retTy hLen hBody hCount =>
+       left; exact IsValue.lam n body
     | app_type _ _ fnE argsE τs _ hFnE hArgsE =>
       have ih_fn := ih fnE (Nat.lt_of_lt_of_le depth_app_fn (Nat.le_of_lt_succ hDepth)) (.functionType τs τ) hFnE
       cases ih_fn with
@@ -718,6 +720,34 @@ private theorem progress_strong :
             have h := HasTypeAll_length [] [] argsE τs hArgsE
             cases hFnE with
             | lam_type _ _ _ _ paramTys _ hLen _ =>
+              simp at *
+              omega
+            | _ => contradiction
+          right
+          exact ⟨substAll argsE.reverse body, Step.app_lam σ n body argsE hArgsLen⟩
+        | none_ => exfalso; cases hFnE with <;> contradiction
+        | err_ _ _ => exfalso; cases hFnE with <;> contradiction
+        | ok_ _ _ => exfalso; cases hFnE with <;> contradiction
+        | some_ _ _ => exfalso; cases hFnE with <;> contradiction
+        | tuple_ _ _ => exfalso; cases hFnE with <;> contradiction
+        | array_ _ _ => exfalso; cases hFnE with <;> contradiction
+         | refCreate _ _ _ _ => exfalso; cases hFnE with <;> contradiction
+      | inr hStep_fn =>
+        obtain ⟨fnE', hs⟩ := hStep_fn
+        right; exact ⟨.app fnE' argsE, Step.app_fn σ fnE fnE' argsE hs⟩
+    | app_linear_type _ _ fnE argsE τs _ hFnE hArgsE =>
+      have ih_fn := ih fnE (Nat.lt_of_lt_of_le depth_app_fn (Nat.le_of_lt_succ hDepth)) (.linearFunctionType τs τ) hFnE
+      cases ih_fn with
+      | inl hv =>
+        cases hv with
+        | lit _ =>
+          exfalso
+          cases hFnE with <;> contradiction
+        | lam n body =>
+          have hArgsLen : argsE.length = n := by
+            have h := HasTypeAll_length [] [] argsE τs hArgsE
+            cases hFnE with
+            | lam_linear_type _ _ _ _ paramTys _ hLen _ _ =>
               simp at *
               omega
             | _ => contradiction
