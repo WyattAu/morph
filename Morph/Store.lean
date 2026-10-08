@@ -97,6 +97,19 @@ def free (σ : Store) (loc : Loc) : Option Store :=
       nextLoc := σ.nextLoc
       freed := loc :: σ.freed }
 
+/-- Rewrite a location's reference capability (ADR-010 amendment, Loop 3).
+
+    In the ADR-010 store model the capability of a reference lives in the store
+    typing map `Δ` (`StoreTyp`), while the heap cell holds the *pointee* type
+    and the pointee value — neither of which a capability cast changes. A
+    successful cast therefore returns the store unchanged; the operation
+    succeeds iff the location is allocated and not freed (i.e. the cast
+    re-declaration is backed by a live cell). Returns `none` otherwise. -/
+def castType (σ : Store) (loc : Loc) (_cap' : Capability) : Option Store :=
+  match σ.heap loc with
+  | some _ => if loc ∈ σ.freed then none else some σ
+  | none => none
+
 /-! ## Store Queries -/
 
 /-- Check if a location is allocated and not freed. -/
@@ -243,12 +256,26 @@ def extend (Δ : StoreTyp) (l : Loc) (τ : Typ) : StoreTyp :=
 def erase (Δ : StoreTyp) (l : Loc) : StoreTyp :=
   fun l' => if l' = l then none else Δ l'
 
+/-- Re-declare `l` with reference capability `cap` over pointee type `τ`
+    (ADR-010 amendment): the pointee type is unchanged, only the capability of
+    the reference is rewritten. -/
+def cast (Δ : StoreTyp) (l : Loc) (cap : Capability) (τ : Typ) : StoreTyp :=
+  fun l' => if l' = l then some (.refType cap τ) else Δ l'
+
 @[simp] theorem erase_eq (Δ : StoreTyp) (l : Loc) : erase Δ l l = none := by
   simp [erase]
 
 @[simp] theorem erase_ne {Δ : StoreTyp} {l l' : Loc} (h : l' ≠ l) :
     erase Δ l l' = Δ l' := by
   simp [erase, h]
+
+@[simp] theorem cast_eq (Δ : StoreTyp) (l : Loc) (cap : Capability) (τ : Typ) :
+    cast Δ l cap τ l = some (.refType cap τ) := by
+  simp [cast]
+
+@[simp] theorem cast_ne {Δ : StoreTyp} {l l' : Loc} {cap : Capability} {τ : Typ}
+    (h : l' ≠ l) : cast Δ l cap τ l' = Δ l' := by
+  simp [cast, h]
 
 @[simp] theorem pointeeTy_extend {Δ : StoreTyp} {l : Loc} {τ : Typ}
     (hnr : NonRefTyp τ) : pointeeTy (extend Δ l τ) l = some τ :=
@@ -264,6 +291,22 @@ theorem pointeeTy_extend_ne {Δ : StoreTyp} {l l' : Loc} {τ : Typ} (h : l' ≠ 
 theorem pointeeTy_erase_ne {Δ : StoreTyp} {l l' : Loc} (h : l' ≠ l) :
     pointeeTy (erase Δ l) l' = pointeeTy Δ l' := by
   simp only [pointeeTy, erase, if_neg h]
+
+@[simp] theorem pointeeTy_cast_self (Δ : StoreTyp) (l : Loc) (cap : Capability) (τ : Typ) :
+    pointeeTy (cast Δ l cap τ) l = some τ :=
+  pointeeTy_of_ref (cast_eq Δ l cap τ)
+
+theorem pointeeTy_cast_ne {Δ : StoreTyp} {l l' : Loc} {cap : Capability} {τ : Typ}
+    (h : l' ≠ l) : pointeeTy (cast Δ l cap τ) l' = pointeeTy Δ l' := by
+  simp only [pointeeTy, cast, if_neg h]
+
+/-- A no-op cast (same capability) leaves the store typing unchanged. -/
+theorem cast_self_eq {Δ : StoreTyp} {l : Loc} {cap : Capability} {τ : Typ}
+    (h : Δ l = some (.refType cap τ)) : cast Δ l cap τ = Δ := by
+  funext l'
+  by_cases hl : l' = l
+  · subst hl; rw [cast_eq, h]
+  · rw [cast_ne hl]
 
 end StoreTyp
 
@@ -490,6 +533,66 @@ theorem noLocValues_of_iso {Δ : StoreTyp} {loc : Loc} {vs : List Value} {τs : 
 
 end
 
+mutual
+
+/-- Re-declaring the capability of `loc` preserves the typing of every value
+    that does not contain a pointer to `loc` (ADR-010 amendment). This is the
+    cast analogue of `valueType_erase_of_noLoc`: the typing of a value never
+    consults the entry of a location it does not mention. -/
+theorem valueType_cast_of_noLoc {Δ : StoreTyp} {loc : Loc} {cap : Capability} {τ₀ : Typ}
+    {v : Value} {t : Typ} :
+    ValueType Δ v t → NoLocValue loc v → ValueType (StoreTyp.cast Δ loc cap τ₀) v t := by
+  intro hv hnd
+  cases hv with
+  | int n => exact .int _ _
+  | bool b => exact .bool _ _
+  | string s => exact .string _ _
+  | unit => exact .unit _
+  | pointer p => exact .pointer _ _
+  | float w f => exact .float _ _ _
+  | none τ => exact .none _ _
+  | some v τ hv => exact .some _ _ _ (valueType_cast_of_noLoc hv hnd)
+  | ok v τ_ok τ_err hv => exact .ok _ _ _ _ (valueType_cast_of_noLoc hv hnd)
+  | err v τ_ok τ_err hv => exact .err _ _ _ _ (valueType_cast_of_noLoc hv hnd)
+  | tuple_ vs τs hvs =>
+      exact .tuple_ _ _ _ (valueTypes_cast_of_noLoc hvs (by simpa only [NoLocValue] using hnd))
+  | array_ vs τ hvs =>
+      exact .array_ _ _ _ (valueTypes_cast_of_noLoc hvs (by simpa only [NoLocValue] using hnd))
+  | loc l cap₀ τ₁ hΔ hcap =>
+      refine .loc _ l cap₀ τ₁ ?_ hcap
+      rw [StoreTyp.cast_ne (by simpa [NoLocValue] using hnd)]
+      exact hΔ
+
+theorem valueTypes_cast_of_noLoc {Δ : StoreTyp} {loc : Loc} {cap : Capability} {τ₀ : Typ}
+    {vs : List Value} {τs : List Typ} :
+    ValueTypes Δ vs τs → NoLocValues loc vs →
+      ValueTypes (StoreTyp.cast Δ loc cap τ₀) vs τs := by
+  intro hvs hnd
+  cases hvs with
+  | nil => exact .nil _
+  | cons v vs τ τs hv hvs =>
+      exact .cons _ _ _ _ _
+        (valueType_cast_of_noLoc hv hnd.1)
+        (valueTypes_cast_of_noLoc hvs hnd.2)
+
+end
+
+/-! ## Capability Safe-Casts (ADR-010 amendment) -/
+
+/-- Safe capability transitions (the Morph deny-matrix, from the Pony
+    deny-capability matrix restricted to `iso`/`val`/`ref`).
+
+    The load-bearing entry is `iso_to_val`: uniqueness means no other observer
+    exists, so freezing is sound without a scan. `ref → val` stays *denied*:
+    other `ref` aliases may still write, so freezing is unsound. The reflexive
+    entries are no-ops on the store typing. -/
+inductive SafeCast : Capability → Capability → Prop where
+  | refl_iso : SafeCast .iso .iso
+  | refl_val : SafeCast .val .val
+  | refl_ref : SafeCast .ref .ref
+  | iso_to_val : SafeCast .iso .val
+  | iso_to_ref : SafeCast .iso .ref
+
 /-! ## Store Invariant -/
 
 /-- The store is well-typed: every allocated location is declared in `Δ` with a
@@ -714,6 +817,109 @@ theorem free_invalidates_inv {σ σ' : Store} {Δ : StoreTyp} {loc : Loc} {τ : 
     refine ⟨v', ?_⟩
     rw [hheap']
     simpa only [if_neg hl] using hv'
+
+/-! ## Invariant: Capability Cast (ADR-010 amendment)
+
+A cast re-declares the *capability* of a live location; the heap is untouched.
+The transition is safe exactly when it is a `SafeCast`: either it is a no-op
+(same capability) or the source capability is `iso` — and uniqueness then
+guarantees that no live cell holds a pointer to the cast location
+(`noLocValue_of_iso`), so no other cell's typing is disturbed. -/
+
+/-- Every safe cast is either a freeze/uniquify (source `iso`) or a no-op. -/
+theorem safeCast_iso_or_refl {cap cap' : Capability} (hsc : SafeCast cap cap') :
+    cap = .iso ∨ cap' = cap := by
+  cases hsc with
+  | refl_iso => exact Or.inl rfl
+  | refl_val => exact Or.inr rfl
+  | refl_ref => exact Or.inr rfl
+  | iso_to_val => exact Or.inl rfl
+  | iso_to_ref => exact Or.inl rfl
+
+theorem castType_of_live {σ : Store} {loc : Loc} {cap' : Capability} {τ : Typ} {v : Value}
+    (hheap : σ.heap loc = some (τ, v)) (hnf : loc ∉ σ.freed) :
+    Store.castType σ loc cap' = some σ := by
+  simp only [Store.castType, hheap]
+  simp [hnf]
+
+theorem castType_of_absent {σ : Store} {loc : Loc} {cap' : Capability}
+    (h : σ.heap loc = none) : Store.castType σ loc cap' = none := by
+  simp only [Store.castType, h]
+
+/-- A declared location (hence live, by the invariant) can always be cast. -/
+theorem cast_ok {σ : Store} {Δ : StoreTyp} {loc : Loc} {cap cap' : Capability} {τ : Typ}
+    (hInv : StoreInv σ Δ) (hΔ : Δ loc = some (.refType cap τ)) :
+    ∃ σ', Store.castType σ loc cap' = some σ' := by
+  obtain ⟨v, hheap⟩ := hInv.2 loc τ (pointeeTy_of_ref hΔ)
+  exact ⟨σ, castType_of_live hheap (hInv.1 loc τ v hheap).2.1⟩
+
+/-- `StoreTyped` is preserved by a `SafeCast` under the re-declared store typing
+    `cast Δ loc cap' τ`. For an `iso` source this is `noLocValue_of_iso` at
+    work: no live cell holds a pointer to the cast location, so no other
+    cell's value typing consults the changed entry. -/
+theorem cast_preserves_typed {σ : Store} {Δ : StoreTyp} {loc : Loc}
+    {cap cap' : Capability} {τ : Typ}
+    (hσ : StoreTyped σ Δ) (hΔ : Δ loc = some (.refType cap τ)) (hsc : SafeCast cap cap') :
+    StoreTyped σ (StoreTyp.cast Δ loc cap' τ) := by
+  rcases safeCast_iso_or_refl hsc with hiso | hnoop
+  · subst hiso
+    intro l t v' h
+    by_cases hl : l = loc
+    · subst hl
+      obtain ⟨hpt, hnf, hv⟩ := hσ l t v' h
+      have hτ : t = τ := Option.some.inj (hpt.symm.trans (pointeeTy_of_ref hΔ))
+      subst hτ
+      exact ⟨StoreTyp.pointeeTy_cast_self _ _ _ _, hnf,
+        valueType_cast_of_noLoc hv (noLocValue_of_iso hv hΔ rfl)⟩
+    · obtain ⟨hpt, hnf, hv⟩ := hσ l t v' h
+      refine ⟨?_, hnf, valueType_cast_of_noLoc hv (noLocValue_of_iso hv hΔ rfl)⟩
+      rw [StoreTyp.pointeeTy_cast_ne hl]
+      exact hpt
+  · subst hnoop
+    rw [StoreTyp.cast_self_eq hΔ]
+    exact hσ
+
+/-- A `SafeCast` re-declaration never invalidates a value typing. This is the
+    load-bearing sanity property of the deny matrix: if the value mentions the
+    cast location at all, then `ValueType.loc` forces the declared capability
+    to be non-`iso`, and the only `SafeCast` out of a non-`iso` capability is
+    reflexive — so the location's type is unchanged. Otherwise the value never
+    consults the changed entry (`valueType_cast_of_noLoc`). -/
+theorem valueType_cast_stable {Δ : StoreTyp} {l : Loc} {cap cap' : Capability} {τ₀ : Typ}
+    {v : Value} {t : Typ} (hv : ValueType Δ v t)
+    (hΔ : Δ l = some (.refType cap τ₀)) (hsc : SafeCast cap cap') :
+    ValueType (StoreTyp.cast Δ l cap' τ₀) v t := by
+  rcases safeCast_iso_or_refl hsc with hiso | hnoop
+  · subst hiso
+    exact valueType_cast_of_noLoc hv (noLocValue_of_iso hv hΔ rfl)
+  · subst hnoop
+    rw [StoreTyp.cast_self_eq hΔ]
+    exact hv
+
+/-- The two-sided store invariant is preserved by a `SafeCast` under the
+    re-declared store typing. The store itself is unchanged: the capability
+    lives only in `Δ`. -/
+theorem cast_preserves_inv {σ : Store} {Δ : StoreTyp} {loc : Loc}
+    {cap cap' : Capability} {τ : Typ}
+    (hInv : StoreInv σ Δ) (hΔ : Δ loc = some (.refType cap τ)) (hsc : SafeCast cap cap') :
+    StoreInv σ (StoreTyp.cast Δ loc cap' τ) := by
+  obtain ⟨hσ, htot⟩ := hInv
+  rcases safeCast_iso_or_refl hsc with hiso | hnoop
+  · subst hiso
+    have hnf : loc ∉ σ.freed := not_freed_of_inv ⟨hσ, htot⟩ hΔ
+    refine ⟨cast_preserves_typed hσ hΔ hsc, ?_⟩
+    intro l t hpt
+    by_cases hl : l = loc
+    · subst hl
+      rw [StoreTyp.pointeeTy_cast_self] at hpt
+      have hτ : τ = t := Option.some.inj hpt
+      subst hτ
+      exact htot l τ (pointeeTy_of_ref hΔ)
+    · rw [StoreTyp.pointeeTy_cast_ne hl] at hpt
+      exact htot l t hpt
+  · subst hnoop
+    rw [StoreTyp.cast_self_eq hΔ]
+    exact ⟨hσ, htot⟩
 
 /-! ## Memory Safety of Store Operations
 

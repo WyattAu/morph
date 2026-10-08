@@ -327,6 +327,10 @@ the necessary equalities for use in rewriting.
     lift k (.refFree e) = .refFree (lift k e) := by
   simp [lift, liftUnder]
 
+@[simp] theorem lift_refCast (e : Expr) (cap : Capability) (k : Nat) :
+    lift k (.refCast e cap) = .refCast (lift k e) cap := by
+  simp [lift, liftUnder]
+
 /-! ## Lift-Zero Identity
 
 `liftUnder bound 0 e = e` for all `bound` and `e`.
@@ -384,6 +388,7 @@ theorem liftUnder_zero_eq : forall (bound : Nat) (e : Expr), liftUnder bound 0 e
    | bound, .refLoad e => by simp [liftUnder, liftUnder_zero_eq bound e]
    | bound, .refStore e v τ => by simp [liftUnder, liftUnder_zero_eq bound e, liftUnder_zero_eq bound v]
    | bound, .refFree e => by simp [liftUnder, liftUnder_zero_eq bound e]
+   | bound, .refCast e _ => by simp [liftUnder, liftUnder_zero_eq bound e]
 
 end
 
@@ -463,6 +468,7 @@ theorem liftUnder_comp : forall (bound k1 k2 : Nat) (e : Expr),
    | bound, k1, k2, .refLoad e => by simp [liftUnder, liftUnder_comp bound k1 k2 e]
    | bound, k1, k2, .refStore e v τ => by simp [liftUnder, liftUnder_comp bound k1 k2 e, liftUnder_comp bound k1 k2 v]
    | bound, k1, k2, .refFree e => by simp [liftUnder, liftUnder_comp bound k1 k2 e]
+   | bound, k1, k2, .refCast e _ => by simp [liftUnder, liftUnder_comp bound k1 k2 e]
 
 end
 
@@ -617,6 +623,8 @@ theorem countUses_liftUnder_below : ∀ (bound k i : Nat) (e : Expr), i < bound 
     rw [countUses_liftUnder_below bound k i e h, countUses_liftUnder_below bound k i v h]
   | bound, k, i, .refFree e, h => by
     simp only [liftUnder, countUses]; exact countUses_liftUnder_below bound k i e h
+  | bound, k, i, .refCast e _, h => by
+    simp only [liftUnder, countUses]; exact countUses_liftUnder_below bound k i e h
 
 theorem countUsesList_liftUnder_below : ∀ (bound k i : Nat) (es : List Expr), i < bound →
     countUsesList (List.map (liftUnder bound k) es) i = countUsesList es i
@@ -712,6 +720,8 @@ theorem countUses_liftUnder_above : ∀ (bound k i : Nat) (e : Expr), bound ≤ 
     simp only [liftUnder, countUses]
     rw [countUses_liftUnder_above bound k i e h1 h2, countUses_liftUnder_above bound k i v h1 h2]
   | bound, k, i, .refFree e, h1, h2 => by
+    simp only [liftUnder, countUses]; exact countUses_liftUnder_above bound k i e h1 h2
+  | bound, k, i, .refCast e _, h1, h2 => by
     simp only [liftUnder, countUses]; exact countUses_liftUnder_above bound k i e h1 h2
 
 theorem countUsesList_liftUnder_above : ∀ (bound k i : Nat) (es : List Expr),
@@ -827,6 +837,8 @@ theorem countUses_substAll'_below : ∀ (k i : Nat) (vs : List Expr) (e : Expr),
     rw [countUses_substAll'_below k i vs e h, countUses_substAll'_below k i vs v h]
   | k, i, vs, .refFree e, h => by
     simp only [substAll', countUses]; exact countUses_substAll'_below k i vs e h
+  | k, i, vs, .refCast e _, h => by
+    simp only [substAll', countUses]; exact countUses_substAll'_below k i vs e h
 
 theorem countUsesList_substAll'_below : ∀ (k i : Nat) (vs : List Expr) (es : List Expr), i < k →
     countUsesList (List.map (substAll' k vs) es) i = countUsesList es i
@@ -915,6 +927,7 @@ theorem substAll'_singleton : ∀ (k : Nat) (v : Expr) (e : Expr),
     simp only [substAll', subst']
     rw [substAll'_singleton k v e, substAll'_singleton k v v']
   | k, v, .refFree e => by simp only [substAll', subst']; rw [substAll'_singleton k v e]
+  | k, v, .refCast e _ => by simp only [substAll', subst']; rw [substAll'_singleton k v e]
 
 theorem substAllList_singleton : ∀ (k : Nat) (v : Expr) (es : List Expr),
     List.map (substAll' k [v]) es = List.map (subst' k · v) es

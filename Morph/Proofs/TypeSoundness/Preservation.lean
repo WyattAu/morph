@@ -1907,6 +1907,13 @@ theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {ctx : L
       cases hType with
       | refFree_type _ _ _ τ' hE => cases hE
       | _ => contradiction
+    | ref_cast_step _ _ _ hStep1 =>
+      -- plain `HasType` cannot type a `.refCast` (no rule), so there is nothing to preserve
+      cases hType
+    | ref_cast_done _ _ _ _ _ =>
+      cases hType
+    | ref_cast_eval _ _ _ _ _ =>
+      cases hType
 
 end
 

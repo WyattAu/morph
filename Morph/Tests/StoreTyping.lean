@@ -150,4 +150,64 @@ example : ∃ Δ', StoreInv σ₀ Δ' ∧ HasTypeS Δ' [] [] (.lit (.int 7)) .in
       (by rw [Store.load, if_neg (by simp [σ₀]), heap₀]))
   exact ⟨Δ', hInv, hT⟩
 
+/-! ## Capability safe-casts (ADR-010 amendment, Loop 3) -/
+
+/-- The deny matrix has no `val → ref` transition: a frozen (`val`) reference
+    can never be re-uniqued or re-shared by a cast. -/
+theorem safeCast_val_ref_false : ¬ SafeCast .val .ref := by
+  intro h
+  cases h
+
+/-- A well-typed cast of the `iso` location `0` to `val` takes a step
+    (progress through `Step.ref_cast_done`). -/
+example : ∃ σ' e', Step σ₀ (.refCast (.lit (.loc 0)) .val) σ' e' := by
+  rcases progressS σ₀_typed
+      (.refCast _ _ _ _ _ _ _ decl₀ SafeCast.iso_to_val (by intro h; cases h)) with
+    hv | ⟨σ', e', hs⟩
+  · exact absurd hv (not_isValue_refCast _ _)
+  · exact ⟨σ', e', hs⟩
+
+/-- The cast step itself: the store is unchanged (the capability lives only in
+    the store typing) and the result is the location value. -/
+example : Step σ₀ (.refCast (.lit (.loc 0)) .val) σ₀ (.lit (.loc 0)) :=
+  Step.ref_cast_done σ₀ 0 .val .intType (.int 7)
+    (by rw [Store.load, if_neg (by simp [σ₀]), heap₀])
+
+/-- Preservation of the freeze: the invariant holds under the re-declared
+    store typing `cast Δ₀ 0 .val .intType`, the location is now declared
+    `val`, and the location value is typable at its new reference type. -/
+example : StoreInv σ₀ (StoreTyp.cast Δ₀ 0 .val .intType)
+    ∧ (StoreTyp.cast Δ₀ 0 .val .intType) 0 = some (.refType .val .intType)
+    ∧ HasTypeS (StoreTyp.cast Δ₀ 0 .val .intType) [] [] (.lit (.loc 0))
+        (.refType .val .intType) :=
+  ⟨cast_preserves_inv σ₀_typed decl₀ SafeCast.iso_to_val,
+    StoreTyp.cast_eq _ _ _ _,
+    HasTypeS.lit_val _ _ _ _ _
+      (ValueType.loc _ _ _ _ (StoreTyp.cast_eq _ _ _ _) (by intro h; cases h))⟩
+
+/-- The end-to-end frozen-not-writable corollary instantiated for `σ₀`/`Δ₀`:
+    after the cast to `val`, no well-typed expression can store through
+    location `0` under the resulting store typing. -/
+example :
+    ∃ Δ', StoreInv σ₀ Δ' ∧ Δ' 0 = some (.refType .val .intType) ∧
+      ∀ {v : Value}, ValueType Δ' v .intType →
+        ¬ HasTypeS Δ' [] [] (.refStore (.lit (.loc 0)) (.lit v) .intType) .unitType :=
+  safety_frozen_not_writable (τ := .intType) σ₀_typed
+    (.refCast _ _ _ _ _ _ _ decl₀ SafeCast.iso_to_val (by intro h; cases h))
+    (Step.ref_cast_done σ₀ 0 .val .intType (.int 7)
+      (by rw [Store.load, if_neg (by simp [σ₀]), heap₀]))
+
+/-- Frozen-not-writable, concretely: under `cast Δ₀ 0 .val .intType`, a store
+    through location `0` is not typable at all — the `refStore` rules demand
+    `cap ≠ .val`, but the location is now declared `val`. -/
+example (v : Value) :
+    ¬ HasTypeS (StoreTyp.cast Δ₀ 0 .val .intType) [] []
+        (.refStore (.lit (.loc 0)) (.lit v) .intType) .unitType := by
+  intro h
+  obtain ⟨cap', hΔ', hc⟩ := hasTypeS_refStore_cap_ne_val h
+  rw [StoreTyp.cast_eq Δ₀ 0 .val .intType] at hΔ'
+  injection hΔ' with h1
+  injection h1 with h2 _
+  exact hc h2.symm
+
 end Morph.Tests.StoreTyping

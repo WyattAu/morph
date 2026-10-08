@@ -322,6 +322,7 @@ def inferType (ctx : LinCtx) (env : TypEnv) : Morph.Syntax.Expr -> Option Morph.
     match inferType ctx env e with
     | some (.refType .iso _) => some .unitType  -- only iso can free
     | _ => none
+  | .refCast _ _ => none  -- capability casts are store-typed only (ADR-010 amendment)
   termination_by e => sizeOf e
 end
 

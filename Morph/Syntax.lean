@@ -102,6 +102,7 @@ inductive Expr : Type where
   | refLoad : Expr → Expr
   | refStore : Expr → Expr → Typ → Expr
   | refFree : Expr → Expr
+  | refCast : Expr → Capability → Expr
   deriving Repr, BEq
 
 /-!
@@ -183,6 +184,7 @@ def liftUnder (bound : Nat) (k : Nat) : Expr → Expr
   | .refLoad e => .refLoad (liftUnder bound k e)
   | .refStore e v τ => .refStore (liftUnder bound k e) (liftUnder bound k v) τ
   | .refFree e => .refFree (liftUnder bound k e)
+  | .refCast e cap' => .refCast (liftUnder bound k e) cap'
 end
 
 /-- Lift all free bound-variable indices in `e` by `k`. -/
@@ -236,6 +238,7 @@ def subst' (bound : Nat) (e : Expr) (v : Expr) : Expr :=
   | .refLoad e => .refLoad (subst' bound e v)
   | .refStore e v' τ => .refStore (subst' bound e v) (subst' bound v' v) τ
   | .refFree e => .refFree (subst' bound e v)
+  | .refCast e cap' => .refCast (subst' bound e v) cap'
 end
 
 /-- Substitute the bound variable at index 0 with `v`. -/
@@ -297,6 +300,7 @@ def substAll' (k : Nat) (vs : List Expr) (e : Expr) : Expr :=
   | .refLoad e => .refLoad (substAll' k vs e)
   | .refStore e v τ => .refStore (substAll' k vs e) (substAll' k vs v) τ
   | .refFree e => .refFree (substAll' k vs e)
+  | .refCast e cap' => .refCast (substAll' k vs e) cap'
 end
 
 /-- Simultaneously substitute bound variables at indices 0, 1, ..., |vs|-1. -/
@@ -350,6 +354,7 @@ def countUses : Expr → Nat → Nat
   | .refLoad e, n => countUses e n
   | .refStore e v _, n => countUses e n + countUses v n
   | .refFree e, n => countUses e n
+  | .refCast e _, n => countUses e n
 end
 
 /-!
@@ -392,6 +397,7 @@ def freeVars : Expr → List String
   | .refLoad e => freeVars e
   | .refStore e v _ => freeVars e ++ freeVars v
   | .refFree e => freeVars e
+  | .refCast e _ => freeVars e
 end
 
 end Morph.Syntax

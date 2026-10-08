@@ -39,6 +39,7 @@ def exprDepth : Morph.Syntax.Expr → Nat
   | .refLoad e => exprDepth e + 1
   | .refStore e v _ => Nat.max (exprDepth e) (exprDepth v) + 1
   | .refFree e => exprDepth e + 1
+  | .refCast e _ => exprDepth e + 1
 end
 
 end Morph.Proofs.TypeSoundness

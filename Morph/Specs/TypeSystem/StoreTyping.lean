@@ -64,6 +64,26 @@ This module adds the store-aware layer:
 5. `HasTypeS` is stated for a general `ctx`/`Γ`, while `progressS` and
    `preservationS` are stated for closed programs (`[] []`), mirroring `progress`
    and `preservation` in `Morph.Proofs.TypeSoundness`.
+
+6. **Capability casts (ADR-010 amendment, Loop 3).** In the ADR-010 store model
+   the capability of a reference lives only in the store typing `Δ` — the heap
+   cell holds the *pointee* type and value, neither of which a cast changes —
+   so every `refCast` step rule keeps the store unchanged and the cast is a
+   re-declaration `StoreTyp.cast Δ loc cap' τ`. Consequences:
+
+   * The `SafeCast` deny matrix cannot appear in the step rule (a `Step` rule
+     cannot name the source capability without `Δ`); it is enforced here, in
+     the typing rules `refCast` / `refCast_cong`, via the declared source
+     capability, which `hasTypeS_lit_loc_ref'` pins down once the inner
+     expression reduces to a location value.
+   * The result capability must satisfy `cap' ≠ .iso`: the step result is a
+     location value `.lit (.loc l)`, and `ValueType.loc` types location values
+     only at non-`iso` reference types (deviation 3). So `refl_iso` casts are
+     rejected at typing — an `iso`-cast result would be untypable.
+   * `cast_preserves_inv` (`Morph.Store`) is where uniqueness does the work:
+     for an `iso` source, `noLocValue_of_iso` guarantees no live cell holds a
+     pointer to the cast location, so no other cell's value typing consults
+     the changed entry; for a reflexive cast the store typing is unchanged.
 -/
 
 namespace Morph.Specs.TypeSystem
@@ -119,6 +139,22 @@ inductive HasTypeS : StoreTyp → LinCtx → TypEnv → Morph.Syntax.Expr → Mo
   | refCreate : ∀ Δ ctx Γ v cap τ,
       HasTypeS Δ ctx Γ (.lit v) τ →
       HasTypeS Δ ctx Γ (.refCreate (.lit v) cap τ) (.refType cap τ)
+  /-- Capability cast of a declared location (ADR-010 amendment): the deny
+      matrix `SafeCast` guards the transition, and the result capability must
+      be a storable reference (`≠ .iso`, mirroring `ValueType.loc`). -/
+  | refCast : ∀ Δ ctx Γ loc cap cap' τ,
+      Δ loc = some (.refType cap τ) →
+      SafeCast cap cap' →
+      cap' ≠ .iso →
+      HasTypeS Δ ctx Γ (.refCast (.lit (.loc loc)) cap') (.refType cap' τ)
+  /-- Congruence: casting an expression already typed at a reference type. The
+      `SafeCast` premise records the deny matrix at the typing level, against
+      the *declared* source capability. -/
+  | refCast_cong : ∀ Δ ctx Γ e cap cap' τ,
+      HasTypeS Δ ctx Γ e (.refType cap τ) →
+      SafeCast cap cap' →
+      cap' ≠ .iso →
+      HasTypeS Δ ctx Γ (.refCast e cap') (.refType cap' τ)
 
 /-! ## Syntactic Facts
 
@@ -144,6 +180,16 @@ theorem not_isValue_refStore (e v : Expr) (τ : Typ) : ¬ IsValue (.refStore e v
   cases h
 
 theorem not_isValue_refFree (e : Expr) : ¬ IsValue (.refFree e) := by
+  intro h
+  cases h
+
+theorem not_isValue_refCast (e : Expr) (cap' : Capability) : ¬ IsValue (.refCast e cap') := by
+  intro h
+  cases h
+
+theorem not_hasType_refCast {ctx : LinCtx} {Γ : TypEnv} {e : Expr} {cap' : Capability}
+    {τ : Typ} {c : LinCtx} :
+    ¬ HasType ctx Γ (.refCast e cap') τ c := by
   intro h
   cases h
 
@@ -381,6 +427,18 @@ theorem ref_typed_step_preserves {Δ : StoreTyp} :
       intro cap τ ht σ σ' e' hStep
       cases hStep with
       | ref_create_step _ _ _ _ _ => exact absurd (by assumption) (not_step_lit _ _ _ _)
+  | refCast _ _ _ _ _ _ _ =>
+      intro cap τ ht σ σ' e' hStep
+      cases hStep with
+      | ref_cast_done _ _ _ _ _ => rfl
+      | ref_cast_step _ _ _ _ =>
+          exact absurd (by assumption) (not_step_lit _ _ _ _)
+  | refCast_cong _ _ _ _ _ _ _ _ =>
+      intro cap τ ht σ σ' e' hStep
+      cases hStep with
+      | ref_cast_step _ _ _ _ => rfl
+      | ref_cast_done _ _ _ _ _ => rfl
+      | ref_cast_eval _ _ _ _ _ => rfl
 /-! ## Progress -/
 
 set_option maxHeartbeats 1000000 in
@@ -451,6 +509,22 @@ theorem progressS_gen : ∀ {σ : Store} {Δ : StoreTyp} {ctx : LinCtx} {Γ : Ty
       · obtain ⟨rfl⟩ := ref_typed_step_preserves hE rfl hs
         exact Or.inr ⟨σ, .refFree e', Step.ref_free_step σ _ e' hs⟩
   | refCreate _ _ _ _ => intro _ _ _; exact Or.inl (IsValue.refCreate (.lit _) _ _ (IsValue.lit _))
+  | refCast loc _ cap' _ hΔ _ _ =>
+      intro _ _ hInv
+      obtain ⟨v, hload⟩ := load_ok hInv hΔ
+      exact Or.inr ⟨σ, .lit (.loc loc), Step.ref_cast_done σ loc cap' _ v hload⟩
+  | refCast_cong _ _ _ _ hE _ _ ih =>
+      intro hctx hΓ hInv
+      subst hctx; subst hΓ
+      rcases ih rfl rfl hInv with hv | ⟨_, e', hs⟩
+      · rcases canonical_refS hv hE with ⟨l, hl, hΔ⟩ | ⟨e₀, he, hvi⟩
+        · rw [hl]
+          obtain ⟨v, hload⟩ := load_ok hInv hΔ
+          exact Or.inr ⟨σ, .lit (.loc l), Step.ref_cast_done σ l _ _ v hload⟩
+        · rw [he]
+          exact Or.inr ⟨σ, .refCreate e₀ _ _, Step.ref_cast_eval σ e₀ _ _ _ hvi⟩
+      · obtain ⟨rfl⟩ := ref_typed_step_preserves hE rfl hs
+        exact Or.inr ⟨σ, .refCast e' _, Step.ref_cast_step σ _ e' _ hs⟩
 
 /-- A well-typed program is a value or it steps (closed programs). -/
 theorem progressS {σ : Store} {Δ : StoreTyp} {e : Expr} {τ : Typ}
@@ -462,21 +536,26 @@ theorem progressS {σ : Store} {Δ : StoreTyp} {e : Expr} {τ : Typ}
 
 The induction hypothesis is stated in two parts:
 
-* for a step that does **not** change the store, the store typing is unchanged
-  (this is what makes the value payload of a `refStore_cong` typable again);
+* for a step that does **not** change the store, the store typing may only
+  change by a `SafeCast` re-declaration — a capability cast rewrites the *type*
+  of a location value without touching the store — and every value typing under
+  the old store typing remains valid under the new one (this is what makes the
+  value payload of a `refStore_cong` typable again);
 * in general, some store typing works for the new store.
 
 -/
 
 set_option maxHeartbeats 1000000 in
 /-- Stepping a well-typed program preserves its type *and* the store invariant.
-    The store typing is adapted to the new store: only the store-changing rules
-    modify it, and then only by forgetting the freed location. -/
+    The store typing is adapted to the new store: store-changing rules modify it
+    (a free forgets the location, a cast re-declares its capability), and a
+    store-preserving cast step re-declares the typed location's capability. -/
 theorem preservationS_gen : ∀ {σ : Store} {Δ : StoreTyp} {ctx : LinCtx} {Γ : TypEnv}
     {e : Expr} {τ : Typ},
     ctx = [] → Γ = [] → StoreInv σ Δ → HasTypeS Δ ctx Γ e τ →
       ∀ {σ' : Store} {e' : Expr}, Step σ e σ' e' →
-        (∀ _hs : σ' = σ, StoreInv σ Δ ∧ HasTypeS Δ ctx Γ e' τ) ∧
+        (∀ _hs : σ' = σ, ∃ Δ₂ : StoreTyp, StoreInv σ Δ₂ ∧ HasTypeS Δ₂ ctx Γ e' τ ∧
+          ∀ {v' : Value} {t' : Typ}, ValueType Δ v' t' → ValueType Δ₂ v' t') ∧
         ∃ Δ', StoreInv σ' Δ' ∧ HasTypeS Δ' ctx Γ e' τ := by
   intro σ Δ ctx Γ e τ hctx hΓ hInv h
   revert hctx hΓ hInv
@@ -485,9 +564,8 @@ theorem preservationS_gen : ∀ {σ : Store} {Δ : StoreTyp} {ctx : LinCtx} {Γ 
       intro hctx hΓ hInv σ' e' hStep
       subst hctx; subst hΓ
       obtain ⟨rfl, hT'⟩ := lift_step hT hStep
-      refine ⟨fun _ => ⟨hInv, ?_⟩, ⟨Δ, hInv, ?_⟩⟩
-      · exact .lift _ _ _ _ _ hT'
-      · exact .lift _ _ _ _ _ hT'
+      refine ⟨fun _ => ⟨Δ, hInv, .lift _ _ _ _ _ hT', id⟩,
+        ⟨Δ, hInv, .lift _ _ _ _ _ hT'⟩⟩
   | lit_val _ _ _ =>
       intro _ _ _ σ' e' hStep
       exact False.elim (not_step_lit _ _ _ _ hStep)
@@ -498,9 +576,8 @@ theorem preservationS_gen : ∀ {σ : Store} {Δ : StoreTyp} {ctx : LinCtx} {Γ 
           have heq := load_type_eq hInv.1 hΔ (by assumption)
           obtain ⟨_, hv⟩ := storeTyped_of_load hInv.1 (by assumption)
           rw [heq] at hv
-          refine ⟨fun _ => ⟨hInv, ?_⟩, ⟨Δ, hInv, ?_⟩⟩
-          · exact .lit_val _ _ _ _ _ hv
-          · exact .lit_val _ _ _ _ _ hv
+          refine ⟨fun _ => ⟨Δ, hInv, .lit_val _ _ _ _ _ hv, id⟩,
+            ⟨Δ, hInv, .lit_val _ _ _ _ _ hv⟩⟩
       | ref_load_step _ _ _ =>
           exact False.elim (not_step_lit _ _ _ _ (by assumption))
   | refLoad_cong _ _ _ hE ih =>
@@ -508,55 +585,52 @@ theorem preservationS_gen : ∀ {σ : Store} {Δ : StoreTyp} {ctx : LinCtx} {Γ 
       cases hStep with
       | ref_load_step _ _ _ =>
           obtain ⟨hf, _⟩ := ih hctx hΓ hInv (by assumption)
-          obtain ⟨_, hT⟩ := hf rfl
-          exact ⟨fun _ => ⟨hInv, .refLoad_cong _ _ _ _ _ _ hT⟩,
-            ⟨Δ, hInv, .refLoad_cong _ _ _ _ _ _ hT⟩⟩
+          obtain ⟨Δ₂, hInv₂, hT, htr⟩ := hf rfl
+          exact ⟨fun _ => ⟨Δ₂, hInv₂, .refLoad_cong _ _ _ _ _ _ hT, htr⟩,
+            ⟨Δ₂, hInv₂, .refLoad_cong _ _ _ _ _ _ hT⟩⟩
       | ref_load_eval _ _ _ _ =>
-          refine ⟨fun _ => ⟨hInv, ?_⟩, ⟨Δ, hInv, ?_⟩⟩
-          · exact refCreate_typed_at_ref hE
-          · exact refCreate_typed_at_ref hE
+          refine ⟨fun _ => ⟨Δ, hInv, refCreate_typed_at_ref hE, id⟩,
+            ⟨Δ, hInv, refCreate_typed_at_ref hE⟩⟩
       | ref_load_done _ _ _ _ =>
           have heq := load_type_eq hInv.1 (hasTypeS_lit_loc_ref' hE) (by assumption)
           obtain ⟨_, hv⟩ := storeTyped_of_load hInv.1 (by assumption)
           rw [heq] at hv
-          refine ⟨fun _ => ⟨hInv, ?_⟩, ⟨Δ, hInv, ?_⟩⟩
-          · exact .lit_val _ _ _ _ _ hv
-          · exact .lit_val _ _ _ _ _ hv
+          refine ⟨fun _ => ⟨Δ, hInv, .lit_val _ _ _ _ _ hv, id⟩,
+            ⟨Δ, hInv, .lit_val _ _ _ _ _ hv⟩⟩
   | refStore _ _ _ _ hΔ hv _ =>
       intro hctx hΓ hInv σ' e' hStep
       cases hStep with
       | ref_store_done _ _ _ _ _ =>
-          exact ⟨fun _ => ⟨hInv, .lit_val _ _ _ _ _ (.unit _)⟩,
+          exact ⟨fun _ => ⟨Δ, hInv, .lit_val _ _ _ _ _ (.unit _), id⟩,
             ⟨Δ, store_preserves_inv hInv hv hΔ (by assumption), .lit_val _ _ _ _ _ (.unit _)⟩⟩
       | ref_store_step_arr _ _ _ _ _ =>
           exact False.elim (not_step_lit _ _ _ _ (by assumption))
       | ref_store_step_val _ _ _ _ _ _ =>
           exact False.elim (not_step_lit _ _ _ _ (by assumption))
-  | refStore_cong _ _ _ _ hE _ _ ihE =>
+  | refStore_cong _ _ _ _ hE hv _ ih =>
       intro hctx hΓ hInv σ' e' hStep
       cases hStep with
       | ref_store_step_arr _ _ _ _ _ =>
-          obtain ⟨hf, _⟩ := ihE hctx hΓ hInv (by assumption)
-          refine ⟨?_, ?_⟩
-          · intro _
-            obtain ⟨_, hT⟩ := hf rfl
-            exact ⟨hInv, .refStore_cong _ _ _ _ _ _ _ hT (by assumption) (by assumption)⟩
-          · obtain ⟨_, hT⟩ := hf rfl
-            exact ⟨Δ, hInv, .refStore_cong _ _ _ _ _ _ _ hT (by assumption) (by assumption)⟩
+          obtain ⟨hf, _⟩ := ih hctx hΓ hInv (by assumption)
+          obtain ⟨Δ₂, hInv₂, hT, htr⟩ := hf rfl
+          exact ⟨fun _ => ⟨Δ₂, hInv₂,
+              .refStore_cong _ _ _ _ _ _ _ hT (htr (by assumption)) (by assumption), htr⟩,
+            ⟨Δ₂, hInv₂,
+              .refStore_cong _ _ _ _ _ _ _ hT (htr (by assumption)) (by assumption)⟩⟩
       | ref_store_step_val _ _ _ _ _ _ =>
           exact False.elim (not_step_lit _ _ _ _ (by assumption))
-      | ref_store_eval _ _ _ _ _ _ _ =>
-          exact ⟨fun _ => ⟨hInv, .lit_val _ _ _ _ _ (.unit _)⟩,
+      | ref_store_eval _ _ _ _ _ _ =>
+          exact ⟨fun _ => ⟨Δ, hInv, .lit_val _ _ _ _ _ (.unit _), id⟩,
             ⟨Δ, hInv, .lit_val _ _ _ _ _ (.unit _)⟩⟩
       | ref_store_done _ _ _ _ _ =>
-          exact ⟨fun _ => ⟨hInv, .lit_val _ _ _ _ _ (.unit _)⟩,
-            ⟨Δ, store_preserves_inv hInv (by assumption : ValueType Δ _ _) (hasTypeS_lit_loc_ref' hE)
-              (by assumption), .lit_val _ _ _ _ _ (.unit _)⟩⟩
+          exact ⟨fun _ => ⟨Δ, hInv, .lit_val _ _ _ _ _ (.unit _), id⟩,
+            ⟨Δ, store_preserves_inv hInv (by assumption : ValueType Δ _ _)
+              (hasTypeS_lit_loc_ref' hE) (by assumption), .lit_val _ _ _ _ _ (.unit _)⟩⟩
   | refFree _ _ hΔ =>
       intro hctx hΓ hInv σ' e' hStep
       cases hStep with
       | ref_free_done _ _ _ =>
-          exact ⟨fun _ => ⟨hInv, .lit_val _ _ _ _ _ (.unit _)⟩,
+          exact ⟨fun _ => ⟨Δ, hInv, .lit_val _ _ _ _ _ (.unit _), id⟩,
             ⟨StoreTyp.erase Δ _, free_invalidates_inv hInv hΔ (by assumption),
               .lit_val _ _ _ _ _ (.unit _)⟩⟩
       | ref_free_step _ _ _ =>
@@ -566,14 +640,14 @@ theorem preservationS_gen : ∀ {σ : Store} {Δ : StoreTyp} {ctx : LinCtx} {Γ 
       cases hStep with
       | ref_free_step _ _ _ =>
           obtain ⟨hf, _⟩ := ih hctx hΓ hInv (by assumption)
-          obtain ⟨_, hT⟩ := hf rfl
-          exact ⟨fun _ => ⟨hInv, .refFree_cong _ _ _ _ _ hT⟩,
-            ⟨Δ, hInv, .refFree_cong _ _ _ _ _ hT⟩⟩
+          obtain ⟨Δ₂, hInv₂, hT, htr⟩ := hf rfl
+          exact ⟨fun _ => ⟨Δ₂, hInv₂, .refFree_cong _ _ _ _ _ hT, htr⟩,
+            ⟨Δ₂, hInv₂, .refFree_cong _ _ _ _ _ hT⟩⟩
       | ref_free_eval _ _ _ =>
-          exact ⟨fun _ => ⟨hInv, .lit_val _ _ _ _ _ (.unit _)⟩,
+          exact ⟨fun _ => ⟨Δ, hInv, .lit_val _ _ _ _ _ (.unit _), id⟩,
             ⟨Δ, hInv, .lit_val _ _ _ _ _ (.unit _)⟩⟩
       | ref_free_done _ _ _ =>
-          exact ⟨fun _ => ⟨hInv, .lit_val _ _ _ _ _ (.unit _)⟩,
+          exact ⟨fun _ => ⟨Δ, hInv, .lit_val _ _ _ _ _ (.unit _), id⟩,
             ⟨StoreTyp.erase Δ _, free_invalidates_inv hInv (hasTypeS_lit_loc_ref' hE)
               (by assumption), .lit_val _ _ _ _ _ (.unit _)⟩⟩
   | refCreate _ _ _ _ =>
@@ -581,6 +655,47 @@ theorem preservationS_gen : ∀ {σ : Store} {Δ : StoreTyp} {ctx : LinCtx} {Γ 
       cases hStep with
       | ref_create_step _ _ _ _ _ =>
           exact False.elim (not_step_lit _ _ _ _ (by assumption))
+  | refCast loc _ cap' τ hΔ hsc hne =>
+      intro hctx hΓ hInv σ' e' hStep
+      cases hStep with
+      | ref_cast_done _ _ _ _ _ =>
+          have hvRes : ValueType (StoreTyp.cast Δ loc cap' τ) (Value.loc loc)
+              (.refType cap' τ) :=
+            ValueType.loc _ _ _ _ (by simp) hne
+          refine ⟨fun _ => ⟨StoreTyp.cast Δ loc cap' τ, cast_preserves_inv hInv hΔ hsc,
+              .lit_val _ _ _ _ _ hvRes, @fun _ _ hv' => valueType_cast_stable hv' hΔ hsc⟩,
+            ⟨StoreTyp.cast Δ loc cap' τ, cast_preserves_inv hInv hΔ hsc,
+              .lit_val _ _ _ _ _ hvRes⟩⟩
+      | ref_cast_step _ _ _ _ =>
+          exact False.elim (not_step_lit _ _ _ _ (by assumption))
+  | refCast_cong _ cap cap' τ hE hsc hne ih =>
+      intro hctx hΓ hInv σ' e' hStep
+      cases hStep with
+      | ref_cast_step _ _ _ _ =>
+          obtain ⟨hf, _⟩ := ih hctx hΓ hInv (by assumption)
+          obtain ⟨Δ₂, hInv₂, hT, htr⟩ := hf rfl
+          exact ⟨fun _ => ⟨Δ₂, hInv₂, .refCast_cong _ _ _ _ _ _ _ hT hsc hne, htr⟩,
+            ⟨Δ₂, hInv₂, .refCast_cong _ _ _ _ _ _ _ hT hsc hne⟩⟩
+      | ref_cast_done l _ _ _ _ =>
+          have hΔl : Δ l = some (.refType cap τ) := hasTypeS_lit_loc_ref' hE
+          have hvRes : ValueType (StoreTyp.cast Δ l cap' τ) (Value.loc l)
+              (.refType cap' τ) :=
+            ValueType.loc _ _ _ _ (by simp) hne
+          refine ⟨fun _ => ⟨StoreTyp.cast Δ l cap' τ, cast_preserves_inv hInv hΔl hsc,
+              .lit_val _ _ _ _ _ hvRes, @fun _ _ hv' => valueType_cast_stable hv' hΔl hsc⟩,
+            ⟨StoreTyp.cast Δ l cap' τ, cast_preserves_inv hInv hΔl hsc,
+              .lit_val _ _ _ _ _ hvRes⟩⟩
+      | ref_cast_eval e₀ cap₀ τ₀ _ =>
+          have hRes : HasTypeS Δ ctx Γ (Expr.refCreate e₀ cap' τ₀) (.refType cap' τ) := by
+            cases hE with
+            | lift _ _ hT =>
+                cases hT with
+                | refCreate_type _ _ _ _ _ hP =>
+                    exact .lift _ _ _ _ _ (HasType.refCreate_type _ _ _ _ _ hP)
+            | refCreate _ _ _ hLit =>
+                exact .refCreate _ _ _ _ _ _ hLit
+          exact ⟨fun _ => ⟨Δ, hInv, hRes, id⟩,
+            ⟨Δ, hInv, hRes⟩⟩
 
 /-- Stepping a well-typed program preserves its type and the store invariant. -/
 theorem preservationS {σ : Store} {Δ : StoreTyp} {e e' : Expr} {τ : Typ}
@@ -641,5 +756,58 @@ theorem safety_freed_not_dereferenceable {Δ : StoreTyp} {l : Loc} {t : Typ}
   obtain ⟨cap', hΔ⟩ := hasTypeS_refLoad_loc h
   rw [hl] at hΔ
   simp at hΔ
+
+/-! ## Frozen Locations Are Not Writable (ADR-010 amendment) -/
+
+/-- Inversion: a capability cast to `val` of a literal location is typable only
+    if the location is declared at some source capability with `SafeCast` to
+    `val` (i.e. the source is `iso` or `val` itself). -/
+theorem hasTypeS_refCastVal_inv {Δ : StoreTyp} {ctx : LinCtx} {Γ : TypEnv} {l : Loc}
+    {τ : Typ} (h : HasTypeS Δ ctx Γ (.refCast (.lit (.loc l)) .val) (.refType .val τ)) :
+    ∃ cap, Δ l = some (.refType cap τ) ∧ SafeCast cap .val := by
+  cases h with
+  | lift _ _ hT => exact False.elim (not_hasType_refCast hT)
+  | refCast _ _ _ _ hΔ hsc _ => exact ⟨_, hΔ, hsc⟩
+  | refCast_cong _ _ _ _ hE hsc _ => exact ⟨_, hasTypeS_lit_loc_ref' hE, hsc⟩
+
+/-- Inversion: a store through a literal location is typable only if the
+    location is declared with a *non-`val`* capability. This is the typed
+    counterpart of the deny matrix: an immutable (`val`) reference cannot be
+    mutated through. -/
+theorem hasTypeS_refStore_cap_ne_val {Δ : StoreTyp} {ctx : LinCtx} {Γ : TypEnv} {l : Loc}
+    {v : Value} {τ : Typ} (h : HasTypeS Δ ctx Γ (.refStore (.lit (.loc l)) (.lit v) τ) .unitType) :
+    ∃ cap, Δ l = some (.refType cap τ) ∧ cap ≠ .val := by
+  cases h with
+  | lift _ _ hT => exact False.elim (not_hasType_refStoreLit hT)
+  | refStore _ _ _ _ hΔ _ hcap => exact ⟨_, hΔ, hcap⟩
+  | refStore_cong _ _ _ _ hE _ hcap => exact ⟨_, hasTypeS_lit_loc_ref' hE, hcap⟩
+
+/-- **Frozen locations are not writable** (ADR-010 amendment): after a
+    well-typed cast of a location to `val`, the store typing declares it with
+    the `val` capability, and no well-typed expression can store through it —
+    both `refStore` rules demand `cap ≠ .val`. Freezing is sound precisely
+    because `SafeCast` only reaches `val` from `iso`, whose uniqueness means
+    no other alias could write anyway. -/
+theorem safety_frozen_not_writable {σ σ' : Store} {Δ : StoreTyp} {e' : Expr} {loc : Loc}
+    {τ : Typ}
+    (hInv : StoreInv σ Δ)
+    (hT : HasTypeS Δ [] [] (.refCast (.lit (.loc loc)) .val) (.refType .val τ))
+    (hStep : Step σ (.refCast (.lit (.loc loc)) .val) σ' e') :
+    ∃ Δ', StoreInv σ' Δ' ∧ Δ' loc = some (.refType .val τ) ∧
+      ∀ {v : Value}, ValueType Δ' v τ →
+        ¬ HasTypeS Δ' [] [] (.refStore (.lit (.loc loc)) (.lit v) τ) .unitType := by
+  obtain ⟨cap₀, hΔ, hsc⟩ := hasTypeS_refCastVal_inv hT
+  cases hStep with
+  | ref_cast_step _ _ _ _ =>
+      exact False.elim (not_step_lit _ _ _ _ (by assumption))
+  | ref_cast_done _ _ _ _ _ =>
+      refine ⟨StoreTyp.cast Δ loc .val τ, cast_preserves_inv hInv hΔ hsc,
+        StoreTyp.cast_eq Δ loc .val τ, ?_⟩
+      intro v _hv h
+      obtain ⟨cap', hΔ', hc⟩ := hasTypeS_refStore_cap_ne_val h
+      rw [StoreTyp.cast_eq Δ loc .val τ] at hΔ'
+      injection hΔ' with h1
+      injection h1 with h2 _
+      exact hc h2.symm
 
 end Morph.Specs.TypeSystem

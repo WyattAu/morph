@@ -241,6 +241,9 @@ partial def eval (ctx : Context) : Expr → Option Expr
    | .refFree e => do
       let _ ← eval ctx e
       some (.lit .unit)  -- placeholder
+   | .refCast e _ => do
+      let _ ← eval ctx e
+      some (.lit .unit)  -- placeholder
   where
   evalBlock (ctx : Context) : List Expr → Option Expr
     | [] => some (.lit .unit)

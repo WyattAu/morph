@@ -495,4 +495,25 @@ inductive Step : Store → Expr → Store → Expr → Prop where
       Store.free σ loc = some σ' →
       Step σ (.refFree (.lit (.loc loc))) σ' (.lit .unit)
 
+  /- ## Capability Casts (ADR-010 amendment, Loop 3)
+
+  A cast rewrites the *capability* of the reference at a location. In the
+  ADR-010 store model the capability lives only in the store typing `Δ`
+  (the heap cell holds the pointee type and value), so every cast rule keeps
+  the store unchanged. The deny matrix `SafeCast` is enforced by the
+  store-typed typing rules (`HasTypeS.refCast`), not here: a step rule cannot
+  name the source capability without `Δ`. -/
+
+  | ref_cast_step : ∀ σ e e' cap',
+      Step σ e σ e' →
+      Step σ (.refCast e cap') σ (.refCast e' cap')
+
+  | ref_cast_done : ∀ σ loc cap' τ v,
+      Store.load σ loc = some (τ, v) →
+      Step σ (.refCast (.lit (.loc loc)) cap') σ (.lit (.loc loc))
+
+  | ref_cast_eval : ∀ σ e cap τ cap',
+      IsValue e →
+      Step σ (.refCast (.refCreate e cap τ) cap') σ (.refCreate e cap' τ)
+
 end Morph.Semantics
