@@ -341,4 +341,118 @@ def evalInstr (env : Env) : Instr → Option Env
   | .call _ _ _ => none
   | .phi _ _ _ => none
 
+
+/-! ## Store-aware execution (Loop 8) -/
+
+/-- Full execution environment: value registers + the store. -/
+structure FullEnv where
+  env   : Env
+  store : Store
+
+/-- Extract a location value from the environment. -/
+def FullEnv.locOf (fenv : FullEnv) (vid : ValId) : Option Loc :=
+  match fenv.env vid with
+  | some (Value.loc l) => some l
+  | _ => none
+
+/-- Extract an integer value from the environment. -/
+def FullEnv.intOf (fenv : FullEnv) (vid : ValId) : Option Int :=
+  match fenv.env vid with
+  | some (Value.int n) => some n
+  | _ => none
+
+/-- Extract a boolean value from the environment. -/
+def FullEnv.boolOf (fenv : FullEnv) (vid : ValId) : Option Bool :=
+  match fenv.env vid with
+  | some (Value.bool b) => some b
+  | _ => none
+
+/-- Store-aware execution: handles pure instructions plus load/store/alloc/free. -/
+def evalInstrFull (fenv : FullEnv) : Instr → Option FullEnv
+  | .const dst v => some ⟨(fenv.env).update dst v, fenv.store⟩
+  | .copy dst src => do
+      let v ← fenv.env src
+      some ⟨(fenv.env).update dst v, fenv.store⟩
+  | .unop dst op src _τ => do
+      let v ← fenv.env src
+      let r ← evalUnOp op v
+      some ⟨(fenv.env).update dst r, fenv.store⟩
+  | .binop dst op x y _τ => do
+      let vl ← fenv.env x
+      let vr ← fenv.env y
+      let v ← evalBinOp op vl vr
+      some ⟨(fenv.env).update dst v, fenv.store⟩
+  | .load dst loc _cap => do
+      let l := fenv.locOf loc
+      let l' ← l
+      let result ← Store.load fenv.store l'
+      some ⟨(fenv.env).update dst result.2, fenv.store⟩
+  | .store loc src _cap => do
+      let l := fenv.locOf loc
+      let l' ← l
+      let v ← fenv.env src
+      let σ' ← Store.store fenv.store l' v Typ.intType
+      some ⟨fenv.env, σ'⟩
+  | .alloc dst _cap τ => do
+      let (σ', loc) := Store.alloc fenv.store τ Value.unit
+      some ⟨(fenv.env).update dst (Value.loc loc), σ'⟩
+  | .free loc => do
+      let l := fenv.locOf loc
+      let l' ← l
+      let σ' ← Store.free fenv.store l'
+      some ⟨fenv.env, σ'⟩
+  | _ => none
+
+/-- Find a block by its id. -/
+def findBlock (f : Func) (bid : BlockId) : Option Block :=
+  f.blocks.find? (fun b => b.id == bid)
+
+/-- Execute a single block: walk instructions, then handle the terminator. -/
+def execInstrsFull (fenv : FullEnv) : List Instr → Option FullEnv
+  | [] => some fenv
+  | i :: is =>
+      match evalInstrFull fenv i with
+      | none => none
+      | some fenv' => execInstrsFull fenv' is
+
+/-- Execute a single block: walk instructions, then handle the terminator. -/
+def execBlockFuel (fuel : Nat) (f : Func) (b : Block) (fenv : FullEnv) : Option Value :=
+  match fuel with
+  | 0 => none
+  | fuel+1 =>
+      match execInstrsFull fenv b.instrs with
+      | none => none
+      | some fenv' =>
+          match b.terminator with
+          | .return_ v => fenv'.env v
+          | .goto t =>
+              match findBlock f t with
+              | some b' => execBlockFuel fuel f b' fenv'
+              | none => none
+          | .branch cond tt ff =>
+              match fenv'.boolOf cond with
+              | some true =>
+                  match findBlock f tt with
+                  | some b' => execBlockFuel fuel f b' fenv'
+                  | none => none
+              | some false =>
+                  match findBlock f ff with
+                  | some b' => execBlockFuel fuel f b' fenv'
+                  | none => none
+              | none => none
+          | .switch _ _ _ => none
+
+/-- Execute a block by its id. -/
+def execBlockById (fuel : Nat) (f : Func) (bid : BlockId) (fenv : FullEnv) : Option Value :=
+  match findBlock f bid with
+  | some b => execBlockFuel fuel f b fenv
+  | none => none
+
+/-- Execute a function from its entry block with a full environment. -/
+def execFunc (fuel : Nat) (f : Func) (fenv : FullEnv) : Option Value :=
+  execBlockFuel fuel f
+    { id := f.entry, instrs := [], terminator := .goto f.entry }
+    fenv
+
 end Morph.MIR
+
