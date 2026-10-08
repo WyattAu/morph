@@ -14,138 +14,105 @@ section InferTypeTests
 
   -- Literal type inference
 
-  example : inferType [] [] (.lit (.int 42)) = some .intType := by
-    simp [inferType]
+  example : inferType [] [] (.lit (.int 42)) = some .intType := by simp [inferType, inferTypeC]
 
-  example : inferType [] [] (.lit (.bool true)) = some .boolType := by
-    simp [inferType]
+  example : inferType [] [] (.lit (.bool true)) = some .boolType := by simp [inferType, inferTypeC]
 
-  example : inferType [] [] (.lit .unit) = some .unitType := by
-    simp [inferType]
+  example : inferType [] [] (.lit .unit) = some .unitType := by simp [inferType, inferTypeC]
 
-  example : inferType [] [] (.lit (.string "hello")) = some .stringType := by
-    simp [inferType]
+  example : inferType [] [] (.lit (.string "hello")) = some .stringType := by simp [inferType, inferTypeC]
 
-  example : inferType [] [] (.lit .undef) = none := by
-    simp [inferType]
+  example : inferType [] [] (.lit .undef) = none := by simp [inferType, inferTypeC]
 
   -- Free variable type inference
 
   example : inferType [] [("x", .intType)] (.fvar "x") = some .intType := by
-    unfold inferType lookupTyp
-    simp [Option.map]
+    simp [inferType, inferTypeC, lookupTyp]
 
   example : inferType [] [("x", .boolType)] (.fvar "x") = some .boolType := by
-    unfold inferType lookupTyp
-    simp [Option.map]
+    simp [inferType, inferTypeC, lookupTyp]
 
   example : inferType [] [] (.fvar "x") = none := by
-    simp [inferType, lookupTyp]
+    simp [inferType, inferTypeC, lookupTyp]
 
   -- Bound variable type inference
 
-  example : inferType [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] (.bvar 0) = some Typ.intType := by
-    simp only [inferType]
-    simp [Morph.LinCtx.types, List.length_cons, List.length_nil]
+  example : inferType [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] (.bvar 0) = some Typ.intType := by simp [inferType, inferTypeC, Morph.LinCtx.initialUsage, Morph.LinCtx.isLinear]
 
-  example : inferType [] [] (.bvar 0) = none := by
-    simp only [inferType]
-    show (if h : 0 < [].length then some [][0] else none) = none
-    simp [List.length_nil]
+  example : inferType [] [] (.bvar 0) = none := by simp [inferType, inferTypeC]
 
   -- Unary operator inference
 
-  example : inferType [] [] (.unop .not (.lit (.bool true))) = some .boolType := by
-    simp [inferType]
+  example : inferType [] [] (.unop .not (.lit (.bool true))) = some .boolType := by simp [inferType, inferTypeC]
 
-  example : inferType [] [] (.unop .not (.lit (.int 1))) = none := by
-    simp [inferType]
+  example : inferType [] [] (.unop .not (.lit (.int 1))) = none := by simp [inferType, inferTypeC]
 
-  example : inferType [] [] (.unop .notb (.lit (.int 5))) = some .intType := by
-    simp [inferType]
+  example : inferType [] [] (.unop .notb (.lit (.int 5))) = some .intType := by simp [inferType, inferTypeC]
 
-  example : inferType [] [] (.unop .notb (.lit (.bool true))) = none := by
-    simp [inferType]
+  example : inferType [] [] (.unop .notb (.lit (.bool true))) = none := by simp [inferType, inferTypeC]
 
   -- Binary arithmetic operator inference
 
-  example : inferType [] [] (.binop .add (.lit (.int 1)) (.lit (.int 2))) = some .intType := by
-    simp [inferType]
+  example : inferType [] [] (.binop .add (.lit (.int 1)) (.lit (.int 2))) = some .intType := by simp [inferType, inferTypeC, binopResult]
 
-  example : inferType [] [] (.binop .sub (.lit (.int 1)) (.lit (.int 2))) = some .intType := by
-    simp [inferType]
+  example : inferType [] [] (.binop .sub (.lit (.int 1)) (.lit (.int 2))) = some .intType := by simp [inferType, inferTypeC, binopResult]
 
-  example : inferType [] [] (.binop .mul (.lit (.int 1)) (.lit (.int 2))) = some .intType := by
-    simp [inferType]
+  example : inferType [] [] (.binop .mul (.lit (.int 1)) (.lit (.int 2))) = some .intType := by simp [inferType, inferTypeC, binopResult]
 
-  example : inferType [] [] (.binop .div (.lit (.int 6)) (.lit (.int 2))) = some .intType := by
-    simp [inferType]
+  example : inferType [] [] (.binop .div (.lit (.int 6)) (.lit (.int 2))) = some .intType := by simp [inferType, inferTypeC, binopResult]
 
-  example : inferType [] [] (.binop .mod (.lit (.int 5)) (.lit (.int 3))) = some .intType := by
-    simp [inferType]
+  example : inferType [] [] (.binop .mod (.lit (.int 5)) (.lit (.int 3))) = some .intType := by simp [inferType, inferTypeC, binopResult]
 
-  example : inferType [] [] (.binop .add (.lit (.bool true)) (.lit (.int 1))) = none := by
-    simp [inferType]
+  example : inferType [] [] (.binop .add (.lit (.bool true)) (.lit (.int 1))) = none := by simp [inferType, inferTypeC, binopResult]
 
   -- Comparison operator inference
 
-  example : inferType [] [] (.binop .eq (.lit (.int 1)) (.lit (.int 2))) = some .boolType := by
-    simp [inferType]
+  example : inferType [] [] (.binop .eq (.lit (.int 1)) (.lit (.int 2))) = some .boolType := by simp [inferType, inferTypeC, binopResult]
 
-  example : inferType [] [] (.binop .lt (.lit (.int 1)) (.lit (.int 2))) = some .boolType := by
-    simp [inferType]
+  example : inferType [] [] (.binop .lt (.lit (.int 1)) (.lit (.int 2))) = some .boolType := by simp [inferType, inferTypeC, binopResult]
 
   -- Logical operator inference
 
-  example : inferType [] [] (.binop .and (.lit (.bool true)) (.lit (.bool false))) = some .boolType := by
-    simp [inferType]
+  example : inferType [] [] (.binop .and (.lit (.bool true)) (.lit (.bool false))) = some .boolType := by simp [inferType, inferTypeC, binopResult]
 
-  example : inferType [] [] (.binop .or (.lit (.bool true)) (.lit (.bool false))) = some .boolType := by
-    simp [inferType]
+  example : inferType [] [] (.binop .or (.lit (.bool true)) (.lit (.bool false))) = some .boolType := by simp [inferType, inferTypeC, binopResult]
 
-  example : inferType [] [] (.binop .and (.lit (.int 1)) (.lit (.int 2))) = none := by
-    simp [inferType]
+  example : inferType [] [] (.binop .and (.lit (.int 1)) (.lit (.int 2))) = none := by simp [inferType, inferTypeC, binopResult]
 
   -- Bitwise operator inference
 
-  example : inferType [] [] (.binop .andb (.lit (.int 1)) (.lit (.int 2))) = some .intType := by
-    simp [inferType]
+  example : inferType [] [] (.binop .andb (.lit (.int 1)) (.lit (.int 2))) = some .intType := by simp [inferType, inferTypeC, binopResult]
 
-  example : inferType [] [] (.binop .orb (.lit (.int 1)) (.lit (.int 2))) = some .intType := by
-    simp [inferType]
+  example : inferType [] [] (.binop .orb (.lit (.int 1)) (.lit (.int 2))) = some .intType := by simp [inferType, inferTypeC, binopResult]
 
-  example : inferType [] [] (.binop .shl (.lit (.int 1)) (.lit (.int 2))) = some .intType := by
-    simp [inferType]
+  example : inferType [] [] (.binop .shl (.lit (.int 1)) (.lit (.int 2))) = some .intType := by simp [inferType, inferTypeC, binopResult]
 
   -- Lambda type inference (needs annotations, returns none for synthesis)
 
-  example : inferType [] [] (.lam 1 (.bvar 0)) = none := by
-    simp [inferType]
+  example : inferType [] [] (.lam 1 (.bvar 0)) = none := by simp [inferType, inferTypeC]
 
   -- Let binding type inference
 
   example : inferType [] [] (.let_ (.lit (.int 42)) (.bvar 0)) = some Typ.intType := by
-    simp [inferType, Morph.LinCtx.types]
+    simp [inferType, inferTypeC, Morph.LinCtx.initialUsage, Morph.LinCtx.isLinear]
 
   -- If-then-else and application type inference are tested via HasType constructors
   -- below. The BEq comparison in inferType for these cases makes direct equality
   -- proofs difficult; see HasTypeConstructorTests for complete coverage.
 
-  -- For loop type inference
+  -- For loop type inference (P13: the empty body is rejected — `for_type` needs a
+  -- singleton unitType body in the iterator-extended context)
 
-  example : inferType [] [] (.forLoop (.lit (.int 0)) (.lit (.int 10)) []) = some .unitType := by
-    simp [inferType]
+  example : inferType [] [] (.forLoop (.lit (.int 0)) (.lit (.int 10)) []) = none := by simp [inferType, inferTypeC, inferTypesC, Morph.LinCtx.initialUsage, Morph.LinCtx.isLinear]
 
-  -- Block type inference
+  -- Block type inference (P13: the empty block is rejected — `block_type` cannot
+  -- derive it, since `τs ++ [τ]` is never `[]`)
 
-  example : inferType [] [] (.block []) = some .unitType := by
-    simp [inferType]
+  example : inferType [] [] (.block []) = none := by simp [inferType, inferTypeC, inferTypesC]
 
-  example : inferType [] [] (.block [.lit (.int 42)]) = some .intType := by
-    simp [inferType]
+  example : inferType [] [] (.block [.lit (.int 42)]) = some .intType := by simp [inferType, inferTypeC, inferTypesC]
 
-  example : inferType [] [] (.block [.lit (.int 1), (.lit (.int 2))]) = some .intType := by
-    simp [inferType]
+  example : inferType [] [] (.block [.lit (.int 1), (.lit (.int 2))]) = some .intType := by simp [inferType, inferTypeC, inferTypesC]
 
   -- Environment operations
 
@@ -329,9 +296,11 @@ section HasTypeConstructorTests
         (HasType.lit_int [] [] 2))
       (HasType.lit_int [] [] 3)
 
-  -- HT-27: for_type (empty body handled by inferType only; HasType requires non-empty body)
-  example : inferType [] [] (.forLoop (.lit (.int 0)) (.lit (.int 10)) []) = some Typ.unitType := by
-    simp [inferType]
+  -- HT-27: for_type — P13 soundness fix: `for_type` requires a singleton body of
+  -- type unitType in the iterator-extended context, so the empty body is now
+  -- rejected by the checker (it previously returned `some unitType` unchecked).
+  example : inferType [] [] (.forLoop (.lit (.int 0)) (.lit (.int 10)) []) = none := by
+    simp [inferType, inferTypeC, inferTypesC, Morph.LinCtx.initialUsage, Morph.LinCtx.isLinear]
 
   -- HT-28: for_type (with unit body)
   example : HasType [] []
@@ -345,10 +314,11 @@ section HasTypeConstructorTests
         (HasTypeAll.nil [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] []))
 
   -- HT-29: block_type (empty)
-  -- Note: empty blocks are handled by inferType but block_type requires non-empty exprs.
-  -- inferType returns some .unitType for empty blocks; this is a known spec asymmetry.
-  example : inferType [] [] (.block []) = some .unitType := by
-    simp [inferType]
+  -- P13 soundness fix: `block_type` cannot derive an empty block (`τs ++ [τ]` is
+  -- never `[]`), so the checker now returns `none` for it (previously
+  -- `some .unitType` unchecked).
+  example : inferType [] [] (.block []) = none := by
+    simp [inferType, inferTypeC, inferTypesC]
 
   -- HT-30: block_type (singleton)
   example : HasType [] [] (.block [.lit (.int 42)]) Typ.intType []:=

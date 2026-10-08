@@ -82,6 +82,373 @@ theorem entry_linPushMany_mid (ctx : LinCtx) (τs : List Morph.Core.Typ) (k : Na
   simp
 
 /-!
+## Decidable Equality for `Typ`
+
+`Typ` is a *nested* inductive (its `List Typ` fields make the `induction`
+tactic and the `DecidableEq` deriving handler inapplicable), so decidable
+equality is built by hand: `eqTyp` is a plain structural comparison function
+(recursive definitions over nested inductives compile fine — cf. `countUses`),
+proven lawful against propositional `=` by induction on the size measure
+`tS`/`tSl`/`tSlF`, and the `DecidableEq` instance is derived from it. This
+instance is what lets the executable checker test context-idempotence
+(`cout = ctx`) and annotation agreement (`τ' = τ`) computably while keeping
+those tests provable.
+-/
+
+mutual
+def eqTyp : Morph.Core.Typ → Morph.Core.Typ → Bool
+  | .intType, .intType => true
+  | .boolType, .boolType => true
+  | .stringType, .stringType => true
+  | .pointerType, .pointerType => true
+  | .unitType, .unitType => true
+  | .neverType, .neverType => true
+  | .arrayType t n, .arrayType t' n' => eqTyp t t' && n == n'
+  | .functionType ts r, .functionType ts' r' => eqTyps ts ts' && eqTyp r r'
+  | .linearFunctionType ts r, .linearFunctionType ts' r' => eqTyps ts ts' && eqTyp r r'
+  | .intWidthType w, .intWidthType w' => decide (w = w')
+  | .floatType w, .floatType w' => decide (w = w')
+  | .refType c t, .refType c' t' => decide (c = c') && eqTyp t t'
+  | .effectFunctionType ts r es, .effectFunctionType ts' r' es' =>
+      eqTyps ts ts' && eqTyp r r' && decide (es = es')
+  | .typeVar n, .typeVar n' => n == n'
+  | .optionType t, .optionType t' => eqTyp t t'
+  | .resultType t u, .resultType t' u' => eqTyp t t' && eqTyp u u'
+  | .tupleType ts, .tupleType ts' => eqTyps ts ts'
+  | .structType nm fs, .structType nm' fs' => nm == nm' && eqTypFields fs fs'
+  | _, _ => false
+
+def eqTyps : List Morph.Core.Typ → List Morph.Core.Typ → Bool
+  | [], [] => true
+  | t :: ts, t' :: ts' => eqTyp t t' && eqTyps ts ts'
+  | _, _ => false
+
+def eqTypFields : List (String × Morph.Core.Typ) → List (String × Morph.Core.Typ) → Bool
+  | [], [] => true
+  | (n, t) :: fs, (n', t') :: fs' => n == n' && eqTyp t t' && eqTypFields fs fs'
+  | _, _ => false
+end
+
+mutual
+def tS : Morph.Core.Typ → Nat
+  | .arrayType t _ => tS t + 1
+  | .functionType ts r => tSl ts + tS r + 1
+  | .linearFunctionType ts r => tSl ts + tS r + 1
+  | .refType _ t => tS t + 1
+  | .effectFunctionType ts r _ => tSl ts + tS r + 1
+  | .optionType t => tS t + 1
+  | .resultType t u => tS t + tS u + 1
+  | .tupleType ts => tSl ts + 1
+  | .structType _ fs => tSlF fs + 1
+  | _ => 1
+termination_by t => sizeOf t
+
+def tSl : List Morph.Core.Typ → Nat
+  | [] => 0
+  | t :: ts => tS t + tSl ts + 1
+termination_by ts => sizeOf ts
+
+def tSlF : List (String × Morph.Core.Typ) → Nat
+  | [] => 0
+  | (_, t) :: fs => tS t + tSlF fs + 1
+termination_by fs => sizeOf fs
+end
+
+set_option linter.unusedSimpArgs false in
+/-- `eqTyp` is complete: it compares `true` exactly on equal types. -/
+theorem eqTyp_complete : ∀ (n : Nat),
+    (∀ a b : Morph.Core.Typ, tS a + tS b ≤ n → (eqTyp a b = true ↔ a = b)) ∧
+    (∀ as bs : List Morph.Core.Typ, tSl as + tSl bs ≤ n → (eqTyps as bs = true ↔ as = bs)) ∧
+    (∀ as bs : List (String × Morph.Core.Typ),
+      tSlF as + tSlF bs ≤ n → (eqTypFields as bs = true ↔ as = bs)) := by
+  intro n
+  induction n with
+  | zero =>
+    refine ⟨?_, ?_, ?_⟩
+    · intro a b hn
+      exfalso
+      cases a <;> cases b <;> simp only [tS, tSl, tSlF] at hn <;> omega
+    · intro as bs hn
+      cases as with
+      | nil =>
+        cases bs with
+        | nil => simp [eqTyps]
+        | cons _ _ => simp [eqTyps]
+      | cons _ _ =>
+        cases bs with
+        | nil => simp [eqTyps]
+        | cons _ _ =>
+          exfalso
+          simp only [tS, tSl] at hn
+          omega
+    · intro as bs hn
+      cases as with
+      | nil =>
+        cases bs with
+        | nil => simp [eqTypFields]
+        | cons _ _ => simp [eqTypFields]
+      | cons p ps =>
+        obtain ⟨_, t⟩ := p
+        cases bs with
+        | nil => simp [eqTypFields]
+        | cons q qs =>
+          obtain ⟨_, t'⟩ := q
+          exfalso
+          simp only [tS, tSlF] at hn
+          omega
+  | succ n ih =>
+    obtain ⟨ihT, ihL, ihF⟩ := ih
+    refine ⟨?_, ?_, ?_⟩
+    · intro a b hn
+      cases a with
+      | intType =>
+        cases b with
+        | intType => simp [eqTyp]
+        | _ => simp [eqTyp]
+      | boolType =>
+        cases b with
+        | boolType => simp [eqTyp]
+        | _ => simp [eqTyp]
+      | stringType =>
+        cases b with
+        | stringType => simp [eqTyp]
+        | _ => simp [eqTyp]
+      | pointerType =>
+        cases b with
+        | pointerType => simp [eqTyp]
+        | _ => simp [eqTyp]
+      | unitType =>
+        cases b with
+        | unitType => simp [eqTyp]
+        | _ => simp [eqTyp]
+      | neverType =>
+        cases b with
+        | neverType => simp [eqTyp]
+        | _ => simp [eqTyp]
+      | arrayType a n0 =>
+        cases b with
+        | arrayType b n1 =>
+          constructor
+          · intro h
+            simp only [eqTyp, Bool.and_eq_true, beq_iff_eq] at h
+            obtain ⟨h1, h2⟩ := h
+            rw [(ihT a b (by simp only [tS] at hn; omega)).mp h1, h2]
+          · intro h
+            injection h with h1 h2
+            simp only [eqTyp, Bool.and_eq_true, beq_iff_eq]
+            exact ⟨(ihT a b (by simp only [tS] at hn; omega)).mpr h1, h2⟩
+        | _ => simp [eqTyp]
+      | functionType as r =>
+        cases b with
+        | functionType bs s =>
+          constructor
+          · intro h
+            simp only [eqTyp, Bool.and_eq_true] at h
+            obtain ⟨h1, h2⟩ := h
+            rw [(ihL as bs (by simp only [tS, tSl] at hn; omega)).mp h1,
+                (ihT r s (by simp only [tS, tSl] at hn; omega)).mp h2]
+          · intro h
+            injection h with h1 h2
+            simp only [eqTyp, Bool.and_eq_true]
+            exact ⟨(ihL as bs (by simp only [tS, tSl] at hn; omega)).mpr h1,
+                   (ihT r s (by simp only [tS, tSl] at hn; omega)).mpr h2⟩
+        | _ => simp [eqTyp]
+      | linearFunctionType as r =>
+        cases b with
+        | linearFunctionType bs s =>
+          constructor
+          · intro h
+            simp only [eqTyp, Bool.and_eq_true] at h
+            obtain ⟨h1, h2⟩ := h
+            rw [(ihL as bs (by simp only [tS, tSl] at hn; omega)).mp h1,
+                (ihT r s (by simp only [tS, tSl] at hn; omega)).mp h2]
+          · intro h
+            injection h with h1 h2
+            simp only [eqTyp, Bool.and_eq_true]
+            exact ⟨(ihL as bs (by simp only [tS, tSl] at hn; omega)).mpr h1,
+                   (ihT r s (by simp only [tS, tSl] at hn; omega)).mpr h2⟩
+        | _ => simp [eqTyp]
+      | intWidthType w =>
+        cases b with
+        | intWidthType w' =>
+          constructor
+          · intro h
+            simp only [eqTyp, decide_eq_true_eq] at h
+            rw [h]
+          · intro h
+            injection h with h1
+            simp only [eqTyp, decide_eq_true_eq]
+            exact h1
+        | _ => simp [eqTyp]
+      | floatType w =>
+        cases b with
+        | floatType w' =>
+          constructor
+          · intro h
+            simp only [eqTyp, decide_eq_true_eq] at h
+            rw [h]
+          · intro h
+            injection h with h1
+            simp only [eqTyp, decide_eq_true_eq]
+            exact h1
+        | _ => simp [eqTyp]
+      | refType c a =>
+        cases b with
+        | refType c' b =>
+          constructor
+          · intro h
+            simp only [eqTyp, Bool.and_eq_true, decide_eq_true_eq] at h
+            obtain ⟨h1, h2⟩ := h
+            rw [h1, (ihT a b (by simp only [tS] at hn; omega)).mp h2]
+          · intro h
+            injection h with h1 h2
+            simp only [eqTyp, Bool.and_eq_true, decide_eq_true_eq]
+            exact ⟨h1, (ihT a b (by simp only [tS] at hn; omega)).mpr h2⟩
+        | _ => simp [eqTyp]
+      | effectFunctionType as r es =>
+        cases b with
+        | effectFunctionType bs s es' =>
+          constructor
+          · intro h
+            simp only [eqTyp, Bool.and_eq_true, decide_eq_true_eq] at h
+            obtain ⟨⟨h1, h2⟩, h3⟩ := h
+            rw [(ihL as bs (by simp only [tS, tSl] at hn; omega)).mp h1,
+                (ihT r s (by simp only [tS, tSl] at hn; omega)).mp h2, h3]
+          · intro h
+            injection h with h1 h2 h3
+            simp only [eqTyp, Bool.and_eq_true, decide_eq_true_eq]
+            exact ⟨⟨(ihL as bs (by simp only [tS, tSl] at hn; omega)).mpr h1,
+                   (ihT r s (by simp only [tS, tSl] at hn; omega)).mpr h2⟩, h3⟩
+        | _ => simp [eqTyp]
+      | typeVar n0 =>
+        cases b with
+        | typeVar n1 =>
+          constructor
+          · intro h
+            simp only [eqTyp, beq_iff_eq] at h
+            rw [h]
+          · intro h
+            injection h with h1
+            simp only [eqTyp, beq_iff_eq]
+            exact h1
+        | _ => simp [eqTyp]
+      | optionType a =>
+        cases b with
+        | optionType b =>
+          constructor
+          · intro h
+            simp only [eqTyp] at h
+            rw [(ihT a b (by simp only [tS] at hn; omega)).mp h]
+          · intro h
+            injection h with h1
+            simp only [eqTyp]
+            exact (ihT a b (by simp only [tS] at hn; omega)).mpr h1
+        | _ => simp [eqTyp]
+      | resultType a u =>
+        cases b with
+        | resultType b v =>
+          constructor
+          · intro h
+            simp only [eqTyp, Bool.and_eq_true] at h
+            obtain ⟨h1, h2⟩ := h
+            rw [(ihT a b (by simp only [tS] at hn; omega)).mp h1,
+                (ihT u v (by simp only [tS] at hn; omega)).mp h2]
+          · intro h
+            injection h with h1 h2
+            simp only [eqTyp, Bool.and_eq_true]
+            exact ⟨(ihT a b (by simp only [tS] at hn; omega)).mpr h1,
+                   (ihT u v (by simp only [tS] at hn; omega)).mpr h2⟩
+        | _ => simp [eqTyp]
+      | tupleType as =>
+        cases b with
+        | tupleType bs =>
+          constructor
+          · intro h
+            simp only [eqTyp] at h
+            rw [(ihL as bs (by simp only [tS, tSl] at hn; omega)).mp h]
+          · intro h
+            injection h with h1
+            simp only [eqTyp]
+            exact (ihL as bs (by simp only [tS, tSl] at hn; omega)).mpr h1
+        | _ => simp [eqTyp]
+      | structType nm fs =>
+        cases b with
+        | structType nm' fs' =>
+          constructor
+          · intro h
+            simp only [eqTyp, Bool.and_eq_true, beq_iff_eq] at h
+            obtain ⟨h1, h2⟩ := h
+            rw [h1, (ihF fs fs' (by simp only [tS, tSlF] at hn; omega)).mp h2]
+          · intro h
+            injection h with h1 h2
+            simp only [eqTyp, Bool.and_eq_true, beq_iff_eq]
+            exact ⟨h1, (ihF fs fs' (by simp only [tS, tSlF] at hn; omega)).mpr h2⟩
+        | _ => simp [eqTyp]
+    · intro as bs hn
+      cases as with
+      | nil =>
+        cases bs with
+        | nil => simp [eqTyps]
+        | cons _ _ => simp [eqTyps]
+      | cons a as' =>
+        cases bs with
+        | nil => simp [eqTyps]
+        | cons b bs' =>
+          constructor
+          · intro h
+            simp only [eqTyps, Bool.and_eq_true] at h
+            obtain ⟨h1, h2⟩ := h
+            rw [(ihT a b (by simp only [tS, tSl] at hn; omega)).mp h1,
+                (ihL as' bs' (by simp only [tS, tSl] at hn; omega)).mp h2]
+          · intro h
+            injection h with h1 h2
+            simp only [eqTyps, Bool.and_eq_true]
+            exact ⟨(ihT a b (by simp only [tS, tSl] at hn; omega)).mpr h1,
+                   (ihL as' bs' (by simp only [tS, tSl] at hn; omega)).mpr h2⟩
+    · intro as bs hn
+      cases as with
+      | nil =>
+        cases bs with
+        | nil => simp [eqTypFields]
+        | cons _ _ => simp [eqTypFields]
+      | cons a as' =>
+        obtain ⟨n0, t⟩ := a
+        cases bs with
+        | nil => simp [eqTypFields]
+        | cons b bs' =>
+          obtain ⟨n1, t'⟩ := b
+          constructor
+          · intro h
+            simp only [eqTypFields, Bool.and_eq_true, beq_iff_eq] at h
+            obtain ⟨⟨h1, h2⟩, h3⟩ := h
+            rw [h1, (ihT t t' (by simp only [tS, tSlF] at hn; omega)).mp h2,
+                (ihF as' bs' (by simp only [tS, tSlF] at hn; omega)).mp h3]
+          · intro h
+            injection h with h1 h2
+            injection h1 with he1 he2
+            simp only [eqTypFields, Bool.and_eq_true, beq_iff_eq]
+            exact ⟨⟨he1, (ihT t t' (by simp only [tS, tSlF] at hn; omega)).mpr he2⟩,
+                   (ihF as' bs' (by simp only [tS, tSlF] at hn; omega)).mpr h2⟩
+
+theorem eqTyp_iff (a b : Morph.Core.Typ) : eqTyp a b = true ↔ a = b :=
+  (eqTyp_complete (tS a + tS b)).1 a b (Nat.le_refl _)
+
+theorem eqTyps_iff (as bs : List Morph.Core.Typ) : eqTyps as bs = true ↔ as = bs :=
+  (eqTyp_complete (tSl as + tSl bs)).2.1 as bs (Nat.le_refl _)
+
+theorem eqTypFields_iff (as bs : List (String × Morph.Core.Typ)) :
+    eqTypFields as bs = true ↔ as = bs :=
+  (eqTyp_complete (tSlF as + tSlF bs)).2.2 as bs (Nat.le_refl _)
+
+/-- Decidable equality on `Typ`, derived from the lawful `eqTyp` comparison
+(see the section docstring for why the deriving handler cannot do this). -/
+instance : DecidableEq Morph.Core.Typ := fun a b =>
+  if h : eqTyp a b = true then
+    isTrue ((eqTyp_iff a b).mp h)
+  else
+    isFalse (fun he => h ((eqTyp_iff a b).mpr he))
+
+/-!
 ## Type Well-Formedness
 -/
 inductive WellTyped : TypEnv -> Morph.Core.Typ -> Prop where
@@ -125,206 +492,313 @@ inductive WellTyped : TypEnv -> Morph.Core.Typ -> Prop where
 /-!
 ## Type Inference (Executable)
 
-`inferType ctx env e` infers the type of expression `e` in:
-- `ctx : LinCtx` — linear context of bound de Bruijn indices
-  (ctx.types[0] = type of bvar 0)
-- `env : TypEnv` — types of free variables by name
+`inferTypeC ctx env e` infers the type of expression `e` **and** returns the
+linear context *after* typing `e`, mirroring the context-transformer judgment
+`HasType ctx Γ e τ ctx'` rule by rule (research program P13, CakeML frontend-2
+discipline; soundness is proven in `Morph.Specs.TypeSystem.InferenceSound`):
+
+- `.bvar n` reads `ctx[n]?`: a `Usage.zero` slot is consumed
+  (`HasType.bvar_type`), a `Usage.many` slot is left unchanged
+  (`HasType.bvar_type_many`), a `Usage.one` slot is rejected (neither rule
+  applies).
+- Sub-expressions typed in sequence see the previous one's output context,
+  exactly as the judgment threads it; rules whose premise demands
+  input = output context (`binop_*` for the second operand, `let_type`,
+  `if_type`, `app_type`, `block_type`, `tuple_type`, `arrayLit_type`,
+  `HasTypeAll` lists, …) check that idempotence explicitly.
+- Context extensions use the same pushes as the judgment: `let_type`'s
+  `(τ, initialUsage τ)` push here, and — in `checkType` (`Morph.TypeChecker`)
+  — `lam_type`'s `LinCtx.pushMany` and `lam_linear_type`'s `linPushMany`.
+
+`inferType` is the type-only projection used by the rest of the code base;
+`inferTypes`/`inferTypesC` are the list-level analogues.
 -/
+
+/-- Result-type dispatch for `binop`: `e1 : t1` was typed in the input context,
+`e2 : t2` in `cmid` (= `e1`'s output context), and a well-typed `binop` leaves
+the context at `cmid` (the `binop_*` rules). -/
+def binopResult (op : Morph.Core.Operator) (t1 t2 : Morph.Core.Typ) (cmid : LinCtx) :
+    Option (Morph.Core.Typ × LinCtx) :=
+  match t1, t2 with
+  | .intType, .intType =>
+    match op with
+    | .add | .sub | .mul | .div | .mod => some (.intType, cmid)
+    | .eq | .neq | .lt | .leq | .gt | .geq => some (.boolType, cmid)
+    | .andb | .orb | .xorb | .shl | .shr => some (.intType, cmid)
+    | _ => none
+  | .boolType, .boolType =>
+    match op with
+    | .and | .or => some (.boolType, cmid)
+    | _ => none
+  | .pointerType, .intType =>
+    match op with
+    | .ptrAdd | .ptrSub => some (.pointerType, cmid)
+    | .ptrStore => some (.unitType, cmid)
+    | _ => none
+  | .pointerType, .unitType =>
+    match op with
+    | .ptrLoad => some (.unitType, cmid)
+    | _ => none
+  | .stringType, .stringType =>
+    match op with
+    | .add => some (.stringType, cmid)
+    | _ => none
+  | _, _ => none
+
 mutual
-def inferTypes (ctx : LinCtx) (env : TypEnv) : List Morph.Syntax.Expr -> Option (List Morph.Core.Typ)
-  | [] => some []
+def inferTypesC (ctx : LinCtx) (env : TypEnv) :
+    List Morph.Syntax.Expr -> Option (List Morph.Core.Typ × LinCtx)
+  | [] => some ([], ctx)
   | e :: es =>
-    match inferType ctx env e, inferTypes ctx env es with
-    | some τ, some tys => some (τ :: tys)
-    | _, _ => none
+    match inferTypeC ctx env e with
+    | some (τ, cout) =>
+      match inferTypesC cout env es with
+      | some (tys, cout') => if cout' = cout then some (τ :: tys, cout) else none
+      | none => none
+    | none => none
   termination_by es => sizeOf es
 
-def inferType (ctx : LinCtx) (env : TypEnv) : Morph.Syntax.Expr -> Option Morph.Core.Typ
-  | .bvar n => if h : n < ctx.types.length then some ctx.types[n] else none
-  | .fvar name => lookupTyp env name
-  | .lit (.int _) => some .intType
-  | .lit (.bool _) => some .boolType
-  | .lit (.string _) => some .stringType
-  | .lit .unit => some .unitType
-  | .lit (.pointer _) => some .pointerType
-  | .lit (.float _) => some (.floatType .f64)
+def inferTypeC (ctx : LinCtx) (env : TypEnv) :
+    Morph.Syntax.Expr -> Option (Morph.Core.Typ × LinCtx)
+  | .bvar n =>
+    match ctx[n]? with
+    | some (τ, Usage.zero) => some (τ, LinCtx.consume ctx n)
+    | some (τ, Usage.many) => some (τ, ctx)
+    | _ => none
+  | .fvar name => (lookupTyp env name).map (fun τ => (τ, ctx))
+  | .lit (.int _) => some (.intType, ctx)
+  | .lit (.bool _) => some (.boolType, ctx)
+  | .lit (.string _) => some (.stringType, ctx)
+  | .lit .unit => some (.unitType, ctx)
+  | .lit (.pointer _) => some (.pointerType, ctx)
+  | .lit (.float _) => some (.floatType .f64, ctx)
   | .lit .undef => none
   | .lit (.some v) =>
-    match inferType ctx env (.lit v) with
-    | some τ => some (.optionType τ)
+    match inferTypeC ctx env (.lit v) with
+    | some (τ, _) => some (.optionType τ, ctx)
     | none => none
   | .lit .none => none
-  | .lit (.ok v) =>
-    match inferType ctx env (.lit v) with
-    | some τ => none
-    | none => none
-  | .lit (.err v) =>
-    match inferType ctx env (.lit v) with
-    | some τ => none
-    | none => none
-  | .lit (.tuple_ vs) =>
-    let tys := vs.map (fun v => inferType ctx env (.lit v))
-    if tys.all Option.isSome then
-      some (.tupleType (tys.map Option.get!))
-    else none
-  | .lit (.array_ vs) =>
-    let tys := vs.map (fun v => inferType ctx env (.lit v))
-    match tys.head? with
-    | some (some τ) =>
-      if tys.all (fun t => t == some τ) && (vs.length > 0) then
-        some (.arrayType τ vs.length)
-      else none
-    | _ => none
-  | .lit (.loc _) => some .pointerType  -- locations are opaque pointers
+  | .lit (.ok _) => none
+  | .lit (.err _) => none
+  | .lit (.tuple_ _) => none  -- no HasType rule for tuple value literals
+  | .lit (.array_ _) => none  -- no HasType rule for array value literals
+  | .lit (.loc _) => none     -- no HasType rule for location literals
   | .unop op e =>
     match op with
     | .not =>
-      match inferType ctx env e with
-      | some .boolType => some .boolType
+      match inferTypeC ctx env e with
+      | some (.boolType, cout) => if cout = ctx then some (.boolType, ctx) else none
       | _ => none
     | .notb =>
-      match inferType ctx env e with
-      | some .intType => some .intType
+      match inferTypeC ctx env e with
+      | some (.intType, cout) => if cout = ctx then some (.intType, ctx) else none
       | _ => none
     | _ => none
   | .binop op e1 e2 =>
-    let typ1? := inferType ctx env e1
-    let typ2? := inferType ctx env e2
-    match typ1?, typ2? with
-    | some .intType, some .intType =>
-      match op with
-      | .add | .sub | .mul | .div | .mod => some .intType
-      | .eq | .neq | .lt | .leq | .gt | .geq => some .boolType
-      | .andb | .orb | .xorb | .shl | .shr => some .intType
-      | _ => none
-    | some .boolType, some .boolType =>
-      match op with
-      | .and | .or => some .boolType
-      | _ => none
-    | some .pointerType, some .intType =>
-      match op with
-      | .ptrAdd | .ptrSub => some .pointerType
-      | _ => none
-    | some .pointerType, some .unitType =>
-      match op with
-      | .ptrLoad => some .unitType
-      | _ => none
-    | some .pointerType, some _ =>
-      match op with
-      | .ptrStore => some .unitType
-      | _ => none
-    | some .stringType, some .stringType =>
-      if op == .add then some .stringType else none
-    | _, _ => none
+    match inferTypeC ctx env e1 with
+    | some (t1, cmid) =>
+      match inferTypeC cmid env e2 with
+      | some (t2, c2) =>
+        if c2 = cmid then binopResult op t1 t2 cmid else none
+      | none => none
+    | none => none
   | .app fn args =>
-    match inferType ctx env fn with
-    | some (.functionType paramTys retTy) =>
-      if args.length == paramTys.length then
-        let argTys := args.map (inferType ctx env)
-        if argTys.all Option.isSome then
-          let ok := (argTys.zip paramTys).all (fun (aTy?, pTy) =>
-            match aTy? with
-            | some aTy => aTy == pTy
-            | none => false)
-          if ok then some retTy else none
-        else none
+    match inferTypeC ctx env fn with
+    | some (.functionType paramTys retTy, coutF) =>
+      if coutF = ctx then
+        match inferTypesC ctx env args with
+        | some (argTys, coutA) =>
+          if coutA = ctx then
+            if argTys = paramTys then some (retTy, ctx) else none
+          else none
+        | none => none
       else none
-    | some (.linearFunctionType paramTys retTy) =>
-      if args.length == paramTys.length then
-        let argTys := args.map (inferType ctx env)
-        if argTys.all Option.isSome then
-          let ok := (argTys.zip paramTys).all (fun (aTy?, pTy) =>
-            match aTy? with
-            | some aTy => aTy == pTy
-            | none => false)
-          if ok then some retTy else none
-        else none
+    | some (.linearFunctionType paramTys retTy, coutF) =>
+      if coutF = ctx then
+        match inferTypesC ctx env args with
+        | some (argTys, coutA) =>
+          if coutA = ctx then
+            if argTys = paramTys then some (retTy, ctx) else none
+          else none
+        | none => none
       else none
     | _ => none
-  | .lam n _ => none  -- Lambdas need annotations for synthesis
+  | .lam _ _ => none  -- Lambdas need annotations for synthesis
   | .let_ e1 e2 =>
-    match inferType ctx env e1 with
-    | some τ1 => inferType ((τ1, LinCtx.initialUsage τ1) :: ctx) env e2
+    match inferTypeC ctx env e1 with
+    | some (τ1, cout1) =>
+      if cout1 = ctx then
+        match inferTypeC ((τ1, LinCtx.initialUsage τ1) :: ctx) env e2 with
+        | some (τ2, cout2) =>
+          if cout2 = (τ1, LinCtx.initialUsage τ1) :: ctx then some (τ2, ctx) else none
+        | none => none
+      else none
     | none => none
   | .ifThenElse c t f =>
-    match inferType ctx env c with
-    | some .boolType =>
-      let typT := inferType ctx env t
-      let typF := inferType ctx env f
-      if typT == typF then typT else none
+    match inferTypeC ctx env c with
+    | some (.boolType, coutC) =>
+      if coutC = ctx then
+        match inferTypeC ctx env t with
+        | some (typT, coutT) =>
+          if coutT = ctx then
+            match inferTypeC ctx env f with
+            | some (typF, coutF) =>
+              if coutF = ctx then
+                if typT = typF then some (typT, ctx) else none
+              else none
+            | none => none
+          else none
+        | none => none
+      else none
     | _ => none
-  | .forLoop _ _ _ => some .unitType
-  | .block [] => some .unitType
-  | .block [e] => inferType ctx env e
-  | .block (_ :: es) => inferType ctx env (.block es)
+  | .forLoop s e body =>
+    match inferTypeC ctx env s with
+    | some (.intType, coutS) =>
+      if coutS = ctx then
+        match inferTypeC ctx env e with
+        | some (.intType, coutE) =>
+          if coutE = ctx then
+            match inferTypesC ((.intType, LinCtx.initialUsage .intType) :: ctx) env body with
+            | some ([.unitType], coutB) =>
+              if coutB = (.intType, LinCtx.initialUsage .intType) :: ctx then
+                some (.unitType, ctx)
+              else none
+            | _ => none
+          else none
+        | _ => none
+      else none
+    | _ => none
+  | .block exprs =>
+    match inferTypesC ctx env exprs with
+    | some (tys, cout) =>
+      if cout = ctx then
+        match tys.reverse with
+        | τ :: _ => some (τ, ctx)
+        | [] => none
+      else none
+    | none => none
   | .match_ _ _ => none  -- match_ type inference is complex; typing via HasType.match_type
   | .field_ e name =>
-    match inferType ctx env e with
-    | some (.structType _ fields) =>
-      match structFieldType fields name with
-      | some τ => some τ
-      | none => none
+    match inferTypeC ctx env e with
+    | some (.structType _ fields, cout) =>
+      if cout = ctx then
+        match structFieldType fields name with
+        | some τ => some (τ, ctx)
+        | none => none
+      else none
     | _ => none
   | .pipe e f =>
-    match inferType ctx env e, inferType ctx env f with
-    | some τ_e, some (.functionType [τ_arg] τ_ret) =>
-      if τ_e == τ_arg then some τ_ret else none
-    | _, _ => none
+    match inferTypeC ctx env e with
+    | some (τ_e, coutE) =>
+      if coutE = ctx then
+        match inferTypeC ctx env f with
+        | some (.functionType [τ_arg] τ_ret, coutF) =>
+          if coutF = ctx then
+            if τ_e = τ_arg then some (τ_ret, ctx) else none
+          else none
+        | _ => none
+      else none
+    | none => none
   | .some_ e =>
-    match inferType ctx env e with
-    | some τ => some (.optionType τ)
+    match inferTypeC ctx env e with
+    | some (τ, cout) => if cout = ctx then some (.optionType τ, ctx) else none
     | none => none
   | .none_ => none
-  | .ok_ e =>
-    match inferType ctx env e with
-    | some τ => none
-    | none => none
-  | .err_ e =>
-    match inferType ctx env e with
-    | some τ => none
-    | none => none
+  | .ok_ _ => none
+  | .err_ _ => none
   | .nullCoalesce e1 e2 =>
-    match inferType ctx env e1 with
-    | some (.optionType τ) => some (.optionType τ)
+    match inferTypeC ctx env e1 with
+    | some (.optionType τ1, cout1) =>
+      if cout1 = ctx then
+        match inferTypeC ctx env e2 with
+        | some (.optionType τ2, cout2) =>
+          if cout2 = ctx then
+            if τ1 = τ2 then some (.optionType τ1, ctx) else none
+          else none
+        | _ => none
+      else none
     | _ => none
-  | .typeAsc e τ => inferType ctx env e
+  | .typeAsc e τ =>
+    match inferTypeC ctx env e with
+    | some (τ', cout) =>
+      if cout = ctx then
+        if τ' = τ then some (τ, ctx) else none
+      else none
+    | none => none
   | .tuple_ elems =>
-    match inferTypes ctx env elems with
-    | some tys => some (.tupleType tys)
+    match inferTypesC ctx env elems with
+    | some (tys, cout) =>
+      if cout = ctx then some (.tupleType tys, ctx) else none
     | none => none
   | .arrayLit elems =>
-    match inferTypes ctx env elems with
-    | some tys =>
-      match tys.head? with
-      | some τ =>
-        if tys.all (fun t => t == τ) && elems.length > 0 then
-          some (.arrayType τ elems.length)
-        else none
-      | none => none
+    match inferTypesC ctx env elems with
+    | some (tys, cout) =>
+      if cout = ctx then
+        match tys.head? with
+        | some τ =>
+          if tys.all (fun t => decide (t = τ)) && elems.length > 0 then
+            some (.arrayType τ elems.length, ctx)
+          else none
+        | none => none
+      else none
     | none => none
   | .arrayIndex arr idx =>
-    match inferType ctx env arr, inferType ctx env idx with
-    | some (.arrayType τ _), some .intType => some τ
-    | _, _ => none
+    match inferTypeC ctx env arr with
+    | some (.arrayType τ _, coutA) =>
+      if coutA = ctx then
+        match inferTypeC ctx env idx with
+        | some (.intType, coutI) =>
+          if coutI = ctx then some (τ, ctx) else none
+        | _ => none
+      else none
+    | _ => none
   | .refCreate e cap τ =>
-    match inferType ctx env e with
-    | some τ' => some (.refType cap τ)  -- annotate with capability
+    match inferTypeC ctx env e with
+    | some (τ', cout) =>
+      if cout = ctx then
+        if τ' = τ then some (.refType cap τ, ctx) else none
+      else none
     | none => none
   | .refLoad e =>
-    match inferType ctx env e with
-    | some (.refType _ τ) => some τ
+    match inferTypeC ctx env e with
+    | some (.refType _ τ, cout) =>
+      if cout = ctx then some (τ, ctx) else none
     | _ => none
-  | .refStore e _ τ =>
-    match inferType ctx env e with
-    | some (.refType _ _) => some .unitType
+  | .refStore e v τ =>
+    match inferTypeC ctx env e with
+    | some (.refType cap τ', cout) =>
+      if cout = ctx then
+        if cap ≠ .val then
+          if τ' = τ then
+            match inferTypeC ctx env v with
+            | some (τv, coutV) =>
+              if coutV = ctx then
+                if τv = τ then some (.unitType, ctx) else none
+              else none
+            | none => none
+          else none
+        else none
+      else none
     | _ => none
   | .refFree e =>
-    match inferType ctx env e with
-    | some (.refType .iso _) => some .unitType  -- only iso can free
+    match inferTypeC ctx env e with
+    | some (.refType cap _, cout) =>
+      if cout = ctx then
+        if cap = .iso then some (.unitType, ctx) else none
+      else none
     | _ => none
   | .refCast _ _ => none  -- capability casts are store-typed only (ADR-010 amendment)
   termination_by e => sizeOf e
 end
+
+/-- Type-only projection of `inferTypeC` (the output context is dropped). -/
+def inferType (ctx : LinCtx) (env : TypEnv) : Morph.Syntax.Expr -> Option Morph.Core.Typ :=
+  fun e => (inferTypeC ctx env e).map Prod.fst
+
+/-- Type-only projection of `inferTypesC`. -/
+def inferTypes (ctx : LinCtx) (env : TypEnv) :
+    List Morph.Syntax.Expr -> Option (List Morph.Core.Typ) :=
+  fun es => (inferTypesC ctx env es).map Prod.fst
 
 def typeCheck (ctx : LinCtx) (env : TypEnv) (e : Morph.Syntax.Expr) (expected : Morph.Core.Typ) : Prop :=
   inferType ctx env e = some expected

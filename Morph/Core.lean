@@ -83,24 +83,24 @@ structure Pointer where
 inductive IntWidth where
   | i8 | i16 | i32 | i64
   | u8 | u16 | u32 | u64
-  deriving Repr, BEq, Hashable
+  deriving Repr, BEq, Hashable, DecidableEq
 
 inductive FloatWidth where
   | f32 | f64
-  deriving Repr, BEq, Hashable
+  deriving Repr, BEq, Hashable, DecidableEq
 
 inductive Capability where
   | iso : Capability
   | val : Capability
   | ref : Capability
-  deriving Repr, BEq, Hashable
+  deriving Repr, BEq, Hashable, DecidableEq
 
 inductive Effect where
   | io : Effect
   | net : Effect
   | time : Effect
   | system : Effect
-  deriving Repr, BEq, Hashable
+  deriving Repr, BEq, Hashable, DecidableEq
 
 abbrev EffectSet := List Effect
 
@@ -233,7 +233,7 @@ inductive Operator where
   | ptrSub : Operator
   | ptrLoad : Operator
   | ptrStore : Operator
-deriving Repr, BEq, Hashable
+deriving Repr, BEq, Hashable, DecidableEq
 
 /-!
 ## Env

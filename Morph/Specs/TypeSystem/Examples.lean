@@ -24,36 +24,31 @@ def env_x_bool_y_int : TypEnv := [("x", .boolType), ("y", .intType)]
 def env_empty : TypEnv := []
 
 /-- Type inference for a literal integer returns intType. -/
-example : inferType [] env_empty (.lit (.int 42)) = some .intType := by
-  simp [inferType]
+example : inferType [] env_empty (.lit (.int 42)) = some .intType := by simp [inferType, inferTypeC]
 
 /-- Type inference for a literal boolean returns boolType. -/
-example : inferType [] env_empty (.lit (.bool true)) = some .boolType := by
-  simp [inferType]
+example : inferType [] env_empty (.lit (.bool true)) = some .boolType := by simp [inferType, inferTypeC]
 
 /-- Type inference for a literal string returns stringType. -/
-example : inferType [] env_empty (.lit (.string "hello")) = some .stringType := by
-  simp [inferType]
+example : inferType [] env_empty (.lit (.string "hello")) = some .stringType := by simp [inferType, inferTypeC]
 
 /-- Type inference for a literal unit returns unitType. -/
-example : inferType [] env_empty (.lit .unit) = some .unitType := by
-  simp [inferType]
+example : inferType [] env_empty (.lit .unit) = some .unitType := by simp [inferType, inferTypeC]
 
 /-- Type inference for undefined literal returns none. -/
-example : inferType [] env_empty (.lit .undef) = none := by
-  simp [inferType]
+example : inferType [] env_empty (.lit .undef) = none := by simp [inferType, inferTypeC]
 
 /-- Type inference for a variable looks up the environment. -/
 example : inferType [] env_x_int (.fvar "x") = some .intType := by
-  simp [inferType, lookupTyp, env_x_int]
+  simp [inferType, inferTypeC, lookupTyp, env_x_int]
 
 /-- Type inference for an unknown variable returns none. -/
 example : inferType [] env_empty (.fvar "z") = none := by
-  simp [inferType, lookupTyp, env_empty]
+  simp [inferType, inferTypeC, lookupTyp, env_empty]
 
 /-- typeCheck for a literal int against boolType is false. -/
 example : (typeCheck [] env_empty (.lit (.int 10)) .boolType) = False := by
-  simp [typeCheck, inferType]
+  simp [typeCheck, inferType, inferTypeC]
 
 /-- Extending an environment with a new binding. -/
 example : extendTypEnv env_empty "x" .intType = [("x", .intType)] := rfl

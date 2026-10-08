@@ -46,7 +46,14 @@ def synthType (ctx : LinCtx) (env : TypEnv) (e : Expr) : Option Typ :=
 
     For a `linearFunctionType` expectation the parameters are pushed as
     unrestricted entries (ADR-014: no consumption) and each parameter must
-    occur exactly once in the body (`countUses`). -/
+    occur exactly once in the body (`countUses`).
+
+    Soundness contract (proven as `Morph.Specs.TypeSystem.checkType_sound`,
+    research program P13): `checkType ctx env e expected = true` implies
+    `HasType ctx env e expected ctx` — i.e. the checked expression is typed
+    *and* leaves the linear context unchanged (this is exactly what the
+    `lam_type`/`lam_linear_type` premises demand of the body, and what
+    `inferTypeC` verifies directly for every other expression). -/
 def checkType (ctx : LinCtx) (env : TypEnv) (e : Expr) (expected : Typ) : Bool :=
   match e with
   | .lam n body =>
@@ -62,8 +69,8 @@ def checkType (ctx : LinCtx) (env : TypEnv) (e : Expr) (expected : Typ) : Bool :
       else false
     | _ => false
   | _ =>
-    match synthType ctx env e with
-    | some t => t == expected
+    match inferTypeC ctx env e with
+    | some (t, cout) => decide (t = expected) && decide (cout = ctx)
     | none => false
 
 /-! ## Type Unification -/
