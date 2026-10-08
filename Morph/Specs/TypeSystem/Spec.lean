@@ -19,9 +19,10 @@ using de Bruijn indices for bound variables.
 - `HasType ctx Γ e τ ctx'`: The first parameter `ctx : LinCtx` tracks the types
   and usages of currently-bound de Bruijn indices. `ctx.types[0]` is the
   type of bvar 0, etc. The last parameter `ctx'` is the context *after*
-  typing `e`. In ADR-010 Phase 1c-β-2 only `bvar_type` (consuming a linear slot)
-  and the `binop_*` rules (threading a mid context) change it; the rest still
-  return `ctx` unchanged.
+  typing `e`. Every binder rule pushes its entries as *unrestricted* (`Usage.many`)
+  via `linPushMany` (ADR-014: the context is never mutated and carries no
+  obligations); only the `binop_*` rules thread a mid context, and `bvar_type`
+  fires only on hand-built `.zero` slots.
 - `TypEnv` maps free variable names to types (unchanged from named-variable system).
 - `inferType ctx env e`: Executable type inference with bound-variable context.
 - Weakening is trivial: just prepend entries via `LinCtx.pushMany`.
@@ -57,13 +58,15 @@ def extendTypEnv (env : TypEnv) (name : String) (typ : Morph.Core.Typ) : TypEnv 
   (name, typ) :: env
 
 /-!
-## Linear Arrows (ADR-014 stage 1)
+## Linear Arrows (ADR-014 stage 1, Loop 4 residual cleanup)
 
 `linPushMany ctx τs` pushes the parameter types `τs` as *unrestricted* entries
-(`Usage.many`). A `linearFunctionType` binder never consumes: the exactly-once
-obligation for each parameter is discharged syntactically by `countUses` in the
-`lam_linear_type` rule, mirroring Linear Haskell's design where the context is
-never mutated during typing. -/
+(`Usage.many`). **Every** context push in the judgment uses `linPushMany` — the
+typing context is never mutated and carries no obligations (ADR-014). A
+`linearFunctionType` binder discharges its exactly-once obligation syntactically
+by `countUses` in the `lam_linear_type` rule; a plain `functionType` binder
+carries no obligation at all, mirroring Linear Haskell's design where the
+context is never mutated during typing. -/
 def linPushMany (ctx : LinCtx) (τs : List Morph.Core.Typ) : LinCtx :=
   (τs.map (fun τ => (τ, Usage.many))) ++ ctx
 
@@ -500,15 +503,16 @@ discipline; soundness is proven in `Morph.Specs.TypeSystem.InferenceSound`):
 - `.bvar n` reads `ctx[n]?`: a `Usage.zero` slot is consumed
   (`HasType.bvar_type`), a `Usage.many` slot is left unchanged
   (`HasType.bvar_type_many`), a `Usage.one` slot is rejected (neither rule
-  applies).
+  applies). Slots are `.zero` only in hand-built contexts: every push in the
+  judgment (and in this checker) installs `Usage.many`.
 - Sub-expressions typed in sequence see the previous one's output context,
   exactly as the judgment threads it; rules whose premise demands
   input = output context (`binop_*` for the second operand, `let_type`,
   `if_type`, `app_type`, `block_type`, `tuple_type`, `arrayLit_type`,
   `HasTypeAll` lists, …) check that idempotence explicitly.
-- Context extensions use the same pushes as the judgment: `let_type`'s
-  `(τ, initialUsage τ)` push here, and — in `checkType` (`Morph.TypeChecker`)
-  — `lam_type`'s `LinCtx.pushMany` and `lam_linear_type`'s `linPushMany`.
+- Context extensions use the same pushes as the judgment: `let_type`'s and
+  `for_type`'s `linPushMany` here, and — in `checkType` (`Morph.TypeChecker`)
+  — `lam_type`'s and `lam_linear_type`'s `linPushMany`.
 
 `inferType` is the type-only projection used by the rest of the code base;
 `inferTypes`/`inferTypesC` are the list-level analogues.
@@ -628,9 +632,9 @@ def inferTypeC (ctx : LinCtx) (env : TypEnv) :
     match inferTypeC ctx env e1 with
     | some (τ1, cout1) =>
       if cout1 = ctx then
-        match inferTypeC ((τ1, LinCtx.initialUsage τ1) :: ctx) env e2 with
+        match inferTypeC (linPushMany ctx [τ1]) env e2 with
         | some (τ2, cout2) =>
-          if cout2 = (τ1, LinCtx.initialUsage τ1) :: ctx then some (τ2, ctx) else none
+          if cout2 = linPushMany ctx [τ1] then some (τ2, ctx) else none
         | none => none
       else none
     | none => none
@@ -658,9 +662,9 @@ def inferTypeC (ctx : LinCtx) (env : TypEnv) :
         match inferTypeC ctx env e with
         | some (.intType, coutE) =>
           if coutE = ctx then
-            match inferTypesC ((.intType, LinCtx.initialUsage .intType) :: ctx) env body with
+            match inferTypesC (linPushMany ctx [.intType]) env body with
             | some ([.unitType], coutB) =>
-              if coutB = (.intType, LinCtx.initialUsage .intType) :: ctx then
+              if coutB = linPushMany ctx [.intType] then
                 some (.unitType, ctx)
               else none
             | _ => none
@@ -854,19 +858,20 @@ The judgment is a *state transformer on contexts*: it consumes the input
 context `ctx` and produces the output context `ctx'`. Phase 1c-β-1 only installed
 the plumbing (every rule returned the context it was given unchanged).
 
-Phase 1c-β-2 (this increment) makes `Usage` matter in exactly two places, and
-is deliberately partial elsewhere:
-- `bvar_type` reads a linear slot (`ctx[n] = some (τ, .zero)`) and *consumes* it:
-  its output context is `LinCtx.consume ctx n` (slot `n` advances to `.one`).
-  `bvar_type_many` reads an unrestricted slot (`ctx[n] = some (τ, .many)`) and
-  leaves the context unchanged.
+ADR-014 (Loop 4 residual cleanup) fixes the discipline: **every** context push
+in the judgment installs `Usage.many` entries via `linPushMany` — the context
+is never mutated and carries no obligations; multiplicity lives on arrows
+(`linearFunctionType` + `countUses`). Consequently:
+- `bvar_type_many` reads an unrestricted slot (`ctx[n] = some (τ, .many)`) and
+  leaves the context unchanged; every slot produced by the judgment's own
+  pushes is `.many`.
+- `bvar_type` reads a linear slot (`ctx[n] = some (τ, .zero)`) and *consumes*
+  it (output `LinCtx.consume ctx n`). It is unreachable from derivations built
+  by the judgment's own pushes and only fires on hand-built `.zero` contexts
+  (the executable checker still handles such slots).
 - the `binop_*` rules *thread* the context: the second operand is typed in the
   first operand's **output** context, and the rule's own output context is that
   same mid context. This matches `HasTypeAll.cons`.
-
-Every other rule still passes its input context through unchanged. That is
-inconsistent with the consuming `bvar_type` but sound, and it is temporary: later
-phases thread the remaining rules and merge contexts at branching points.
 -/
 
 mutual
@@ -941,10 +946,13 @@ inductive HasType : LinCtx → TypEnv → Morph.Syntax.Expr → Morph.Core.Typ �
       HasType ctx Γ e1 .stringType cmid →
       HasType cmid Γ e2 .stringType cmid →
       HasType ctx Γ (.binop op e1 e2) .stringType cmid
+  -- unrestricted arrow (ADR-014 Loop 4): parameters are pushed as unrestricted
+  -- entries via `linPushMany`, exactly like the linear arrow — no consumption,
+  -- no obligations on the context.
   | lam_type : ∀ ctx Γ n body paramTys retTy,
       n = paramTys.length →
-      HasType (LinCtx.pushMany ctx paramTys.reverse) Γ body retTy
-          (LinCtx.pushMany ctx paramTys.reverse) →
+      HasType (linPushMany ctx paramTys.reverse) Γ body retTy
+          (linPushMany ctx paramTys.reverse) →
       HasType ctx Γ (.lam n body) (.functionType paramTys retTy) ctx
   | app_type : ∀ ctx Γ fn args τs τ,
       HasType ctx Γ fn (.functionType τs τ) ctx →
@@ -965,8 +973,8 @@ inductive HasType : LinCtx → TypEnv → Morph.Syntax.Expr → Morph.Core.Typ �
       HasType ctx Γ (.app fn args) τ ctx
   | let_type : ∀ ctx Γ e1 e2 τ1 τ2,
       HasType ctx Γ e1 τ1 ctx →
-      HasType ((τ1, LinCtx.initialUsage τ1) :: ctx) Γ e2 τ2
-          ((τ1, LinCtx.initialUsage τ1) :: ctx) →
+      HasType (linPushMany ctx [τ1]) Γ e2 τ2
+          (linPushMany ctx [τ1]) →
       HasType ctx Γ (.let_ e1 e2) τ2 ctx
   | if_type : ∀ ctx Γ c t f τ,
       HasType ctx Γ c .boolType ctx →
@@ -974,8 +982,8 @@ inductive HasType : LinCtx → TypEnv → Morph.Syntax.Expr → Morph.Core.Typ �
       HasType ctx Γ (.ifThenElse c t f) τ ctx
   | for_type : ∀ ctx Γ s e body,
       HasType ctx Γ s .intType ctx → HasType ctx Γ e .intType ctx →
-      HasTypeAll ((.intType, LinCtx.initialUsage .intType) :: ctx) Γ body [.unitType]
-          ((.intType, LinCtx.initialUsage .intType) :: ctx) →
+      HasTypeAll (linPushMany ctx [.intType]) Γ body [.unitType]
+          (linPushMany ctx [.intType]) →
       HasType ctx Γ (.forLoop s e body) .unitType ctx
   | block_type : ∀ ctx Γ exprs τs τ,
       HasTypeAll ctx Γ exprs (τs ++ [τ]) ctx →
@@ -1049,17 +1057,17 @@ inductive HasTypeAll : LinCtx → TypEnv → List Morph.Syntax.Expr → List Mor
       HasTypeAll ctx Γ (e :: es) (τ :: τs) cout
 
 /-- `ArmsTyped ctx Γ τ_scrut arms τ_result ctx'`: every arm body is typable in the
-    scrutinee context extended with its pattern variables.
+    scrutinee context extended with its pattern variables (pushed as `Usage.many`
+    via `linPushMany`, ADR-014).
 
-    Phase 1c-β-1: arms do not consume anything, so all arms keep the same
-    context and the arms are *not* merged — a later phase (1c-β-2) will thread
-    each arm's output context and merge them pointwise. -/
+    Arms do not consume anything, so all arms keep the same context and the arms
+    are *not* merged — under ADR-014 there is no merge operator at all. -/
 inductive ArmsTyped : LinCtx → TypEnv → Morph.Core.Typ → List (List String × Morph.Syntax.Expr) → Morph.Core.Typ → LinCtx → Prop where
   | nil : ∀ ctx Γ τ_scrut,
       ArmsTyped ctx Γ τ_scrut [] .unitType ctx
   | cons : ∀ ctx Γ vars body rest τ_scrut τ_result,
-      HasType (LinCtx.pushMany ctx (List.replicate vars.length τ_scrut)) Γ body τ_result
-          (LinCtx.pushMany ctx (List.replicate vars.length τ_scrut)) →
+      HasType (linPushMany ctx (List.replicate vars.length τ_scrut)) Γ body τ_result
+          (linPushMany ctx (List.replicate vars.length τ_scrut)) →
       ArmsTyped ctx Γ τ_scrut rest τ_result ctx →
       ArmsTyped ctx Γ τ_scrut ((vars, body) :: rest) τ_result ctx
 

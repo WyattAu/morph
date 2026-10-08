@@ -94,7 +94,7 @@ section InferTypeTests
   -- Let binding type inference
 
   example : inferType [] [] (.let_ (.lit (.int 42)) (.bvar 0)) = some Typ.intType := by
-    simp [inferType, inferTypeC, Morph.LinCtx.initialUsage, Morph.LinCtx.isLinear]
+    simp [inferType, inferTypeC, linPushMany]
 
   -- If-then-else and application type inference are tested via HasType constructors
   -- below. The BEq comparison in inferType for these cases makes direct equality
@@ -103,7 +103,7 @@ section InferTypeTests
   -- For loop type inference (P13: the empty body is rejected — `for_type` needs a
   -- singleton unitType body in the iterator-extended context)
 
-  example : inferType [] [] (.forLoop (.lit (.int 0)) (.lit (.int 10)) []) = none := by simp [inferType, inferTypeC, inferTypesC, Morph.LinCtx.initialUsage, Morph.LinCtx.isLinear]
+  example : inferType [] [] (.forLoop (.lit (.int 0)) (.lit (.int 10)) []) = none := by simp [inferType, inferTypeC, inferTypesC, linPushMany]
 
   -- Block type inference (P13: the empty block is rejected — `block_type` cannot
   -- derive it, since `τs ++ [τ]` is never `[]`)
@@ -300,7 +300,7 @@ section HasTypeConstructorTests
   -- type unitType in the iterator-extended context, so the empty body is now
   -- rejected by the checker (it previously returned `some unitType` unchecked).
   example : inferType [] [] (.forLoop (.lit (.int 0)) (.lit (.int 10)) []) = none := by
-    simp [inferType, inferTypeC, inferTypesC, Morph.LinCtx.initialUsage, Morph.LinCtx.isLinear]
+    simp [inferType, inferTypeC, inferTypesC, linPushMany]
 
   -- HT-28: for_type (with unit body)
   example : HasType [] []
@@ -400,6 +400,18 @@ section HasTypeConstructorTests
           rfl))
       (HasTypeAll.cons [] [] _ (.lit (.int 42)) [] Typ.intType []
         (HasType.lit_int [] [] 42) (HasTypeAll.nil [] []))
+
+  -- HT-36 (ADR-014 Loop 4): unrestricted arrow taking an iso ref, body frees it —
+  -- now typechecks. `lam_type` pushes `.many` via `linPushMany`, so the body's
+  -- `bvar 0` is read by `bvar_type_many` (no consumption, same context out);
+  -- previously the push installed `.zero` for the refType and the pinned
+  -- input = output premise rejected the derivation.
+  example : HasType [] [] (.lam 1 (.refFree (.bvar 0)))
+      (.functionType [Typ.refType .iso .intType] Typ.unitType) [] :=
+    HasType.lam_type [] [] 1 (.refFree (.bvar 0)) [Typ.refType .iso .intType] Typ.unitType rfl
+      (HasType.refFree_type _ _ (.bvar 0) .intType
+        (HasType.bvar_type_many _ _ 0 (.refType .iso .intType)
+          (by simp [Morph.LinCtx.types, linPushMany]) rfl))
 
   -- HasTypeAll tests
 

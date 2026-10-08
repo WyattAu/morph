@@ -60,7 +60,7 @@ def checkType (ctx : LinCtx) (env : TypEnv) (e : Expr) (expected : Typ) : Bool :
     match expected with
     | .functionType paramTys retTy =>
       if _h : n = paramTys.length then
-        checkType (LinCtx.pushMany ctx paramTys.reverse) env body retTy
+        checkType (linPushMany ctx paramTys.reverse) env body retTy
       else false
     | .linearFunctionType paramTys retTy =>
       if _h : n = paramTys.length then

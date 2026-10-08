@@ -162,6 +162,70 @@ theorem LinCtx.entry_shift (pfx : List Typ) (base : LinCtx) (σ : Typ) (n : Nat)
   rw [LinCtx.entry_pushMany_index_high pfx base (n - 1) (by omega)]
   rw [show n - 1 - pfx.length = n - pfx.length - 1 from by omega]
 
+/-! ## Index Bridges for `linPushMany` (ADR-014 Loop 4)
+
+Every binder rule pushes `Usage.many` entries via `linPushMany`, so the
+substitution and weakening proofs need the same bridges as above, stated for
+`linPushMany`. -/
+
+theorem linPushMany_pushMany_append (ctx : LinCtx) (xs ys : List Typ) :
+    linPushMany (linPushMany ctx ys) xs = linPushMany ctx (xs ++ ys) := by
+  simp only [linPushMany, List.map_append, List.append_assoc]
+
+theorem LinCtx.entry_linPushMany_index_low (pfx : List Typ) (base1 base2 : LinCtx) (n : Nat)
+    (h : n < pfx.length) :
+    (linPushMany base1 pfx)[n]? = (linPushMany base2 pfx)[n]? := by
+  simp only [linPushMany]
+  rw [List.getElem?_append_left (by simpa using h), List.getElem?_append_left (by simpa using h)]
+
+theorem LinCtx.entry_linPushMany_index_high (pfx : List Typ) (base : LinCtx) (n : Nat)
+    (h : pfx.length ≤ n) :
+    (linPushMany base pfx)[n]? = base[n - pfx.length]? := by
+  simp only [linPushMany]
+  rw [List.getElem?_append_right (l₂ := base) (by simp only [List.length_map]; omega)]
+  simp only [List.length_map]
+
+theorem LinCtx.entry_linPushMany_cons_index_high (pfx : List Typ) (base : LinCtx) (e : LinEntry)
+    (n : Nat) (h : pfx.length ≤ n) :
+    (linPushMany (e :: base) pfx)[n]? = (e :: base)[n - pfx.length]? := by
+  simp only [linPushMany]
+  rw [List.getElem?_append_right (l₂ := e :: base) (by simp only [List.length_map]; omega)]
+  simp only [List.length_map]
+
+theorem LinCtx.entry_linPushMany_pushMany_index_low (ctx : LinCtx) (pfx σs : List Typ) (n : Nat)
+    (h : n < pfx.length) :
+    (linPushMany (linPushMany ctx σs) pfx)[n]? = (linPushMany ctx pfx)[n]? := by
+  simp only [linPushMany]
+  rw [List.getElem?_append_left (by simpa using h), List.getElem?_append_left (by simpa using h)]
+
+/-- Index `pfx.length + k` of the double push reads the entry for `σs[k]`,
+carrying `Usage.many`. -/
+theorem LinCtx.entry_linPushMany_pushMany_index_mid (ctx : LinCtx) (pfx σs : List Typ) (k : Nat)
+    (h : k < σs.length) :
+    (linPushMany (linPushMany ctx σs) pfx)[pfx.length + k]?
+      = some (σs[k]'h, Morph.Usage.many) := by
+  rw [LinCtx.entry_linPushMany_index_high pfx (linPushMany ctx σs) (pfx.length + k) (by omega)]
+  rw [show pfx.length + k - pfx.length = k from by omega]
+  exact entry_linPushMany_mid ctx σs k h
+
+theorem LinCtx.entry_linPushMany_pushMany_index_high (ctx : LinCtx) (pfx σs : List Typ) (n : Nat)
+    (h : n ≥ pfx.length + σs.length) :
+    (linPushMany (linPushMany ctx σs) pfx)[n]? = (linPushMany ctx pfx)[n - σs.length]? := by
+  rw [LinCtx.entry_linPushMany_index_high pfx (linPushMany ctx σs) n (by omega)]
+  rw [LinCtx.entry_linPushMany_index_high pfx ctx (n - σs.length) (by omega)]
+  rw [LinCtx.entry_linPushMany_index_high σs ctx (n - pfx.length) (by omega)]
+  rw [show n - pfx.length - σs.length = n - σs.length - pfx.length from by omega]
+
+/-- Substitution bridge for `.many` pushes: removing the head entry shifts every
+index strictly above the pushed prefix `pfx` down by one (any usage). -/
+theorem LinCtx.entry_linShift (pfx : List Typ) (base : LinCtx) (σ : Typ) (u : Morph.Usage)
+    (n : Nat) (h : pfx.length < n) :
+    (linPushMany ((σ, u) :: base) pfx)[n]? = (linPushMany base pfx)[n - 1]? := by
+  rw [LinCtx.entry_linPushMany_cons_index_high pfx base (σ, u) n (by omega)]
+  rw [show n - pfx.length = (n - pfx.length - 1) + 1 from by omega, LinCtx.entry_cons_succ]
+  rw [LinCtx.entry_linPushMany_index_high pfx base (n - 1) (by omega)]
+  rw [show n - 1 - pfx.length = n - pfx.length - 1 from by omega]
+
 /-- An entry `some (τ, u)` at index `n` witnesses the type at index `n`. -/
 theorem LinCtx.types_of_entry_getElem? {ctx : LinCtx} {n : Nat} {τ : Typ} {u : Morph.Usage}
     (h : ctx[n]? = some (τ, u)) (hn : n < (ctx.types).length) :
@@ -951,9 +1015,9 @@ end
 `A`, lifting the expression by one at depth `A.length`. The classical
 `weakening` and `weakening_at_depth` are the `A = []` and
 `A = xs.map (·, initialUsage ·)` instantiations. The proof needs the
-`lam_linear_type` case (ADR-014): the linear arrow pushes `.many` entries, so
-its single-use premise must survive weakening — which is exactly
-`countUses_liftUnder_below`. -/
+`lam_type`/`lam_linear_type` cases (ADR-014): both arrows push `.many`
+entries via `linPushMany`, so the single-use premise of the linear arrow must
+survive weakening — which is exactly `countUses_liftUnder_below`. -/
 
 mutual
 
@@ -1074,25 +1138,25 @@ theorem weakening_entries_at (A : List LinEntry) (ent : LinEntry) (ctx : LinCtx)
       (weakening_entries_at A ent ctx Γ e2 .stringType hE2)
   | .lam_type _ _ n body paramTys retTy hLen hBody =>
     simp only [liftUnder]
-    have hFrame : LinCtx.pushMany (A ++ ctx) paramTys.reverse
-        = (paramTys.reverse.map (fun t => (t, LinCtx.initialUsage t)) ++ A) ++ ctx := by
-      simp only [LinCtx.pushMany, List.append_assoc]
+    have hFrame : linPushMany (A ++ ctx) paramTys.reverse
+        = (paramTys.reverse.map (fun t => (t, Morph.Usage.many)) ++ A) ++ ctx := by
+      simp only [linPushMany, List.append_assoc]
     rw [hFrame] at hBody
-    have hLenEq : (paramTys.reverse.map (fun t => (t, LinCtx.initialUsage t)) ++ A).length
+    have hLenEq : (paramTys.reverse.map (fun t => (t, Morph.Usage.many)) ++ A).length
         = n + A.length := by
       have h1 := @List.length_append LinEntry
-        (paramTys.reverse.map (fun t => (t, LinCtx.initialUsage t))) A
+        (paramTys.reverse.map (fun t => (t, Morph.Usage.many))) A
       have h2 := @List.length_reverse Typ paramTys
       simp only [List.length_map, List.length_append] at h1 ⊢
       omega
     have hResult := weakening_entries_at
-      (paramTys.reverse.map (fun t => (t, LinCtx.initialUsage t)) ++ A) ent ctx Γ body retTy hBody
+      (paramTys.reverse.map (fun t => (t, Morph.Usage.many)) ++ A) ent ctx Γ body retTy hBody
     rw [hLenEq, Nat.add_comm] at hResult
     refine HasType.lam_type (A ++ (ent :: ctx)) Γ n (liftUnder (A.length + n) 1 body)
       paramTys retTy hLen ?_
-    have hFrame2 : LinCtx.pushMany (A ++ (ent :: ctx)) paramTys.reverse
-        = (paramTys.reverse.map (fun t => (t, LinCtx.initialUsage t)) ++ A) ++ (ent :: ctx) := by
-      simp only [LinCtx.pushMany, List.append_assoc]
+    have hFrame2 : linPushMany (A ++ (ent :: ctx)) paramTys.reverse
+        = (paramTys.reverse.map (fun t => (t, Morph.Usage.many)) ++ A) ++ (ent :: ctx) := by
+      simp only [linPushMany, List.append_assoc]
     rw [hFrame2]
     exact hResult
   | .lam_linear_type _ _ n body paramTys retTy hLen hBody hCount =>
@@ -1135,10 +1199,12 @@ theorem weakening_entries_at (A : List LinEntry) (ent : LinEntry) (ctx : LinCtx)
       (weakening_at_entries_all A ent ctx Γ args τs hArgs)
   | .let_type _ _ e1 e2 τ1 _ hE1 hE2 =>
     simp only [liftUnder]
+    have hE2' : HasType (((τ1, Morph.Usage.many) :: A) ++ ctx) Γ e2 τ
+        (((τ1, Morph.Usage.many) :: A) ++ ctx) := hE2
     exact HasType.let_type (A ++ (ent :: ctx)) Γ (liftUnder A.length 1 e1)
       (liftUnder (A.length + 1) 1 e2) τ1 τ
       (weakening_entries_at A ent ctx Γ e1 τ1 hE1)
-      (weakening_entries_at ((τ1, LinCtx.initialUsage τ1) :: A) ent ctx Γ e2 τ hE2)
+      (weakening_entries_at ((τ1, Morph.Usage.many) :: A) ent ctx Γ e2 τ hE2')
   | .if_type _ _ c t f τ hC hT hF =>
     simp only [liftUnder]
     exact HasType.if_type (A ++ (ent :: ctx)) Γ (liftUnder A.length 1 c)
@@ -1148,12 +1214,14 @@ theorem weakening_entries_at (A : List LinEntry) (ent : LinEntry) (ctx : LinCtx)
       (weakening_entries_at A ent ctx Γ f τ hF)
   | .for_type _ _ s e body hS hE hBody =>
     simp only [liftUnder]
+    have hBody' : HasTypeAll (((.intType, Morph.Usage.many) :: A) ++ ctx) Γ body [.unitType]
+        (((.intType, Morph.Usage.many) :: A) ++ ctx) := hBody
     exact HasType.for_type (A ++ (ent :: ctx)) Γ (liftUnder A.length 1 s)
       (liftUnder A.length 1 e) (List.map (liftUnder (A.length + 1) 1) body)
       (weakening_entries_at A ent ctx Γ s .intType hS)
       (weakening_entries_at A ent ctx Γ e .intType hE)
-      (weakening_at_entries_all ((.intType, LinCtx.initialUsage .intType) :: A) ent ctx Γ body
-        [.unitType] hBody)
+      (weakening_at_entries_all ((.intType, Morph.Usage.many) :: A) ent ctx Γ body
+        [.unitType] hBody')
   | .block_type _ _ exprs τs τ hExprs =>
     simp only [liftUnder]
     exact HasType.block_type (A ++ (ent :: ctx)) Γ (List.map (liftUnder A.length 1) exprs) τs τ
@@ -1262,24 +1330,24 @@ theorem ArmsTyped_weakening_entries_at (A : List LinEntry) (ent : LinEntry)
   | .cons _ _ vars body rest _ _ hBody hRest =>
     simp only [liftUnderArms]
     constructor
-    · have hFrame : LinCtx.pushMany (A ++ ctx) (List.replicate vars.length τ_scrut)
-        = (List.replicate vars.length τ_scrut).map (fun t => (t, LinCtx.initialUsage t))
+    · have hFrame : linPushMany (A ++ ctx) (List.replicate vars.length τ_scrut)
+        = (List.replicate vars.length τ_scrut).map (fun t => (t, Morph.Usage.many))
             ++ A ++ ctx := by
-        simp only [LinCtx.pushMany, List.append_assoc]
+        simp only [linPushMany, List.append_assoc]
       rw [hFrame] at hBody
       have hResult := weakening_entries_at
-        ((List.replicate vars.length τ_scrut).map (fun t => (t, LinCtx.initialUsage t)) ++ A)
+        ((List.replicate vars.length τ_scrut).map (fun t => (t, Morph.Usage.many)) ++ A)
         ent ctx Γ body τ_result hBody
       simp only [List.length_map, List.length_append, List.length_replicate] at hResult
       rw [Nat.add_comm] at hResult
       show HasType
-          (LinCtx.pushMany (A ++ (ent :: ctx)) (List.replicate vars.length τ_scrut)) Γ
+          (linPushMany (A ++ (ent :: ctx)) (List.replicate vars.length τ_scrut)) Γ
           (liftUnder (A.length + vars.length) 1 body) τ_result
-          (LinCtx.pushMany (A ++ (ent :: ctx)) (List.replicate vars.length τ_scrut))
-      have hFrame2 : LinCtx.pushMany (A ++ (ent :: ctx)) (List.replicate vars.length τ_scrut)
-        = (List.replicate vars.length τ_scrut).map (fun t => (t, LinCtx.initialUsage t))
+          (linPushMany (A ++ (ent :: ctx)) (List.replicate vars.length τ_scrut))
+      have hFrame2 : linPushMany (A ++ (ent :: ctx)) (List.replicate vars.length τ_scrut)
+        = (List.replicate vars.length τ_scrut).map (fun t => (t, Morph.Usage.many))
             ++ A ++ (ent :: ctx) := by
-        simp only [LinCtx.pushMany, List.append_assoc]
+        simp only [linPushMany, List.append_assoc]
       rw [hFrame2]
       exact hResult
     · exact ArmsTyped_weakening_entries_at A ent hRest
@@ -1300,31 +1368,49 @@ theorem weakening_at_depth (xs : List Typ) (ctx : LinCtx) (Γ : TypEnv)
   rw [List.length_map] at h''
   exact h''
 
+/-- `.many`-push version of `weakening_at_depth` (ADR-014 Loop 4): every push
+installs `Usage.many` entries via `linPushMany`. -/
+theorem weakening_at_depth_many (xs : List Typ) (ctx : LinCtx) (Γ : TypEnv)
+    (e : Expr) (τ σ : Typ) :
+    HasType (linPushMany ctx xs) Γ e τ (linPushMany ctx xs) →
+      HasType (linPushMany ((σ, Morph.Usage.many) :: ctx) xs) Γ (liftUnder xs.length 1 e) τ
+        (linPushMany ((σ, Morph.Usage.many) :: ctx) xs) := by
+  intro h
+  have hFrame : linPushMany ctx xs
+      = (xs.map (fun t => (t, Morph.Usage.many))) ++ ctx := rfl
+  rw [hFrame] at h
+  have h'' := weakening_entries_at (xs.map (fun t => (t, Morph.Usage.many)))
+    (σ, Morph.Usage.many) ctx Γ e τ h
+  rw [List.length_map] at h''
+  exact h''
+
 theorem ArmsTyped_weakening_at_depth (xs : List Typ) (σ : Typ)
     {ctx : LinCtx} {Γ : TypEnv} {τ_scrut : Typ}
     {arms : List (List String × Expr)} {τ_result : Typ}
-    (h : ArmsTyped (LinCtx.pushMany ctx xs) Γ τ_scrut arms τ_result (LinCtx.pushMany ctx xs)) :
-    ArmsTyped (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) Γ τ_scrut
+    (h : ArmsTyped (linPushMany ctx xs) Γ τ_scrut arms τ_result (linPushMany ctx xs)) :
+    ArmsTyped (linPushMany ((σ, Morph.Usage.many) :: ctx) xs) Γ τ_scrut
       (liftUnderArms xs.length 1 arms) τ_result
-      (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) := by
+      (linPushMany ((σ, Morph.Usage.many) :: ctx) xs) := by
   match h with
   | .nil _ _ _ => simp only [liftUnderArms]; constructor
   | .cons _ _ vars body rest _ _ hBody hRest =>
     simp only [liftUnderArms]
     constructor
-    · have hBody' := weakening_at_depth (List.replicate vars.length τ_scrut ++ xs) ctx Γ body τ_result σ
-        (by rw [← LinCtx.pushMany_pushMany_append]; exact hBody)
+    · have hBody' := weakening_at_depth_many (List.replicate vars.length τ_scrut ++ xs) ctx Γ
+        body τ_result σ
+        (by rw [← linPushMany_pushMany_append]; exact hBody)
       simp only [List.length_append, List.length_replicate] at hBody'
       rw [Nat.add_comm] at hBody'
-      show HasType (LinCtx.pushMany (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs)
+      show HasType (linPushMany (linPushMany ((σ, Morph.Usage.many) :: ctx) xs)
           (List.replicate vars.length τ_scrut)) Γ
           (liftUnder (xs.length + vars.length) 1 body) τ_result
-          (LinCtx.pushMany (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs)
+          (linPushMany (linPushMany ((σ, Morph.Usage.many) :: ctx) xs)
             (List.replicate vars.length τ_scrut))
-      rw [LinCtx.pushMany_pushMany_append]; exact hBody'
+      rw [linPushMany_pushMany_append]
+      exact hBody'
     · exact ArmsTyped_weakening_at_depth xs σ hRest
 
- theorem weakening_at_depth_all (xs : List Typ) (ctx : LinCtx) (Γ : TypEnv)
+theorem weakening_at_depth_all (xs : List Typ) (ctx : LinCtx) (Γ : TypEnv)
     (es : List Expr) (τs : List Typ) (σ : Typ)
     (h : HasTypeAll (LinCtx.pushMany ctx xs) Γ es τs (LinCtx.pushMany ctx xs)) :
     HasTypeAll (LinCtx.pushMany ((σ, LinCtx.initialUsage σ) :: ctx) xs) Γ (es.map (liftUnder xs.length 1)) τs
@@ -1340,24 +1426,25 @@ theorem ArmsTyped_weakening_at_depth (xs : List Typ) (σ : Typ)
 /-! ## Multi-Type Weakening at Depth
 
 Weaken by prepending multiple types (`xs`) after a prefix in the context.
-`HasType (LinCtx.pushMany ctx pfx) Γ e τ → HasType (LinCtx.pushMany (LinCtx.pushMany ctx xs) pfx) Γ (liftUnder pfx.length xs.length e) τ`
-Uses `weakening_at_depth` iterated `xs.length` times, with `liftUnder_comp` to compose lifts.
--/
+`HasType (linPushMany ctx pfx) Γ e τ → HasType (linPushMany (linPushMany ctx xs) pfx) Γ (liftUnder pfx.length xs.length e) τ`
+Uses the `.many`-entry `weakening_at_depth_many` iterated `xs.length` times,
+with `liftUnder_comp` to compose lifts. All pushes here are `linPushMany`
+(ADR-014 Loop 4: every push installs `Usage.many`). -/
 
 theorem weaken_many_at_depth (pfx xs : List Typ) (ctx : LinCtx) (Γ : TypEnv)
     (e : Expr) (τ : Typ)
-    (hE : HasType (LinCtx.pushMany ctx pfx) Γ e τ (LinCtx.pushMany ctx pfx))
-    : HasType (LinCtx.pushMany (LinCtx.pushMany ctx xs) pfx) Γ (liftUnder pfx.length xs.length e) τ
-        (LinCtx.pushMany (LinCtx.pushMany ctx xs) pfx) := by
+    (hE : HasType (linPushMany ctx pfx) Γ e τ (linPushMany ctx pfx))
+    : HasType (linPushMany (linPushMany ctx xs) pfx) Γ (liftUnder pfx.length xs.length e) τ
+        (linPushMany (linPushMany ctx xs) pfx) := by
   induction xs generalizing ctx e with
   | nil =>
-    simp only [LinCtx.pushMany, List.map_nil, List.nil_append]
+    simp only [linPushMany, List.map_nil, List.nil_append]
     simp only [List.length_nil]
     rw [liftUnder_zero_eq]
     exact hE
   | cons σ xs' ih =>
     have hStep1 := ih ctx e hE
-    have hStep2 := weakening_at_depth pfx (LinCtx.pushMany ctx xs') Γ
+    have hStep2 := weakening_at_depth_many pfx (linPushMany ctx xs') Γ
       (liftUnder pfx.length xs'.length e) τ σ hStep1
     rw [liftUnder_comp, Nat.add_comm 1 xs'.length] at hStep2
     exact hStep2
@@ -1368,10 +1455,10 @@ theorem ArmsTyped_weakening (σ : Typ)
     {ctx : LinCtx} {Γ : TypEnv} {τ_scrut : Typ}
     {arms : List (List String × Expr)} {τ_result : Typ}
     (h : ArmsTyped ctx Γ τ_scrut arms τ_result ctx) :
-    ArmsTyped ((σ, LinCtx.initialUsage σ) :: ctx) Γ τ_scrut (liftUnderArms 0 1 arms) τ_result
-      ((σ, LinCtx.initialUsage σ) :: ctx) := by
+    ArmsTyped ((σ, Morph.Usage.many) :: ctx) Γ τ_scrut (liftUnderArms 0 1 arms) τ_result
+      ((σ, Morph.Usage.many) :: ctx) := by
   have h := ArmsTyped_weakening_at_depth [] σ h
-  simp only [LinCtx.pushMany, List.map_nil, List.nil_append, List.length_nil] at h
+  simp only [linPushMany, List.map_nil, List.nil_append, List.length_nil] at h
   exact h
 
 theorem weakening (ctx : LinCtx) (Γ : TypEnv) (e : Expr) (τ : Typ) (σ : Typ) :

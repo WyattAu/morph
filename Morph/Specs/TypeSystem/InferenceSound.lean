@@ -17,7 +17,7 @@ declarative judgment `HasType`/`HasTypeAll`:
 * `inferType_sound`, `inferTypes_sound`, `synthType_sound`: the type-only
   projections used across the code base.
 * `checkType_sound`: the bidirectional checker, including both lambda cases
-  (`lam_type` via `LinCtx.pushMany`, `lam_linear_type` via `linPushMany` and
+  (`lam_type` via `linPushMany`, `lam_linear_type` via `linPushMany` and
   the `countUses` side condition).
 * `typeCheckBlock_sound`: the block-level entry point.
 
@@ -730,7 +730,7 @@ theorem sound_mutual (n : Nat) :
                 have hH1 := ihE e1 ctx Γ t1 c1
                   (Nat.lt_of_lt_of_le (mE_let_l e1 e2) (Nat.le_of_lt_succ hn)) h1eq
                 rw [hc1] at hH1
-                have hH2 := ihE e2 ((t1, LinCtx.initialUsage t1) :: ctx) Γ t2 c2
+                have hH2 := ihE e2 (linPushMany ctx [t1]) Γ t2 c2
                   (Nat.lt_of_lt_of_le (mE_let_r e1 e2) (Nat.le_of_lt_succ hn)) h2eq
                 rw [hc2] at hH2
                 exact HasType.let_type ctx Γ e1 e2 t1 t2 hH1 hH2
@@ -797,7 +797,7 @@ theorem sound_mutual (n : Nat) :
                       (Nat.lt_of_lt_of_le (mE_for_e s e body) (Nat.le_of_lt_succ hn)) he_eq
                     rw [hce] at hHE
                     have hHB := ihL body
-                      ((.intType, LinCtx.initialUsage .intType) :: ctx) Γ [.unitType] cb
+                      (linPushMany ctx [.intType]) Γ [.unitType] cb
                       (Nat.lt_of_lt_of_le (mE_for_body s e body) (Nat.le_of_lt_succ hn)) hbody
                     rw [hcb] at hHB
                     exact HasType.for_type ctx Γ s e body hHS hHE hHB
@@ -1167,7 +1167,7 @@ theorem checkType_lam_fun (k : Nat) (body : Expr) (ctx : LinCtx) (Γ : TypEnv)
     (ps : List Morph.Core.Typ) (rt : Morph.Core.Typ)
     (h : Morph.TypeChecker.checkType ctx Γ (.lam k body) (.functionType ps rt) = true) :
     k = ps.length ∧
-      Morph.TypeChecker.checkType (LinCtx.pushMany ctx ps.reverse) Γ body rt = true := by
+      Morph.TypeChecker.checkType (linPushMany ctx ps.reverse) Γ body rt = true := by
   simp only [Morph.TypeChecker.checkType] at h
   split at h
   · rename_i hdec
