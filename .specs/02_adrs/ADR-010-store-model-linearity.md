@@ -398,6 +398,8 @@ Three pieces, in dependency order:
    `LinCtx.merge`'s current rule `zero + one = zero` is a syntactic
    approximation and is wrong for path-sensitive checking — expect ADR-013 to
    replace it.
+   *(Superseded by ADR-014, stage 2, Loop 5: contexts are plain `List Typ`,
+   `LinCtx.merge` and ADR-013 are withdrawn — there is nothing to merge.)*
 
 ### Why this is acceptable to defer
 

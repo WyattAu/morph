@@ -525,7 +525,6 @@ section SafetyTheoremTests
     | Typ.tupleType τs =>
         ∃ (vs : List Value), v = Value.tuple_ vs ∧ vs.length = τs.length
     | Typ.typeVar _ => False
-    | Typ.effectFunctionType _ _ _ => False
     | Typ.neverType => False
     | Typ.refType _ _ => False
     | Typ.structType _ _ => False

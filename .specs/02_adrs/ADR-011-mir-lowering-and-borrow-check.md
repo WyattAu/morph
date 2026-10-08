@@ -132,8 +132,8 @@ We do **not** attempt to verify LLVM's register allocator. This is the standard 
 ### Follow-up
 
 - ADR-012: closure representation (store-allocated vs stack-allocated) — blocking for stage 1.
-- ADR-013: the CFG merge operator and its relationship to `LinCtx.merge`.
-- Re-examine whether `HasType` should keep carrying `Usage` at all, or whether it should be reverted to `List Typ` with all usage information introduced by stage 2.
+- ADR-013: the CFG merge operator — **withdrawn (ADR-014)**; no merge operator exists: `HasType` was reverted to plain `List Typ` contexts (stage 2, Loop 5) and `LinCtx.merge` no longer exists. Path-sensitive usage checking, if needed, is the MIR stage-2 analysis.
+- Re-examine whether `HasType` should keep carrying `Usage` at all — **resolved by ADR-014 stage 2 (Loop 5)**: reverted to `List Typ`, all usage information is syntactic (`countUses`) at the surface.
 
 ## References
 

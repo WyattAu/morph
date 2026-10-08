@@ -95,15 +95,6 @@ inductive Capability where
   | ref : Capability
   deriving Repr, BEq, Hashable, DecidableEq
 
-inductive Effect where
-  | io : Effect
-  | net : Effect
-  | time : Effect
-  | system : Effect
-  deriving Repr, BEq, Hashable, DecidableEq
-
-abbrev EffectSet := List Effect
-
 /-!
 ## Value
 
@@ -176,7 +167,6 @@ inductive Typ where
   | floatType : FloatWidth → Typ
   | neverType : Typ
   | refType : Capability → Typ → Typ
-  | effectFunctionType : List Typ → Typ → EffectSet → Typ
   | typeVar : Nat → Typ
   | optionType : Typ → Typ
   | resultType : Typ → Typ → Typ

@@ -34,8 +34,8 @@ See ADR-004 for bidirectional typing design.
 
     For lambdas, bidirectional typing is needed; use `checkType` with an
     expected function type to infer lambda parameter types. -/
-def synthType (ctx : LinCtx) (env : TypEnv) (e : Expr) : Option Typ :=
-  inferType ctx env e
+def synthType (bvs : List Typ) (env : TypEnv) (e : Expr) : Option Typ :=
+  inferType bvs env e
 
 /-! ## Type Checking -/
 
@@ -44,33 +44,30 @@ def synthType (ctx : LinCtx) (env : TypEnv) (e : Expr) : Option Typ :=
     function type, the parameter types are used to extend the de Bruijn
     context and check the body.
 
-    For a `linearFunctionType` expectation the parameters are pushed as
-    unrestricted entries (ADR-014: no consumption) and each parameter must
-    occur exactly once in the body (`countUses`).
+    For a `linearFunctionType` expectation (ADR-014) the parameters are pushed
+    as plain types and each parameter must occur exactly once in the body
+    (`countUses`).
 
     Soundness contract (proven as `Morph.Specs.TypeSystem.checkType_sound`,
-    research program P13): `checkType ctx env e expected = true` implies
-    `HasType ctx env e expected ctx` — i.e. the checked expression is typed
-    *and* leaves the linear context unchanged (this is exactly what the
-    `lam_type`/`lam_linear_type` premises demand of the body, and what
-    `inferTypeC` verifies directly for every other expression). -/
-def checkType (ctx : LinCtx) (env : TypEnv) (e : Expr) (expected : Typ) : Bool :=
+    research program P13): `checkType bvs env e expected = true` implies
+    `HasType bvs env e expected`. -/
+def checkType (bvs : List Typ) (env : TypEnv) (e : Expr) (expected : Typ) : Bool :=
   match e with
   | .lam n body =>
     match expected with
     | .functionType paramTys retTy =>
       if _h : n = paramTys.length then
-        checkType (linPushMany ctx paramTys.reverse) env body retTy
+        checkType (paramTys.reverse ++ bvs) env body retTy
       else false
     | .linearFunctionType paramTys retTy =>
       if _h : n = paramTys.length then
-        checkType (linPushMany ctx paramTys.reverse) env body retTy &&
+        checkType (paramTys.reverse ++ bvs) env body retTy &&
           (List.range paramTys.length).all (fun i => countUses body i == 1)
       else false
     | _ => false
   | _ =>
-    match inferTypeC ctx env e with
-    | some (t, cout) => decide (t = expected) && decide (cout = ctx)
+    match inferType bvs env e with
+    | some t => decide (t = expected)
     | none => false
 
 /-! ## Type Unification -/
@@ -112,14 +109,14 @@ partial def unify (t1 t2 : Typ) : Option Typ :=
 
     The overall type of the block is the type of the last expression
     (or `unitType` if empty). -/
-def typeCheckBlock (ctx : LinCtx) (env : TypEnv) (exprs : List Expr) : Bool :=
-  exprs.all (fun e => (synthType ctx env e).isSome)
+def typeCheckBlock (bvs : List Typ) (env : TypEnv) (exprs : List Expr) : Bool :=
+  exprs.all (fun e => (synthType bvs env e).isSome)
 
 /-! ## Error Reporting -/
 
 /-- Produce a human-readable type error message when type checking fails. -/
-def formatTypeError (ctx : LinCtx) (env : TypEnv) (e : Expr) (expected : Typ) : String :=
-  match synthType ctx env e with
+def formatTypeError (bvs : List Typ) (env : TypEnv) (e : Expr) (expected : Typ) : String :=
+  match synthType bvs env e with
   | some actual =>
     s!"Type mismatch: expected {repr expected}, found {repr actual} in {repr e}"
   | none =>
@@ -127,9 +124,9 @@ def formatTypeError (ctx : LinCtx) (env : TypEnv) (e : Expr) (expected : Typ) : 
 
 /-! ## Utility: Infer Type of List of Expressions -/
 
-def inferTypes (ctx : LinCtx) (env : TypEnv) (exprs : List Expr) : Option (List Typ) :=
+def inferTypes (bvs : List Typ) (env : TypEnv) (exprs : List Expr) : Option (List Typ) :=
   exprs.foldlM (init := []) (fun acc e =>
-    match synthType ctx env e with
+    match synthType bvs env e with
     | some t => some (acc ++ [t])
     | none => none)
 

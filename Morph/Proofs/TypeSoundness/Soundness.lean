@@ -67,9 +67,9 @@ inductive WellTypedValue : Expr → Typ → Prop where
    | some_val : forall e τ,
        IsValue e -> WellTypedValue (.some_ e) (.optionType τ)
    | tuple_val : forall elems tys,
-       HasTypeAll [] [] elems tys [] -> WellTypedValue (.tuple_ elems) (.tupleType tys)
+       HasTypeAll [] [] elems tys -> WellTypedValue (.tuple_ elems) (.tupleType tys)
    | array_val : forall elems τ n,
-       HasTypeAll [] [] elems (List.replicate n τ) [] -> n = elems.length -> n > 0 ->
+       HasTypeAll [] [] elems (List.replicate n τ) -> n = elems.length -> n > 0 ->
        WellTypedValue (.arrayLit elems) (.arrayType τ n)
    | refCreate_val : forall e cap τ, IsValue e → WellTypedValue (.refCreate e cap τ) (.refType cap τ)
    | refLoad_val : forall e τ, IsValue e → WellTypedValue (.refLoad e) τ
@@ -85,11 +85,11 @@ This is strictly stronger than progress alone because it also guarantees type
 preservation for the step.
 -/
 
-theorem type_safety : forall {σ : Store} {e : Expr} {τ : Typ} {cout : LinCtx},
-    HasType [] [] e τ cout ->
-    IsValue e \/ exists e', Step σ e σ e' /\ HasType [] [] e' τ cout := by
-  intro σ e τ cout hType
-  have hProgress := @progress σ _ _ _ hType
+theorem type_safety : forall {σ : Store} {e : Expr} {τ : Typ},
+    HasType [] [] e τ ->
+    IsValue e \/ exists e', Step σ e σ e' /\ HasType [] [] e' τ := by
+  intro σ e τ hType
+  have hProgress := @progress σ _ _ hType
   cases hProgress with
   | inl hv => left; exact hv
   | inr hStep =>
@@ -102,11 +102,11 @@ A term is "stuck" if it is not a value and cannot take a step.
 Type safety guarantees that no well-typed closed term is stuck.
 -/
 
-theorem not_stuck : forall {σ : Store} {e : Expr} {τ : Typ} {cout : LinCtx},
-    HasType [] [] e τ cout -> ¬(¬IsValue e /\ forall e', ¬Step σ e σ e') := by
-  intro σ e τ cout hType hStuck
+theorem not_stuck : forall {σ : Store} {e : Expr} {τ : Typ},
+    HasType [] [] e τ -> ¬(¬IsValue e /\ forall e', ¬Step σ e σ e') := by
+  intro σ e τ hType hStuck
   obtain ⟨hNotVal, hNoStep⟩ := hStuck
-  have hProgress := @progress σ _ _ _ hType
+  have hProgress := @progress σ _ _ hType
   cases hProgress with
   | inl hv => exact hNotVal hv
   | inr hStep =>
@@ -123,10 +123,10 @@ inductive MultiStep : Store → Expr → Store → Expr → Prop where
   | refl : forall σ e, MultiStep σ e σ e
   | step : forall σ1 e1 σ2 e2 σ3 e3, Step σ1 e1 σ2 e2 → MultiStep σ2 e2 σ3 e3 → MultiStep σ1 e1 σ3 e3
 
-theorem multi_step_preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {cout : LinCtx},
-    HasType [] [] e τ cout -> MultiStep σ e σ' e' -> HasType [] [] e' τ cout
-  | _, _, _, _, _, _, hType, .refl _ _ => hType
-  | _, _, _, _, _, _, hType, .step _ _ _ _ _ _ hStep hRest =>
+theorem multi_step_preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ},
+    HasType [] [] e τ -> MultiStep σ e σ' e' -> HasType [] [] e' τ
+  | _, _, _, _, _, hType, .refl _ _ => hType
+  | _, _, _, _, _, hType, .step _ _ _ _ _ _ hStep hRest =>
     multi_step_preservation (preservation hType hStep) hRest
 
 /-! ## Values Are Well-Typed
@@ -135,9 +135,9 @@ Every value that has a type under the empty context is a well-typed value.
 This connects the syntactic `IsValue` predicate with the semantic `WellTypedValue` predicate.
 -/
 
-theorem value_is_well_typed : forall {e : Expr} {τ : Typ} {cout : LinCtx},
-    IsValue e -> HasType [] [] e τ cout -> WellTypedValue e τ := by
-  intro e τ cout hv ht
+theorem value_is_well_typed : forall {e : Expr} {τ : Typ},
+    IsValue e -> HasType [] [] e τ -> WellTypedValue e τ := by
+  intro e τ hv ht
   cases hv with
   | lit v =>
     cases v with
@@ -207,11 +207,10 @@ If a closed term has type under the empty environment, it has no free variables.
 More precisely: bvar accesses are impossible in a closed term.
 -/
 
-theorem closed_no_bvar : forall {e : Expr} {τ : Typ} {cout : LinCtx},
-    HasType [] [] e τ cout -> forall n, ¬HasType [] [] (.bvar n) τ [] := by
-  intro e τ cout hType n hBvar
+theorem closed_no_bvar : forall {e : Expr} {τ : Typ},
+    HasType [] [] e τ -> forall n, ¬HasType [] [] (.bvar n) τ := by
+  intro e τ hType n hBvar
   cases hBvar with
-  | bvar_type _ _ _ _ _ _ hEnt _ => exact absurd hEnt (by simp)
-  | bvar_type_many _ _ _ _ hLen _ => exact absurd hLen (Nat.not_lt_zero _)
+  | bvar_type _ _ _ hLen => exact absurd hLen (Nat.not_lt_zero _)
 
 end Morph.Proofs.TypeSoundness

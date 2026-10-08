@@ -4,7 +4,6 @@ SPDX-License-Identifier: Apache-2.0 -/
 import Morph.Store
 import Morph.Semantics
 import Morph.Specs.TypeSystem.Spec
-import Morph.LinearContext
 import Morph.Proofs.TypeSoundness.Progress
 import Morph.Proofs.TypeSoundness.Preservation
 
@@ -105,9 +104,9 @@ open Morph.Semantics
   cannot be mutated through).
 -/
 
-inductive HasTypeS : StoreTyp → LinCtx → TypEnv → Morph.Syntax.Expr → Morph.Core.Typ → Prop where
+inductive HasTypeS : StoreTyp → List Typ → TypEnv → Morph.Syntax.Expr → Morph.Core.Typ → Prop where
   /-- Anything typable without the store is typable with it. -/
-  | lift : ∀ Δ ctx Γ e τ, HasType ctx Γ e τ ctx → HasTypeS Δ ctx Γ e τ
+  | lift : ∀ Δ bvs Γ e τ, HasType bvs Γ e τ → HasTypeS Δ bvs Γ e τ
   /-- Value literals, including location values. -/
   | lit_val : ∀ Δ ctx Γ v τ, ValueType Δ v τ → HasTypeS Δ ctx Γ (.lit v) τ
   /-- Dereferencing a declared location. -/
@@ -166,8 +165,8 @@ theorem not_step_lit (σ σ' : Store) (v : Value) (e' : Expr) :
   intro h
   cases h
 
-theorem not_hasType_loc {ctx : LinCtx} {Γ : TypEnv} {l : Loc} {τ : Typ} {c : LinCtx} :
-    ¬ HasType ctx Γ (.lit (.loc l)) τ c := by
+theorem not_hasType_loc {bvs : List Typ} {Γ : TypEnv} {l : Loc} {τ : Typ} :
+    ¬ HasType bvs Γ (.lit (.loc l)) τ := by
   intro h
   cases h
 
@@ -187,75 +186,75 @@ theorem not_isValue_refCast (e : Expr) (cap' : Capability) : ¬ IsValue (.refCas
   intro h
   cases h
 
-theorem not_hasType_refCast {ctx : LinCtx} {Γ : TypEnv} {e : Expr} {cap' : Capability}
-    {τ : Typ} {c : LinCtx} :
-    ¬ HasType ctx Γ (.refCast e cap') τ c := by
+theorem not_hasType_refCast {bvs : List Typ} {Γ : TypEnv} {e : Expr} {cap' : Capability}
+    {τ : Typ} :
+    ¬ HasType bvs Γ (.refCast e cap') τ := by
   intro h
   cases h
 
-theorem not_hasType_refLoadLit {ctx : LinCtx} {Γ : TypEnv} {l : Loc} {τ : Typ} {c : LinCtx} :
-    ¬ HasType ctx Γ (.refLoad (.lit (.loc l))) τ c := by
+theorem not_hasType_refLoadLit {bvs : List Typ} {Γ : TypEnv} {l : Loc} {τ : Typ} :
+    ¬ HasType bvs Γ (.refLoad (.lit (.loc l))) τ := by
   intro h
   cases h with
   | refLoad_type _ _ _ _ _ hE => exact not_hasType_loc hE
 
-theorem not_hasType_refStoreLit {ctx : LinCtx} {Γ : TypEnv} {l : Loc} {v : Expr} {τ : Typ}
-    {τ' : Typ} {c : LinCtx} : ¬ HasType ctx Γ (.refStore (.lit (.loc l)) v τ) τ' c := by
+theorem not_hasType_refStoreLit {bvs : List Typ} {Γ : TypEnv} {l : Loc} {v : Expr} {τ : Typ}
+    {τ' : Typ} : ¬ HasType bvs Γ (.refStore (.lit (.loc l)) v τ) τ' := by
   intro h
   cases h with
   | refStore_type _ _ _ _ _ _ hE _ => exact not_hasType_loc hE
 
-theorem not_hasType_refFreeLit {ctx : LinCtx} {Γ : TypEnv} {l : Loc} {τ' : Typ} {c : LinCtx} :
-    ¬ HasType ctx Γ (.refFree (.lit (.loc l))) τ' c := by
+theorem not_hasType_refFreeLit {bvs : List Typ} {Γ : TypEnv} {l : Loc} {τ' : Typ} :
+    ¬ HasType bvs Γ (.refFree (.lit (.loc l))) τ' := by
   intro h
   cases h with
   | refFree_type _ _ _ _ hE => exact not_hasType_loc hE
 
 /-- Ordinary typing cannot give a function a reference type. -/
 theorem not_hasType_lam_ref {n : Nat} {body : Expr} {cap : Capability} {τ : Typ} :
-    ¬ HasType [] [] (.lam n body) (.refType cap τ) [] := by
+    ¬ HasType [] [] (.lam n body) (.refType cap τ) := by
   intro h
   cases h
 
 /-- Ordinary typing cannot give `none_` a reference type. -/
 theorem not_hasType_none__ref {cap : Capability} {τ : Typ} :
-    ¬ HasType [] [] .none_ (.refType cap τ) [] := by
+    ¬ HasType [] [] .none_ (.refType cap τ) := by
   intro h
   cases h
 
 /-- Ordinary typing cannot give `ok_ e` a reference type. -/
 theorem not_hasType_ok__ref {e : Expr} {cap : Capability} {τ : Typ} :
-    ¬ HasType [] [] (.ok_ e) (.refType cap τ) [] := by
+    ¬ HasType [] [] (.ok_ e) (.refType cap τ) := by
   intro h
   cases h
 
 /-- Ordinary typing cannot give `err_ e` a reference type. -/
 theorem not_hasType_err__ref {e : Expr} {cap : Capability} {τ : Typ} :
-    ¬ HasType [] [] (.err_ e) (.refType cap τ) [] := by
+    ¬ HasType [] [] (.err_ e) (.refType cap τ) := by
   intro h
   cases h
 
 /-- Ordinary typing cannot give `some_ e` a reference type. -/
 theorem not_hasType_some__ref {e : Expr} {cap : Capability} {τ : Typ} :
-    ¬ HasType [] [] (.some_ e) (.refType cap τ) [] := by
+    ¬ HasType [] [] (.some_ e) (.refType cap τ) := by
   intro h
   cases h
 
 /-- Ordinary typing cannot give a tuple a reference type. -/
 theorem not_hasType_tuple__ref {elems : List Expr} {cap : Capability} {τ : Typ} :
-    ¬ HasType [] [] (.tuple_ elems) (.refType cap τ) [] := by
+    ¬ HasType [] [] (.tuple_ elems) (.refType cap τ) := by
   intro h
   cases h
 
 /-- Ordinary typing cannot give an array literal a reference type. -/
 theorem not_hasType_arrayLit_ref {elems : List Expr} {cap : Capability} {τ : Typ} :
-    ¬ HasType [] [] (.arrayLit elems) (.refType cap τ) [] := by
+    ¬ HasType [] [] (.arrayLit elems) (.refType cap τ) := by
   intro h
   cases h
 
 /-- Ordinary typing cannot give a value literal a reference type. -/
 theorem not_hasType_lit_ref {v : Value} {cap : Capability} {τ : Typ} :
-    ¬ HasType [] [] (.lit v) (.refType cap τ) [] := by
+    ¬ HasType [] [] (.lit v) (.refType cap τ) := by
   intro h
   cases h
 
@@ -263,7 +262,7 @@ theorem not_hasType_lit_ref {v : Value} {cap : Capability} {τ : Typ} :
 
 /-- A location value is typable at `.refType cap τ` only if the location is
     declared in `Δ`. -/
-theorem hasTypeS_lit_loc_ref {Δ : StoreTyp} {ctx : LinCtx} {Γ : TypEnv} {l : Loc}
+theorem hasTypeS_lit_loc_ref {Δ : StoreTyp} {ctx : List Typ} {Γ : TypEnv} {l : Loc}
     {cap : Capability} {τ : Typ} (h : HasTypeS Δ ctx Γ (.lit (.loc l)) (.refType cap τ)) :
     Δ l = some (.refType cap τ) := by
   cases h
@@ -272,7 +271,7 @@ theorem hasTypeS_lit_loc_ref {Δ : StoreTyp} {ctx : LinCtx} {Γ : TypEnv} {l : L
 
 /-- A dereference of a literal location is typable only if the location is
     declared in `Δ`. -/
-theorem hasTypeS_refLoad_loc {Δ : StoreTyp} {ctx : LinCtx} {Γ : TypEnv} {l : Loc} {τ : Typ}
+theorem hasTypeS_refLoad_loc {Δ : StoreTyp} {ctx : List Typ} {Γ : TypEnv} {l : Loc} {τ : Typ}
     (h : HasTypeS Δ ctx Γ (.refLoad (.lit (.loc l))) τ) :
     ∃ cap, Δ l = some (.refType cap τ) := by
   cases h
@@ -282,21 +281,21 @@ theorem hasTypeS_refLoad_loc {Δ : StoreTyp} {ctx : LinCtx} {Γ : TypEnv} {l : L
 
 /-- A `refFree` of a literal location is typable only if the location is declared
     with the `iso` capability (the only capability that may be consumed). -/
-theorem hasTypeS_refFree_iso {Δ : StoreTyp} {ctx : LinCtx} {Γ : TypEnv} {l : Loc}
+theorem hasTypeS_refFree_iso {Δ : StoreTyp} {ctx : List Typ} {Γ : TypEnv} {l : Loc}
     (h : HasTypeS Δ ctx Γ (.refFree (.lit (.loc l))) .unitType) :
     ∃ τ, Δ l = some (.refType .iso τ) := by
   cases h
   · exact False.elim (not_hasType_refFreeLit
-      (by assumption : HasType _ _ (.refFree (.lit (.loc l))) _ _))
+      (by assumption : HasType _ _ (.refFree (.lit (.loc l))) _))
   · exact ⟨_, by assumption⟩
   · exact ⟨_, hasTypeS_lit_loc_ref (by assumption)⟩
 
 /-- The payload of a `refCreate` expression is typable at the pointee type. -/
-theorem refCreate_inner_typed {Δ : StoreTyp} {ctx : LinCtx} {Γ : TypEnv} {e : Expr}
+theorem refCreate_inner_typed {Δ : StoreTyp} {ctx : List Typ} {Γ : TypEnv} {e : Expr}
     {cap : Capability} {τ : Typ} (h : HasTypeS Δ ctx Γ (.refCreate e cap τ) (.refType cap τ)) :
     HasTypeS Δ ctx Γ e τ := by
   cases h
-  · have hT : HasType ctx Γ (Expr.refCreate e cap τ) (.refType cap τ) ctx := by assumption
+  · have hT : HasType ctx Γ (Expr.refCreate e cap τ) (.refType cap τ) := by assumption
     cases hT
     exact .lift _ _ _ _ _ (by assumption)
   · exact by assumption
@@ -305,7 +304,7 @@ theorem refCreate_inner_typed {Δ : StoreTyp} {ctx : LinCtx} {Γ : TypEnv} {e : 
     reference type, and then `Δ` must declare `l` with that very type. Stated
     with a `match` on the result type so that it applies without case-splitting
     the caller. -/
-theorem hasTypeS_lit_loc_ref' {Δ : StoreTyp} {ctx : LinCtx} {Γ : TypEnv} {l : Loc} {t : Typ}
+theorem hasTypeS_lit_loc_ref' {Δ : StoreTyp} {ctx : List Typ} {Γ : TypEnv} {l : Loc} {t : Typ}
     (h : HasTypeS Δ ctx Γ (.lit (.loc l)) t) :
     match t with
     | .refType cap τ => Δ l = some (.refType cap τ)
@@ -319,7 +318,7 @@ theorem hasTypeS_lit_loc_ref' {Δ : StoreTyp} {ctx : LinCtx} {Γ : TypEnv} {l : 
 /-- Typing inversion for a `refCreate` expression typed at a reference type: the
     payload is typable at the pointee type (the `refCreate` rules force the
     annotation and the result type to agree). -/
-theorem refCreate_typed_at_ref {Δ : StoreTyp} {ctx : LinCtx} {Γ : TypEnv} {e : Expr}
+theorem refCreate_typed_at_ref {Δ : StoreTyp} {ctx : List Typ} {Γ : TypEnv} {e : Expr}
     {cap : Capability} {τ : Typ} {cap' : Capability} {τ' : Typ}
     (h : HasTypeS Δ ctx Γ (.refCreate e cap τ) (.refType cap' τ')) :
     HasTypeS Δ ctx Γ e τ' := by
@@ -364,7 +363,7 @@ theorem canonical_refS {Δ : StoreTyp} {cap : Capability} {τ : Typ} {e : Expr}
       exact absurd (by assumption) not_hasType_arrayLit_ref
   | refCreate e cap τ hv' =>
       cases ht
-      · cases (by assumption : HasType _ _ _ _ _)
+      · cases (by assumption : HasType _ _ _ _)
         exact Or.inr ⟨_, rfl, hv'⟩
       · exact Or.inr ⟨_, rfl, IsValue.lit _⟩
 
@@ -374,9 +373,9 @@ An expression typable without the store can never be a store operation that
 *changes* the store: the three store-changing rules all mention a location
 value, and `HasType` cannot type one. This is what lets `HasTypeS.lift` reuse the
 store-free `preservation`. -/
-theorem lift_step {σ σ' : Store} {ctx : LinCtx} {Γ : TypEnv} {e e' : Expr} {τ : Typ} {cout : LinCtx}
-    (hT : HasType ctx Γ e τ cout) (hStep : Step σ e σ' e') :
-    σ' = σ ∧ HasType ctx Γ e' τ cout := by
+theorem lift_step {σ σ' : Store} {bvs : List Typ} {Γ : TypEnv} {e e' : Expr} {τ : Typ}
+    (hT : HasType bvs Γ e τ) (hStep : Step σ e σ' e') :
+    σ' = σ ∧ HasType bvs Γ e' τ := by
   have hT' := Morph.Proofs.TypeSoundness.preservation hT hStep
   refine ⟨?_, hT'⟩
   cases hStep with
@@ -446,7 +445,7 @@ set_option maxHeartbeats 1000000 in
     typing derivation either keeps the store (non-store rules) or is one of the
     three store rules, which succeed because the invariant says the declared
     location is live and allocated (`load_ok`, `store_ok`, `free_ok`). -/
-theorem progressS_gen : ∀ {σ : Store} {Δ : StoreTyp} {ctx : LinCtx} {Γ : TypEnv}
+theorem progressS_gen : ∀ {σ : Store} {Δ : StoreTyp} {ctx : List Typ} {Γ : TypEnv}
     {e : Expr} {τ : Typ},
     ctx = [] → Γ = [] → StoreInv σ Δ → HasTypeS Δ ctx Γ e τ →
       IsValue e ∨ ∃ σ' e', Step σ e σ' e' := by
@@ -550,7 +549,7 @@ set_option maxHeartbeats 1000000 in
     The store typing is adapted to the new store: store-changing rules modify it
     (a free forgets the location, a cast re-declares its capability), and a
     store-preserving cast step re-declares the typed location's capability. -/
-theorem preservationS_gen : ∀ {σ : Store} {Δ : StoreTyp} {ctx : LinCtx} {Γ : TypEnv}
+theorem preservationS_gen : ∀ {σ : Store} {Δ : StoreTyp} {ctx : List Typ} {Γ : TypEnv}
     {e : Expr} {τ : Typ},
     ctx = [] → Γ = [] → StoreInv σ Δ → HasTypeS Δ ctx Γ e τ →
       ∀ {σ' : Store} {e' : Expr}, Step σ e σ' e' →
@@ -762,7 +761,7 @@ theorem safety_freed_not_dereferenceable {Δ : StoreTyp} {l : Loc} {t : Typ}
 /-- Inversion: a capability cast to `val` of a literal location is typable only
     if the location is declared at some source capability with `SafeCast` to
     `val` (i.e. the source is `iso` or `val` itself). -/
-theorem hasTypeS_refCastVal_inv {Δ : StoreTyp} {ctx : LinCtx} {Γ : TypEnv} {l : Loc}
+theorem hasTypeS_refCastVal_inv {Δ : StoreTyp} {ctx : List Typ} {Γ : TypEnv} {l : Loc}
     {τ : Typ} (h : HasTypeS Δ ctx Γ (.refCast (.lit (.loc l)) .val) (.refType .val τ)) :
     ∃ cap, Δ l = some (.refType cap τ) ∧ SafeCast cap .val := by
   cases h with
@@ -774,7 +773,7 @@ theorem hasTypeS_refCastVal_inv {Δ : StoreTyp} {ctx : LinCtx} {Γ : TypEnv} {l 
     location is declared with a *non-`val`* capability. This is the typed
     counterpart of the deny matrix: an immutable (`val`) reference cannot be
     mutated through. -/
-theorem hasTypeS_refStore_cap_ne_val {Δ : StoreTyp} {ctx : LinCtx} {Γ : TypEnv} {l : Loc}
+theorem hasTypeS_refStore_cap_ne_val {Δ : StoreTyp} {ctx : List Typ} {Γ : TypEnv} {l : Loc}
     {v : Value} {τ : Typ} (h : HasTypeS Δ ctx Γ (.refStore (.lit (.loc l)) (.lit v) τ) .unitType) :
     ∃ cap, Δ l = some (.refType cap τ) ∧ cap ≠ .val := by
   cases h with

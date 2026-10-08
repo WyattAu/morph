@@ -1,10 +1,13 @@
 # ADR-014: Multiplicity on Binders, Not Consumption in Contexts
 
 ## Status
-**Proposed** (Loop 1 adjudication, research program). Implementation is
-Loop 2's proof adjustment. If accepted, supersedes the consumption design of
-ADR-010 Phase 1c-β-2 for the binder problem; does **not** touch the store
-model, `HasTypeS`, or the `safety_*` theorems.
+**Accepted (implemented, stage 1 + stage 2)** (Loop 1 adjudication, research
+program; stage 1 — linear arrows + `countUses` — Loop 2; stage 2 — context
+revert to plain `List Typ` — Loop 5). If accepted, supersedes the consumption
+design of ADR-010 Phase 1c-β-2 for the binder problem; does **not** touch the
+store model, `HasTypeS`, or the `safety_*` theorems. Supersedes ADR-010's
+`Usage`-in-context design; ADR-013 (branch merge operator) is withdrawn — no
+merge exists in this design.
 
 ## Context
 
@@ -117,7 +120,13 @@ today.
   this one deletes a subsystem.
 
 ### Follow-up
-- Loop 2 implements the decision (proof adjustment).
+- Loop 2 implemented the decision (stage 1: `linearFunctionType`,
+  `lam_linear_type`/`app_linear_type`, `countUses`).
+- Loop 5 implemented stage 2 (context revert): `HasType : List Typ → TypEnv →
+  Expr → Typ → Prop`, all post-1c context machinery deleted
+  (`LinCtx`/`Usage`-in-context, `linPushMany`, `Morph/LinearId.lean`,
+  `Morph/LinearContext.lean`), and P6's default-REJECT fired
+  (`Effect`/`EffectSet`/`Typ.effectFunctionType` deleted).
 - ADR-013 (branch merge operator) is withdrawn — no merge exists in this
   design.
 - `RESEARCH_PROGRAM.md` register updated: P1 closes as `ADOPT` (Linear

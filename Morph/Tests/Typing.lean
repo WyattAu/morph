@@ -14,105 +14,122 @@ section InferTypeTests
 
   -- Literal type inference
 
-  example : inferType [] [] (.lit (.int 42)) = some .intType := by simp [inferType, inferTypeC]
+  example : inferType [] [] (.lit (.int 42)) = some .intType := by simp [inferType]
 
-  example : inferType [] [] (.lit (.bool true)) = some .boolType := by simp [inferType, inferTypeC]
+  example : inferType [] [] (.lit (.bool true)) = some .boolType := by simp [inferType]
 
-  example : inferType [] [] (.lit .unit) = some .unitType := by simp [inferType, inferTypeC]
+  example : inferType [] [] (.lit .unit) = some .unitType := by simp [inferType]
 
-  example : inferType [] [] (.lit (.string "hello")) = some .stringType := by simp [inferType, inferTypeC]
+  example : inferType [] [] (.lit (.string "hello")) = some .stringType := by simp [inferType]
 
-  example : inferType [] [] (.lit .undef) = none := by simp [inferType, inferTypeC]
+  example : inferType [] [] (.lit .undef) = none := by simp [inferType]
 
   -- Free variable type inference
 
   example : inferType [] [("x", .intType)] (.fvar "x") = some .intType := by
-    simp [inferType, inferTypeC, lookupTyp]
+    simp [inferType, lookupTyp]
 
   example : inferType [] [("x", .boolType)] (.fvar "x") = some .boolType := by
-    simp [inferType, inferTypeC, lookupTyp]
+    simp [inferType, lookupTyp]
 
   example : inferType [] [] (.fvar "x") = none := by
-    simp [inferType, inferTypeC, lookupTyp]
+    simp [inferType, lookupTyp]
 
   -- Bound variable type inference
 
-  example : inferType [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] (.bvar 0) = some Typ.intType := by simp [inferType, inferTypeC, Morph.LinCtx.initialUsage, Morph.LinCtx.isLinear]
+  example : inferType [Typ.intType] [] (.bvar 0) = some Typ.intType := by simp [inferType]
 
-  example : inferType [] [] (.bvar 0) = none := by simp [inferType, inferTypeC]
+  example : inferType [] [] (.bvar 0) = none := by simp [inferType]
 
   -- Unary operator inference
 
-  example : inferType [] [] (.unop .not (.lit (.bool true))) = some .boolType := by simp [inferType, inferTypeC]
+  example : inferType [] [] (.unop .not (.lit (.bool true))) = some .boolType := by simp [inferType]
 
-  example : inferType [] [] (.unop .not (.lit (.int 1))) = none := by simp [inferType, inferTypeC]
+  example : inferType [] [] (.unop .not (.lit (.int 1))) = none := by simp [inferType]
 
-  example : inferType [] [] (.unop .notb (.lit (.int 5))) = some .intType := by simp [inferType, inferTypeC]
+  example : inferType [] [] (.unop .notb (.lit (.int 5))) = some .intType := by simp [inferType]
 
-  example : inferType [] [] (.unop .notb (.lit (.bool true))) = none := by simp [inferType, inferTypeC]
+  example : inferType [] [] (.unop .notb (.lit (.bool true))) = none := by simp [inferType]
 
   -- Binary arithmetic operator inference
 
-  example : inferType [] [] (.binop .add (.lit (.int 1)) (.lit (.int 2))) = some .intType := by simp [inferType, inferTypeC, binopResult]
+  example : inferType [] [] (.binop .add (.lit (.int 1)) (.lit (.int 2))) = some .intType := by
+    simp [inferType, binopResult]
 
-  example : inferType [] [] (.binop .sub (.lit (.int 1)) (.lit (.int 2))) = some .intType := by simp [inferType, inferTypeC, binopResult]
+  example : inferType [] [] (.binop .sub (.lit (.int 1)) (.lit (.int 2))) = some .intType := by
+    simp [inferType, binopResult]
 
-  example : inferType [] [] (.binop .mul (.lit (.int 1)) (.lit (.int 2))) = some .intType := by simp [inferType, inferTypeC, binopResult]
+  example : inferType [] [] (.binop .mul (.lit (.int 1)) (.lit (.int 2))) = some .intType := by
+    simp [inferType, binopResult]
 
-  example : inferType [] [] (.binop .div (.lit (.int 6)) (.lit (.int 2))) = some .intType := by simp [inferType, inferTypeC, binopResult]
+  example : inferType [] [] (.binop .div (.lit (.int 6)) (.lit (.int 2))) = some .intType := by
+    simp [inferType, binopResult]
 
-  example : inferType [] [] (.binop .mod (.lit (.int 5)) (.lit (.int 3))) = some .intType := by simp [inferType, inferTypeC, binopResult]
+  example : inferType [] [] (.binop .mod (.lit (.int 5)) (.lit (.int 3))) = some .intType := by
+    simp [inferType, binopResult]
 
-  example : inferType [] [] (.binop .add (.lit (.bool true)) (.lit (.int 1))) = none := by simp [inferType, inferTypeC, binopResult]
+  example : inferType [] [] (.binop .add (.lit (.bool true)) (.lit (.int 1))) = none := by
+    simp [inferType, binopResult]
 
   -- Comparison operator inference
 
-  example : inferType [] [] (.binop .eq (.lit (.int 1)) (.lit (.int 2))) = some .boolType := by simp [inferType, inferTypeC, binopResult]
+  example : inferType [] [] (.binop .eq (.lit (.int 1)) (.lit (.int 2))) = some .boolType := by
+    simp [inferType, binopResult]
 
-  example : inferType [] [] (.binop .lt (.lit (.int 1)) (.lit (.int 2))) = some .boolType := by simp [inferType, inferTypeC, binopResult]
+  example : inferType [] [] (.binop .lt (.lit (.int 1)) (.lit (.int 2))) = some .boolType := by
+    simp [inferType, binopResult]
 
   -- Logical operator inference
 
-  example : inferType [] [] (.binop .and (.lit (.bool true)) (.lit (.bool false))) = some .boolType := by simp [inferType, inferTypeC, binopResult]
+  example : inferType [] [] (.binop .and (.lit (.bool true)) (.lit (.bool false))) = some .boolType := by
+    simp [inferType, binopResult]
 
-  example : inferType [] [] (.binop .or (.lit (.bool true)) (.lit (.bool false))) = some .boolType := by simp [inferType, inferTypeC, binopResult]
+  example : inferType [] [] (.binop .or (.lit (.bool true)) (.lit (.bool false))) = some .boolType := by
+    simp [inferType, binopResult]
 
-  example : inferType [] [] (.binop .and (.lit (.int 1)) (.lit (.int 2))) = none := by simp [inferType, inferTypeC, binopResult]
+  example : inferType [] [] (.binop .and (.lit (.int 1)) (.lit (.int 2))) = none := by
+    simp [inferType, binopResult]
 
   -- Bitwise operator inference
 
-  example : inferType [] [] (.binop .andb (.lit (.int 1)) (.lit (.int 2))) = some .intType := by simp [inferType, inferTypeC, binopResult]
+  example : inferType [] [] (.binop .andb (.lit (.int 1)) (.lit (.int 2))) = some .intType := by
+    simp [inferType, binopResult]
 
-  example : inferType [] [] (.binop .orb (.lit (.int 1)) (.lit (.int 2))) = some .intType := by simp [inferType, inferTypeC, binopResult]
+  example : inferType [] [] (.binop .orb (.lit (.int 1)) (.lit (.int 2))) = some .intType := by
+    simp [inferType, binopResult]
 
-  example : inferType [] [] (.binop .shl (.lit (.int 1)) (.lit (.int 2))) = some .intType := by simp [inferType, inferTypeC, binopResult]
+  example : inferType [] [] (.binop .shl (.lit (.int 1)) (.lit (.int 2))) = some .intType := by
+    simp [inferType, binopResult]
 
   -- Lambda type inference (needs annotations, returns none for synthesis)
 
-  example : inferType [] [] (.lam 1 (.bvar 0)) = none := by simp [inferType, inferTypeC]
+  example : inferType [] [] (.lam 1 (.bvar 0)) = none := by simp [inferType]
 
   -- Let binding type inference
 
   example : inferType [] [] (.let_ (.lit (.int 42)) (.bvar 0)) = some Typ.intType := by
-    simp [inferType, inferTypeC, linPushMany]
+    simp [inferType]
 
   -- If-then-else and application type inference are tested via HasType constructors
-  -- below. The BEq comparison in inferType for these cases makes direct equality
+  -- below. The equality tests in inferType for these cases make direct equality
   -- proofs difficult; see HasTypeConstructorTests for complete coverage.
 
   -- For loop type inference (P13: the empty body is rejected — `for_type` needs a
   -- singleton unitType body in the iterator-extended context)
 
-  example : inferType [] [] (.forLoop (.lit (.int 0)) (.lit (.int 10)) []) = none := by simp [inferType, inferTypeC, inferTypesC, linPushMany]
+  example : inferType [] [] (.forLoop (.lit (.int 0)) (.lit (.int 10)) []) = none := by
+    simp [inferType, inferTypes]
 
   -- Block type inference (P13: the empty block is rejected — `block_type` cannot
   -- derive it, since `τs ++ [τ]` is never `[]`)
 
-  example : inferType [] [] (.block []) = none := by simp [inferType, inferTypeC, inferTypesC]
+  example : inferType [] [] (.block []) = none := by simp [inferType, inferTypes]
 
-  example : inferType [] [] (.block [.lit (.int 42)]) = some .intType := by simp [inferType, inferTypeC, inferTypesC]
+  example : inferType [] [] (.block [.lit (.int 42)]) = some .intType := by
+    simp [inferType, inferTypes]
 
-  example : inferType [] [] (.block [.lit (.int 1), (.lit (.int 2))]) = some .intType := by simp [inferType, inferTypeC, inferTypesC]
+  example : inferType [] [] (.block [.lit (.int 1), (.lit (.int 2))]) = some .intType := by
+    simp [inferType, inferTypes]
 
   -- Environment operations
 
@@ -131,151 +148,151 @@ section HasTypeConstructorTests
   open HasType
 
   -- HT-01: bvar_type
-  example : HasType [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType), (Typ.boolType, Morph.LinCtx.initialUsage Typ.boolType)] [] (.bvar 0) Typ.intType [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType), (Typ.boolType, Morph.LinCtx.initialUsage Typ.boolType)]:=
-    HasType.bvar_type_many [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType), (Typ.boolType, Morph.LinCtx.initialUsage Typ.boolType)] [] 0 Typ.intType (by simp [Morph.LinCtx.types]) rfl
+  example : HasType [Typ.intType, Typ.boolType] [] (.bvar 0) Typ.intType :=
+    HasType.bvar_type [Typ.intType, Typ.boolType] [] 0 (by native_decide)
 
-  example : HasType [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType), (Typ.boolType, Morph.LinCtx.initialUsage Typ.boolType)] [] (.bvar 1) Typ.boolType [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType), (Typ.boolType, Morph.LinCtx.initialUsage Typ.boolType)]:=
-    HasType.bvar_type_many [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType), (Typ.boolType, Morph.LinCtx.initialUsage Typ.boolType)] [] 1 Typ.boolType (by simp [Morph.LinCtx.types]) rfl
+  example : HasType [Typ.intType, Typ.boolType] [] (.bvar 1) Typ.boolType :=
+    HasType.bvar_type [Typ.intType, Typ.boolType] [] 1 (by native_decide)
 
   -- HT-02: fvar_type
-  example : HasType [] [("x", Typ.intType)] (.fvar "x") Typ.intType []:=
+  example : HasType [] [("x", Typ.intType)] (.fvar "x") Typ.intType :=
     HasType.fvar_type [] [("x", Typ.intType)] "x" Typ.intType rfl
 
   -- HT-03: lit_int
-  example : HasType [] [] (.lit (.int 42)) .intType []:=
+  example : HasType [] [] (.lit (.int 42)) .intType :=
     HasType.lit_int [] [] 42
 
   -- HT-04: lit_bool
-  example : HasType [] [] (.lit (.bool true)) .boolType []:=
+  example : HasType [] [] (.lit (.bool true)) .boolType :=
     HasType.lit_bool [] [] true
 
   -- HT-05: lit_string
-  example : HasType [] [] (.lit (.string "hello")) .stringType []:=
+  example : HasType [] [] (.lit (.string "hello")) .stringType :=
     HasType.lit_string [] [] "hello"
 
   -- HT-06: lit_unit
-  example : HasType [] [] (.lit .unit) .unitType []:=
+  example : HasType [] [] (.lit .unit) .unitType :=
     HasType.lit_unit [] []
 
   -- HT-07: lit_pointer
-  example (p : Pointer) : HasType [] [] (.lit (.pointer p)) .pointerType []:=
+  example (p : Pointer) : HasType [] [] (.lit (.pointer p)) .pointerType :=
     HasType.lit_pointer [] [] p
 
   -- HT-08: unop_not
-  example : HasType [] [] (.unop .not (.lit (.bool true))) .boolType []:=
+  example : HasType [] [] (.unop .not (.lit (.bool true))) .boolType :=
     HasType.unop_not [] [] (.lit (.bool true)) (HasType.lit_bool [] [] true)
 
   -- HT-09: unop_notb
-  example : HasType [] [] (.unop .notb (.lit (.int 5))) .intType []:=
+  example : HasType [] [] (.unop .notb (.lit (.int 5))) .intType :=
     HasType.unop_notb [] [] (.lit (.int 5)) (HasType.lit_int [] [] 5)
 
   -- HT-10: binop_arith (add)
-  example : HasType [] [] (.binop .add (.lit (.int 1)) (.lit (.int 2))) Typ.intType []:=
-    HasType.binop_arith [] [] .add (.lit (.int 1)) (.lit (.int 2)) []
+  example : HasType [] [] (.binop .add (.lit (.int 1)) (.lit (.int 2))) Typ.intType :=
+    HasType.binop_arith [] [] .add (.lit (.int 1)) (.lit (.int 2))
       (by unfold isArithOp; trivial) (HasType.lit_int [] [] 1) (HasType.lit_int [] [] 2)
 
   -- HT-11: binop_arith (sub)
-  example : HasType [] [] (.binop .sub (.lit (.int 5)) (.lit (.int 3))) Typ.intType []:=
-    HasType.binop_arith [] [] .sub (.lit (.int 5)) (.lit (.int 3)) []
+  example : HasType [] [] (.binop .sub (.lit (.int 5)) (.lit (.int 3))) Typ.intType :=
+    HasType.binop_arith [] [] .sub (.lit (.int 5)) (.lit (.int 3))
       (by unfold isArithOp; trivial) (HasType.lit_int [] [] 5) (HasType.lit_int [] [] 3)
 
   -- HT-12: binop_arith (mul)
-  example : HasType [] [] (.binop .mul (.lit (.int 3)) (.lit (.int 4))) Typ.intType []:=
-    HasType.binop_arith [] [] .mul (.lit (.int 3)) (.lit (.int 4)) []
+  example : HasType [] [] (.binop .mul (.lit (.int 3)) (.lit (.int 4))) Typ.intType :=
+    HasType.binop_arith [] [] .mul (.lit (.int 3)) (.lit (.int 4))
       (by unfold isArithOp; trivial) (HasType.lit_int [] [] 3) (HasType.lit_int [] [] 4)
 
   -- HT-13: binop_comp (eq)
-  example : HasType [] [] (.binop .eq (.lit (.int 1)) (.lit (.int 1))) Typ.boolType []:=
-    HasType.binop_comp [] [] .eq (.lit (.int 1)) (.lit (.int 1)) []
+  example : HasType [] [] (.binop .eq (.lit (.int 1)) (.lit (.int 1))) Typ.boolType :=
+    HasType.binop_comp [] [] .eq (.lit (.int 1)) (.lit (.int 1))
       (by unfold isCompOp; trivial) (HasType.lit_int [] [] 1) (HasType.lit_int [] [] 1)
 
   -- HT-14: binop_comp (lt)
-  example : HasType [] [] (.binop .lt (.lit (.int 1)) (.lit (.int 2))) Typ.boolType []:=
-    HasType.binop_comp [] [] .lt (.lit (.int 1)) (.lit (.int 2)) []
+  example : HasType [] [] (.binop .lt (.lit (.int 1)) (.lit (.int 2))) Typ.boolType :=
+    HasType.binop_comp [] [] .lt (.lit (.int 1)) (.lit (.int 2))
       (by unfold isCompOp; trivial) (HasType.lit_int [] [] 1) (HasType.lit_int [] [] 2)
 
   -- HT-15: binop_logic (and)
-  example : HasType [] [] (.binop .and (.lit (.bool true)) (.lit (.bool false))) Typ.boolType []:=
-    HasType.binop_logic [] [] .and (.lit (.bool true)) (.lit (.bool false)) []
+  example : HasType [] [] (.binop .and (.lit (.bool true)) (.lit (.bool false))) Typ.boolType :=
+    HasType.binop_logic [] [] .and (.lit (.bool true)) (.lit (.bool false))
       (by unfold isLogicOp; trivial) (HasType.lit_bool [] [] true) (HasType.lit_bool [] [] false)
 
   -- HT-16: binop_logic (or)
-  example : HasType [] [] (.binop .or (.lit (.bool true)) (.lit (.bool false))) Typ.boolType []:=
-    HasType.binop_logic [] [] .or (.lit (.bool true)) (.lit (.bool false)) []
+  example : HasType [] [] (.binop .or (.lit (.bool true)) (.lit (.bool false))) Typ.boolType :=
+    HasType.binop_logic [] [] .or (.lit (.bool true)) (.lit (.bool false))
       (by unfold isLogicOp; trivial) (HasType.lit_bool [] [] true) (HasType.lit_bool [] [] false)
 
   -- HT-17: binop_bitwise (andb)
-  example : HasType [] [] (.binop .andb (.lit (.int 1)) (.lit (.int 1))) Typ.intType []:=
-    HasType.binop_bitwise [] [] .andb (.lit (.int 1)) (.lit (.int 1)) []
+  example : HasType [] [] (.binop .andb (.lit (.int 1)) (.lit (.int 1))) Typ.intType :=
+    HasType.binop_bitwise [] [] .andb (.lit (.int 1)) (.lit (.int 1))
       (by unfold isBitwiseOp; trivial) (HasType.lit_int [] [] 1) (HasType.lit_int [] [] 1)
 
   -- HT-18: binop_bitwise (shl)
-  example : HasType [] [] (.binop .shl (.lit (.int 1)) (.lit (.int 3))) Typ.intType []:=
-    HasType.binop_bitwise [] [] .shl (.lit (.int 1)) (.lit (.int 3)) []
+  example : HasType [] [] (.binop .shl (.lit (.int 1)) (.lit (.int 3))) Typ.intType :=
+    HasType.binop_bitwise [] [] .shl (.lit (.int 1)) (.lit (.int 3))
       (by unfold isBitwiseOp; trivial) (HasType.lit_int [] [] 1) (HasType.lit_int [] [] 3)
 
   -- HT-19: lam_type (identity function: int -> int)
-  example : HasType [] [] (.lam 1 (.bvar 0)) (.functionType [Typ.intType] Typ.intType) []:=
+  example : HasType [] [] (.lam 1 (.bvar 0)) (.functionType [Typ.intType] Typ.intType) :=
     HasType.lam_type [] [] 1 (.bvar 0) [Typ.intType] Typ.intType rfl
-      (HasType.bvar_type_many [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] 0 Typ.intType (by simp [Morph.LinCtx.types]) rfl)
+      (HasType.bvar_type [Typ.intType] [] 0 (by native_decide))
 
   -- HT-20: lam_type (two-arg function)
   example : HasType [] [] (.lam 2 (.binop .add (.bvar 0) (.bvar 1)))
-      (.functionType [Typ.intType, Typ.intType] Typ.intType) []:=
+      (.functionType [Typ.intType, Typ.intType] Typ.intType) :=
     HasType.lam_type [] [] 2 (.binop .add (.bvar 0) (.bvar 1))
       [Typ.intType, Typ.intType] Typ.intType rfl
-        (HasType.binop_arith [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType), (Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] .add (.bvar 0) (.bvar 1) [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType), (Typ.intType, Morph.LinCtx.initialUsage Typ.intType)]
+        (HasType.binop_arith [Typ.intType, Typ.intType] [] .add (.bvar 0) (.bvar 1)
           (by unfold isArithOp; trivial)
-        (HasType.bvar_type_many [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType), (Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] 0 Typ.intType (by simp [Morph.LinCtx.types]) rfl)
-        (HasType.bvar_type_many [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType), (Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] 1 Typ.intType (by simp [Morph.LinCtx.types]) rfl))
+        (HasType.bvar_type [Typ.intType, Typ.intType] [] 0 (by native_decide))
+        (HasType.bvar_type [Typ.intType, Typ.intType] [] 1 (by native_decide)))
 
   -- HT-21: app_type (identity applied to int literal)
-  example : HasType [] [] (.app (.lam 1 (.bvar 0)) [.lit (.int 42)]) Typ.intType []:=
+  example : HasType [] [] (.app (.lam 1 (.bvar 0)) [.lit (.int 42)]) Typ.intType :=
     HasType.app_type [] [] (.lam 1 (.bvar 0)) [.lit (.int 42)]
       [Typ.intType] Typ.intType
       (HasType.lam_type [] [] 1 (.bvar 0) [Typ.intType] Typ.intType rfl
-        (HasType.bvar_type_many [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] 0 Typ.intType (by simp [Morph.LinCtx.types]) rfl))
-      (HasTypeAll.cons [] [] _ (.lit (.int 42)) [] Typ.intType []
+        (HasType.bvar_type [Typ.intType] [] 0 (by native_decide)))
+      (HasTypeAll.cons [] [] (.lit (.int 42)) [] Typ.intType []
         (HasType.lit_int [] [] 42) (HasTypeAll.nil [] []))
 
   -- HT-22: app_type (two-arg function)
   example : HasType [] []
       (.app (.lam 2 (.binop .add (.bvar 0) (.bvar 1))) [.lit (.int 1), .lit (.int 2)])
-      Typ.intType []:=
+      Typ.intType :=
     HasType.app_type [] []
       (.lam 2 (.binop .add (.bvar 0) (.bvar 1))) [.lit (.int 1), .lit (.int 2)]
       [Typ.intType, Typ.intType] Typ.intType
       (HasType.lam_type [] [] 2 (.binop .add (.bvar 0) (.bvar 1))
         [Typ.intType, Typ.intType] Typ.intType rfl
-        (HasType.binop_arith [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType), (Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] .add (.bvar 0) (.bvar 1) [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType), (Typ.intType, Morph.LinCtx.initialUsage Typ.intType)]
+        (HasType.binop_arith [Typ.intType, Typ.intType] [] .add (.bvar 0) (.bvar 1)
           (by unfold isArithOp; trivial)
-          (HasType.bvar_type_many [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType), (Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] 0 Typ.intType (by simp [Morph.LinCtx.types]) rfl)
-          (HasType.bvar_type_many [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType), (Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] 1 Typ.intType (by simp [Morph.LinCtx.types]) rfl)))
-      (HasTypeAll.cons [] [] _ (.lit (.int 1)) [.lit (.int 2)] Typ.intType [Typ.intType]
+          (HasType.bvar_type [Typ.intType, Typ.intType] [] 0 (by native_decide))
+          (HasType.bvar_type [Typ.intType, Typ.intType] [] 1 (by native_decide))))
+      (HasTypeAll.cons [] [] (.lit (.int 1)) [.lit (.int 2)] Typ.intType [Typ.intType]
         (HasType.lit_int [] [] 1)
-        (HasTypeAll.cons [] [] _ (.lit (.int 2)) [] Typ.intType []
+        (HasTypeAll.cons [] [] (.lit (.int 2)) [] Typ.intType []
           (HasType.lit_int [] [] 2) (HasTypeAll.nil [] [])))
 
   -- HT-23: let_type
-  example : HasType [] [] (.let_ (.lit (.int 42)) (.bvar 0)) Typ.intType []:=
+  example : HasType [] [] (.let_ (.lit (.int 42)) (.bvar 0)) Typ.intType :=
     HasType.let_type [] [] (.lit (.int 42)) (.bvar 0) Typ.intType Typ.intType
       (HasType.lit_int [] [] 42)
-      (HasType.bvar_type_many [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] 0 Typ.intType (by simp [Morph.LinCtx.types]) rfl)
+      (HasType.bvar_type [Typ.intType] [] 0 (by native_decide))
 
   -- HT-24: let_type (shadowing chain)
   example : HasType [] []
-      (.let_ (.lit (.int 1)) (.let_ (.lit (.bool true)) (.bvar 0))) Typ.boolType []:=
+      (.let_ (.lit (.int 1)) (.let_ (.lit (.bool true)) (.bvar 0))) Typ.boolType :=
     HasType.let_type [] [] (.lit (.int 1))
       (.let_ (.lit (.bool true)) (.bvar 0)) Typ.intType Typ.boolType
       (HasType.lit_int [] [] 1)
-      (HasType.let_type [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] (.lit (.bool true)) (.bvar 0)
+      (HasType.let_type [Typ.intType] [] (.lit (.bool true)) (.bvar 0)
         Typ.boolType Typ.boolType
-        (HasType.lit_bool [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] true)
-        (HasType.bvar_type_many [(Typ.boolType, Morph.LinCtx.initialUsage Typ.boolType), (Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] 0 Typ.boolType (by simp [Morph.LinCtx.types]) rfl))
+        (HasType.lit_bool [Typ.intType] [] true)
+        (HasType.bvar_type [Typ.boolType, Typ.intType] [] 0 (by native_decide)))
 
   -- HT-25: if_type (true branch)
   example : HasType [] []
-      (.ifThenElse (.lit (.bool true)) (.lit (.int 1)) (.lit (.int 2))) Typ.intType []:=
+      (.ifThenElse (.lit (.bool true)) (.lit (.int 1)) (.lit (.int 2))) Typ.intType :=
     HasType.if_type [] [] (.lit (.bool true)) (.lit (.int 1)) (.lit (.int 2)) Typ.intType
       (HasType.lit_bool [] [] true)
       (HasType.lit_int [] [] 1)
@@ -285,7 +302,7 @@ section HasTypeConstructorTests
   example : HasType [] []
       (.ifThenElse (.lit (.bool false))
         (.ifThenElse (.lit (.bool true)) (.lit (.int 1)) (.lit (.int 2)))
-        (.lit (.int 3))) Typ.intType []:=
+        (.lit (.int 3))) Typ.intType :=
     HasType.if_type [] [] (.lit (.bool false))
       (.ifThenElse (.lit (.bool true)) (.lit (.int 1)) (.lit (.int 2)))
       (.lit (.int 3)) Typ.intType
@@ -300,60 +317,58 @@ section HasTypeConstructorTests
   -- type unitType in the iterator-extended context, so the empty body is now
   -- rejected by the checker (it previously returned `some unitType` unchecked).
   example : inferType [] [] (.forLoop (.lit (.int 0)) (.lit (.int 10)) []) = none := by
-    simp [inferType, inferTypeC, inferTypesC, linPushMany]
+    simp [inferType, inferTypes]
 
   -- HT-28: for_type (with unit body)
   example : HasType [] []
-      (.forLoop (.lit (.int 0)) (.lit (.int 10)) [.lit .unit]) Typ.unitType []:=
+      (.forLoop (.lit (.int 0)) (.lit (.int 10)) [.lit .unit]) Typ.unitType :=
     HasType.for_type [] []
       (.lit (.int 0)) (.lit (.int 10)) [.lit .unit]
       (HasType.lit_int [] [] 0)
       (HasType.lit_int [] [] 10)
-      (HasTypeAll.cons [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [] _ (.lit .unit) [] Typ.unitType []
-        (HasType.lit_unit [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] [])
-        (HasTypeAll.nil [(Typ.intType, Morph.LinCtx.initialUsage Typ.intType)] []))
+      (HasTypeAll.cons [Typ.intType] [] (.lit .unit) [] Typ.unitType []
+        (HasType.lit_unit [Typ.intType] [])
+        (HasTypeAll.nil [Typ.intType] []))
 
   -- HT-29: block_type (empty)
   -- P13 soundness fix: `block_type` cannot derive an empty block (`τs ++ [τ]` is
   -- never `[]`), so the checker now returns `none` for it (previously
   -- `some .unitType` unchecked).
   example : inferType [] [] (.block []) = none := by
-    simp [inferType, inferTypeC, inferTypesC]
+    simp [inferType, inferTypes]
 
   -- HT-30: block_type (singleton)
-  example : HasType [] [] (.block [.lit (.int 42)]) Typ.intType []:=
+  example : HasType [] [] (.block [.lit (.int 42)]) Typ.intType :=
     HasType.block_type [] [] [.lit (.int 42)] [] Typ.intType
-      (HasTypeAll.cons [] [] _ (.lit (.int 42)) [] Typ.intType []
+      (HasTypeAll.cons [] [] (.lit (.int 42)) [] Typ.intType []
         (HasType.lit_int [] [] 42) (HasTypeAll.nil [] []))
 
   -- HT-31: block_type (multiple)
-  example : HasType [] [] (.block [.lit (.int 1), .lit (.int 2)]) Typ.intType []:=
+  example : HasType [] [] (.block [.lit (.int 1), .lit (.int 2)]) Typ.intType :=
     HasType.block_type [] [] [.lit (.int 1), .lit (.int 2)] [Typ.intType] Typ.intType
-      (HasTypeAll.cons [] [] _ (.lit (.int 1)) [.lit (.int 2)] Typ.intType [Typ.intType]
+      (HasTypeAll.cons [] [] (.lit (.int 1)) [.lit (.int 2)] Typ.intType [Typ.intType]
         (HasType.lit_int [] [] 1)
-        (HasTypeAll.cons [] [] _ (.lit (.int 2)) [] Typ.intType []
+        (HasTypeAll.cons [] [] (.lit (.int 2)) [] Typ.intType []
           (HasType.lit_int [] [] 2) (HasTypeAll.nil [] [])))
 
   -- HT-32: block_type (returns last expr type)
-  example : HasType [] [] (.block [.lit (.int 1), .lit (.bool true)]) Typ.boolType []:=
+  example : HasType [] [] (.block [.lit (.int 1), .lit (.bool true)]) Typ.boolType :=
     HasType.block_type [] [] [.lit (.int 1), .lit (.bool true)] [Typ.intType] Typ.boolType
-      (HasTypeAll.cons [] [] _ (.lit (.int 1)) [.lit (.bool true)] Typ.intType [Typ.boolType]
+      (HasTypeAll.cons [] [] (.lit (.int 1)) [.lit (.bool true)] Typ.intType [Typ.boolType]
         (HasType.lit_int [] [] 1)
-        (HasTypeAll.cons [] [] _ (.lit (.bool true)) [] Typ.boolType []
+        (HasTypeAll.cons [] [] (.lit (.bool true)) [] Typ.boolType []
           (HasType.lit_bool [] [] true) (HasTypeAll.nil [] [])))
 
-  -- HT-33: lam_linear_type (ADR-014 stage 1) — the canonical linear-memory idiom,
-  -- rejected since Phase 1c-β-2 part 1: a lambda taking one iso reference and
-  -- freeing it. The parameter is used exactly once, discharged by `countUses`;
-  -- no context consumption is involved (the parameter is pushed as `.many`).
+  -- HT-33: lam_linear_type (ADR-014 stage 1) — the canonical linear-memory idiom:
+  -- a lambda taking one iso reference and freeing it. The parameter is used
+  -- exactly once, discharged by `countUses`; the context is plain types
+  -- (ADR-014: no consumption anywhere in the judgment).
   example : HasType [] [] (.lam 1 (.refFree (.bvar 0)))
-      (.linearFunctionType [Typ.refType .iso .intType] Typ.unitType) [] := by
+      (.linearFunctionType [Typ.refType .iso .intType] Typ.unitType) := by
     refine HasType.lam_linear_type [] [] 1 (.refFree (.bvar 0))
       [Typ.refType .iso .intType] Typ.unitType rfl ?_ ?_
     · refine HasType.refFree_type _ _ (.bvar 0) .intType ?_
-      exact HasType.bvar_type_many
-        [(Typ.refType .iso .intType, Morph.Usage.many)] [] 0 (Typ.refType .iso .intType)
-        (by simp [Morph.LinCtx.types]) rfl
+      exact HasType.bvar_type [Typ.refType .iso .intType] [] 0 (by native_decide)
     · intro i hi
       simp only [Morph.Syntax.countUses]
       have hL : ([Typ.refType .iso .intType] : List Typ).length = 1 := rfl
@@ -363,16 +378,13 @@ section HasTypeConstructorTests
 
   -- HT-34: lam_linear_type (two linear parameters, each used exactly once)
   example : HasType [] [] (.lam 2 (.binop .add (.bvar 0) (.bvar 1)))
-      (.linearFunctionType [Typ.intType, Typ.intType] Typ.intType) [] := by
+      (.linearFunctionType [Typ.intType, Typ.intType] Typ.intType) := by
     refine HasType.lam_linear_type [] [] 2 (.binop .add (.bvar 0) (.bvar 1))
       [Typ.intType, Typ.intType] Typ.intType rfl ?_ ?_
-    · refine HasType.binop_arith
-        [(Typ.intType, Morph.Usage.many), (Typ.intType, Morph.Usage.many)] [] .add
-        (.bvar 0) (.bvar 1)
-        [(Typ.intType, Morph.Usage.many), (Typ.intType, Morph.Usage.many)]
-        (by unfold isArithOp; trivial) ?_ ?_
-      · exact HasType.bvar_type_many _ _ 0 Typ.intType (by simp [Morph.LinCtx.types]) rfl
-      · exact HasType.bvar_type_many _ _ 1 Typ.intType (by simp [Morph.LinCtx.types]) rfl
+    · exact HasType.binop_arith [Typ.intType, Typ.intType] [] .add (.bvar 0) (.bvar 1)
+        (by unfold isArithOp; trivial)
+        (HasType.bvar_type [Typ.intType, Typ.intType] [] 0 (by native_decide))
+        (HasType.bvar_type [Typ.intType, Typ.intType] [] 1 (by native_decide))
     · intro i hi
       simp only [Morph.Syntax.countUses]
       cases i with
@@ -386,11 +398,10 @@ section HasTypeConstructorTests
             omega)
 
   -- HT-35: app_linear_type — a linear function applied to its argument
-  example : HasType [] [] (.app (.lam 1 (.bvar 0)) [.lit (.int 42)]) Typ.intType [] :=
+  example : HasType [] [] (.app (.lam 1 (.bvar 0)) [.lit (.int 42)]) Typ.intType :=
     HasType.app_linear_type [] [] (.lam 1 (.bvar 0)) [.lit (.int 42)] [Typ.intType] Typ.intType
       (HasType.lam_linear_type [] [] 1 (.bvar 0) [Typ.intType] Typ.intType rfl
-        (HasType.bvar_type_many [(Typ.intType, Morph.Usage.many)] [] 0 Typ.intType
-          (by simp [Morph.LinCtx.types]) rfl)
+        (HasType.bvar_type [Typ.intType] [] 0 (by native_decide))
         (by
           intro i hi
           simp only [Morph.Syntax.countUses]
@@ -398,57 +409,55 @@ section HasTypeConstructorTests
           have hi0 : i = 0 := by omega
           subst hi0
           rfl))
-      (HasTypeAll.cons [] [] _ (.lit (.int 42)) [] Typ.intType []
+      (HasTypeAll.cons [] [] (.lit (.int 42)) [] Typ.intType []
         (HasType.lit_int [] [] 42) (HasTypeAll.nil [] []))
 
-  -- HT-36 (ADR-014 Loop 4): unrestricted arrow taking an iso ref, body frees it —
-  -- now typechecks. `lam_type` pushes `.many` via `linPushMany`, so the body's
-  -- `bvar 0` is read by `bvar_type_many` (no consumption, same context out);
-  -- previously the push installed `.zero` for the refType and the pinned
-  -- input = output premise rejected the derivation.
+  -- HT-36 (ADR-014): unrestricted arrow taking an iso ref, body frees it —
+  -- typechecks. `lam_type` pushes the parameter as a plain type, so the body's
+  -- `bvar 0` is read by `bvar_type` (no consumption anywhere, ADR-014); under
+  -- the pre-ADR-014 usage-carrying contexts this derivation was rejected.
   example : HasType [] [] (.lam 1 (.refFree (.bvar 0)))
-      (.functionType [Typ.refType .iso .intType] Typ.unitType) [] :=
+      (.functionType [Typ.refType .iso .intType] Typ.unitType) :=
     HasType.lam_type [] [] 1 (.refFree (.bvar 0)) [Typ.refType .iso .intType] Typ.unitType rfl
       (HasType.refFree_type _ _ (.bvar 0) .intType
-        (HasType.bvar_type_many _ _ 0 (.refType .iso .intType)
-          (by simp [Morph.LinCtx.types, linPushMany]) rfl))
+        (HasType.bvar_type _ _ 0 (by native_decide)))
 
   -- HasTypeAll tests
 
   -- HT-ALL-01: nil
-  example : HasTypeAll [] [] [] [] []:=
+  example : HasTypeAll [] [] [] [] :=
     HasTypeAll.nil [] []
 
   -- HT-ALL-02: cons (single)
-  example : HasTypeAll [] [] [.lit (.int 42)] [Typ.intType] []:=
-    HasTypeAll.cons [] [] _ (.lit (.int 42)) [] Typ.intType []
+  example : HasTypeAll [] [] [.lit (.int 42)] [Typ.intType] :=
+    HasTypeAll.cons [] [] (.lit (.int 42)) [] Typ.intType []
       (HasType.lit_int [] [] 42) (HasTypeAll.nil [] [])
 
   -- HT-ALL-03: cons (multiple)
-  example : HasTypeAll [] [] [.lit (.int 1), .lit (.bool true)] [Typ.intType, Typ.boolType] []:=
-    HasTypeAll.cons [] [] _ (.lit (.int 1)) [.lit (.bool true)] Typ.intType [Typ.boolType]
+  example : HasTypeAll [] [] [.lit (.int 1), .lit (.bool true)] [Typ.intType, Typ.boolType] :=
+    HasTypeAll.cons [] [] (.lit (.int 1)) [.lit (.bool true)] Typ.intType [Typ.boolType]
       (HasType.lit_int [] [] 1)
-      (HasTypeAll.cons [] [] _ (.lit (.bool true)) [] Typ.boolType []
+      (HasTypeAll.cons [] [] (.lit (.bool true)) [] Typ.boolType []
         (HasType.lit_bool [] [] true) (HasTypeAll.nil [] []))
 
   -- Inversion lemma tests
 
-  example : HasType [] [] (.lit (.int 42)) .intType []:=
+  example : HasType [] [] (.lit (.int 42)) .intType :=
     HasType.lit_int [] [] 42
 
-  example (h : HasType [] [] (.lit (.int 42)) τ []) : τ = .intType ∨ (exists w, τ = .intWidthType w) := by
+  example (h : HasType [] [] (.lit (.int 42)) τ) : τ = .intType ∨ (exists w, τ = .intWidthType w) := by
     exact HasType_lit_int_inv [] [] 42 τ h
 
-  example (h : HasType [] [] (.lit (.bool true)) τ []) : τ = .boolType := by
+  example (h : HasType [] [] (.lit (.bool true)) τ) : τ = .boolType := by
     exact HasType_lit_bool_inv [] [] true τ h
 
-  example (h : HasType [] [] (.lit .unit) τ []) : τ = .unitType := by
+  example (h : HasType [] [] (.lit .unit) τ) : τ = .unitType := by
     exact HasType_lit_unit_inv [] [] τ h
 
-  example (h : HasType [] [] (.unop .not e) τ []) : τ = .boolType := by
+  example (h : HasType [] [] (.unop .not e) τ) : τ = .boolType := by
     exact HasType_unop_not_inv [] [] e τ h
 
-  example (h : HasType [] [] (.unop .notb e) τ []) : τ = .intType := by
+  example (h : HasType [] [] (.unop .notb e) τ) : τ = .intType := by
     exact HasType_unop_notb_inv [] [] e τ h
 
   -- WellTyped tests
