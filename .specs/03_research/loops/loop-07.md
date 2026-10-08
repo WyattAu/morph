@@ -83,6 +83,33 @@ Design points settled (the hard thinking is done):
 2. `Morph/Tests/MIR.lean` untouched this loop; HT-37-style acceptance tests
    land with the theorem.
 
+## Proof-engineering notes (Loop 7 session, for the continuation)
+
+Tactics discovered during drafting (all verified in probes):
+
+- `Executable.eval` has no equation lemmas; `evalFuel` (plain structural def)
+  does. All correspondence theorems must target `evalFuel`.
+- `Env.update`'s `rw [Env.update]` fails ("failed to rewrite using equation
+  theorems") when the goal's `Env` is the abbrev — unfolding works with
+  `simp only [Env.update]` in some shapes and fails in others; the reliable
+  route is `cases hb : (dst == d)` + `rw [hb] at h; simp at h` for the
+  failure direction and `rw [Env.update, if_neg (…)]` for the success
+  direction **after** proving `(dst == d) = false` via:
+  ```lean
+  have h2 : (!(dst == d)) = true := hskip      -- defeq unfold of disjointWrites
+  cases hb : (dst == d)
+  · rw [hb] at h2; simp at h2                  -- closes
+  · rfl
+  ```
+- Beq-symmetry: `Nat.beq_symm` does not exist; `Nat.beq_eq` exists but its
+  rewrite is `Nat.beq a b = true`-shaped (fails on `= false`). The closing
+  form that works: `revert h; cases a <;> cases b <;> simp` with residual
+  `· exact fun hh' hp => hh' hp.symm`.
+- `List.mem_nil` does not exist as a simp lemma; `List.mem_cons` does.
+- Lowering's `evalInstr` coverage: only const/copy/unop/binop execute; the
+  other 13 instructions are `none`-stubs, so `evalInstr_write` needs 4 real
+  cases + 13 trivial (`simp [evalInstr] at h`).
+
 ## Open questions carried to Loop 8
 
 1. Finish `lowerIn_correct`: `evalInstr_write` (4 real cases, final simp
