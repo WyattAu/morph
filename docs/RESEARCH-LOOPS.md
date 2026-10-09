@@ -1,0 +1,47 @@
+# Research Loops — Spec Hardening Program
+
+10+ iteration loops: for each part of the language — pull papers, analyze the
+cutting edge, compare against how other languages solve the same problem (or
+establish that nobody has), implement the best solution in the spec, adjust
+the Lean proof, verify with `lake build`, commit. Then repeat.
+
+Toolchain: Lean 4 v4.27.0, Lake 5.0.0, mathlib4 + batteries + aesop.
+Verification gate per iteration: `lake build Morph` green, sorry count does
+not increase, no `example : True := trivial` stubs.
+
+## Loop Plan
+
+| # | Part | Gap / Problem | Papers | Language comparison | Status |
+|---|------|---------------|--------|---------------------|--------|
+| 1 | Type system: subtyping | `Subtype` is reflexive-transitive closure of NOTHING (no structural rules); unused by `typeCheck`; GA-005 decidability merely "assumed" (SG-005) | F-sub decidability boundary; coinductive/recursive subtyping (Brandt-Henglein); semantic subtyping (Castagna/CDuce) | Rust (variance-computed), Scala 3, TypeScript (unsound), OCaml (rows), F* (SMT), Granule / Linear Haskell (multiplicity, no subtyping) | IN PROGRESS |
+| 2 | Memory: heap growth bounds | SG-002: no formal bounds on allocation growth under ARC + affine | | Swift ARC, Pony ORCA, Rust (no GC), Val regions | PENDING |
+| 3 | Concurrency: deadlock freedom | SG-004: no deadlock-freedom proof for the actor system | | Erlang/BEAM, Pony, Akka, multiparty session types | PENDING |
+| 4 | Security: taint / IFC | SG-003: taint tracking across dialect boundaries unspecified | | Jif, Flow Caml, Paragon, robust declassification | PENDING |
+| 5 | Core semantics: substitution | 6 sorries in `Proofs/TypeSoundness/Preservation.lean` (subst lemmas) | POPLmark, Autosubst | Coq/Agda standard developments | PENDING |
+| 6 | Effects | 4 canonical effects {IO, Net, Time, System}; monadic formalization depth unknown | | Koka, Unison abilities, OCaml 5, eff | PENDING |
+| 7 | Dialects / projectional syntax | SG-001: cross-dialect translation semantics; DialectProjection is tier-4 empty | | Hazel, MPS, ProjectLombok-style structural editors | PENDING |
+| 8 | Scheduler | Randomized work stealing: no liveness/fairness proofs | | Cilk, Tokio, Go runtime, BLMA | PENDING |
+| 9 | Lexical structure | LexicalStructureSyntax is tier-4 empty | | total lexing, tree-sitter GLR | PENDING |
+| 10 | Execution model | ExecutionModel is tier-4 empty | | operational-semantics-driven exec models, CEK/Krivine | PENDING |
+
+## Per-Iteration Protocol
+
+1. **Research**: pull 4-6 primary sources (arXiv/ACM/theses) on the part.
+2. **Analyze**: extract the strongest technique applicable to Morph's exact
+   definitions (Lean-side, not hand-waved).
+3. **Language comparison**: for each of 3-6 languages, record how they solve
+   the same problem, whether their solution applies here, and whether Morph's
+   problem is one they failed to solve.
+4. **Implement**: spec markdown + Lean module updates (Spec/Lemmas/Examples).
+5. **Prove**: `lake build Morph` green; sorry count never increases.
+6. **Record**: verdict line in the table above + iteration notes below.
+
+## Iteration Notes
+
+### Iteration 1 — Subtyping (in progress)
+
+Baseline finding (2026-10-09): the shipped `Subtype` inductive
+(`Morph/Specs/TypeSystem/Spec.lean:680`) has only `refl` and `trans` — it
+derives nothing beyond equality, and nothing in `HasType`/`typeCheck`
+consumes it. GA-005 declares decidability "assumed" over a relation with no
+content. Research agent dispatched for the cutting edge + language survey.
