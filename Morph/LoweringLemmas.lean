@@ -156,4 +156,63 @@ theorem agrees_bvar (paramMap : Nat → ValId) (ctx : Context) (env : MIR.Env)
   obtain ⟨w, rfl, hw⟩ := hag n v hv
   simp [bvVal, hv, hw]
 
+/-! ## The supply discipline
+
+Lowering allocates registers from `supply` upward and never reuses a
+parameter register. These lemmas make that precise, and they are what lets
+`execInstrs` leave the parameter registers (`< supply`) untouched — the
+step the `let_` case of the agreement induction needs to extend `Agrees`
+across a sub-block. -/
+
+/-- Every register written by an instruction list is at least `lo`. -/
+def WritesAbove (lo : Nat) : List Instr → Prop
+  | [] => True
+  | i :: is => (match writtenReg i with | some d => lo ≤ d | none => True) ∧ WritesAbove lo is
+
+theorem WritesAbove.anti_mono (lo lo' : Nat) (is : List Instr)
+    (h : lo ≤ lo') (hi : WritesAbove lo' is) : WritesAbove lo is := by
+  induction is with
+  | nil => trivial
+  | cons i is ih =>
+      constructor
+      · cases hreg : writtenReg i with
+        | none => trivial
+        | some d =>
+            have : lo' ≤ d := by simpa [hreg] using hi.1
+            exact Nat.le_trans h this
+      · exact ih hi.2
+
+/-- An instruction that names no destination is a `none`-stub in stage 1. -/
+theorem evalInstr_eq_none_of_no_write (env : MIR.Env) (i : Instr)
+    (h : writtenReg i = none) : evalInstr env i = none := by
+  cases i <;> simp_all [writtenReg, evalInstr]
+
+/-- Executing an instruction list preserves every register below `lo` when
+    the list writes nothing below `lo`. This is `evalInstr_write` composed
+    over `execInstrs`. -/
+theorem execInstrs_preserves_below : ∀ (is : List Instr) (env env' : MIR.Env)
+    (lo : Nat), WritesAbove lo is → execInstrs env is = some env' →
+    ∀ x, x < lo → env' x = env x
+  | [], env, env', lo, hw, h, x, hx => by
+      simp only [execInstrs] at h
+      injection h with heq
+      exact heq ▸ rfl
+  | i :: is, env, env', lo, hw, h, x, hx => by
+      cases hi : evalInstr env i with
+      | none => simp [execInstrs, hi] at h
+      | some env1 =>
+          simp only [execInstrs, hi] at h
+          cases hreg : writtenReg i with
+          | none =>
+              rw [evalInstr_eq_none_of_no_write env i hreg] at hi
+              simp at hi
+          | some d =>
+              have hw1 := hw.1
+              simp [hreg] at hw1
+              have hlo : lo ≤ d := hw1
+              have hxd : x ≠ d := Nat.ne_of_lt (Nat.lt_of_lt_of_le hx hlo)
+              have henv1 : env1 x = env x :=
+                evalInstr_write env i env1 hi d hreg x hxd
+              exact (execInstrs_preserves_below is env1 env' lo hw.2 h x hx).trans henv1
+
 end Morph.Lowering
