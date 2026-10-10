@@ -13,7 +13,7 @@ not increase, no `example : True := trivial` stubs.
 
 | # | Part | Gap / Problem | Papers | Language comparison | Status |
 |---|------|---------------|--------|---------------------|--------|
-| 1 | Type system: subtyping | `Subtype` is reflexive-transitive closure of NOTHING (no structural rules); unused by `typeCheck`; GA-005 decidability merely "assumed" (SG-005) | F-sub decidability boundary; coinductive/recursive subtyping (Brandt-Henglein); semantic subtyping (Castagna/CDuce) | Rust (variance-computed), Scala 3, TypeScript (unsound), OCaml (rows), F* (SMT), Granule / Linear Haskell (multiplicity, no subtyping) | IN PROGRESS |
+| 1 | Type system: subtyping | same | Pierce POPL'92 (F-sub undecidability; full text read); Kennedy-Pierce FOOL-WOOD'07; Brandt-Henglein TLCA'97; Kozen-Palsberg-Schwartzbach POPL'93; Castagna semantic subtyping + 2024-25 set-theoretic wave; Linear Haskell POPL'18; Granule ICFP'19; rustc variance guide | Rust (variance), TS (unsound structural), OCaml (rows), F* (SMT), Linear Haskell (refuses arrow subtyping), Granule (SMT grades) | **DONE** |
 | 2 | Memory: heap growth bounds | SG-002: no formal bounds on allocation growth under ARC + affine | | Swift ARC, Pony ORCA, Rust (no GC), Val regions | PENDING |
 | 3 | Concurrency: deadlock freedom | SG-004: no deadlock-freedom proof for the actor system | | Erlang/BEAM, Pony, Akka, multiparty session types | PENDING |
 | 4 | Security: taint / IFC | SG-003: taint tracking across dialect boundaries unspecified | | Jif, Flow Caml, Paragon, robust declassification | PENDING |

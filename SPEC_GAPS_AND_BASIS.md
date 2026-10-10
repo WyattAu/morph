@@ -32,7 +32,7 @@ The following assumptions were identified as needing formal validation. See `spe
 | GA-002 | SSUS pattern preserves referential transparency | Validated | See `spec/language/strict_state_unidirectional_spec.md` |
 | GA-003 | Projectional editing can express all syntactic forms | Under Review | See `spec/language/dialect_projection_spec.md` |
 | GA-004 | Actor message ordering is deterministic | Validated | See `spec/architecture/layered_concurrency_spec.md` |
-| GA-005 | Type system is decidable for all Morph programs | Assumed | Requires formal proof — **target for Phase 1.7 of roadmap** |
+| GA-005 | Subtyping over `Typ` is decidable | Validated | `instDecidableSubtype` (ADR-015): `isSubtype` decision procedure proved sound + complete; 2026-10-09, research loop 1 |
 
 ---
 
