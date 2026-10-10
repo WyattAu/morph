@@ -136,4 +136,24 @@ theorem evalUnOp_align (op : UnOp) (v : Value) :
       (Morph.Executable.evalUnop op.toOperator (.lit v)).bind
         (fun e => match e with | .lit v' => some v' | _ => none) := rfl
 
+/-! ## The agreement relation -/
+
+/-- `Agrees paramMap ctx env`: every bound variable the interpreter context
+    holds at index `n`, when it is a `.lit`, corresponds to register
+    `paramMap n` in the MIR environment holding the same value. This is the
+    coupling that the strong-agreement induction for `lowerIn` maintains. -/
+def Agrees (paramMap : Nat → ValId) (ctx : Context) (env : MIR.Env) : Prop :=
+  ∀ (n : Nat) (v : Expr), ctx.getBv? n = some v →
+    ∃ w : Value, v = .lit w ∧ env (paramMap n) = some w
+
+/-- `Agrees` implies the bvar bridge: the interpreter's bound-variable value
+    and the MIR register lookup yield the same `Value`. This is the step the
+    `.bvar` case of the agreement induction uses. -/
+theorem agrees_bvar (paramMap : Nat → ValId) (ctx : Context) (env : MIR.Env)
+    (hag : Agrees paramMap ctx env) (n : Nat) (v : Expr)
+    (hv : ctx.getBv? n = some v) :
+    bvVal ctx n = env (paramMap n) := by
+  obtain ⟨w, rfl, hw⟩ := hag n v hv
+  simp [bvVal, hv, hw]
+
 end Morph.Lowering
