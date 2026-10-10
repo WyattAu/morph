@@ -119,3 +119,24 @@ Tactics discovered during drafting (all verified in probes):
    (P4 refinement), Perceus done.
 3. Then: stage-1 continuation — `if` (branch CFG, Loop 8's execFuel-CFG
    executor), memory instructions (store-aware oracle), ADR-012 (closures).
+
+
+## Resolution (post-program, 2026-10-09)
+
+The two mechanical blockers identified below are now **proven** in
+`Morph/LoweringLemmas.lean`:
+
+- `Env.update_same` / `Env.update_ne` — update touches exactly its destination.
+- `writtenReg` + `evalInstr_write` — an instruction writes exactly the
+  register it names and leaves every other register untouched when it
+  succeeds (the `Env.update` equation-lemma problem that stalled earlier
+  attempts is avoided by rewriting the *conclusion* via
+  `Env.update_ne` after inverting `h`, not by rewriting `Env.update`).
+- `evalBinOp_align` / `evalUnOp_align` — the MIR oracle is definitionally
+  the surface `evalBinop`/`evalUnop` on `.lit`-wrapped operands.
+
+What remains for `lowerIn_correct` is only the strong-agreement relation
+coupling the interpreter `Context` to the MIR `Env` through `let_`/`bvar`
+(including the monotonicity step and the `evalFuel` monotone-success
+bridge). That part is still open — the blocker is no longer tactic
+mechanics but the invariant design itself.
