@@ -80,6 +80,7 @@ instance : Shrinkable Value where
     | .tuple_ vs => vs
     | .array_ vs => vs
     | .loc _ => []
+    | .closure _ _ => []
 
 -- Typ: non-recursive for property testing (only base types needed)
 instance : Arbitrary Typ where

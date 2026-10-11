@@ -595,6 +595,7 @@ theorem sound_mutual (n : Nat) :
         | loc _ => simp only [inferType] at h; simp at h
         | tuple_ _ => simp only [inferType] at h; simp at h
         | array_ _ => simp only [inferType] at h; simp at h
+        | closure _ _ => simp only [inferType] at h; simp at h
       | unop op e =>
         cases op with
         | not =>

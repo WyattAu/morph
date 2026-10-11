@@ -160,6 +160,10 @@ theorem value_is_well_typed : forall {e : Expr} {τ : Typ},
       | _ => contradiction
     | undef => cases ht with
       | _ => contradiction
+    | closure _ _ => cases ht with
+      -- ADR-012: closures are MIR-only; the surface `HasType` relation has no
+      -- rule for a closure literal, so this case is vacuous.
+      | _ => contradiction
     | some v' => cases ht with
       | lit_some _ _ _ τ_inner => exact WellTypedValue.lit_some v' τ_inner
       | _ => contradiction

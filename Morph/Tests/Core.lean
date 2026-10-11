@@ -504,6 +504,7 @@ section SafetyTheoremTests
     | Typ.boolType => ∃ (b : Bool), v = Value.bool b
     | Typ.stringType => ∃ (s : String), v = Value.string s
     | Typ.pointerType => (∃ (ptr : Pointer), v = Value.pointer ptr) ∨ (∃ n, v = Value.loc n)
+        ∨ (∃ fn l, v = Value.closure fn l)
     | Typ.unitType => v = Value.unit ∨ v = Value.undef
     | Typ.arrayType elem size =>
         ∃ (arr : List Value), arr.length = size ∧
@@ -598,8 +599,12 @@ section SafetyTheoremTests
       exact ⟨Typ.tupleType (vs.map (fun _ => Typ.unitType)), ⟨vs, rfl, hLen⟩⟩
     | array_ vs =>
       exact ⟨Typ.functionType [] Typ.unitType, Value.array_ vs, rfl, [], rfl, Typ.unitType, rfl⟩
+    | closure fn l =>
+        -- ADR-012: a closure is a (code pointer, env location) pair, so it
+        -- is pointer-typed in this stage-1 test surface.
+        exact ⟨Typ.pointerType, Or.inr (Or.inr ⟨fn, l, rfl⟩)⟩
     | loc n =>
-      exact ⟨Typ.pointerType, Or.inr ⟨n, rfl⟩⟩
+      exact ⟨Typ.pointerType, Or.inr (Or.inl ⟨n, rfl⟩)⟩
 
   /-- Type invariants are preserved under equality -/
   theorem type_invariant_preserved_under_equality (v1 v2 : Value) (t : Typ) :

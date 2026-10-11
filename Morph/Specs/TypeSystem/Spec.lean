@@ -527,6 +527,7 @@ def inferType (bvs : List Morph.Core.Typ) (env : TypEnv) : Morph.Syntax.Expr -> 
   | .lit (.tuple_ _) => none  -- no HasType rule for tuple value literals
   | .lit (.array_ _) => none  -- no HasType rule for array value literals
   | .lit (.loc _) => none     -- no HasType rule for location literals
+  | .lit (.closure _ _) => none -- closures are MIR-only (ADR-012); no surface type yet
   | .unop op e =>
     match op with
     | .not =>

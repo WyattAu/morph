@@ -47,6 +47,13 @@ structure Loan where
   lifetime : Nat
   deriving Repr, BEq, DecidableEq
 
+/-- Structural extensionality for loans. -/
+theorem Loan.ext {p₁ p₂ : Place} {c₁ c₂ : Capability} {l₁ l₂ : Nat}
+    (h₁ : p₁ = p₂) (h₂ : c₁ = c₂) (h₃ : l₁ = l₂) :
+    ({ place := p₁, cap := c₁, lifetime := l₁ } : Loan) =
+      { place := p₂, cap := c₂, lifetime := l₂ } := by
+  cases h₁; cases h₂; cases h₃; rfl
+
 /-- The set of outstanding loans at a program point. -/
 abbrev Provenances : Type := List Loan
 
@@ -95,6 +102,19 @@ def NoConflictingLoan (π : Provenances) (p : Place) (cap : Capability) : Prop :
 def NoLoans (π : Provenances) (p : Place) : Prop :=
   ∀ l ∈ π, ¬ Overlaps l.place p
 
+/-! ## Loan creation (ADR-012 §4) -/
+
+/-- The loans a closure over `captures` creates: one per captured place, at
+    the environment capability `κ`, at the closure's own lifetime level. -/
+def closureLoans (_fn : FnId) (captures : List ValId) (κ : Capability) (level : Nat) : Provenances :=
+  captures.map fun c => { place := .base c, cap := κ, lifetime := level }
+
+/-- A capture set is admissible at capability `κ` when no capture is
+    already covered by a conflicting loan — the same no-conflict test used
+    for `load`, generalized to the whole capture list. -/
+def CaptureOK (π : Provenances) (captures : List ValId) (κ : Capability) : Prop :=
+  ∀ c ∈ captures, NoConflictingLoan π (.base c) κ
+
 /-! ## The judgment -/
 
 /-- `Borrows fenv π i π'`: instruction `i` checks in environment `fenv`
@@ -124,6 +144,19 @@ inductive Borrows : FullEnv → Provenances → Instr → Provenances → Prop w
       Borrows fenv π (.call dst fn args) π
   | phi : ∀ fenv π dst pred src,
       Borrows fenv π (.phi dst pred src) π
+  /-- ADR-012/ADR-013 stage 2: closure creation *creates* loans. Each
+      captured register becomes borrowed at the environment's capability for
+      as long as the closure lives. This is the first rule whose transfer
+      grows `π`. -/
+  | allocClosure : ∀ fenv π dst fn captures κ,
+      κ ≠ .val →
+      CaptureOK π captures κ →
+      Borrows fenv π (.allocClosure dst fn captures) (π ++ closureLoans fn captures κ 0)
+  /-- ADR-012: dispatch through a closure reads the closure cell and passes
+      the captured environment to `fn`. -/
+  | callClosure : ∀ fenv π dst clo args,
+      NoConflictingLoan π (.base clo) .val →
+      Borrows fenv π (.callClosure dst clo args) π
 
 /-! ## The borrow invariant -/
 
@@ -133,6 +166,14 @@ checking cannot introduce a duplicate. -/
 def WFBorrow (π : Provenances) : Prop :=
   ∀ l₁ ∈ π, ∀ l₂ ∈ π, l₁ ≠ l₂ →
     ¬ (l₁.place = l₂.place ∧ l₁.cap = l₂.cap ∧ l₁.lifetime = l₂.lifetime)
+
+/-- Stage-2 invariant, stated over an ordered loan list: the set is
+    duplicate-free. The append in `allocClosure` can only break this by
+    duplicating a *newly created* loan, which `CaptureOK` excludes (a
+    capture that already carries an identical loan would conflict at `κ`).
+    Preserved as a separate theorem below. -/
+def WFBorrowApp (π extra : Provenances) : Prop :=
+  ∀ l₁ ∈ π, ∀ l₂ ∈ extra, ¬ (l₁ = l₂)
 
 /-! ## Progress -/
 
@@ -153,6 +194,8 @@ theorem borrow_progress_pure (fenv : FullEnv) (π : Provenances) (i : Instr)
   | free loc => exact h.elim
   | call dst fn args => exact h.elim
   | phi dst pred src => exact h.elim
+  | allocClosure dst fn captures => exact h.elim
+  | callClosure dst clo args => exact h.elim
 
 /-- A read checks iff no mutable loan conflicts — the progress direction
 for `load`. -/
@@ -170,12 +213,99 @@ theorem borrow_progress_store (fenv : FullEnv) (π : Provenances) (loc src : Val
 
 /-! ## Preservation -/
 
-/-- Checking preserves the borrow invariant. Every rule's transfer is the
-identity, so inversion collapses this to `WFBorrow π → WFBorrow π`. -/
+/-- Specification of `closureLoans`: a loan is in the generated set exactly
+    when it is the loan created for some capture in the list. -/
+theorem closureLoans_spec (fn : FnId) (captures : List ValId) (κ : Capability)
+    (level : Nat) (l : Loan) :
+    l ∈ closureLoans fn captures κ level ↔
+      ∃ d, d ∈ captures ∧ l = { place := .base d, cap := κ, lifetime := level } := by
+  simp only [closureLoans, List.mem_map]
+  constructor
+  · rintro ⟨d, hd, heq⟩
+    exact ⟨d, hd, heq.symm⟩
+  · rintro ⟨d, hd, heq⟩
+    exact ⟨d, hd, heq.symm⟩
+
+/-- `CaptureOK` makes loan creation *fresh*: a loan `closureLoans` generates
+    is not already outstanding. An existing loan on the capture's place
+    would conflict with capturing it at `κ`, so `CaptureOK` rules it out.
+    This is the step that lets `allocClosure` grow the loan set without
+    breaking the duplicate-free invariant (ADR-012 §4: the preservation
+    restrengthening obligation). -/
+theorem closureLoans_fresh (π : Provenances) (fn : FnId) (captures : List ValId)
+    (κ : Capability) (level : Nat) (hκ : κ ≠ .val)
+    (hcap : CaptureOK π captures κ) (l : Loan)
+    (hl : l ∈ closureLoans fn captures κ level) :
+    l ∉ π := by
+  intro hmem
+  obtain ⟨d, hdmem, heq⟩ := (closureLoans_spec fn captures κ level l).mp hl
+  have hplace : l.place = .base d := by rw [heq]
+  have hloan : l.cap = κ := by rw [heq]
+  -- `CaptureOK` forbids a conflicting loan on the captured place. With a
+  -- *mutable* `κ` (`.ref`/`.iso`), every outstanding loan conflicts, so an
+  -- existing loan on `base d` is impossible.
+  refine hcap d hdmem l hmem ⟨?_, ?_⟩
+  · rw [hplace]; simp [Overlaps]
+  · rw [hloan]; intro hp; exact hκ hp.1
+
+/-- An old loan and a freshly-created one cannot be structurally equal. -/
+theorem fresh_ne_old (π : Provenances) (fn : FnId) (captures : List ValId)
+    (κ : Capability) (hκ : κ ≠ .val) (hcap : CaptureOK π captures κ)
+    (l₁ : Loan) (hl₁ : l₁ ∈ π) (l₂ : Loan) (hl₂ : l₂ ∈ closureLoans fn captures κ 0) :
+    l₁ ≠ l₂ := by
+  intro heq
+  -- if l₁ = l₂, then l₁ is one of the fresh loans, so it is not in π
+  exact (closureLoans_fresh π fn captures κ 0 hκ hcap l₁ (by
+    rw [heq]; exact hl₂)) hl₁
+
+/-- The `allocClosure` case, stated so its premises are explicit: appending
+    freshly-created loans preserves the duplicate-free invariant. -/
+theorem borrow_preservation_allocClosure (hinv : WFBorrow π) (fn : FnId)
+    (captures : List ValId) (κ : Capability) (hκ : κ ≠ .val)
+    (hcap : CaptureOK π captures κ) :
+    WFBorrow (π ++ closureLoans fn captures κ 0) := by
+  intro l₁ hl₁ l₂ hl₂ hne hdup
+  rw [List.mem_append] at hl₁ hl₂
+  rcases hl₁ with hl₁ | hl₁ <;> rcases hl₂ with hl₂ | hl₂
+  · exact hinv l₁ hl₁ l₂ hl₂ hne hdup
+  · -- l₁ ∈ π, l₂ fresh, hdup says l₁'s fields = l₂'s fields. Since loans are
+    -- structures of exactly (place, cap, lifetime), hdup IS l₁ = l₂ — which
+    -- `fresh_ne_old` rules out.
+    exact fresh_ne_old π fn captures κ hκ hcap l₁ hl₁ l₂ hl₂ (by
+      cases l₁; cases l₂; simp_all)
+  · exact fresh_ne_old π fn captures κ hκ hcap l₂ hl₂ l₁ hl₁ (by
+      cases l₁; cases l₂; simp_all)
+  · -- both new: the loan structure pins each to its capture; identical
+    -- structures mean the captures agree, so the loans are equal
+    obtain ⟨d₁, hdc₁, he₁⟩ := (closureLoans_spec fn captures κ 0 l₁).mp hl₁
+    obtain ⟨d₂, hdc₂, he₂⟩ := (closureLoans_spec fn captures κ 0 l₂).mp hl₂
+    -- hdup (after pinning the structures) forces `base d₁ = base d₂`, hence
+    -- d₁ = d₂, hence l₁ = l₂ — contradicting `hne`.
+    rw [he₁, he₂] at hdup
+    have hd₁₂ : d₁ = d₂ := by injection hdup.1
+    refine absurd ?_ hne
+    rw [he₁, he₂, hd₁₂]
+
+/-- Checking preserves the borrow invariant: `WFBorrow π → WFBorrow π'`.
+    Identity-transfer rules keep `π`; `allocClosure` appends only fresh
+    loans, so the duplicate-free invariant survives loan creation. -/
 theorem borrow_preservation (fenv : FullEnv) (π π' : Provenances) (i : Instr)
     (hinv : WFBorrow π) (hj : Borrows fenv π i π') :
     WFBorrow π' := by
-  cases hj <;> exact hinv
+  cases hj with
+  | const => exact hinv
+  | copy => exact hinv
+  | unop => exact hinv
+  | binop => exact hinv
+  | alloc => exact hinv
+  | call => exact hinv
+  | phi => exact hinv
+  | load _ _ hprem => exact hinv
+  | store _ _ hprem => exact hinv
+  | free _ hprem => exact hinv
+  | callClosure _ _ hprem => exact hinv
+  | allocClosure _ _ _ _ _ _ =>
+      exact borrow_preservation_allocClosure hinv _ _ _ ‹_› ‹_›
 
 /-! ## The executable checker -/
 

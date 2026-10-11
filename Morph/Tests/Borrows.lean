@@ -49,6 +49,9 @@ def sharedLoan : Loan := ⟨.base 1, .val, 0⟩
 /-- A mutable (`.ref`) loan on register 1. -/
 def mutLoan : Loan := ⟨.base 1, .ref, 0⟩
 
+/-- A default loan, for `headD`. -/
+def defaultLoan : Loan := ⟨.base 99, .val, 0⟩
+
 -- read access under a shared loan: no conflict
 example : ¬ conflictWith sharedLoan (.base 1) .val := by
   intro h
@@ -141,5 +144,73 @@ example : WFBorrow [sharedLoan] :=
 -- the checker accepts a read under a shared loan, so the premise holds
 example : NoConflictingLoan [sharedLoan] (.base 1) .val :=
   noConflictingLoanBool_sound [sharedLoan] (.base 1) .val (by decide)
+
+/-! ## Loan creation (ADR-012 §4, ADR-013 stage 2) -/
+
+/-- `closureLoans` creates one loan per capture, at the given capability. -/
+example : closureLoans "f" [0, 1] .ref 0
+    = [⟨.base 0, .ref, 0⟩, ⟨.base 1, .ref, 0⟩] := by
+  decide
+
+example : (closureLoans "f" [3] .iso 2).length = 1 := by decide
+
+/-- No captures means no loans. -/
+example : closureLoans "f" [] .ref 0 = [] := by decide
+
+/-- A closure over a borrowed register creates a *different* loan (the
+    capability differs), so it is not a duplicate of the existing one. -/
+example : closureLoans "f" [1] .ref 0 = [mutLoan] := by
+  decide
+
+example : closureLoans "f" [1] .ref 0 ≠ [sharedLoan] := by
+  decide
+
+/-! ### Preservation under loan creation -/
+
+/-- `CaptureOK` holds for capturing register 1 by reference when only a
+    *shared* loan is outstanding (a mutable capture would conflict, a
+    mutable loan is not present). -/
+example : CaptureOK [sharedLoan] [1] .val := by
+  intro c hc
+  have : c = 1 := by simp at hc; exact hc
+  subst this
+  intro l hl
+  have : l = sharedLoan := by simp at hl; exact hl
+  subst this
+  -- a shared loan does NOT conflict with a shared (`.val`) capture:
+  -- this is the `read under shared loan` case from the matrix.
+  show ¬ conflictWith sharedLoan (.base 1) .val
+  intro hcontra
+  exact hcontra.2 ⟨rfl, by simp [sharedLoan]⟩
+
+/-- Appending freshly created loans keeps the invariant duplicate-free:
+    the old shared loan and the new loan are distinct. -/
+example : WFBorrow (([sharedLoan] : Provenances) ++ closureLoans "f" [2] .ref 0) := by
+  apply borrow_preservation_allocClosure (π := [sharedLoan])
+  · intro l₁ _ l₂ _ hne _
+    cases l₁
+    cases l₂
+    simp_all
+  · intro h; cases h
+  · -- capturing register 2 conflicts with nothing (the shared loan is on 1)
+    intro c hc
+    have hc' : c = 2 := by simp at hc; exact hc
+    subst hc'
+    intro l hl
+    have hl' : l = sharedLoan := by simp at hl; exact hl
+    subst hl'
+    show ¬ (Overlaps sharedLoan.place (.base 2) ∧
+        ¬ (Capability.ref = Capability.val ∧ sharedLoan.cap = Capability.val))
+    intro hcontra
+    exact absurd hcontra.1 (by decide)
+
+/-- The allocClosure rule itself checks with an empty loan set. -/
+example : ∃ π', Borrows fenv0 [] (Instr.allocClosure 0 "f" [1, 2]) π' := by
+  refine ⟨closureLoans "f" [1, 2] .ref 0, ?_⟩
+  apply Borrows.allocClosure fenv0 [] 0 "f" [1, 2] .ref
+  · intro h; cases h
+  · intro c hc
+    intro l hl
+    simp at hl
 
 end Morph.Tests.Borrows

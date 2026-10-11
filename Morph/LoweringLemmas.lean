@@ -55,6 +55,8 @@ def writtenReg : Instr → Option ValId
   | .copy dst _ => some dst
   | .unop dst _ _ _ => some dst
   | .binop dst _ _ _ _ => some dst
+  | .allocClosure dst _ _ => some dst
+  | .callClosure dst _ _ => some dst
   | .load _ _ _ => none
   | .store _ _ _ => none
   | .alloc _ _ _ => none
@@ -114,6 +116,9 @@ theorem evalInstr_write (env : MIR.Env) (i : Instr) (env' : MIR.Env)
                   simp [evalInstr, hl, hr, he] at h
                   rw [← h]
                   exact Env.update_ne env d res x hx
+  | allocClosure d fn captures => exact absurd h (by simp [evalInstr])
+  | callClosure d clo args => exact absurd h (by simp [evalInstr])
+
   | load d loc cap => simp [evalInstr] at h
   | store l s cap => simp [evalInstr] at h
   | alloc d cap τ => simp [evalInstr] at h

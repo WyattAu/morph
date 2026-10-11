@@ -132,6 +132,11 @@ inductive Value where
   | tuple_ : List Value → Value
   | array_ : List Value → Value
   | loc : Nat → Value
+  /-- A closure: code pointer (the lifted function's id) paired with the
+      store location holding its captured environment (ADR-012: closures are
+      store-allocated, so the environment is a heap cell and the closure is
+      an ordinary value subject to the capability system). -/
+  | closure : String → Nat → Value
   deriving Repr, BEq
 
 /-!

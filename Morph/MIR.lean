@@ -115,6 +115,13 @@ inductive Instr where
   | free   (loc : ValId)
   | call   (dst : Option ValId) (fn : FnId) (args : List ValId)
   | phi    (dst : ValId) (pred : BlockId) (src : ValId)
+  /-- ADR-012: allocate a closure cell holding the captured registers, then
+      bind `dst` to `Value.closure fn envLoc`. `allocClosure` is the only
+      instruction that *creates* loans (one per captured place). -/
+  | allocClosure (dst : ValId) (fn : FnId) (captures : List ValId)
+  /-- ADR-012: dynamic dispatch through a closure value: read the closure
+      cell to recover `(fn, envLoc)` and invoke `fn`. -/
+  | callClosure  (dst : ValId) (clo : ValId) (args : List ValId)
   deriving Repr, BEq
 
 /-- Default instruction: `const 0 (.int 0)` (needed for `.head!`-style list
@@ -170,6 +177,8 @@ def defOf : Instr → List ValId
   | .alloc dst _ _ => [dst]
   | .free _ => []
   | .call dst _ _ => dst.toList
+  | .allocClosure dst _ _ => [dst]
+  | .callClosure dst _ _ => [dst]
   | .phi dst _ _ => [dst]
 
 /-- Values an instruction uses. -/
@@ -183,6 +192,8 @@ def usesOf : Instr → List ValId
   | .alloc _ _ _ => []
   | .free loc => [loc]
   | .call _ _ args => args
+  | .allocClosure _ _ captures => captures
+  | .callClosure _ clo args => clo :: args
   | .phi _ _ src => [src]
 
 /-- All values a block defines, in instruction order. -/
@@ -334,6 +345,8 @@ def evalInstr (env : Env) : Instr → Option Env
     let vr ← env r
     let v ← evalBinOp op vl vr
     some (env.update dst v)
+  | .allocClosure _ _ _ => none
+  | .callClosure _ _ _ => none
   | .load _ _ _ => none
   | .store _ _ _ => none
   | .alloc _ _ _ => none
@@ -401,7 +414,24 @@ def evalInstrFull (fenv : FullEnv) : Instr → Option FullEnv
       let l' ← l
       let σ' ← Store.free fenv.store l'
       some ⟨fenv.env, σ'⟩
-  | _ => none
+  | .allocClosure dst fn captures =>
+      -- ADR-012: read every capture first, then allocate the env cell and
+      -- bind `dst` to the closure value. Reading captures before allocating
+      -- keeps the step deterministic even when `Store.alloc` reuses a
+      -- freed location.
+      match captures.mapM (fun c => fenv.env c) with
+      | none => none
+      | some _vals =>
+          let (σ', loc) := Store.alloc fenv.store Typ.intType Value.unit
+          some ⟨(fenv.env).update dst (Value.closure fn loc), σ'⟩
+  | .callClosure dst clo _args =>
+      -- ADR-012: read the closure cell to recover `(fn, envLoc)`.
+      match fenv.env clo with
+      | some (Value.closure _fn envLoc) =>
+          some ⟨(fenv.env).update dst (Value.loc envLoc), fenv.store⟩
+      | _ => none
+  | .call _ _ _ => none
+  | .phi _ _ _ => none
 
 /-- Find a block by its id. -/
 def findBlock (f : Func) (bid : BlockId) : Option Block :=
