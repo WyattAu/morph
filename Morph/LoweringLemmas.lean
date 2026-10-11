@@ -215,14 +215,11 @@ theorem execInstrs_preserves_below : ∀ (is : List Instr) (env env' : MIR.Env)
                 evalInstr_write env i env1 hi d hreg x hxd
               exact (execInstrs_preserves_below is env1 env' lo hw.2 h x hx).trans henv1
 
-/-! ## Main correctness (statement recorded; proof pending)
+/-! ## Main correctness (statement recorded; proof in progress)
 
-`lowerIn_correct` — for a pure-arithmetic `e`, executing the instructions
-`lowerIn` produces yields, at the result register, the same `Value` that
-`evalFuel` computes, given `Agrees` on the parameter registers and the
-supply bound.
+`lowerIn_correct` for a pure-arithmetic `e`:
 
-    lowerIn_correct : ∀ fuel paramMap supply ctx env,
+    lowerIn_correct : ∀ fuel (0 < fuel) paramMap supply ctx env,
       Agrees paramMap ctx env → (∀ n, paramMap n < supply) →
       ∀ e, IsPureArith e →
         match lowerIn paramMap supply e with
@@ -230,13 +227,14 @@ supply bound.
         | some (v, is, s) => ∃ env', execInstrs env is = some env' ∧
               env' v = exprVal (evalFuel fuel ctx e)
 
-Every ingredient is now proven above (`evalInstr_write`,
-`execInstrs_preserves_below`, `WritesAbove`, `Agrees`, `agrees_bvar`,
-`evalBinOp_align`). The remaining step is the structural induction over
-`Expr`, which must run on `lowerIn.induct` — the 10-case principle the
-equation compiler generates for `lowerIn`'s nested recursion. Its shape
-(one case per `toBinOp`/`lowerIn a`/`lowerIn b` combination, plus a
-no-constructor case) makes the theorem non-trivial to apply by hand; this
-is an engineering task, not a modeling gap. -/
+The theorem runs on `lowerIn.induct` (10 cases). The `lit`, non-`lit`,
+`bvar` (vacuous — `IsPureArith` has no `bvar` constructor), and the
+no-constructor cases are discharged. The three `binop` cases and three
+`let` cases remain: they need (a) the extended-supply invariant
+(`paramMap k < s1`, `va < s1`) re-established per case, and (b) a
+literal-shape argument threading `exprVal`'s `some (.lit w)` through the
+combined instruction list `ia ++ ib ++ [binop …]`. The written-avoidance
+machinery above (`execInstrs_preserves_below`, `Agrees`, `agrees_bvar`) is
+exactly what those steps need; the remaining work is their composition. -/
 
 end Morph.Lowering
