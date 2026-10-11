@@ -1,7 +1,9 @@
 # ADR-012: Closure Representation — Store-Allocated, Uniform with the Capability System
 
 ## Status
-**Proposed** (post-program loop 1, 2026-10-09). Resolves the "largest open
+**Proposed; stage-2 rules implemented** (`Morph/MIR.lean` `allocClosure` /
+`callClosure`, `Morph/Borrows.lean` loan creation, commit `a3fad1e`).
+Resolves the "largest open
 question" flagged in ADR-011's negative consequences. Blocking for MIR stage 2
 (closures in the pipeline) and for any `call`-instruction execution beyond
 the current `none`-stub.

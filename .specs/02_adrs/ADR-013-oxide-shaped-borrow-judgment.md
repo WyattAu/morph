@@ -1,7 +1,9 @@
 # ADR-013: Oxide-Shaped Borrow Judgment for MIR Stage 2
 
 ## Status
-**Proposed** (Loop 9, research program). Supersedes the withdrawn ADR-013
+**Stage 1 implemented** (`Morph/Borrows.lean`, commit `0c4427c`).
+**Stage 2 implemented** — loan creation for closures (`a3fad1e`).
+Supersedes the withdrawn ADR-013
 mention in the Loop 1 follow-up notes (no file ever existed under that number;
 the `LinCtx.merge` operator it would have specified was deleted in ADR-014
 stage 2).
