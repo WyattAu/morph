@@ -214,3 +214,37 @@ Two options, both untried:
 All machinery the theorem needs is proven and in the repository
 (`evalInstr_write`, `execInstrs_preserves_below`, `Agrees`, `agrees_bvar`,
 `advances_pure`, `evalBinOp_align`).
+
+
+## `evalStuck` proven; the last two steps (2026-10-12, later)
+
+`evalStuck` is **proven** (`f071702`) — lowering rejection mirrors
+interpreter stuckness, for *any* fuel. The key was to state it with **no fuel
+bound**: the binop/let cases evaluate subexpressions at one less fuel unit, and
+a hypothesis about the outer fuel says nothing useful about the split
+component. The `let_` case instantiates `b`'s stuckness at the *pushed*
+context `ctx.pushBv v1`.
+
+### Remaining for `lowerIn_correct` — two steps, both well-understood
+
+1. **`lowerIn_writes_above`** — `lowerIn paramMap supply a = some (v, is, s)
+   → WritesAbove supply is`. Same shape as `advances_pure` (induct on
+   `IsPureArith`, 3 cases); needs the `∀ n, paramMap n < supply` hypothesis to
+   invoke `advances_pure` for the extended-supply bound. Tactic note:
+   `WritesAbove` is a match-defined def, so `⟨h₁, h₂⟩`/`constructor` do not
+   apply — unfold with `simp only [WritesAbove, List.append]` first.
+
+2. **The binop/let `some/some` cases** — given `WritesAbove`, the agreement
+   propagation is:
+   `hagA' : Agrees paramMap ctx envA` via `execInstrs_preserves_below ia env
+   envA supply _ hIA n (hpm n)`, then `ihb paramMap s1 ctx envA hagA' _`,
+   then execute `ia ++ ib ++ [binop s2 …]` from `env` (rewrite by `hIA` and
+   `hIB`) and show `env' s2 = evalBinOp bop …` agrees with the surface
+   `evalBinop` (via `evalBinOp_align`).
+
+The fuel handling for the `some/some` cases works because both sub-IHs are at
+the *same* outer fuel; only the `none` branches needed `evalStuck`.
+
+Everything these two steps need is already proven and in-tree:
+`evalInstr_write`, `execInstrs_preserves_below`, `WritesAbove(.anti_mono)`,
+`Agrees`, `agrees_bvar`, `advances_pure`, `evalStuck`, `evalBinOp_align`.
