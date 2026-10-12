@@ -288,6 +288,70 @@ theorem advances_pure (a : Expr) (hpa : IsPureArith a)
               exact hkk)
     hpa paramMap supply hpm
 
+/-! ## Lowering rejection mirrors interpreter stuckness -/
+
+set_option linter.unusedVariables false in
+/-- Lowering rejection mirrors interpreter stuckness, for **any** fuel:
+    if `lowerIn` rejects a pure-arithmetic expression, `evalFuel` produces
+    nothing at any fuel level. This is the `none` branch of `lowerIn_correct`
+    — the interpreter is stuck exactly where lowering gave up. -/
+theorem evalStuck : ∀ (a : Expr) (hpa : IsPureArith a) (paramMap : Nat → ValId)
+    (supply fuel : Nat) (ctx : Context),
+    lowerIn paramMap supply a = none → evalFuel fuel ctx a = none :=
+  fun a hpa =>
+    IsPureArith.rec (motive := fun a _ => (paramMap : Nat → ValId) → (supply : Nat) →
+      (fuel : Nat) → (ctx : Context) → lowerIn paramMap supply a = none →
+      evalFuel fuel ctx a = none)
+      (fun n paramMap supply fuel ctx h => by simp [lowerIn] at h)
+      (fun bop a b hop _ _ iha ihb paramMap supply fuel ctx h => by
+        cases fuel with
+        | zero => simp [evalFuel]
+        | succ k =>
+          simp only [lowerIn, hop] at h
+          cases hA : lowerIn paramMap supply a with
+          | none =>
+            have hst := iha paramMap supply k ctx hA
+            simp [evalFuel, hst]
+          | some valA =>
+            rcases valA with ⟨va, rest⟩; rcases rest with ⟨ia, s1⟩
+            cases hB : lowerIn paramMap s1 b with
+            | none =>
+              have hst := ihb paramMap s1 k ctx hB
+              simp [evalFuel, hst]
+                        | some valB =>
+              -- both sides lower, but `h` says lowering failed: contradiction
+              simp only [hA, hB] at h
+              exact absurd h (by simp))
+      (fun a b _ _ iha ihb paramMap supply fuel ctx h => by
+        cases fuel with
+        | zero => simp [evalFuel]
+        | succ k =>
+          cases hA : lowerIn paramMap supply a with
+          | none =>
+            have hst := iha paramMap supply k ctx hA
+            simp [evalFuel, hst]
+          | some valA =>
+            rcases valA with ⟨va, rest⟩; rcases rest with ⟨ia, s1⟩
+            -- `a` lowers, so `h` forces `b` to be stuck; the interpreter
+            -- evaluates `a` first and propagates the stuckness from `b`
+            cases hB : lowerIn (fun n => if n = 0 then va else paramMap (n - 1)) s1 b with
+            | none =>
+              -- `b` is stuck for `lowerIn`; the interpreter reaches `b` in the
+              -- pushed context only when `a` succeeded, which is the case here
+              rw [evalFuel]
+              simp only [bind]
+              cases hv : evalFuel k ctx a with
+              | none =>
+                -- `a` is stuck for the interpreter too, so the whole `let`
+                -- is stuck without ever reaching `b`
+                simp
+              | some v1 =>
+                have hst := ihb _ _ k (ctx.pushBv v1) hB
+                simp only [Option.bind_some]
+                rw [hst]
+            | some valB => simp [lowerIn, hA, hB] at h)
+      hpa
+
 /-! ## Main correctness (statement recorded; proof in progress)
 
 `lowerIn_correct` for a pure-arithmetic `e`:
