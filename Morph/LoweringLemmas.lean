@@ -220,6 +220,77 @@ theorem execInstrs_preserves_below : ∀ (is : List Instr) (env env' : MIR.Env)
                 evalInstr_write env i env1 hi d hreg x hxd
               exact (execInstrs_preserves_below is env1 env' lo hw.2 h x hx).trans henv1
 
+/-! ## The extended-supply invariant -/
+
+/-- The extended-supply invariant, for pure-arithmetic expressions only:
+    lowering `a` from `supply` never reuses a parameter register and never
+    allocates below the new supply. Induction is on `IsPureArith` (a
+    non-nested inductive), whose three constructors line up exactly with the
+    three forms `lowerIn` lowers. -/
+theorem advances_pure (a : Expr) (hpa : IsPureArith a)
+    (paramMap : Nat → ValId) (supply : Nat) (hpm : ∀ n, paramMap n < supply) :
+    match lowerIn paramMap supply a with
+    | none => True
+    | some (v, is, s) => supply ≤ s ∧ v < s ∧ ∀ k, paramMap k < s :=
+  IsPureArith.rec (motive := fun a _ =>
+    (paramMap : Nat → ValId) → (supply : Nat) → (∀ n, paramMap n < supply) →
+    match lowerIn paramMap supply a with
+    | none => True
+    | some (v, is, s) => supply ≤ s ∧ v < s ∧ ∀ k, paramMap k < s)
+    (fun n paramMap supply hpm => by
+      simp only [lowerIn]
+      refine ⟨?_, Nat.lt_succ_self _, fun k => Nat.lt_trans (hpm k) ?_⟩ <;> omega)
+    (fun op a b _ _ iha ihb paramMap supply hpm => by
+      simp only [lowerIn]
+      cases hbo : toBinOp op with
+      | none => simp [lowerIn, hbo]
+      | some bop =>
+        cases hA : lowerIn paramMap supply a with
+        | none => simp [lowerIn, hbo, hA]
+        | some valA =>
+          rcases valA with ⟨va, ia, s1⟩
+          cases hB : lowerIn paramMap s1 b with
+          | none => simp [lowerIn, hbo, hA, hB]
+          | some valB =>
+            rcases valB with ⟨vb, ib, s2⟩
+            have h1 := iha paramMap supply hpm
+            rw [hA] at h1
+            have h2 := ihb paramMap s1 h1.2.2
+            rw [hB] at h2
+            simp only [hbo, hA, hB, Option.some.injEq]
+            refine ⟨?_, Nat.lt_succ_self _, fun k => Nat.lt_trans (h2.2.2 k) ?_⟩ <;> omega)
+    (fun a b _ _ iha ihb paramMap supply hpm => by
+      simp only [lowerIn]
+      cases hA : lowerIn paramMap supply a with
+      | none => simp [lowerIn, hA]
+      | some valA =>
+        rcases valA with ⟨va, ia, s1⟩
+        have h1 := iha paramMap supply hpm
+        rw [hA] at h1
+        have hpm' : ∀ n, (fun n => if n = 0 then va else paramMap (n - 1)) n < s1 := by
+          intro n
+          cases n with
+          | zero => exact h1.2.1
+          | succ k => exact Nat.lt_of_lt_of_le (hpm k) h1.1
+        cases hB : lowerIn (fun n => if n = 0 then va else paramMap (n - 1)) s1 b with
+        | none => simp [lowerIn, hA, hB]
+        | some valB =>
+          rcases valB with ⟨vb, ib, s2⟩
+          have h2 := ihb (fun n => if n = 0 then va else paramMap (n - 1)) s1 hpm'
+          rw [hB] at h2
+          simp only [hA, hB, Option.some.injEq]
+          refine ⟨Nat.le_trans h1.1 h2.1, h2.2.1, ?_⟩
+          intro k
+          cases k with
+          | zero =>
+              exact Nat.lt_of_lt_of_le (hpm 0) (Nat.le_trans h1.1 h2.1)
+          | succ k' =>
+              have hkk := h2.2.2 (k' + 2)
+              show paramMap (k' + 1) < s2
+              rw [show (fun n => if n = 0 then va else paramMap (n - 1)) (k' + 2) = paramMap (k' + 1) from rfl] at hkk
+              exact hkk)
+    hpa paramMap supply hpm
+
 /-! ## Main correctness (statement recorded; proof in progress)
 
 `lowerIn_correct` for a pure-arithmetic `e`:
