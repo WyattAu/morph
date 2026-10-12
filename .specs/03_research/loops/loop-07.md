@@ -140,3 +140,77 @@ coupling the interpreter `Context` to the MIR `Env` through `let_`/`bvar`
 (including the monotonicity step and the `evalFuel` monotone-success
 bridge). That part is still open — the blocker is no longer tactic
 mechanics but the invariant design itself.
+
+
+## Progress on `lowerIn_correct` (post-program, 2026-10-12)
+
+### What was resolved
+
+`advances_pure` — the extended-supply invariant — is **proven**
+(`Morph/LoweringLemmas.lean`):
+
+    advances_pure : ∀ a, IsPureArith a → paramMap → supply →
+      (∀ n, paramMap n < supply) →
+      match lowerIn paramMap supply a with
+      | none => True
+      | some (v, is, s) => supply ≤ s ∧ v < s ∧ ∀ k, paramMap k < s
+
+Two enabling discoveries:
+
+1. **Induct on `IsPureArith`, not `lowerIn.induct`.** `Expr` is a *nested*
+   inductive, so `induction e` is rejected, and `lowerIn.induct` (the
+   equation compiler's principle for `lowerIn`) has a **10-case** shape —
+   one case per `toBinOp` / `lowerIn a` / `lowerIn b` combination plus a
+   no-constructor case — which is impractical to apply by hand. `IsPureArith`
+   is a *non-nested* inductive with exactly three constructors (`lit`,
+   `binop`, `let_`) that correspond one-to-one with the three forms
+   `lowerIn` lowers. Applying `IsPureArith.rec` with an explicit motive
+   works:
+
+       IsPureArith.rec (motive := fun a _ => paramMap → supply → (∀ n, …) → …)
+         (fun n … => …)          -- lit
+         (fun bop a b hop … iha ihb … => …)  -- binop
+         (fun a b … iha ihb … => …)         -- let_
+         hpa
+
+   Note `induction hpa with` in tactic mode does *not* work when the goal
+   does not syntactically mention `hpa` — it produces "no cases to select".
+   Term-mode `IsPureArith.rec` is the reliable route.
+
+2. **Tuple destructuring.** `lowerIn` returns `Option (ValId × List Instr ×
+   Nat)`. Neither `cases … with | some (a, b, c)` nor `⟨a, b, c⟩` works in
+   `cases` pattern position (right-nested triples). Use
+   `rcases val with ⟨va, rest⟩; rcases rest with ⟨ia, s1⟩`.
+
+### A modelling fix this required
+
+`IsPureArith.binop` now binds `bop` with the equation `toBinOp op = some
+bop`. Without it, `IsPureArith` admits operators (comparisons, division)
+that `lowerIn` rejects while the interpreter's richer `evalBinop` *does*
+evaluate them — making the "lowering fails ⟹ interpreter stuck" direction
+unprovable. Membership in `IsPureArith` now guarantees translatability.
+(`toBinOp` moved above `IsPureArith`.)
+
+### What remains
+
+`lowerIn_correct` itself. The `lit` case is done. The remaining obstacle is
+a *fuel* side-lemma —
+
+    evalStuck : lowerIn … = none → 0 < fuel → exprVal (evalFuel fuel ctx a) = none
+
+needed for the "lowering is stuck" branches. The difficulty is that
+`evalFuel` is fuel-bounded, so the binop's sub-evaluations run at `fuel - 1`
+while the top-level runs at `fuel`; threading the `0 < fuel` hypothesis
+through the `cases fuel` split needs care (`by omega` fails because the
+hypothesis is about the *outer* fuel, not the split component).
+
+Two options, both untried:
+- state `evalStuck` for `Nat.succ fuel` and add an explicit weakening
+  lemma (`stuck at k+1 ⟹ stuck at k`, which needs `evalFuel` monotonicity),
+  or
+- make `lowerIn_correct` require exactly the fuel each sub-call needs by
+  generalizing over `fuel` in the motive and re-instantiating.
+
+All machinery the theorem needs is proven and in the repository
+(`evalInstr_write`, `execInstrs_preserves_below`, `Agrees`, `agrees_bvar`,
+`advances_pure`, `evalBinOp_align`).
