@@ -213,4 +213,34 @@ example : ∃ π', Borrows fenv0 [] (Instr.allocClosure 0 "f" [1, 2]) π' := by
     intro l hl
     simp at hl
 
+/-! ## Loan kill (NLL liveness) -/
+
+/-- Killing at level 0 drops loans introduced at level 0 and keeps the
+    ones introduced deeper. -/
+example : killLoans [⟨.base 0, .ref, 0⟩, ⟨.base 1, .val, 1⟩] 0
+    = [⟨.base 1, .val, 1⟩] := by decide
+
+example : (killLoans [sharedLoan] 0) = [] := by decide
+example : (killLoans [sharedLoan] 0) = [] := by decide
+
+/-- A loan introduced deeper than the kill level survives. -/
+example : killLoans [⟨.base 7, .ref, 3⟩] 1 = [⟨.base 7, .ref, 3⟩] := by decide
+
+/-- Killing is idempotent. -/
+example : killLoans (killLoans [sharedLoan, mutLoan] 0) 0
+    = killLoans [sharedLoan, mutLoan] 0 := by decide
+
+/-- Killing preserves the duplicate-free invariant. -/
+example : WFBorrow (killLoans [sharedLoan, mutLoan] 0) := by
+  apply killLoans_preserves (π := [sharedLoan, mutLoan]) (level := 0)
+  intro l₁ _ l₂ _ hne _
+  cases l₁
+  cases l₂
+  simp_all
+
+/-- Killing never introduces a loan. -/
+example (l : Loan) (h : l ∈ killLoans [sharedLoan, mutLoan] 0) :
+    l ∈ ([sharedLoan, mutLoan] : Provenances) :=
+  killLoans_subset _ _ _ h
+
 end Morph.Tests.Borrows

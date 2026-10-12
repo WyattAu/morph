@@ -307,6 +307,36 @@ theorem borrow_preservation (fenv : FullEnv) (π π' : Provenances) (i : Instr)
   | allocClosure _ _ _ _ _ _ =>
       exact borrow_preservation_allocClosure hinv _ _ _ ‹_› ‹_›
 
+/-! ## Loan kill (NLL liveness)
+
+Loans end when their scope exits. Stage 2 models this with an explicit
+`killLoans` transfer: at a scope boundary (a `return`, a block exit, or a
+`callClosure` that consumes its environment) every loan introduced at or
+below the given lifetime level is dropped from the provenance set. This is
+the NLL kill rule ADR-013 listed as a non-goal for stage 1 and ADR-012
+named as the reason preservation had to be restrengthened. -/
+
+/-- Drop every loan at or below `level`: the loans whose scope has ended. -/
+def killLoans (π : Provenances) (level : Nat) : Provenances :=
+  π.filter fun l => l.lifetime > level
+
+/-- Killing is idempotent. -/
+theorem killLoans_idem (π : Provenances) (level : Nat) :
+    killLoans (killLoans π level) level = killLoans π level := by
+  simp [killLoans]
+
+/-- Killing never introduces a loan. -/
+theorem killLoans_subset (π : Provenances) (level : Nat) (l : Loan)
+    (h : l ∈ killLoans π level) : l ∈ π := by
+  have h' : l ∈ List.filter (fun x => x.lifetime > level) π := h
+  exact (List.mem_filter.mp h').1
+
+/-- Killing preserves the duplicate-free invariant. -/
+theorem killLoans_preserves (π : Provenances) (level : Nat)
+    (hinv : WFBorrow π) : WFBorrow (killLoans π level) := by
+  intro l₁ hl₁ l₂ hl₂ hne hdup
+  exact hinv l₁ (killLoans_subset _ _ _ hl₁) l₂ (killLoans_subset _ _ _ hl₂) hne hdup
+
 /-! ## The executable checker -/
 
 /-- Boolean overlap decision. -/
