@@ -240,25 +240,22 @@ theorem advances_pure (a : Expr) (hpa : IsPureArith a)
     (fun n paramMap supply hpm => by
       simp only [lowerIn]
       refine ⟨?_, Nat.lt_succ_self _, fun k => Nat.lt_trans (hpm k) ?_⟩ <;> omega)
-    (fun op a b _ _ iha ihb paramMap supply hpm => by
-      simp only [lowerIn]
-      cases hbo : toBinOp op with
-      | none => simp [lowerIn, hbo]
-      | some bop =>
-        cases hA : lowerIn paramMap supply a with
-        | none => simp [lowerIn, hbo, hA]
-        | some valA =>
-          rcases valA with ⟨va, ia, s1⟩
-          cases hB : lowerIn paramMap s1 b with
-          | none => simp [lowerIn, hbo, hA, hB]
-          | some valB =>
-            rcases valB with ⟨vb, ib, s2⟩
-            have h1 := iha paramMap supply hpm
-            rw [hA] at h1
-            have h2 := ihb paramMap s1 h1.2.2
-            rw [hB] at h2
-            simp only [hbo, hA, hB, Option.some.injEq]
-            refine ⟨?_, Nat.lt_succ_self _, fun k => Nat.lt_trans (h2.2.2 k) ?_⟩ <;> omega)
+    (fun bop a b hop _ _ iha ihb paramMap supply hpm => by
+      simp only [lowerIn, hop]
+      cases hA : lowerIn paramMap supply a with
+      | none => simp [hA]
+      | some valA =>
+        rcases valA with ⟨va, ia, s1⟩
+        cases hB : lowerIn paramMap s1 b with
+        | none => simp [hA, hB]
+        | some valB =>
+          rcases valB with ⟨vb, ib, s2⟩
+          have h1 := iha paramMap supply hpm
+          rw [hA] at h1
+          have h2 := ihb paramMap s1 h1.2.2
+          rw [hB] at h2
+          simp only [hA, hB, Option.some.injEq]
+          refine ⟨?_, Nat.lt_succ_self _, fun k => Nat.lt_trans (h2.2.2 k) ?_⟩ <;> omega)
     (fun a b _ _ iha ihb paramMap supply hpm => by
       simp only [lowerIn]
       cases hA : lowerIn paramMap supply a with

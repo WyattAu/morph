@@ -166,19 +166,27 @@ open Morph.Core Morph.Syntax Morph.MIR Morph.Executable
 
 /-! ## The pure-arithmetic fragment -/
 
-inductive IsPureArith : Expr → Prop where
-  | lit (n : Int) : IsPureArith (.lit (.int n))
-  | binop (op : Operator) (a b : Expr) :
-      IsPureArith a → IsPureArith b → IsPureArith (.binop op a b)
-  | let_ (a b : Expr) : IsPureArith a → IsPureArith b → IsPureArith (.let_ a b)
-
-/-! ## Lowering -/
-
+/-- The MIR binary operator an arithmetic operator lowers to; `none` for
+    operators MIR does not represent (comparisons, division, …). -/
 def toBinOp : Operator → Option BinOp
   | .add => some .add
   | .sub => some .sub
   | .mul => some .mul
   | _ => none
+
+/-- The fragment `lowerIn` handles. The `binop` case carries `bop` together
+    with the equation `toBinOp op = some bop`, so membership in `IsPureArith`
+    already guarantees the operator translates — without which the
+    interpreter (whose `evalBinop` is richer than MIR's) could evaluate an
+    expression `lowerIn` rejects. -/
+inductive IsPureArith : Expr → Prop where
+  | lit (n : Int) : IsPureArith (.lit (.int n))
+  | binop (bop : BinOp) (a b : Expr) (hop : toBinOp op = some bop) :
+      IsPureArith a → IsPureArith b → IsPureArith (.binop op a b)
+  | let_ (a b : Expr) : IsPureArith a → IsPureArith b → IsPureArith (.let_ a b)
+
+/-! ## Lowering -/
+
 
 /-- Lower `e` to instructions computing it. `paramMap` resolves de Bruijn
     indices to ValIds; `supply` is the next fresh ValId. Returns
