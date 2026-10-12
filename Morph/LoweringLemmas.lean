@@ -231,35 +231,35 @@ theorem advances_pure (a : Expr) (hpa : IsPureArith a)
     (paramMap : Nat → ValId) (supply : Nat) (hpm : ∀ n, paramMap n < supply) :
     match lowerIn paramMap supply a with
     | none => True
-    | some (v, is, s) => supply ≤ s ∧ v < s ∧ ∀ k, paramMap k < s :=
+    | some (v, _is, s) => supply ≤ s ∧ v < s ∧ ∀ k, paramMap k < s :=
   IsPureArith.rec (motive := fun a _ =>
     (paramMap : Nat → ValId) → (supply : Nat) → (∀ n, paramMap n < supply) →
     match lowerIn paramMap supply a with
     | none => True
-    | some (v, is, s) => supply ≤ s ∧ v < s ∧ ∀ k, paramMap k < s)
+    | some (v, _is, s) => supply ≤ s ∧ v < s ∧ ∀ k, paramMap k < s)
     (fun n paramMap supply hpm => by
       simp only [lowerIn]
       refine ⟨?_, Nat.lt_succ_self _, fun k => Nat.lt_trans (hpm k) ?_⟩ <;> omega)
     (fun bop a b hop _ _ iha ihb paramMap supply hpm => by
       simp only [lowerIn, hop]
       cases hA : lowerIn paramMap supply a with
-      | none => simp [hA]
+      | none => simp
       | some valA =>
         rcases valA with ⟨va, ia, s1⟩
         cases hB : lowerIn paramMap s1 b with
-        | none => simp [hA, hB]
+        | none => simp [hB]
         | some valB =>
           rcases valB with ⟨vb, ib, s2⟩
           have h1 := iha paramMap supply hpm
           rw [hA] at h1
           have h2 := ihb paramMap s1 h1.2.2
           rw [hB] at h2
-          simp only [hA, hB, Option.some.injEq]
+          simp only [hB]
           refine ⟨?_, Nat.lt_succ_self _, fun k => Nat.lt_trans (h2.2.2 k) ?_⟩ <;> omega)
     (fun a b _ _ iha ihb paramMap supply hpm => by
       simp only [lowerIn]
       cases hA : lowerIn paramMap supply a with
-      | none => simp [lowerIn, hA]
+      | none => simp
       | some valA =>
         rcases valA with ⟨va, ia, s1⟩
         have h1 := iha paramMap supply hpm
@@ -270,12 +270,12 @@ theorem advances_pure (a : Expr) (hpa : IsPureArith a)
           | zero => exact h1.2.1
           | succ k => exact Nat.lt_of_lt_of_le (hpm k) h1.1
         cases hB : lowerIn (fun n => if n = 0 then va else paramMap (n - 1)) s1 b with
-        | none => simp [lowerIn, hA, hB]
+        | none => simp [hB]
         | some valB =>
           rcases valB with ⟨vb, ib, s2⟩
           have h2 := ihb (fun n => if n = 0 then va else paramMap (n - 1)) s1 hpm'
           rw [hB] at h2
-          simp only [hA, hB, Option.some.injEq]
+          simp only [hB]
           refine ⟨Nat.le_trans h1.1 h2.1, h2.2.1, ?_⟩
           intro k
           cases k with
