@@ -220,6 +220,29 @@ theorem execInstrs_preserves_below : ∀ (is : List Instr) (env env' : MIR.Env)
                 evalInstr_write env i env1 hi d hreg x hxd
               exact (execInstrs_preserves_below is env1 env' lo hw.2 h x hx).trans henv1
 
+/-- Structural helpers for `WritesAbove`. `WritesAbove` is defined by
+    pattern matching, so `constructor`/`⟨⟩` cannot split it; these lemmas
+    give the combination rules directly. -/
+
+theorem WritesAbove.snoc : ∀ (lo : Nat) (is : List Instr) (i : Instr),
+    WritesAbove lo is →
+    (match writtenReg i with | some d => lo ≤ d | none => True) →
+    WritesAbove lo (is ++ [i]) := by
+  intro lo is i hw hi
+  induction is with
+  | nil => exact ⟨hi, trivial⟩
+  | cons j js ihj =>
+      simp only [List.cons_append]
+      exact ⟨hw.1, ihj hw.2⟩
+
+theorem WritesAbove.append' : ∀ (lo : Nat) (is js : List Instr),
+    WritesAbove lo is → WritesAbove lo js → WritesAbove lo (is ++ js) := by
+  intro lo is js hw hj
+  induction is with
+  | nil => simpa using hj
+  | cons i is ihi =>
+      exact ⟨hw.1, ihi hw.2⟩
+
 /-! ## The extended-supply invariant -/
 
 /-- The extended-supply invariant, for pure-arithmetic expressions only:
@@ -287,6 +310,75 @@ theorem advances_pure (a : Expr) (hpa : IsPureArith a)
               rw [show (fun n => if n = 0 then va else paramMap (n - 1)) (k' + 2) = paramMap (k' + 1) from rfl] at hkk
               exact hkk)
     hpa paramMap supply hpm
+
+/-! ## Lowering writes only above the supply -/
+
+theorem lowerIn_writes_above (a : Expr) (hpa : IsPureArith a)
+    (paramMap : Nat → ValId) (supply : Nat) (hpm : ∀ n, paramMap n < supply) :
+    match lowerIn paramMap supply a with
+    | none => True
+    | some (v, is, s) => WritesAbove supply is :=
+    IsPureArith.rec (motive := fun a _ => (paramMap : Nat → ValId) → (supply : Nat) →
+      (∀ n, paramMap n < supply) →
+      match lowerIn paramMap supply a with
+      | none => True
+      | some (v, is, s) => WritesAbove supply is)
+      (fun n paramMap supply _hpm => by
+        simp only [lowerIn, Option.some.injEq]
+        exact ⟨Nat.le_refl _, trivial⟩)
+      (fun bop a b hop _ _ iha ihb paramMap supply hpm => by
+        simp only [lowerIn, hop]
+        cases hA : lowerIn paramMap supply a with
+        | none => simp [hA]
+        | some valA =>
+          rcases valA with ⟨va, rest⟩; rcases rest with ⟨ia, s1⟩
+          have hia := iha paramMap supply hpm
+          simp only [hA] at hia
+          have h1 := advances_pure a ‹IsPureArith a› paramMap supply hpm
+          simp only [hA] at h1
+          cases hB : lowerIn paramMap s1 b with
+          | none => simp [hA, hB]
+          | some valB =>
+            rcases valB with ⟨vb, rest⟩; rcases rest with ⟨ib, s2⟩
+            have hib := ihb paramMap s1 h1.2.2
+            rw [hB] at hib
+            -- the extended-supply invariant for `b`: s1 ≤ s2
+            have h2 := advances_pure b ‹IsPureArith b› paramMap s1 h1.2.2
+            rw [hB] at h2
+            simp only [hA, hB, Option.some.injEq, List.append_assoc]
+            -- `ia` above `supply`; `ib` above `s1 ≥ supply`; the trailing
+            -- `binop` writes `s2`, and `supply ≤ s1 ≤ s2`
+            have hia' : WritesAbove supply ia := hia
+            have hib' := WritesAbove.anti_mono supply s1 ib h1.1 hib
+            refine WritesAbove.append' supply ia (ib ++ [Instr.binop s2 bop va vb .intType]) hia' ?_
+            exact WritesAbove.snoc supply ib (Instr.binop s2 bop va vb .intType) hib' (by
+              simp only [writtenReg, Option.some.injEq]
+              exact Nat.le_trans h1.1 h2.1))
+      (fun a b _ _ iha ihb paramMap supply hpm => by
+        simp only [lowerIn]
+        cases hA : lowerIn paramMap supply a with
+        | none => simp [hA]
+        | some valA =>
+          rcases valA with ⟨va, rest⟩; rcases rest with ⟨ia, s1⟩
+          have hia := iha paramMap supply hpm
+          simp only [hA] at hia
+          have h1 := advances_pure a ‹IsPureArith a› paramMap supply hpm
+          simp only [hA] at h1
+          have hpm' : ∀ n, (fun n => if n = 0 then va else paramMap (n - 1)) n < s1 := by
+            intro n
+            cases n with
+            | zero => exact h1.2.1
+            | succ k => exact Nat.lt_of_lt_of_le (hpm k) h1.1
+          cases hB : lowerIn (fun n => if n = 0 then va else paramMap (n - 1)) s1 b with
+          | none => simp [hA, hB]
+          | some valB =>
+            rcases valB with ⟨vb, rest⟩; rcases rest with ⟨ib, s2⟩
+            have hib := ihb _ _ hpm'
+            rw [hB] at hib
+            simp only [hA, hB, Option.some.injEq]
+            exact WritesAbove.append' supply ia ib hia
+              (WritesAbove.anti_mono supply s1 ib h1.1 hib))
+      hpa paramMap supply hpm
 
 /-! ## Lowering rejection mirrors interpreter stuckness -/
 
