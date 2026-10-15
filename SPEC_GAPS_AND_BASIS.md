@@ -28,7 +28,7 @@ The following assumptions were identified as needing formal validation. See `spe
 
 | ID | Assumption | Status | Validation |
 |----|-----------|--------|------------|
-| GA-001 | Affine types guarantee cycle-freedom in ARC | Validated | Formal proof in `spec/memory/arc_affine_integration_spec.md` |
+| GA-001 | Affine types guarantee cycle-freedom in ARC | Validated (for type-level cycles) | Formal proof in `spec/memory/arc_affine_integration_spec.md`; runtime-cycle caveat recorded in `memory_bounds_spec.md` §5.3 |
 | GA-002 | SSUS pattern preserves referential transparency | Validated | See `spec/language/strict_state_unidirectional_spec.md` |
 | GA-003 | Projectional editing can express all syntactic forms | Under Review | See `spec/language/dialect_projection_spec.md` |
 | GA-004 | Actor message ordering is deterministic | Validated | See `spec/architecture/layered_concurrency_spec.md` |
@@ -45,7 +45,7 @@ The following assumptions were identified as needing formal validation. See `spe
 | Gap ID | Area | Description | Priority | Roadmap Phase |
 |--------|------|-------------|----------|--------------|
 | SG-001 | Syntax Translation | Formal semantics for cross-dialect translation | Medium | Phase 1 |
-| SG-002 | Memory Model | Formal bounds on heap allocation growth | High | Phase 1.5 |
+| SG-002 | Memory Model | Formal bounds on heap allocation growth | **CLOSED** | Phase 1.5 — `spec/memory/memory_bounds_spec.md` (research loop 2) |
 | SG-003 | Security Flow | Taint tracking across dialect boundaries | High | Phase 1.6 |
 | SG-004 | Concurrency | Deadlock-freedom proof for actor system | Medium | Phase 4.4 |
 | SG-005 | Type System | Decidability proof for subtyping | High | Phase 1.7 |

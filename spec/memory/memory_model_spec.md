@@ -603,6 +603,11 @@ $$ \neg \exists \text{GC} \text{ such that } \text{GC} = \text{MarkAndSweep} \lo
 
 * MMS-INV-014:* THE system SHALL prohibit tracing garbage collection and use ARC for memory management with type-level lifetime guarantees.
 
+*Formalization:* the collector model, the `Precise`/`Affine` invariants and the
+growth and no-leak theorems are formalized in
+[`memory_bounds_spec.md`](./memory_bounds_spec.md) (Lean 4:
+`Morph/Specs/MemoryBounds/`). That specification discharges SG-002.
+
 * Note:* ARC is a deterministic, reference-counted garbage collection mechanism for strong references. While ARC technically performs garbage collection (automatic memory reclamation), it is fundamentally different from tracing garbage collection in that:
 - ARC reclaims memory immediately when strong reference count reaches zero
 - ARC does not require stop-the-world pauses

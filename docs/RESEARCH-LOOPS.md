@@ -14,10 +14,10 @@ not increase, no `example : True := trivial` stubs.
 | # | Part | Gap / Problem | Papers | Language comparison | Status |
 |---|------|---------------|--------|---------------------|--------|
 | 1 | Type system: subtyping | same | Pierce POPL'92 (F-sub undecidability; full text read); Kennedy-Pierce FOOL-WOOD'07; Brandt-Henglein TLCA'97; Kozen-Palsberg-Schwartzbach POPL'93; Castagna semantic subtyping + 2024-25 set-theoretic wave; Linear Haskell POPL'18; Granule ICFP'19; rustc variance guide | Rust (variance), TS (unsound structural), OCaml (rows), F* (SMT), Linear Haskell (refuses arrow subtyping), Granule (SMT grades) | **DONE** |
-| 2 | Memory: heap growth bounds | same | Perceus PLDI'21 (TR read: garbage-freedom thm + acyclicity escape hatch); Pony ORCA OOPSLA'17 (heap bounding explicitly unimplemented); MAC OOPSLA'13; LFPL/AARA line; RustBelt (safety only) | Swift/Pony/Nim (nothing proven), Rust (safety, mechanized), Perceus (paper proofs) | **MODEL+PROOFS 90%** |
+| 2 | Memory: heap growth bounds | SG-002 | Perceus PLDI'21 (TR read: garbage-freedom thm + acyclicity escape hatch); Pony ORCA OOPSLA'17 (heap bounding explicitly unimplemented); Pony co-design paper (runtime explicitly unverified); RustBelt (safety only); AURA line | Swift/Pony/Nim (nothing proven), Rust (safety, mechanized), Perceus (paper proofs) | **DONE** |
 | 3 | Concurrency: deadlock freedom | SG-004: no deadlock-freedom proof for the actor system | | Erlang/BEAM, Pony, Akka, multiparty session types | PENDING |
 | 4 | Security: taint / IFC | SG-003: taint tracking across dialect boundaries unspecified | | Jif, Flow Caml, Paragon, robust declassification | PENDING |
-| 5 | Core semantics: substitution | 6 sorries in `Proofs/TypeSoundness/Preservation.lean` (subst lemmas) | POPLmark, Autosubst | Coq/Agda standard developments | PENDING |
+| 5 | Core semantics: substitution | (sorries now 0 repo-wide; check what remains of the POPLmark-style obligations) | POPLmark, Autosubst | Coq/Agda standard developments | PENDING |
 | 6 | Effects | 4 canonical effects {IO, Net, Time, System}; monadic formalization depth unknown | | Koka, Unison abilities, OCaml 5, eff | PENDING |
 | 7 | Dialects / projectional syntax | SG-001: cross-dialect translation semantics; DialectProjection is tier-4 empty | | Hazel, MPS, ProjectLombok-style structural editors | PENDING |
 | 8 | Scheduler | Randomized work stealing: no liveness/fairness proofs | | Cilk, Tokio, Go runtime, BLMA | PENDING |
@@ -38,7 +38,45 @@ not increase, no `example : True := trivial` stubs.
 
 ## Iteration Notes
 
-### Iteration 1 — Subtyping (in progress)
+### Iteration 2 — Memory: heap growth bounds (DONE)
+
+**Survey.** Re-read Perceus (PLDI'21) Thm 2/4: garbage-freedom there is a
+property of the *algorithm* (it must emit precise `dup`/`drop`) and the
+reachability clause carries an "or part of a cycle" escape hatch. ORCA (OOPSLA'15)
+lists heap bounding as future work; the Pony co-design paper states the runtime is
+not formally verified. Rust verifies safety (RustBelt) but growth bounds are
+meaningless without a collector. **No runtime has a proven heap-growth bound** —
+so this is a real frontier, and Morph beats Perceus only because affine
+ownership removes the cycle case at the type level.
+
+**What the loop changed.** The draft model was wrong in two ways and both were
+found by trying to prove the invariant, not by inspection:
+
+1. `collect` could free an address that was still a root. Fixed: the queue
+   holds *released* addresses (`a ∉ roots`, and `Released heap a`).
+2. "No dangling edges" (A3) is **not** preservable without unique ownership —
+   cascading collection must transpose edges, which is precisely where a general
+   RC collector needs Perceus's escape hatch. Fixed by stating the ownership
+   invariant explicitly (A4 no incoming edge to a queued address, A5 at most one
+   incoming edge, A6 distinct fields, A7 no self-loops).
+
+**Delivered.** `Morph/Specs/MemoryBounds/` — model + `invariant_preserved`
+(all 10 components × 4 steps), `quiescent_no_leak` (garbage-freedom, **no
+escape clause**), `allocs_bound` (growth paid for by allocation only), plus
+`reach_store` proving the affine `store` move preserves reachability.
+`spec/memory/memory_bounds_spec.md` documents the model, the survey and four
+explicit non-claims (no cardinality form, no reclamation completeness,
+acyclicity not derived, `Released` is a premise).
+
+**Proof-engineering findings worth keeping.** `dsimp` zeta-reduces `l₁ ++ l₂`
+into `l₁.head :: …`, silently reshaping every membership goal — use `change`.
+`List.erase` removes only the *first* occurrence, so `a ∉ l.erase a` needs
+`NoDup`; that forced `roots.Nodup` into the invariant. `List.mem_erase` does not
+exist (only `mem_erase_of_ne` as an iff and `mem_of_mem_erase`). `∈` unfolds to
+`List.Mem`, a *structure*, not a function, so `h hmem` does not typecheck — use
+`absurd`.
+
+### Iteration 1 — Subtyping
 
 Baseline finding (2026-10-09): the shipped `Subtype` inductive
 (`Morph/Specs/TypeSystem/Spec.lean:680`) has only `refl` and `trans` — it

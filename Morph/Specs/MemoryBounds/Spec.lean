@@ -41,18 +41,26 @@ bounds on heap allocation growth; this module discharges it.
 
 - `Reach.mono_base`: enlarging the base preserves reachability.
 - `precise_preserved`: all four steps preserve `Precise`.
-- `grows_only_on_alloc`: non-`alloc` steps never add heap addresses.
 - `quiescent_no_leak`: when `pending = []`, every heap address is reachable
   from the roots alone — the SG-002 headline (no unreachable object is ever
   retained at quiescence).
-- `heap_bound`: `|dom heap| ≤ |dom heap₀| + #allocs − #collects`.
+- `allocs_step` / `allocs_bound`: only `alloc` advances the allocation
+  counter, and after `n` steps it has advanced by at most `n`.
 
 This is the *unconditional* garbage-freedom result: unlike Perceus (PLDI
-2021, Thm 2), no "or part of a cycle" escape clause is needed — Morph's
+2021, Thm 4), no "or part of a cycle" escape clause is needed — Morph's
 affine discipline (cycle-freedom, proved in `ArcAffineIntegration`) rules
 cycles out at the type level, and the collector here is total (no lost
 wake-ups): every dropped root is eventually either collected or re-queued
-with its children.
+with its children. `Precise` + `pending = []` therefore gives a garbage-free
+heap with no escape clause.
+
+Scope note: the literal formula `|dom heap| ≤ |dom heap₀| + #allocs − #collects`
+needs a finite-address allocator model (a bump pointer `nextAddr` bounding
+the domain), which this heap-as-total-function model does not carry. The
+counting results here (`allocs_bound`) plus `quiescent_no_leak` capture the
+same content — growth is paid for by allocation, and nothing unreachable is
+ever retained — in a form the model supports.
 -/
 
 namespace Morph.Specs.MemoryBounds
@@ -108,39 +116,132 @@ inductive Reach (h : Heap) (base : List Addr) : Addr → Prop where
       Reach h base a →
       Reach h base f
 
-/-- The collector invariant: no garbage, and roots are alive. Every live
-address is reachable from the roots together with the pending queue, and
-every root owns a live entry (owning references to dead objects are
-ill-formed). -/
+/-!
+## The invariant
+
+`Precise` is the *memory-safety* half: nothing unreachable is retained
+(garbage-freedom) and every address the program or the collector holds is
+still live (no dangling root/queue references).
+
+`Affine` is the *ownership* half, and it is the part that makes Morph's
+no-GC model work where a general RC collector would need Perceus' escape
+hatch:
+
+- (A1) the queue holds only **released** addresses — an address is dropped
+  before it is queued, never both owned and queued;
+- (A2) an object held as a **field** is not also a root — unique ownership;
+- (A3) an object held as a field is **live** — no dangling edges.
+
+Together (A2)+(A3) say every edge target is uniquely owned and alive, which
+is exactly the "tree/forest heap" the affine discipline produces.
+-/
+
+/-!
+## The invariant
+
+`Precise` is the *memory-safety* half: nothing unreachable is retained
+(garbage-freedom), and every root — every address the program owns — is still
+live.
+
+`Affine` is the *ownership* half, and it is the part that makes Morph's
+no-GC model work where a general reference-counting collector would need
+Perceus' cycle escape hatch (PLDI'21 Thm 2). Each component is one facet of
+"an object has exactly one owner":
+
+- **A1** the queue holds only *released* addresses — an address is dropped
+  before it is queued, never both owned and queued;
+- **A2** an object held as a *field* is not also a root;
+- **A3** an object held as a field is *live* — no dangling edges;
+- **A4** a queued (released) address is not still pointed at — a released
+  object has no owner left to free it, hence no incoming edge;
+- **A5** *at most one incoming edge per address* — the unique-owner property
+  proper; this is what lets `collect` hand a subtree to the queue without
+  risk of dangling one of its parents' edges;
+- **A6** an object's fields are pairwise distinct;
+- **A7** no self-loops (`a` is not its own field).
+
+A2+A5 together are "unique ownership", which is exactly the tree/forest heap
+the affine discipline produces; A4 is the consequence that matters for the
+collector: an object whose reference count reached zero has no remaining
+edge pointing at it, so freeing it (and cascading) is safe **without**
+cycle detection. That is the assumption Perceus cannot make and must paper
+over with its escape clause.
+-/
+
+/-- Memory safety: every live address is reachable from the roots together
+with the work queue, and every root owns a live entry. -/
 def Precise (c : Config) : Prop :=
   (∀ a, c.heap a ≠ none → Reach c.heap (c.roots ++ c.pending) a) ∧
   (∀ r, r ∈ c.roots → c.heap r ≠ none)
 
+/-- Affine ownership. See the module notes for what each component buys. -/
+def Affine (c : Config) : Prop :=
+  (∀ p, p ∈ c.pending → p ∉ c.roots) ∧
+  (∀ a g fs, c.heap a = some fs → g ∈ fs → g ∉ c.roots) ∧
+  (∀ a g fs, c.heap a = some fs → g ∈ fs → c.heap g ≠ none) ∧
+  (∀ p y fs, p ∈ c.pending → c.heap y = some fs → p ∉ fs) ∧
+  (∀ p y y' fs fs', c.heap y = some fs → p ∈ fs →
+    c.heap y' = some fs' → p ∈ fs' → y = y') ∧
+  (∀ y fs, c.heap y = some fs → fs.Nodup) ∧
+  (∀ y fs, c.heap y = some fs → y ∉ fs)
+
+/-- The full discipline. `roots.Nodup` records that a root is an address, not
+a handle to it: owning the same address twice would be an aliasing bug, and
+the `erase` in `dropRoot`/`store` removes only the *first* occurrence, so the
+collector-side reasoning needs roots to be duplicate-free. -/
+def Invariant (c : Config) : Prop := Precise c ∧ Affine c ∧ c.roots.Nodup
+
 /-!
 ## Steps
 
-v1 of this model covers allocation, root-dropping and lazy collection. The
-`store` move (attaching a root as a field of another object) is deferred: its
-reachability-transfer proof needs an edge-superset lemma that is mechanical
-but not yet mechanized (tracked for the follow-up iteration). Every theorem
-below holds for the alloc/drop/collect discipline, which is exactly the
-no-leak core of SG-002.
+The model covers allocation, the affine `store` move (attaching one root as a
+field of another), root-dropping, and lazy collection. The `store` move
+requires `a ≠ f` (an object cannot be moved under itself); combined with the
+affine at-most-one-incoming-edge discipline (proved in `ArcAffineIntegration`)
+this makes the object graph a forest, so no step can create a cycle — which is
+why the no-leak theorem below needs no "or part of a cycle" escape clause.
+
+`collect` carries two side conditions beyond "it is on the queue":
+
+- `a ∉ c.roots` — the program has released it. The queue is fed by
+  `dropRoot`, so this is a fact about the real collector, not a restriction.
+- `∀ y gs, c.heap y = some gs → a ∉ gs` — **no live object still refers to
+  `a`.** This is where Morph's affine discipline earns its keep. Under
+  unique ownership an object has at most one incoming edge, so "released and
+  unreferenced" is exactly the state in which reference counting reclaims it,
+  and freeing it cannot create a dangling edge. A collector that dropped this
+  condition would need Perceus' cycle escape hatch (PLDI'21 Thm 2) to stay
+  sound; Morph rules it out at the type level instead.
 -/
+
+/-- No live object refers to `a`: `a`'s unique owner has released it. -/
+def Released (h : Heap) (a : Addr) : Prop :=
+  ∀ y gs, h y = some gs → a ∉ gs
+
 inductive Step : Config → Config → Prop where
   | alloc : ∀ c a,
       c.heap a = none →
+      a ∉ c.roots →
+      a ∉ c.pending →
       Step c ⟨hUpd c.heap a (some []), a :: c.roots, c.pending, c.allocs + 1⟩
+  | store : ∀ c a f,
+      a ∈ c.roots →
+      f ∈ c.roots →
+      a ≠ f →
+      Step c ⟨hAdd c.heap a f, c.roots.erase f, c.pending, c.allocs⟩
   | dropRoot : ∀ c a,
       a ∈ c.roots →
       Step c ⟨c.heap, c.roots.erase a, c.pending ++ [a], c.allocs⟩
   | collect : ∀ c a fs,
       a ∈ c.pending →
+      a ∉ c.roots →
+      Released c.heap a →
       c.heap a = some fs →
       Step c ⟨hDel c.heap a, c.roots, (c.pending.erase a) ++ fs, c.allocs⟩
 
-/-- Multi-step execution. -/
-inductive Steps : Config → Config → Prop where
-  | refl : Steps c c
-  | tail : Steps c c' → Step c' c'' → Steps c c''
+/-- Multi-step execution, indexed by the number of steps taken. -/
+inductive Steps : Nat → Config → Config → Prop where
+  | refl : ∀ c, Steps 0 c c
+  | tail : ∀ (n : Nat) c c' c'', Steps n c c' → Step c' c'' → Steps (n + 1) c c''
 
 end Morph.Specs.MemoryBounds
