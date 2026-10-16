@@ -2764,6 +2764,15 @@ fn endorse(data: Public<i32>) -> Secret<i32> {
 
 ---
 
+## Formalization Note
+
+`NonInterference` in this specification was originally stated over *labels*
+(as though labels were program states), which made it vacuous. The real
+statement — an allowed program cannot move a secret into a public variable,
+and dialect translation preserves that — is formalized in
+[`taint_flow_spec.md`](./taint_flow_spec.md) (Lean 4: `Morph/Specs/TaintFlow/`),
+which closes SG-003.
+
 ## Change Log
 
 | Version | Date       | Author      | Changes                                                                 |

@@ -68,7 +68,12 @@ example
 example
     (L : SecurityLattice)
     (high low : SecurityLevel L)
-    : spec_non_interference_support L high low ↔ NonInterference L high low :=
+    : spec_non_interference_support L high low ↔
+      (NonInterference L high low ∧
+       (∀ (ρ : Morph.Specs.TaintFlow.TEnv)
+         (prog : List (String × Morph.Specs.TaintFlow.TExpr)),
+         Morph.Specs.TaintFlow.Allowed ρ prog →
+         ∀ y, (Morph.Specs.TaintFlow.run ρ prog) y = .sec → ρ y = .sec)) :=
   Iff.rfl
 
 /-- The well-formedness theorem is definitionally its hypothesis. -/

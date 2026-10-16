@@ -16,7 +16,7 @@ not increase, no `example : True := trivial` stubs.
 | 1 | Type system: subtyping | same | Pierce POPL'92 (F-sub undecidability; full text read); Kennedy-Pierce FOOL-WOOD'07; Brandt-Henglein TLCA'97; Kozen-Palsberg-Schwartzbach POPL'93; Castagna semantic subtyping + 2024-25 set-theoretic wave; Linear Haskell POPL'18; Granule ICFP'19; rustc variance guide | Rust (variance), TS (unsound structural), OCaml (rows), F* (SMT), Linear Haskell (refuses arrow subtyping), Granule (SMT grades) | **DONE** |
 | 2 | Memory: heap growth bounds | SG-002 | Perceus PLDI'21 (TR read: garbage-freedom thm + acyclicity escape hatch); Pony ORCA OOPSLA'17 (heap bounding explicitly unimplemented); Pony co-design paper (runtime explicitly unverified); RustBelt (safety only); AURA line | Swift/Pony/Nim (nothing proven), Rust (safety, mechanized), Perceus (paper proofs) | **DONE** |
 | 3 | Concurrency: deadlock freedom | SG-004: no deadlock-freedom proof for the actor system | Honda-Yoshida connection graphs (POPL'22); Li-Wies ITP'25 (first mechanized implementability); MPST implementation survey | BEAM/Erlang (no formalization), Pony (no), Akka (no), session types (type level only) | **DONE** |
-| 4 | Security: taint / IFC | SG-003: taint tracking across dialect boundaries unspecified | | Jif, Flow Caml, Paragon, robust declassification | PENDING |
+| 4 | Security: taint / IFC | SG-003: taint tracking across dialect boundaries unspecified | Zdancewic-Myers POPL'01 (robustness); Myers-Liskov CSFW'04 (enforcement); Zdancewic TOPLAS'03 (the rule); Köpf et al. CCS'17/21 (NMIFC, 4-safety); Fides arXiv:2505.23643 (taint tracking for AI agents) | Jif/Flow Caml (per-language), Paragon (declassification), Haskell IFC (no dialect story) | **DONE** |
 | 5 | Core semantics: substitution | (sorries now 0 repo-wide; check what remains of the POPLmark-style obligations) | POPLmark, Autosubst | Coq/Agda standard developments | PENDING |
 | 6 | Effects | 4 canonical effects {IO, Net, Time, System}; monadic formalization depth unknown | | Koka, Unison abilities, OCaml 5, eff | PENDING |
 | 7 | Dialects / projectional syntax | SG-001: cross-dialect translation semantics; DialectProjection is tier-4 empty | | Hazel, MPS, ProjectLombok-style structural editors | PENDING |
@@ -37,6 +37,45 @@ not increase, no `example : True := trivial` stubs.
 6. **Record**: verdict line in the table above + iteration notes below.
 
 ## Iteration Notes
+
+### Iteration 4 — Security: taint tracking across dialect boundaries (DONE)
+
+**Survey.** Robust declassification (Zdancewic & Myers POPL'01; enforcement in
+Myers & Liskov CSFW'04; the typing rule in Zdancewic TOPLAS'03) says the
+*decision* to downgrade must be made by code with sufficient integrity. Köpf et
+al. (CCS'17/21) subsume it into nonmalleable IFC and give the first k>2
+hyperproperty formulation. The closest work to Morph is **Fides**
+(arXiv:2505.23643, Microsoft 2025), which characterizes *the class of
+properties enforceable by dynamic taint-tracking* for AI agent planners — and
+whose lesson for us is that a taint label must survive every transformation the
+planner performs.
+
+**What the loop found.** `SecurityFlow.NonInterference` quantified over
+*labels* as if they were program states, so it was vacuous, and every theorem
+in the module was `h → h`. SG-003 therefore had no statement to prove.
+
+**Delivered.** `Morph/Specs/TaintFlow/`: a two-point confidentiality lattice, a
+labelled expression language with an explicit `decl` node and implicit flows,
+two dialects, and translation that either *rejects* or returns the expression
+unchanged. The theorems: `taint_preserved` (labels survive exactly — a boundary
+cannot quietly downgrade, because rejection is its only move),
+`reject_untrusted_decl` + `no_decl_after_translation` (robust declassification:
+an untrusted pc cannot smuggle a downgrade across the boundary),
+`flows_translation`, and the end-to-end `boundary_preserves_noninterference`.
+`SecurityFlow` is rewired to the real statements.
+
+**Design decision worth keeping.** Translation is reject-or-preserve rather
+than retyping. Retyping loses the record of which labels were downgraded, so a
+second projection can treat a downgraded label as original. Making label
+preservation a *theorem about the definition* removes the question — the same
+move as loop 2's `Released` premise.
+
+**Proof-engineering findings.** `Option`-valued recursion needs
+`generalize … = o` *before* `cases o` (dependent elimination otherwise fails);
+`by_cases h : p = q` followed by `subst h` eliminates the *second* variable, so
+prefer rewriting in place. `run` over a list does not reduce under a variable
+tail — apply the induction hypothesis to expose the head assignment instead of
+unfolding.
 
 ### Iteration 3 — Concurrency: deadlock freedom (DONE)
 

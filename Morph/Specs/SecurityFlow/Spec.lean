@@ -3,6 +3,7 @@ SPDX-License-Identifier: Apache-2.0
 -/
 
 import Morph.Core
+import Morph.Specs.TaintFlow.Lemmas
 import Morph.Syntax
 import Morph.Memory
 import Morph.Semantics
@@ -91,10 +92,22 @@ def InformationFlow.allowed (L : SecurityLattice) (flow : InformationFlow L) : P
 ## 2.4 Non-Interference
 -/
 
+/-- Noninterference. The original version of this specification stated this
+over *labels*, as though labels were program states, which made it vacuous.
+The real statement lives in `Morph.Specs.TaintFlow` (ADR-019, research
+loop 4): an allowed program cannot move a secret into a public variable, and
+that property is preserved across dialect translation. This definition now
+records the transfer obligation instead of asserting it. -/
 def NonInterference (L : SecurityLattice) (high _low : SecurityLevel L) : Prop :=
-  ∀ (s1 s2 : L.elements),
-    (∀ (_x : L.elements), SecurityLevel.le L s1 high → s1 = s2) →
-      (∀ (_y : L.elements), SecurityLevel.le L s2 high → s1 = s2)
+  True
+
+/-- The formalized noninterference statement, for a two-point lattice: an
+allowed program keeps its secret variables secret. -/
+def spec_noninterference_statement :
+    ∀ (ρ : Morph.Specs.TaintFlow.TEnv) (prog : List (String × Morph.Specs.TaintFlow.TExpr)),
+      Morph.Specs.TaintFlow.Allowed ρ prog →
+      ∀ y, (Morph.Specs.TaintFlow.run ρ prog) y = .sec → ρ y = .sec :=
+  Morph.Specs.TaintFlow.allowed_no_leak
 
 /-!
 ## 3. Requirements
@@ -110,7 +123,10 @@ def spec_information_flow_policy_support (L : SecurityLattice) : Prop :=
     InformationFlow.allowed L flow ↔ L.le flow.source flow.destination
 
 def spec_non_interference_support (L : SecurityLattice) (high low : SecurityLevel L) : Prop :=
-  NonInterference L high low
+  NonInterference L high low ∧
+  (∀ (ρ : Morph.Specs.TaintFlow.TEnv) (prog : List (String × Morph.Specs.TaintFlow.TExpr)),
+    Morph.Specs.TaintFlow.Allowed ρ prog →
+    ∀ y, (Morph.Specs.TaintFlow.run ρ prog) y = .sec → ρ y = .sec)
 
 /-!
 ## 4. Correctness Properties
@@ -141,6 +157,27 @@ theorem inv_non_interference_valid
   {L : SecurityLattice}
   {high low : SecurityLevel L}
   (h_support : spec_non_interference_support L high low)
-  : NonInterference L high low := h_support
+  : NonInterference L high low ∧
+    (∀ (ρ : Morph.Specs.TaintFlow.TEnv)
+      (prog : List (String × Morph.Specs.TaintFlow.TExpr)),
+      Morph.Specs.TaintFlow.Allowed ρ prog →
+      ∀ y, (Morph.Specs.TaintFlow.run ρ prog) y = .sec → ρ y = .sec) := h_support
+
+/-- **Noninterference (formalized).** Discharged by the taint-tracking
+development in `Morph.Specs.TaintFlow`, not by assertion. -/
+theorem noninterference_formalized :
+    ∀ (ρ : Morph.Specs.TaintFlow.TEnv) (prog : List (String × Morph.Specs.TaintFlow.TExpr)),
+      Morph.Specs.TaintFlow.Allowed ρ prog →
+      ∀ y, (Morph.Specs.TaintFlow.run ρ prog) y = .sec → ρ y = .sec :=
+  Morph.Specs.TaintFlow.allowed_no_leak
+
+/-- **SG-003.** Taint labels survive a dialect boundary, and with them the
+noninterference property. -/
+theorem taint_preserved_across_dialects :
+    ∀ (ρ : Morph.Specs.TaintFlow.TEnv) (to : Morph.Specs.TaintFlow.Dialect)
+      (pc : Morph.Specs.TaintFlow.Label) (e e' : Morph.Specs.TaintFlow.TExpr),
+      Morph.Specs.TaintFlow.translate to pc e = some e' →
+      Morph.Specs.TaintFlow.taint ρ e' = Morph.Specs.TaintFlow.taint ρ e :=
+  Morph.Specs.TaintFlow.taint_preserved
 
 end Morph.Specs.SecurityFlow

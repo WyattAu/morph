@@ -61,11 +61,17 @@ theorem flow_policy_iff_tautology
     : InformationFlow.allowed L flow ↔ L.le flow.source flow.destination :=
   Iff.rfl
 
-/-- NonInterference support is exactly NonInterference. -/
+/-- NonInterference support is exactly the formalized noninterference
+statement (see `Morph.Specs.TaintFlow`). -/
 theorem non_interference_support_is_noninterference
     {L : SecurityLattice}
     {high low : SecurityLevel L}
-    : spec_non_interference_support L high low ↔ NonInterference L high low :=
+    : spec_non_interference_support L high low ↔
+      (NonInterference L high low ∧
+       (∀ (ρ : Morph.Specs.TaintFlow.TEnv)
+         (prog : List (String × Morph.Specs.TaintFlow.TExpr)),
+         Morph.Specs.TaintFlow.Allowed ρ prog →
+         ∀ y, (Morph.Specs.TaintFlow.run ρ prog) y = .sec → ρ y = .sec)) :=
   Iff.rfl
 
 /-- Well-formedness theorem and its invariant form are definitionally equal. -/
