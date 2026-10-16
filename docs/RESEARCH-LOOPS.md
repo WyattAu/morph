@@ -15,7 +15,7 @@ not increase, no `example : True := trivial` stubs.
 |---|------|---------------|--------|---------------------|--------|
 | 1 | Type system: subtyping | same | Pierce POPL'92 (F-sub undecidability; full text read); Kennedy-Pierce FOOL-WOOD'07; Brandt-Henglein TLCA'97; Kozen-Palsberg-Schwartzbach POPL'93; Castagna semantic subtyping + 2024-25 set-theoretic wave; Linear Haskell POPL'18; Granule ICFP'19; rustc variance guide | Rust (variance), TS (unsound structural), OCaml (rows), F* (SMT), Linear Haskell (refuses arrow subtyping), Granule (SMT grades) | **DONE** |
 | 2 | Memory: heap growth bounds | SG-002 | Perceus PLDI'21 (TR read: garbage-freedom thm + acyclicity escape hatch); Pony ORCA OOPSLA'17 (heap bounding explicitly unimplemented); Pony co-design paper (runtime explicitly unverified); RustBelt (safety only); AURA line | Swift/Pony/Nim (nothing proven), Rust (safety, mechanized), Perceus (paper proofs) | **DONE** |
-| 3 | Concurrency: deadlock freedom | SG-004: no deadlock-freedom proof for the actor system | | Erlang/BEAM, Pony, Akka, multiparty session types | PENDING |
+| 3 | Concurrency: deadlock freedom | SG-004: no deadlock-freedom proof for the actor system | Honda-Yoshida connection graphs (POPL'22); Li-Wies ITP'25 (first mechanized implementability); MPST implementation survey | BEAM/Erlang (no formalization), Pony (no), Akka (no), session types (type level only) | **DONE** |
 | 4 | Security: taint / IFC | SG-003: taint tracking across dialect boundaries unspecified | | Jif, Flow Caml, Paragon, robust declassification | PENDING |
 | 5 | Core semantics: substitution | (sorries now 0 repo-wide; check what remains of the POPLmark-style obligations) | POPLmark, Autosubst | Coq/Agda standard developments | PENDING |
 | 6 | Effects | 4 canonical effects {IO, Net, Time, System}; monadic formalization depth unknown | | Koka, Unison abilities, OCaml 5, eff | PENDING |
@@ -37,6 +37,38 @@ not increase, no `example : True := trivial` stubs.
 6. **Record**: verdict line in the table above + iteration notes below.
 
 ## Iteration Notes
+
+### Iteration 3 — Concurrency: deadlock freedom (DONE)
+
+**Survey.** The mechanized frontier is Li & Wies (ITP 2025): implementability =
+protocol fidelity + deadlock freedom, over abstract communicating state
+machines. Yoshida's implementation survey notes that implementations "proved
+deadlock-freedom only at the type level" — the link to the concrete scheduler
+is exactly the missing piece.
+
+**What the loop found.** The reason there was no proof is that there was
+nothing to prove: `isBlockedWaiting`, `isAcyclic`, `formsCycle` and
+`specDeadlockFreeTheorem` were all `Prop := True`, with `trivial` proofs. So the
+loop was not "prove a missing theorem" but "state the theorems at all".
+
+**Delivered.** `Morph/Specs/ActorDeadlock/`: the actor system as a wait-for
+graph (`waitOn : Actor → Option Actor`), `WF` (live + closed) and `Ranked`
+(waits point upward) as invariants, `ranked_acyclic` (the connection-graph
+criterion), `ranked_implies_progress` (bounded-rank argument), and
+`progress_invariant` — *every state reachable by any scheduler has a runnable
+actor*. The `True` stubs in `ConcurrencyProcessAlgebra` now take the wait
+relation as an argument and `specDeadlockFreeTheorem_holds` is the real
+transfer theorem. `spec/concurrency/actor_deadlock_freedom_spec.md` documents
+it, including why a *rank order* beats cycle detection as the checkable
+condition.
+
+**Proof-engineering findings.** Index fields are dropped from `induction`/
+`cases` patterns, and the induction hypothesis is auto-named
+`<first-name>_ih` (reachable via `rename_i`, not writable directly). `List.getLast`
+takes its non-emptiness proof explicitly; `path.getLast hne` inside another
+application needs parentheses. Statements of the form `X → Y` (rather than a
+hypothesis in the context) keep the induction hypothesis from being
+generalized away.
 
 ### Iteration 2 — Memory: heap growth bounds (DONE)
 

@@ -1,7 +1,7 @@
 /- Copyright 2024-2025 The Morph Project Authors
 SPDX-License-Identifier: Apache-2.0 -/
 
-import Morph.Specs.ConcurrencyProcessAlgebra.Spec
+import Morph.Specs.ConcurrencyProcessAlgebra.Lemmas
 
 namespace Morph.Specs.ConcurrencyProcessAlgebra
 
@@ -71,19 +71,30 @@ example : isValidProcess exampleProcessConfig () := trivial
 
 example : isFutureWait 0 2 exampleFuture := rfl
 
-example : isBlockedWaiting 0 := trivial
+/-- A wait relation in which actor 0 waits for actor 2 and nobody else waits. -/
+def exampleWaits : ActorId → Option ActorId :=
+  fun a => if a = 0 then some 2 else none
 
-example : isBlocked () := trivial
+example : isBlockedWaiting 0 exampleWaits := by
+  unfold isBlockedWaiting
+  exact ⟨2, rfl⟩
 
-example : isAcyclic exampleWaitForGraph := trivial
+example : ¬ isBlockedWaiting 1 exampleWaits := by
+  unfold isBlockedWaiting
+  rintro ⟨b, hb⟩
+  simp [exampleWaits] at hb
 
-example : formsCycle 0 1 [] := trivial
+example : isBlocked 0 exampleWaits := by
+  unfold isBlocked isBlockedWaiting
+  exact ⟨2, rfl⟩
 
 example : hasMailbox 0 exampleProcessConfig := by
   unfold hasMailbox exampleProcessConfig
   decide
 
-example : isBackpressureWait 0 1 exampleProcessConfig := trivial
+example : isBackpressureWait 0 2 exampleWaits := by
+  unfold isBackpressureWait
+  rfl
 
 example : specActorSystemDefinition := trivial
 
@@ -91,7 +102,7 @@ example : specCommunicationReductionRule := trivial
 
 example : specEdgeDefinitions := trivial
 
-example : specDeadlockFreeTheorem := trivial
+example : specDeadlockFreeTheorem := specDeadlockFreeTheorem_holds
 
 example : specParallelComposition := trivial
 

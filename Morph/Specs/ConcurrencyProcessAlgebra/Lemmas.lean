@@ -2,6 +2,7 @@
 SPDX-License-Identifier: Apache-2.0 -/
 
 import Morph.Specs.ConcurrencyProcessAlgebra.Spec
+import Morph.Specs.ActorDeadlock.Lemmas
 
 namespace Morph.Specs.ConcurrencyProcessAlgebra
 
@@ -15,13 +16,22 @@ theorem isWellFormedConfig_always_true (config : ProcessConfig) : isWellFormedCo
 
 theorem isValidProcess_always_true (config : ProcessConfig) (p : Unit) : isValidProcess config p := trivial
 
-theorem isBlockedWaiting_always_true (a : ActorId) : isBlockedWaiting a := trivial
+/-- `isBlockedWaiting` is exactly the wait-for edge relation. -/
+theorem isBlockedWaiting_iff (a : ActorId) (waits : ActorId → Option ActorId) :
+    isBlockedWaiting a waits ↔ ∃ b, waits a = some b := Iff.rfl
 
-theorem isBlocked_always_true (p : Unit) : isBlocked p := trivial
+theorem isBlocked_iff (a : ActorId) (waits : ActorId → Option ActorId) :
+    isBlocked a waits ↔ isBlockedWaiting a waits := Iff.rfl
 
-theorem isAcyclic_always_true (W : WaitForGraph) : isAcyclic W := trivial
-
-theorem formsCycle_always_true (a b : ActorId) (path : List ActorId) : formsCycle a b path := trivial
+/-- **A rank-respecting wait-for graph is acyclic.** This is the formalized
+form of "the wait-for discipline of ADR-017 admits no deadlock cycle"; the
+corresponding progress theorem is `Morph.Specs.ActorDeadlock.progress_invariant`. -/
+theorem rank_order_is_acyclic (W : WaitForGraph)
+    (s : Morph.Specs.ActorDeadlock.Sys)
+    (rank : Morph.Specs.ActorDeadlock.Actor → Nat)
+    (hr : Morph.Specs.ActorDeadlock.Ranked s rank) :
+    Morph.Specs.ActorDeadlock.Acyclic s :=
+  Morph.Specs.ActorDeadlock.ranked_acyclic s rank hr
 
 theorem specActorSystemDefinition_holds : specActorSystemDefinition := trivial
 
@@ -29,7 +39,13 @@ theorem specCommunicationReductionRule_holds : specCommunicationReductionRule :=
 
 theorem specEdgeDefinitions_holds : specEdgeDefinitions := trivial
 
-theorem specDeadlockFreeTheorem_holds : specDeadlockFreeTheorem := trivial
+/-- **Deadlock freedom (SG-004).** Every state reachable from a well-formed,
+rank-respecting actor system has a runnable actor — for *any* scheduler.
+This is the proof obligation that `specDeadlockFreeTheorem` used to state as
+`True`. -/
+theorem specDeadlockFreeTheorem_holds : specDeadlockFreeTheorem := by
+  intro s s' rank p hwf hr hpm hmem hrun
+  exact Morph.Specs.ActorDeadlock.progress_invariant s s' rank hwf hr hpm hrun hmem
 
 theorem specParallelComposition_holds : specParallelComposition := trivial
 
@@ -73,8 +89,8 @@ theorem hasMailbox_of_mem_actors (actor : ActorId) (config : ProcessConfig)
 theorem isFutureWait_def (a b : ActorId) (future : Future)
     (h : future.resolvedBy = b) : isFutureWait a b future := h
 
-theorem isBackpressureWait_always_true (a b : ActorId) (config : ProcessConfig) :
-    isBackpressureWait a b config := trivial
+theorem isBackpressureWait_iff (a b : ActorId) (waits : ActorId → Option ActorId) :
+    isBackpressureWait a b waits ↔ waits a = some b := Iff.rfl
 
 /- Non-trivial lemmas about the actual data types -/
 

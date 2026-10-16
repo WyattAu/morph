@@ -565,6 +565,16 @@ actor Worker {
 
 - -
 
+## Formalization Note
+
+The wait-for-graph predicates (`isBlockedWaiting`, `isAcyclic`,
+`formsCycle`) and `specDeadlockFreeTheorem` were declared as `Prop := True` in
+the original specification, i.e. asserted rather than stated. They are now
+real statements, discharged by
+[`actor_deadlock_freedom_spec.md`](./actor_deadlock_freedom_spec.md)
+(Lean 4: `Morph/Specs/ActorDeadlock/`, `progress_invariant`), which closes
+SG-004.
+
 ## Change Log
 
 | Version | Date       | Author      | Changes                                                                 |

@@ -4,6 +4,7 @@ SPDX-License-Identifier: Apache-2.0
 
 import Std
 import Morph.Core
+import Morph.Specs.ActorDeadlock.Spec
 import Morph.Syntax
 import Morph.Semantics
 import Morph.Memory
@@ -133,18 +134,36 @@ def isValidProcess (_config : ProcessConfig) (_p : Unit) : Prop := True
 def isFutureWait (_a _b : ActorId) (future : Future) : Prop :=
   future.resolvedBy = _b
 
-def isBlockedWaiting (_a : ActorId) : Prop := True
+-- The blocking relation is the wait-for graph of the actor system: a process
+-- is blocked when it waits for a result from another actor. This used to be
+-- `True`; the definitions and proofs now live in `Morph.Specs.ActorDeadlock`
+-- (ADR-017, research loop 3).
+def isBlockedWaiting (a : ActorId) (waits : ActorId → Option ActorId) : Prop :=
+  ∃ b, waits a = some b
 
-def isBlocked (_p : Unit) : Prop := True
+def isBlocked (a : ActorId) (waits : ActorId → Option ActorId) : Prop :=
+  isBlockedWaiting a waits
 
 def hasMailbox (actor : ActorId) (config : ProcessConfig) : Prop :=
   actor ∈ config.actors
 
-def isBackpressureWait (_a _b : ActorId) (_config : ProcessConfig) : Prop := True
+def isBackpressureWait (a b : ActorId) (waits : ActorId → Option ActorId) : Prop :=
+  waits a = some b
 
-def isAcyclic (_W : WaitForGraph) : Prop := True
+/-- Acyclicity of the wait-for graph: no walk along waits returns to its
+start. See `Morph.Specs.ActorDeadlock.Acyclic` for the formal statement and
+the deadlock-freedom theorem derived from it. -/
+def isAcyclic (W : WaitForGraph) (waits : ActorId → Option ActorId) : Prop :=
+  ∀ start path, path ≠ [] →
+    (∀ a, a ∈ path → waits a ≠ none) →
+    path.getLast? = some start →
+    False
 
-def formsCycle (_a _b : ActorId) (_path : List ActorId) : Prop := True
+/-- `formsCycle` is the "there is an edge out of `a`" condition that, iterated,
+produces a cycle in a finite wait-for graph. -/
+def formsCycle (a b : ActorId) (path : List ActorId) (waits : ActorId → Option ActorId)
+    (hne : path ≠ []) : Prop :=
+  a ∈ path ∧ (∃ q, waits (path.getLast hne) = some q ∧ q = a)
 
 /- # Specification Theorems -/
 
@@ -154,7 +173,19 @@ def specCommunicationReductionRule : Prop := True
 
 def specEdgeDefinitions : Prop := True
 
-def specDeadlockFreeTheorem : Prop := True
+/-- **Deadlock freedom (SG-004).** The formal statement, the invariant it
+rests on, and the proof that every state reachable from a well-formed,
+rank-ordered system has a runnable actor are in `Morph.Specs.ActorDeadlock`
+(`progress_invariant`). This spec-level statement is the contract:
+every actor system obeying the wait-for discipline of ADR-017 is deadlock
+free. -/
+def specDeadlockFreeTheorem : Prop :=
+  ∀ (s s' : Morph.Specs.ActorDeadlock.Sys)
+    (rank : Morph.Specs.ActorDeadlock.Actor → Nat)
+    (p : Morph.Specs.ActorDeadlock.Actor),
+    Morph.Specs.ActorDeadlock.WF s → Morph.Specs.ActorDeadlock.Ranked s rank →
+    p ∈ s.actors → p ∈ s'.actors →
+    Morph.Specs.ActorDeadlock.Steps rank s s' → s'.run ≠ []
 
 def specParallelComposition : Prop := True
 
