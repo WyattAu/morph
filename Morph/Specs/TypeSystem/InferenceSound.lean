@@ -18,11 +18,19 @@ declarative judgment `HasType`/`HasTypeAll`:
   projections.
 * `checkType_sound` / `checkType_sound_true`: the bidirectional checker,
   including both lambda cases (`lam_type` and `lam_linear_type` via the
-  `countUses` side condition, ADR-014).
+  `countUses` side condition, ADR-014) and, since loop 11, the checking-mode
+  cases for the ambiguous constructs `none_`, `ok_`, `err_` and `match_`
+  (`checkArms_sound` for the arm list).
 * `typeCheckBlock_sound`: the block-level entry point.
 
 Completeness is *not* claimed (and is false): `match_`, `none_`, `.ok_`,
-`.err_`, `refCast` and lambda synthesis all return `none`.
+`.err_`, `refCast` and lambda synthesis all return `none`. The failure is
+formal: `infer_not_complete` exhibits `.none_`, which is derivable at
+`.optionType τ` for every `τ` yet synthesizes to `none` — precisely the class
+of constructs the bidirectional literature (Dunfield-Krishnaswami, ACM
+Computing Surveys 2021) routes through checking mode, which `checkType` now
+provides (loop 11). `.refCast` has no checking rule on purpose: the judgment
+has no `refCast` rule either (ADR-010 amendment).
 -/
 
 namespace Morph.Specs.TypeSystem
@@ -50,7 +58,7 @@ def mE : Expr → Nat
   | .ifThenElse c t f => 1 + mE c + mE t + mE f
   | .forLoop s e b => 1 + mE s + mE e + mL b
   | .block es => 1 + mL es
-  | .match_ scrut _ => 1 + mE scrut
+  | .match_ scrut arms => 1 + mE scrut + mArms arms
   | .field_ e _ => 1 + mE e
   | .pipe e f => 1 + mE e + mE f
   | .typeAsc e _ => 1 + mE e
@@ -74,6 +82,12 @@ def mL : List Expr → Nat
   | [] => 0
   | e :: es => 1 + mE e + mL es
 termination_by es => sizeOf es
+
+/-- Arm-list size companion of `mE` (for `match_`, loop 11). -/
+def mArms : List (List String × Expr) → Nat
+  | [] => 0
+  | (vars, body) :: rest => 1 + vars.length + mE body + mArms rest
+termination_by arms => sizeOf arms
 
 /-- Literal size companion of `mE`. -/
 def mLit : Morph.Core.Value → Nat
@@ -219,6 +233,20 @@ theorem mL_cons_l  (e : Expr) (es : List Expr) :
 theorem mL_cons_r  (e : Expr) (es : List Expr) :
     mL es < mL (e :: es) := by
   simp only [mL]; omega
+
+theorem mArms_body (vars : List String) (body : Expr)
+    (rest : List (List String × Expr)) :
+    mE body < mArms ((vars, body) :: rest) := by
+  simp only [mArms]; omega
+
+theorem mArms_rest (vars : List String) (body : Expr)
+    (rest : List (List String × Expr)) :
+    mArms rest < mArms ((vars, body) :: rest) := by
+  simp only [mArms]; omega
+
+theorem mE_match_arms (scrut : Expr) (arms : List (List String × Expr)) :
+    mArms arms < mE (.match_ scrut arms) := by
+  simp only [mE]; omega
 /-! ## Helper lemmas -/
 
 /-- `inferTypes` produces exactly one type per list element. -/
@@ -1047,6 +1075,77 @@ theorem checkType_sound (n : Nat) :
       | _ =>
         rw [heq2] at h
         simp [Morph.TypeChecker.checkType] at h
+    | none_ =>
+      subst heq
+      by_cases hopt : ∃ τ, expected = Morph.Core.Typ.optionType τ
+      · obtain ⟨τ, rfl⟩ := hopt
+        rw [Morph.TypeChecker.checkType.eq_4] at h
+        exact HasType.none_type bvs Γ τ
+      · have hne : ∀ a, expected = Morph.Core.Typ.optionType a → False := by
+          rintro a ha
+          exact hopt ⟨a, ha⟩
+        rw [Morph.TypeChecker.checkType.eq_5 bvs Γ expected hne] at h
+        simp at h
+    | ok_ body =>
+      subst heq
+      by_cases hres : ∃ okTy terr, expected = Morph.Core.Typ.resultType okTy terr
+      · obtain ⟨okTy, terr, rfl⟩ := hres
+        rw [Morph.TypeChecker.checkType.eq_6] at h
+        exact HasType.ok_type bvs Γ body okTy terr
+          (ih body bvs Γ okTy (by simp only [mE] at hn; omega) h)
+      · have hne : ∀ okTy a, expected = Morph.Core.Typ.resultType okTy a → False := by
+          rintro okTy a ha
+          exact hres ⟨okTy, a, ha⟩
+        rw [Morph.TypeChecker.checkType.eq_7 bvs Γ expected body hne] at h
+        simp at h
+    | err_ body =>
+      subst heq
+      by_cases hres : ∃ tok terr, expected = Morph.Core.Typ.resultType tok terr
+      · obtain ⟨tok, terr, rfl⟩ := hres
+        rw [Morph.TypeChecker.checkType.eq_8] at h
+        exact HasType.err_type bvs Γ body terr tok
+          (ih body bvs Γ terr (by simp only [mE] at hn; omega) h)
+      · have hne : ∀ okTy a, expected = Morph.Core.Typ.resultType okTy a → False := by
+          rintro okTy a ha
+          exact hres ⟨okTy, a, ha⟩
+        rw [Morph.TypeChecker.checkType.eq_9 bvs Γ expected body hne] at h
+        simp at h
+    | match_ scrut arms =>
+      subst heq
+      rw [Morph.TypeChecker.checkType.eq_10] at h
+      split at h
+      · rename_i tyScrut hin
+        have hty : Morph.TypeChecker.checkArms bvs Γ tyScrut arms expected = true := h
+        have hn' : mArms arms < n := by
+          have h3 := mE_match_arms scrut arms
+          simp only [mE] at h3 hn
+          omega
+        clear hn
+        have hmain : ArmsTyped bvs Γ tyScrut arms expected := by
+          revert hty hn'
+          induction arms with
+          | nil =>
+              intro hty hn'
+              rw [Morph.TypeChecker.checkArms.eq_1] at hty
+              simp only [decide_eq_true_eq] at hty
+              subst hty
+              exact ArmsTyped.nil bvs Γ tyScrut
+          | cons arm rest iharm =>
+              cases arm with
+              | mk vars body =>
+                  intro hty hn'
+                  rw [Morph.TypeChecker.checkArms.eq_2] at hty
+                  rw [Bool.and_eq_true] at hty
+                  obtain ⟨hbody, hrest⟩ := hty
+                  refine ArmsTyped.cons bvs Γ vars body rest tyScrut expected ?_ ?_
+                  · refine ih body (List.replicate vars.length tyScrut ++ bvs) Γ expected
+                      ?_ hbody
+                    exact Nat.lt_trans (mArms_body vars body rest) hn'
+                  · exact iharm hrest hrest
+                      (Nat.lt_trans (mArms_rest vars body rest) hn')
+        exact HasType.match_type bvs Γ scrut arms tyScrut expected
+          (inferType_sound bvs Γ scrut tyScrut hin) hmain
+      · simp at h
     | _ =>
       subst heq
       simp only [Morph.TypeChecker.checkType] at h
@@ -1063,6 +1162,54 @@ theorem checkType_sound_true (bvs : List Morph.Core.Typ) (Γ : TypEnv) (e : Expr
     (h : Morph.TypeChecker.checkType bvs Γ e expected = true) :
     HasType bvs Γ e expected :=
   checkType_sound (mE e + 1) e bvs Γ expected (Nat.lt_succ_self _) h
+
+/-- `checkArms` is sound: it mirrors the `ArmsTyped` rule exactly (loop 11).
+    The body sub-checks use `checkType_sound` at a fixed measure `n` that
+    dominates every arm body, because `mE` counts arms (`mArms`). -/
+theorem checkArms_sound (n : Nat) :
+    ∀ (arms : List (List String × Expr)) (bvs : List Morph.Core.Typ) (Γ : TypEnv)
+      (tyScrut expected : Morph.Core.Typ),
+      mArms arms < n →
+      Morph.TypeChecker.checkArms bvs Γ tyScrut arms expected = true →
+      ArmsTyped bvs Γ tyScrut arms expected := by
+  intro arms
+  induction arms with
+  | nil =>
+    intro bvs Γ tyScrut expected _hn h
+    rw [Morph.TypeChecker.checkArms.eq_1] at h
+    simp only [decide_eq_true_eq] at h
+    subst h
+    exact ArmsTyped.nil bvs Γ tyScrut
+  | cons arm rest iharm =>
+    cases arm with
+    | mk vars body =>
+      intro bvs Γ tyScrut expected hn h
+      rw [Morph.TypeChecker.checkArms.eq_2] at h
+      rw [Bool.and_eq_true] at h
+      obtain ⟨hbody, hrest⟩ := h
+      refine ArmsTyped.cons bvs Γ vars body rest tyScrut expected ?_
+        (iharm bvs Γ tyScrut expected (by simp only [mArms] at hn; omega) hrest)
+      refine checkType_sound n _ (List.replicate vars.length tyScrut ++ bvs) Γ expected ?_ hbody
+      have h1 := mArms_body vars body rest
+      simp only [mArms] at hn
+      omega
+
+/-- **Non-completeness witness (formal).** `.none_` is derivable in the
+    declarative judgment for *every* `.optionType τ`, but synthesis returns
+    `none`: there is no ambient information to pick `τ`. This is the formal
+    justification for the header claim that completeness of `inferType` is
+    false, and for why checking mode (loop 11) covers these constructs. -/
+theorem infer_not_complete (bvs : List Morph.Core.Typ) (Γ : TypEnv) (τ : Morph.Core.Typ) :
+    HasType bvs Γ .none_ (.optionType τ) ∧ inferType bvs Γ .none_ = none :=
+  ⟨HasType.none_type bvs Γ τ, by simp [inferType]⟩
+
+/-- Contract-level corollary of `checkArms_sound` without the measure
+bookkeeping. -/
+theorem checkArms_sound_true (bvs : List Morph.Core.Typ) (Γ : TypEnv)
+    (tyScrut expected : Morph.Core.Typ) (arms : List (List String × Expr))
+    (h : Morph.TypeChecker.checkArms bvs Γ tyScrut arms expected = true) :
+    ArmsTyped bvs Γ tyScrut arms expected :=
+  checkArms_sound (mArms arms + 1) arms bvs Γ tyScrut expected (Nat.lt_succ_self _) h
 
 /-- `typeCheckBlock` is sound: every expression in the block is typable
 (independently) by the judgment. -/

@@ -3,6 +3,8 @@ import Morph.Core
 import Morph.Syntax
 import Morph.Specs.TypeSystem.Spec
 import Morph.Specs.TypeSystem.Lemmas
+import Morph.Specs.TypeSystem.InferenceSound
+import Morph.TypeChecker
 import Aesop
 
 namespace Tests.Typing
@@ -477,5 +479,82 @@ section HasTypeConstructorTests
       (WellTyped.unitType_wf [])
 
 end HasTypeConstructorTests
+
+section CheckingModeTests
+  open Morph.Specs.TypeSystem
+  open Morph.Core
+  open Morph.Syntax
+  open Morph.TypeChecker
+
+  -- Loop 11: bidirectional checking mode for the ambiguous constructs.
+
+  -- `.none_` accepts any option expectation and rejects non-option ones.
+  example : checkType [] [] .none_ (.optionType .intType) = true := by
+    simp [checkType]
+
+  example : checkType [] [] .none_ (.optionType (.optionType .boolType)) = true := by
+    simp [checkType]
+
+  example : checkType [] [] .none_ .intType = false := by
+    simp [checkType]
+
+  -- `.ok_ e` checks the body against the success component.
+  example : checkType [] [] (.ok_ (.lit (.int 1))) (.resultType .intType .stringType) = true := by
+    simp [checkType, inferType]
+
+  example : checkType [] [] (.ok_ (.lit (.int 1))) (.resultType .boolType .stringType) = false := by
+    simp [checkType, inferType]
+
+  example : checkType [] [] (.ok_ (.lit (.int 1))) .intType = false := by
+    simp [checkType]
+
+  -- `.err_ e` checks the body against the error component.
+  example : checkType [] [] (.err_ (.lit (.string "boom"))) (.resultType .intType .stringType) = true := by
+    simp [checkType, inferType]
+
+  example : checkType [] [] (.err_ (.lit (.string "boom"))) (.resultType .intType .boolType) = false := by
+    simp [checkType, inferType]
+
+  -- `.match_` synthesizes the scrutinee, then checks every arm; the empty
+  -- arm list demands `unitType` (ArmsTyped.nil).
+  example :
+      checkType [] []
+        (.match_ (.lit (.int 1)) [])
+        .unitType = true := by
+    simp [checkType, inferType, checkArms]
+
+  -- A non-empty arm list requires the expected type to be `unitType`: the
+  -- `checkArms` nil case (`ArmsTyped.nil`) demands it of the *whole* list, so
+  -- an arm list that does not end in `unitType` is rejected.
+  example :
+      checkType [] []
+        (.match_ (.lit (.int 1)) [(["a"], .lit (.unit))])
+        .unitType = true := by
+    native_decide
+
+  example :
+      checkType [] []
+        (.match_ (.lit (.int 1)) [(["a"], .binop .add (.bvar 0) (.lit (.int 2)))])
+        .intType = false := by
+    native_decide
+
+  example :
+      checkType [] []
+        (.match_ (.lit (.int 1)) [(["a"], .binop .add (.bvar 0) (.lit (.int 2)))])
+        .boolType = false := by
+    native_decide
+
+  -- Soundness round-trip for a checking-mode case (via the proven contract).
+  example :
+      HasType [] [] (.ok_ (.lit (.int 1))) (.resultType .intType .stringType) :=
+    checkType_sound_true [] [] (.ok_ (.lit (.int 1))) (.resultType .intType .stringType)
+      (by native_decide)
+
+  example :
+      ArmsTyped [] [] .intType [(["a"], .lit (.unit))] .unitType :=
+    checkArms_sound_true [] [] .intType .unitType [(["a"], .lit (.unit))]
+      (by native_decide)
+
+end CheckingModeTests
 
 end Tests.Typing
