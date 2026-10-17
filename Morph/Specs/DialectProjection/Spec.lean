@@ -40,7 +40,7 @@ inductive Dialect where
   | core : Dialect
   | «unsafe» : Dialect
   | ffi : Dialect
-  deriving Repr, BEq, Hashable
+  deriving Repr, BEq, Hashable, DecidableEq
 
 /-- Capability flags for a dialect -/
 structure DialectCapability where

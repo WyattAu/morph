@@ -38,6 +38,67 @@ not increase, no `example : True := trivial` stubs.
 
 ## Iteration Notes
 
+### Iteration 7 — Dialects: translation validation (SG-001 CLOSED)
+
+**Target.** SG-001, "Formal semantics for cross-dialect translation", and
+`Morph/Specs/DialectProjection/`.
+
+**What the loop found.** The module declares dialects, capability flags and a
+lowering pass, and stops there. `lower` is documented "a structural pass-through;
+full lowering is dialect-specific" and retags values **without asking whether the
+target may perform the operations it is being handed**. `Projection.isValid`
+answers `True` for three hard-coded pairs and `False` otherwise, with no
+capability argument. `Lemmas.lean` contains only `rfl` facts about `List` and
+`Option` — no dialect content. So there was no semantics for a translation to
+preserve, and no legality check to be incorrect.
+
+**Research.** **Translation validation** (Pnueli et al.; in its modern form
+**Alive2**, Lopes, Lee, Hur, Liu & Regehr, PLDI 2021) never proves a compiler
+correct once — it validates *each individual translation* against a denotational
+semantics, so the obligation is `src ≡ tgt` for the pass under consideration.
+Alive2's most instructive finding is that its bugs clustered where the IR
+*specification* was informal: exactly Morph's situation, where `lower` has no
+semantics to be informal about. **First-class verification dialects for MLIR**
+attack the same problem by making a dialect's *semantics* the specified artifact.
+
+**Delivered.** `Morph/Specs/DialectSemantics/` + `spec/language/dialect_semantics_spec.md`.
+* `Spec.lean`: `Term` (tagged values, arithmetic, the two authority-requiring
+  primitives), `permits` — the capability test `lower` never made — and `eval`,
+  the denotation. Two facts carry the weight: **the dialect tag of a value is
+  irrelevant to its denotation** (so retagging is safe), and **an
+  authority-requiring primitive has no denotation** (machine state is not
+  modelled), which is *why* translation must refuse rather than pass through.
+  `translate : Dialect → Term → Option Term` retags and refuses.
+* `Lemmas.lean`: **`translate_preserves_eval`** — the validation obligation;
+  `translate_in_target` — an accepted translation is entirely in the target
+  dialect; `translate_unsafe_total`; and the exactness of the capability check,
+  `translate_core_refuses_unsafe` / `translate_core_accepts_safe` /
+  **`translate_core_iff_safe`** — `core` accepts exactly the safe terms, so
+  refusal is *total*, not heuristic.
+* `Examples.lean`: the obligation discharged by computation. `1 + 2 * 3` denotes
+  `7` in both dialects; a `rawptr` program denotes nothing, is refused by `core`
+  and accepted by `unsafe`.
+* **`lower_smuggles`**: the counterexample. The old pass-through produces exactly
+  the accepted-but-illegal term that `translate` refuses.
+
+**Design decision worth flagging.** The term language is the *binary/unary* core
+rather than the list-shaped `DialectExpr`. With a denotational semantics there is
+no list nesting to fight, so the whole theory is structural induction; the
+list-shaped form is covered by the same statements. This is the opposite trade
+from loop 5, where the depth-two nesting *was* the content.
+
+**Proof-engineering findings worth keeping.** Core Lean has **no `by_contra`** —
+use `Classical.byContradiction`. A `def` with a curried type ascription inside a
+`mutual` block must take the fixed parameter *outside* the ascription, or Lean
+expects one pattern per equation and fails to infer the recursive call's type.
+
+**Not claimed (§6 of the spec).** No operational/refinement semantics, no
+per-dialect value or memory model (`ffi` and `core` differ only in what they
+permit), `safe` is a syntactic judgement rather than a memory-safety proof, and
+the bridge to `Morph/Syntax.lean` is mechanical but absent. Equality of
+denotations only — a translation computing *more* is rejected even when it might
+be desirable.
+
 ### Iteration 6 — Effects: the effect set as an algebraic theory (DONE)
 
 **Target.** Morph's effect set `{IO, Net, Time, System}` and the existing module

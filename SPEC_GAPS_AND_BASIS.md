@@ -44,7 +44,7 @@ The following assumptions were identified as needing formal validation. See `spe
 
 | Gap ID | Area | Description | Priority | Roadmap Phase |
 |--------|------|-------------|----------|--------------|
-| SG-001 | Syntax Translation | Formal semantics for cross-dialect translation | Medium | Phase 1 |
+| SG-001 | Syntax Translation | Formal semantics for cross-dialect translation | **CLOSED** (loop 7: `Morph/Specs/DialectSemantics/`, `spec/language/dialect_semantics_spec.md`) | — | — |
 | SG-002 | Memory Model | Formal bounds on heap allocation growth | **CLOSED** | Phase 1.5 — `spec/memory/memory_bounds_spec.md` (research loop 2) |
 | SG-003 | Security Flow | Taint tracking across dialect boundaries | **CLOSED** | Phase 1.6 — `spec/security/taint_flow_spec.md` (research loop 4) |
 | SG-004 | Concurrency | Deadlock-freedom proof for actor system | **CLOSED** | Phase 4.4 — `spec/concurrency/actor_deadlock_freedom_spec.md` (research loop 3) |
