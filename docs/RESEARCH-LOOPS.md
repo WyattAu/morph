@@ -38,6 +38,67 @@ not increase, no `example : True := trivial` stubs.
 
 ## Iteration Notes
 
+### Iteration 5 — Core semantics: the substitution equational theory (DONE)
+
+**Target.** `Morph/Syntax.lean` defines `liftUnder` and `subst'` (capture-avoiding
+de Bruijn substitution) with **no stated theory about them**: the substitution
+equations existed only as `example`s in `Morph/Tests/Semantics.lean`, and
+`Morph/Proofs/TypeSoundness/Preservation.lean` routes around them with private
+*depth* helpers (`HasType_subst_depth`). The POPLmark "equational theory"
+obligations were simply absent.
+
+**Research.** POPLmark (Aydemir et al., TPHOLs 2005) frames these as benchmark
+obligations. **Autosubst** (Stark & Setzer, J. Log. Comput. 2018) and **Autosubst
+2** (IJDART 2021) auto-generate both the substitution operation *and* several
+equational lemmas from a substitution signature — i.e. the lemmas are derivable
+by construction, not by hand. Autosubst 2's multi-sorted extension is what Morph
+needs (`fvar` and `bvar` coexist). **Well-scoped locally nameless** is the
+modern alternative that *deletes* most of these lemmas by representing open terms
+with free variables. Recorded as future work: Morph cannot use Autosubst (Coq
+code generator; `Expr` is a 29-constructor inductive with nested lists, pattern
+variable lists, and two sorts of variable), so the theory is hand-stated in the
+shape Autosubst would have generated.
+
+**Key finding — the measure was wrong before the proof was attempted.** The
+obvious law `i ≥ boundCount e → subst' i e v = e` is **false**, because
+`boundCount (.bvar n) = 0` constrains nothing about `n`, yet substitution still
+needs `n < i` before it may leave an index alone. The correct judgement is the
+standard scoping predicate `Scoped i e` ("every de Bruijn index occurring in `e`
+is below `i`"), raised by each binder's arity. `boundCount` is kept as the
+binder-depth measure; `Scoped` drives the theory.
+
+**Delivered.** `Morph/Specs/SubstTheory/` —
+* `Spec.lean`: `boundCount` and its list/arms helpers.
+* `Lemmas.lean`: the size measure `nodeCount`, the scoping predicate `Scoped` /
+  `ScopedList` / `ScopedArms`, the defining equations (`subst_bvar_below`,
+  `subst_bvar_hit`, `subst_bvar_above`, `liftUnder_bvar_*`, `subst_fvar`,
+  `subst_lit`, `subst_lam`, `subst_let_`, `subst_ifThenElse`), and
+  **`subst_above`** — *no capture*: `Scoped i e → subst' i e v = e` — proved for
+  all 29 constructors including `match_` arms and pattern variables.
+* `Examples.lean`: β-reduction computed, e.g.
+  `subst' 1 (.lam 2 (.bvar 3)) (.bvar 0) = .lam 2 (.bvar 3)` (the lifted
+  substitute keeps an enclosing-context reference pointing at the right slot).
+* `spec/language/subst_equational_theory_spec.md`: the model, the survey, the
+  measure analysis, and four explicit non-claims.
+
+**Proof-engineering findings worth keeping.** `match_` arm bodies sit **two
+constructors deep**, so `Expr`-structural induction cannot reach them: the proof
+is a strong induction on `nodeCount`, with list/arms helpers whose step is
+restricted to list members (the most the list induction can justify).
+`Nat.strongRecOn` requires an explicit `motive`, and its recursion variable must
+shadow the outer one — the fuel bound and the substitution index are *not* the
+same variable. `∧` is right-associative, so a three-way conjunction projects as
+`hs.1`, `hs.2.1`, `hs.2.2`. `Nat.le_refl _` does not elaborate in a `simp`
+lemma list; use `Nat.le_refl (nodeCount e)` explicitly. This `omega` cannot
+prove `¬(i = i)` for identical terms — it handles `n ≠ i` from `i < n` fine.
+
+**Not claimed (§6 of the spec).** The typing substitution lemma (proved today by
+`HasType_subst` inside preservation), the composition law, and the
+lifting-interaction law. The composition law for Morph's `subst'` is *not* the
+textbook one — because the substitute is lifted at the hit site rather than
+stored lifted, the naive statement is false and the correct one is index-shift
+heavy. Both remaining obligations are named as their own future loop.
+
 ### Iteration 4 — Security: taint tracking across dialect boundaries (DONE)
 
 **Survey.** Robust declassification (Zdancewic & Myers POPL'01; enforcement in
