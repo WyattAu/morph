@@ -38,6 +38,66 @@ not increase, no `example : True := trivial` stubs.
 
 ## Iteration Notes
 
+### Iteration 6 — Effects: the effect set as an algebraic theory (DONE)
+
+**Target.** Morph's effect set `{IO, Net, Time, System}` and the existing module
+`Morph/Specs/MonadicEffect/`.
+
+**What the loop found.** That module is a syntax with three defects and no
+content: (1) `EffectfulComputation.seq` takes a `String → …` continuation, so
+there is **no monad** and the monadic laws cannot even be stated; (2) there is
+**no semantics** — no reduction, no interpretation of what a computation means;
+(3) `Lemmas.lean` holds two `rfl` facts about `Option.bind`. Worse,
+`EffectfulComputation.effectNames` is documented "shallow, one level" and
+traverses no continuation, so it reports **none** of the effects a real program
+performs.
+
+**Research.** Plotkin & Pretnar, *Handlers of Algebraic Effects* (LICS 2008 /
+MSFP 2009) show nondeterminism, interactive I/O, concurrency, state and **time**
+are all *algebraic* — representable by an algebraic theory — with the computation
+monad the **free-model monad** of that theory, and handling given by the
+homomorphism the free model's universal property induces. Every class in
+Morph's effect set is on that list; only continuations are not. Plotkin &
+Pretnar, *Handling Algebraic Effects* (Edinburgh 2013) generalise this to
+exception handlers. Bauer & Pretnar, *An Effect System for Algebraic Effects and
+Handlers* (arXiv:1306.6316) supply the pivot: **with handlers the effect system
+is non-monotone** — a handler *deletes* effects, so effects are not merely
+accumulated in types.
+
+**Delivered.** `Morph/Specs/EffectAlgebra/` + `spec/language/effect_algebra_spec.md`.
+* `Spec.lean`: `Op` (read/write/connect/send/now/sleep/exec/raise), `Op.class`
+  into `EffectClass` — the projection the old flat inductive lacked — the freer
+  monad `Eff`, `Model σ` with `answer : Op → List σ` (nondeterminism lives in
+  this one field), `denote`, `Handler` (a model plus the classes it covers).
+* `Lemmas.lean`: **`denote_bind`** — the induced map is a monad homomorphism,
+  the algebraic-effects claim in form; `bind_assoc_denote`, `pure_bind_denote`,
+  `bind_pure_denote`; **`denote_unanswered`** — failure is the *absence* of an
+  answer, so `Net` needs no special form; `classes_bind_subset` over a
+  **complete** effect collection that fixes the shallow-collection bug; and
+  **`residual_subset` / `covered_residual_empty`** — a handler can only
+  *remove* effects, which is what makes an effect system sound for
+  handler-containing programs.
+* `Examples.lean`: one model per class. The same syntax denotes `["contents"]`
+  under a deterministic model and `["t0","t1"]` under a nondeterministic one,
+  and `[]` when `Net.connect` fails.
+
+**Design decision worth flagging.** The freer monad keeps an explicit `andThen`
+node instead of collapsing `bind` through the syntax. Without it the monad laws
+are statements about a rewriting system; with it they are theorems *in the
+model*, which is the only place they can be observed.
+
+**Proof-engineering findings worth keeping.** Core Lean (no Mathlib) has **no
+`Decidable (k ∈ l)` instance for lists**, so neither `decide` nor `if k ∈ l` can
+drive a `List.filter` — boolean membership (`memClass`) and removal
+(`removeCovered`) must be spelled out by hand. A definition with a curried type
+ascription (`def f : A → B → C`) gets *one* pattern per equation, so curried
+recursion needs the argument binder outside the ascription.
+
+**Not claimed (§5 of the spec).** No effect typing (the natural next loop — the
+present module supplies the operational content a system would be stated over),
+no cost or termination accounting, no deep handlers or handler re-installation,
+and `System` escalation is a policy concern, not a semantic one.
+
 ### Iteration 5 — Core semantics: the substitution equational theory (DONE)
 
 **Target.** `Morph/Syntax.lean` defines `liftUnder` and `subst'` (capture-avoiding
