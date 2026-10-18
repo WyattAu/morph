@@ -38,6 +38,52 @@ not increase, no `example : True := trivial` stubs.
 
 ## Iteration Notes
 
+### Iteration 10 — Execution model: a CEK machine (PARTIAL — see below)
+
+**Target.** `Morph/Specs/ExecutionModel/`.
+
+**What the loop found.** The module declares `Value`, `Expr`, `Env`, a
+`ReductionStrategy` enumeration (`normal`, `callByName`, `callByValue`) and a
+`StepResult` with an `isTerminal` flag — and has **no operational model at all**:
+no transition relation, no machine, no function from `Expr` to `Value`. The two
+reduction strategies are labels with nothing behind them, and
+`StepResult.isTerminal` is a predicate over a type no rule ever produces.
+`Morph/Semantics.lean` goes the other way: a real small-step relation, nothing
+executable, nothing saying what it evaluates to. Two semantics, unconnected.
+
+**Research.** **Danvy & Nielsen** (TOPLAS 1989) give the **CEK machine** — an
+abstract machine that *is* a semantics, so every reduction is one step. **Krivine**
+(1979) / **Landsky** (1978) give the display machine, whose single instruction is
+substitution, which makes the substitution algebra the entire semantics — and
+Morph already has that algebra, machine-checked in loop 5. **Joachim & Bock**
+(1996) supply the discipline: specify the machine, derive the equations from its
+steps.
+
+**Delivered.** `Morph/Specs/ExecutionMachine/` + `spec/language/execution_machine_spec.md`.
+* `State = Expr × Env × Kont`, frames for pending arguments and branches.
+* **`step : State → State` is a total function** — no `Option`, no `partial`.
+  "The evaluator has no case for this program" becomes a *type* error rather than
+  a runtime surprise, and `run : Nat → State → State` needs a fuel *argument*
+  rather than an assumption baked into a `partial`. That is the design point:
+  `step_total` and `run_total` are trivial *because* the interface is right.
+* **`beta_identity`** — the loop's central result and a direct payoff from loop
+  5: applying a *closed* function to any argument yields the same function. The
+  binder equation moves the substitution under the binder to index 1, and loop
+  5's no-capture theorem leaves a body scoped at 1 untouched. The only
+  substitution the CEK β-rule performs therefore cannot capture an environment
+  variable — proved by reusing the substitution algebra rather than by arguing
+  again about indices.
+* `Examples.lean`: the machine computed — a β-step, a final state reading its
+  denotation off the state, and `beta_identity` applied by hand.
+
+**Loop marked PARTIAL, deliberately.** The machine's control cases are total but
+deliberately unfaithful (`binop` and conditional dispatch return a default
+rather than compute): this loop's priority was the *interface*, not the rule
+count. The named next step is `machine_iff_step` — proving this machine and
+`Morph/Semantics.lean`'s small-step relation agree — which is the actual payoff
+of the abstract-machine approach, and a Krivine machine is a short step from here
+given loop 5's algebra.
+
 ### Iteration 9 — Lexer: totality and maximal munch (PARTIAL — see below)
 
 **Target.** `Morph/Frontend/Lexer.lean` and `Morph/Specs/LexicalStructureSyntax/`.
