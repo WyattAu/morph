@@ -38,6 +38,63 @@ not increase, no `example : True := trivial` stubs.
 
 ## Iteration Notes
 
+### Iteration 8 — Scheduler: work-stealing correctness (PARTIAL — see below)
+
+**Target.** `Morph/Specs/SchedulerRandomizedStealing/`.
+
+**What the loop found.** The "Randomized Work-Stealing Scheduler" spec contains
+**no scheduler**: no step function, no steal operation, no transition relation.
+`Ball` and `Bin` are bare records, and `Lemmas.lean` is `rfl` facts about
+`listMin`/`listMax` plus `Nat.zero_le`. And the property it names is not an
+invariant at all: `isBalanced` constrains queue *lengths* at an instant, but an
+idle thief may steal repeatedly, so after two steals the spread exceeds 1. It had
+no theorem because it is false.
+
+**Research.** **Chase & Lev** (SPAA 2005) fix the discipline — owner pushes/pops
+the *bottom* (LIFO, cache-hot), thieves steal the *top* (FIFO, largest chunk) —
+and identify the subtle point: a `popBottom` emptying the deque must CAS the top
+index "*to guarantee that no concurrent steal operation will also return the
+deque's last entry*". **Lê, Pop, Cohen & Zappa Nardelli** (PPoPP 2013) proved the
+optimized deque correct under POWER/ARM and exhibited a racing steal on an empty
+deque returning a stale value — *fabrication*, worse than duplication. **Choi**
+(arXiv:2309.03642, Coq) mechanizes the deque against **linearizability** with a
+minimal trusted base: the property is about *who gets which task*, never about
+queue lengths. **Blumofe & Leiserson** supply the accounting requirement — work
+conservation.
+
+**Delivered.** `Morph/Specs/StealingFairness/` + `spec/concurrency/stealing_fairness_spec.md`.
+* `Spec.lean`: `Deque` as Chase–Lev's **two ends** (`bottom` for the owner,
+  `top` for thieves) rather than a list with a `reverse`, plus `pop`, `steal`,
+  `push`, `Pair` and `State`.
+* `Lemmas.lean` — eight theorems: **`pop_takes_newest`** and
+  **`steal_takes_oldest`** (the LIFO/FIFO discipline, which is what buys both
+  cache locality and load balance); **`total_pop`** and **`total_steal`**
+  (work conservation: each end operation removes exactly one task);
+  **`last_element_race_owner_first`** and **`_thief_first`** (Chase–Lev's
+  subtle point, sequenced: on a one-element deque the owner and the thief cannot
+  both get it); `steal_from_empty_is_none` (the thief's precondition, and why a
+  retry loop terminates per victim); `queued_push`.
+* `Examples.lean`: the discipline computed — `pop` takes the newest, `steal` the
+  oldest, and the race resolves one way or the other.
+
+**Loop marked PARTIAL, deliberately.** The multi-worker accounting was designed
+and then removed: proving that a *sequence* of steps terminates requires
+aggregating over worker queues, i.e. rewriting inside a `foldl`'s accumulator,
+and that consumed the loop's remaining budget. The named next theorem is
+recorded in the spec: **`ran_le_work`** — along any sequence of executing steps
+the run log never outgrows the scheduler's total work. That is the only honest
+version of "the scheduler terminates", and it is what `isFair` was reaching for.
+The eight delivered theorems are the part that is actually true.
+
+**Proof-engineering findings worth keeping.** Representing the deque as a single
+list with a `reverse`-based `pop` makes the conservation proofs need
+list-append lemmas and fails anyway: a popped task may legitimately remain in the
+*other* end, so `t ∉ d'` is false without a no-duplicates invariant. The
+two-end structure avoids both problems and is closer to the paper. Also, a
+theorem over a `match`-defined function needs the function `unfold`ed at the
+hypothesis (`unfold Pair.stealFrom at h`) before `cases` on its scrutinee — and
+`rw` closes goals eagerly, so a trailing `; rfl` after it is an error.
+
 ### Iteration 7 — Dialects: translation validation (SG-001 CLOSED)
 
 **Target.** SG-001, "Formal semantics for cross-dialect translation", and
