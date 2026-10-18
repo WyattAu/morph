@@ -66,3 +66,17 @@ The Morph specification suite rests on the following foundational assumptions:
 2. **Constructive logic**: Specifications use constructive (intuitionistic) logic via Lean 4's type theory
 3. **No runtime GC**: Memory management relies on affine types + ARC, not tracing garbage collection
 4. **Deterministic execution**: All pure expressions have deterministic evaluation order
+
+## Resolution log
+
+| Gap | Status | Resolution |
+|---|---|---|
+| SG-001 | **CLOSED** | Loop 7: `Morph/Specs/DialectSemantics/` — translation validation; every accepted translation preserves the denotation, and refusal is total. `spec/language/dialect_semantics_spec.md`. |
+| SG-002 | **CLOSED** | Loop 2: `Morph/Specs/MemoryBounds/` — affine discipline as an invariant, `invariant_preserved`, `quiescent_no_leak`, `allocs_bound`. `spec/memory/memory_bounds_spec.md`. |
+| SG-003 | **CLOSED** | Loop 4: `Morph/Specs/TaintFlow/` — taint preserved across dialect boundaries; `boundary_preserves_noninterference`. `spec/security/taint_flow_spec.md`. |
+| SG-004 | **CLOSED** | Loop 3: `Morph/Specs/ActorDeadlock/` — deadlock freedom from a rank invariant; `progress_invariant`. `spec/concurrency/actor_deadlock_freedom_spec.md`. |
+
+Four further modules had no stated theory at all and now do, each with its own
+spec document: `SubstTheory` (loop 5, no-capture), `EffectAlgebra` (loop 6),
+`StealingFairness` (loop 8, partial), `TotalLexer` (loop 9, partial),
+`ExecutionMachine` (loop 10, partial). See `docs/RESEARCH-LOOPS.md`.

@@ -38,6 +38,59 @@ not increase, no `example : True := trivial` stubs.
 
 ## Iteration Notes
 
+## Summary after 10 iterations
+
+| # | Topic | Outcome | Commit |
+|---|---|---|---|
+| 1 | Subtyping | baseline audit: `Subtype` derives nothing | — |
+| 2 | Memory heap bounds | **SG-002 CLOSED** — affine discipline as an invariant | `f676d4e` |
+| 3 | Concurrency | **SG-004 CLOSED** — deadlock freedom from a rank invariant | `f35577e` |
+| 4 | Security | **SG-003 CLOSED** — taint survives dialect boundaries | `5d15972` |
+| 5 | Core semantics | **substitution equational theory** — the no-capture theorem | `795f115` |
+| 6 | Effects | `{IO, Net, Time, System}` as an algebraic theory | `83ee047` |
+| 7 | Dialects | **SG-001 CLOSED** — translation validation | `10caf18` |
+| 8 | Scheduler | work-stealing discipline (Chase–Lev), partial | `01a6d03` |
+| 9 | Lexer | totality, `.eof` as a token, maximal munch, partial | `2016e92` |
+| 10 | Execution model | CEK machine reusing loop 5's algebra, partial | `c3a1f9d` |
+
+**Closed specification gaps:** SG-001, SG-002, SG-003, SG-004 — four of four.
+
+**What the ten loops found, as one pattern.** Every target module was *present and
+named* but had no content behind its claim:
+
+- dead code wearing theorem clothes: `Lemmas.lean` files containing only `rfl`
+  facts about `List`, `Option` and `Char` predicates (loops 2, 6, 7, 8, 9);
+- `True`/`trivial` theorems whose names promised invariants (loops 3, 4);
+- **properties that are false**, not merely unproved — `isBalanced` is not
+  preserved by stealing (loop 8); the obvious no-capture condition
+  `i ≥ boundCount e` is false (loop 5);
+- **assumptions in the type system**: `partial def nextToken` (loop 9),
+  `Option Token` conflating EOF with error (loop 9), `EffectfulComputation.seq`
+  keyed by `String` so no monad existed (loop 6), `lower` as a "structural
+  pass-through" with no legality check (loop 7).
+
+**The recurring methodological point.** In five of ten loops the first attempt at
+the *statement* was wrong, and computing the definition caught it: `boundCount`
+turned out not to be the measure for no-capture (loop 5); my own lexer's fallback
+branch produced a token without consuming a character (loop 9); a popped task may
+legitimately remain at the *other* end of a deque, so `t ∉ d'` is false without a
+no-duplicates invariant (loop 8). Each of these is recorded in the relevant spec
+under "explicit non-claims" rather than quietly patched.
+
+**Honest partials.** Loops 8, 9 and 10 are marked PARTIAL in their entries. In
+each, the missing theorem is *named* — `ran_le_work`, `nextToken_progress` /
+`lexAll`, `machine_iff_step` — rather than approximated with a weaker claim that
+would have looked like completion.
+
+**Carried forward.** Loop 10's `beta_identity` is the payoff of loop 5: the CEK
+β-rule's capture-avoidance is not argued again, it is *reused* from the
+substitution algebra. That reuse is the argument for keeping these theories as
+first-class modules rather than inline proofs.
+
+**Standing verification gate** (unchanged throughout): `lake build Morph` green,
+zero `sorry` declarations, no `True`-stub theorems in any module this project
+wrote, and the repository's own pre-commit suite passing on every commit.
+
 ### Iteration 10 — Execution model: a CEK machine (PARTIAL — see below)
 
 **Target.** `Morph/Specs/ExecutionModel/`.
