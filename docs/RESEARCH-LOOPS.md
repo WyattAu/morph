@@ -38,6 +38,48 @@ not increase, no `example : True := trivial` stubs.
 
 ## Iteration Notes
 
+### Iteration 9 — Lexer: totality and maximal munch (PARTIAL — see below)
+
+**Target.** `Morph/Frontend/Lexer.lean` and `Morph/Specs/LexicalStructureSyntax/`.
+
+**What the loop found.** The shipped lexer's driver is
+`partial def nextToken (l : Lexer) : Lexer × Option Token`, and `scanString` is
+`partial` too. So (1) **totality is assumed, not proved** — `partial` keeps the
+termination argument out of the kernel, and "every input is consumed in finite
+time", the property a front end must have, is a theorem nowhere in the repo; and
+(2) **`Option Token` conflates three outcomes** — end of input, lexical error,
+and "could not lex" — so a caller cannot tell "finished" from "stalled", which is
+part of *why* `partial` was reached for. The spec module confirms the pattern:
+ten lemmas, all `rfl` about `String.length` and `Char.isDigit`.
+
+**Research.** **Maximal munch** (Dragon book §3.4; Marpa 2012): take the
+*longest* run a rule matches, and lexing fails only when no rule matches — so a
+total lexer never goes silent. **Aycock & Horspool** (PLDI 2003, *Practical
+General-Purpose Partial Parsing*) argues the opposite is often what you want:
+accept a prefix, defer the error. Morph's `Option Token` is already an instance of
+that, deliberately — so this loop does **not** claim a lexer has no partial
+states; it claims the partial states are named and separate from end of input.
+
+**Delivered.** `Morph/Specs/TotalLexer/` + `spec/language/total_lexer_spec.md`.
+* `.eof` is a **token**, not an absence: the step returns `TokKind × List Char`,
+  so it cannot fail (`nextToken_total`, `nextToken_nil`).
+* An **unmatched character is still a token** — `#` is reported as an operator
+  rather than dropped.
+* Maximal munch: `dropWhile_cons_lt` (a matching head is always consumed, so a
+  munch never silently yields nothing), `takeWhile_all`, and the length bounds.
+* `nextToken_eof_iff`: `.eof` **exactly** on exhausted input.
+
+**A bug found by computing rather than reading.** The fallback branch for an
+unmatched character initially returned the input unchanged — producing a token
+but making *no progress*, which is precisely the defect that forces `partial`.
+It was caught by `#eval nextToken ['#']` in the loop, not by reading the code.
+The branch now consumes the head character.
+
+**Loop marked PARTIAL, deliberately.** The two theorems that would replace the
+shipped `partial` — `nextToken_progress` (each step consumes a character or
+reports `.eof`) and `lexAll` (fuel `cs.length` suffices) — were not reached. Both
+are named in §6 of the spec as the next step rather than faked.
+
 ### Iteration 8 — Scheduler: work-stealing correctness (PARTIAL — see below)
 
 **Target.** `Morph/Specs/SchedulerRandomizedStealing/`.
