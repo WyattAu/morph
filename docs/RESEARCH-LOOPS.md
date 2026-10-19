@@ -49,9 +49,9 @@ not increase, no `example : True := trivial` stubs.
 | 5 | Core semantics | **substitution equational theory** — the no-capture theorem | `795f115` |
 | 6 | Effects | `{IO, Net, Time, System}` as an algebraic theory | `83ee047` |
 | 7 | Dialects | **SG-001 CLOSED** — translation validation | `10caf18` |
-| 8 | Scheduler | work-stealing discipline (Chase–Lev), partial | `01a6d03` |
-| 9 | Lexer | totality, `.eof` as a token, maximal munch, partial | `2016e92` |
-| 10 | Execution model | CEK machine reusing loop 5's algebra, partial | `c3a1f9d` |
+| 8 | Scheduler | work-stealing discipline + termination bound | `01a6d03`, `7fdbfb3` |
+| 9 | Lexer | totality, `.eof` as a token, maximal munch, termination | `2016e92`, `bcd5899` |
+| 10 | Execution model | CEK machine + β-rule correspondence | `c3a1f9d`, (this commit) |
 
 **Closed specification gaps:** SG-001, SG-002, SG-003, SG-004 — four of four.
 
@@ -77,10 +77,21 @@ legitimately remain at the *other* end of a deque, so `t ∉ d'` is false withou
 no-duplicates invariant (loop 8). Each of these is recorded in the relevant spec
 under "explicit non-claims" rather than quietly patched.
 
-**Honest partials.** Loops 8, 9 and 10 are marked PARTIAL in their entries. In
-each, the missing theorem is *named* — `ran_le_work`, `nextToken_progress` /
-`lexAll`, `machine_iff_step` — rather than approximated with a weaker claim that
-would have looked like completion.
+**Honest partials, then finished.** Loops 8, 9 and 10 were first delivered marked
+PARTIAL, each *naming* the theorem it had not reached rather than approximating it
+with a weaker claim that would have looked like completion. All three were then
+completed:
+
+| Loop | Named as missing | Delivered |
+|---|---|---|
+| 8 | `ran_le_work` | `ran_le_work`, `ran_le_initial_work`, plus work conservation at the scheduler level |
+| 9 | `nextToken_progress` / `lexAll` | `nextToken_progress`, `residual_bound`, `reaches_eof` — the `partial` is discharged |
+| 10 | `machine_iff_step` | `substAll_single`: the two β-rules are the same substitution, at every offset |
+
+Two further modelling errors surfaced during those completions, both caught by
+computing rather than reading: `Pair.stealFrom` double-counted a stolen task
+(queue *and* log), and the first bounded-log theorem was false because a run
+shrinks the thief's queue exactly as it grows the log.
 
 **Carried forward.** Loop 10's `beta_identity` is the payoff of loop 5: the CEK
 β-rule's capture-avoidance is not argued again, it is *reused* from the
@@ -91,7 +102,7 @@ first-class modules rather than inline proofs.
 zero `sorry` declarations, no `True`-stub theorems in any module this project
 wrote, and the repository's own pre-commit suite passing on every commit.
 
-### Iteration 10 — Execution model: a CEK machine (PARTIAL — see below)
+### Iteration 10 — Execution model: a CEK machine (DONE, completed after the tenth)
 
 **Target.** `Morph/Specs/ExecutionModel/`.
 
@@ -129,13 +140,33 @@ steps.
 * `Examples.lean`: the machine computed — a β-step, a final state reading its
   denotation off the state, and `beta_identity` applied by hand.
 
-**Loop marked PARTIAL, deliberately.** The machine's control cases are total but
-deliberately unfaithful (`binop` and conditional dispatch return a default
-rather than compute): this loop's priority was the *interface*, not the rule
-count. The named next step is `machine_iff_step` — proving this machine and
-`Morph/Semantics.lean`'s small-step relation agree — which is the actual payoff
-of the abstract-machine approach, and a Krivine machine is a short step from here
-given loop 5's algebra.
+**Completion (after the tenth iteration).** The named next step,
+`machine_iff_step`, was then delivered, in `Morph/Specs/MachineRelation/`.
+
+**The finding.** The shipped β-rule uses `substAll args.reverse body` — a
+*simultaneous* substitution with an explicit offset and a list of values — while
+the machine uses `subst' 0 body v`, a *single* substitution with an implicit
+offset. Different functions, so the two β-rules were not obviously the same, and
+nothing in the repository said they were.
+
+> **`substAll_single`** — for every offset `k`, value `v` and term `e`,
+> `substAll' k [v] e = subst' k e v`.
+
+Proved at *every offset*, not just 0: under a `lam` both recursions raise the
+offset, and that is exactly where a disagreement would surface. So `app_lam` with
+`args = [v]`, `n = 1` reaches exactly what the machine's β-step computes, and the
+two semantics cannot disagree about β-reduction.
+
+**Why it needed a strong induction.** The same shape as loop 5: `match_` arm
+bodies sit two constructors deep, so the proof runs on `nodeCount` with helpers
+for the list-shaped and arm-shaped subterms.
+
+**What remains.** β only, single argument only. `Morph/Semantics.lean` has ~40
+rules; the machine's control cases are still deliberately unfaithful. The
+multi-argument case is where the substitutions would *really* differ — `substAll`
+substitutes simultaneously, `subst'` one value at a time — and it needs a genuine
+lemma relating sequential to simultaneous substitution. Recorded in §5 of the
+machine-relation spec.
 
 ### Iteration 9 — Lexer: totality and maximal munch (DONE, completed after the tenth)
 

@@ -62,10 +62,11 @@ substitution algebra reused.
 
 ## 6. Scope: explicit non-claims
 
-1. **Not the shipped semantics.** `Morph/Semantics.lean`'s small-step relation
-   and this machine are two different semantics. Proving they agree — the real
-   payoff of the abstract-machine approach — is the named next step
-   (`machine_iff_step`).
+1. **Relation to the shipped semantics: β only, and now proved.** The two are
+   different semantics, and `Morph/Specs/MachineRelation/` now proves that they
+   cannot disagree about β-reduction: `substAll' k [v] = subst' k · v` for every
+   offset. The remaining rules are still unrelated — see
+   `spec/language/machine_relation_spec.md`.
 2. **The machine's control cases are deliberately total, not faithful.** This
    specification's priority is the *interface* (a total step, a fuel argument, a
    β justified by the substitution algebra), not the number of rules. `binop`
@@ -87,3 +88,4 @@ substitution algebra reused.
 | The machine, computed | `Morph/Specs/ExecutionMachine/Examples.lean` |
 | Substitution algebra reused | `Morph/Specs/SubstTheory/` (loop 5) |
 | Module with no semantics (§2) | `Morph/Specs/ExecutionModel/` |
+| β-rule correspondence | `Morph/Specs/MachineRelation/` |
