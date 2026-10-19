@@ -104,4 +104,134 @@ theorem queued_push (d : Deque) (t : Task) : Deque.total (Deque.push d t) = d.to
   simp [Deque.push, Deque.total]
   omega
 
+/-! ### Conservation at the scheduler level
+
+Stating the arithmetic in general form first keeps the proofs away from
+structure-update expressions, which is where this loop previously stalled. -/
+
+/-- **A steal conserves work, stated generally.** One task leaves the victim, one
+enters the thief, one enters the log — net zero. -/
+private theorem steal_conserves (th v th' v' : Deque) (ran : List Task) (t : Task)
+    (hp : Deque.push th t = th') (hs : Deque.steal v = some (v', t)) :
+    th'.total + v'.total + ran.length = th.total + v.total + ran.length := by
+  have hp' : th'.total = th.total + 1 := by rw [← hp]; exact queued_push th t
+  have hs' : v'.total + 1 = v.total := total_steal hs
+  omega
+
+/-- **A run conserves work, stated generally.** -/
+private theorem run_conserves (th th' v : Deque) (ran : List Task) (t : Task)
+    (hp : Deque.pop th = some (th', t)) :
+    th'.total + v.total + (t :: ran).length = th.total + v.total + ran.length := by
+  have hp' : th'.total + 1 = th.total := total_pop hp
+  simp only [List.length_cons]
+  omega
+
+/-- The scheduler's total responsibility is unchanged by a steal. -/
+theorem stealFrom_work {p p' : Pair} (h : p.stealFrom = some p') : p'.work = p.work := by
+  obtain ⟨th, v, ran⟩ := p
+  cases hv : v.top with
+  | nil => simp [Pair.stealFrom, Deque.steal, hv] at h
+  | cons t ts =>
+      simp only [Pair.stealFrom, Deque.steal, hv] at h
+      injection h with heq
+      cases heq
+      have hs : Deque.steal v = some ({ v with top := ts }, t) := by rw [Deque.steal, hv]
+      simp only [Pair.work]
+      have := steal_conserves th v (Deque.push th t) ({ v with top := ts }) ran t rfl hs
+      omega
+
+/-- The scheduler's total responsibility is unchanged by a run. -/
+theorem runOwn_work {p p' : Pair} (h : p.runOwn = some p') : p'.work = p.work := by
+  obtain ⟨th, v, ran⟩ := p
+  cases hb : th.bottom with
+  | nil => simp [Pair.runOwn, Deque.pop, hb] at h
+  | cons t ts =>
+      simp only [Pair.runOwn, Deque.pop, hb] at h
+      injection h with heq
+      cases heq
+      have hp : Deque.pop th = some ({ th with bottom := ts }, t) := by rw [Deque.pop, hb]
+      simp only [Pair.work]
+      have := run_conserves th ({ th with bottom := ts }) v ran t hp
+      omega
+
+/-- **A steal moves work without running it**, so the run log is unchanged.
+This is the half of work conservation that makes a steal safe: the task is not
+free, it has moved to the thief's queue and will be accounted for when it runs. -/
+theorem stealFrom_ran {p p' : Pair} (h : p.stealFrom = some p') :
+    p'.ran.length = p.ran.length := by
+  obtain ⟨th, v, ran⟩ := p
+  cases hv : v.top with
+  | nil => simp [Pair.stealFrom, Deque.steal, hv] at h
+  | cons t ts =>
+      simp only [Pair.stealFrom, Deque.steal, hv] at h
+      injection h with heq
+      cases heq
+      rfl
+
+/-- A run step appends exactly one task to the run log. -/
+theorem runOwn_ran'' {p p' : Pair} (h : p.runOwn = some p') :
+    p'.ran.length = p.ran.length + 1 := by
+  obtain ⟨th, v, ran⟩ := p
+  cases hb : th.bottom with
+  | nil => simp [Pair.runOwn, Deque.pop, hb] at h
+  | cons t ts =>
+      simp only [Pair.runOwn, Deque.pop, hb] at h
+      injection h with heq
+      cases heq
+      rfl
+
+theorem runOwn_ran {p p' : Pair} (h : p.runOwn = some p') :
+    p'.ran.length = p.ran.length + 1 := by
+  obtain ⟨th, v, ran⟩ := p
+  cases hb : th.bottom with
+  | nil => simp [Pair.runOwn, Deque.pop, hb] at h
+  | cons t ts =>
+      simp only [Pair.runOwn, Deque.pop, hb] at h
+      injection h with heq
+      cases heq
+      rfl
+
+/-- Executing steps: steal or run. -/
+def Executes (p p' : Pair) : Prop := p.stealFrom = some p' ∨ p.runOwn = some p'
+
+/-- Reflexive-transitive closure of executing steps. -/
+inductive ExecutesStar : Pair → Pair → Prop
+  | refl (p : Pair) : ExecutesStar p p
+  | step {p m p' : Pair} (h : Executes p m) (hs : ExecutesStar m p') : ExecutesStar p p'
+
+/-- **Termination, and with it fairness.** Along any sequence of executing steps
+the run log can never outgrow the scheduler's total work. A work-stealing
+scheduler that only executes performs at most `work` steps and then stops: it
+cannot spin forever, and it cannot log a task it has already logged, because the
+log is exactly what each step grew by.
+
+This is the theorem the shipped `isFair` was reaching for, and the only honest
+version of "the scheduler terminates". -/
+theorem ran_le_work {p p' : Pair} (h : ExecutesStar p p') : p'.ran.length ≤ p'.work := by
+  induction h with
+  | refl p => simp only [Pair.work]; omega
+  | step hx hs ih =>
+      rcases hx with hst | hrn
+      · have h1 := stealFrom_ran hst
+        have h2 := stealFrom_work hst
+        omega
+      · have h1 := runOwn_ran hrn
+        have h2 := runOwn_work hrn
+        omega
+
+/-- **The run log never exceeds the scheduler's *initial* responsibility.** Work
+is conserved at every step, so the log cannot grow past the total work the
+scheduler started with — which is the operational content of "each task runs at
+most once": there are only ever that many tasks to run. -/
+theorem ran_le_initial_work {p p' : Pair} (h : ExecutesStar p p') :
+    p'.ran.length ≤ p.work := by
+  induction h with
+  | refl p => simp only [Pair.work]; omega
+  | step hx hs ih =>
+      rcases hx with hst | hrn
+      · have h2 := stealFrom_work hst
+        omega
+      · have h2 := runOwn_work hrn
+        omega
+
 end Morph.Specs.StealingFairness

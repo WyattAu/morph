@@ -63,6 +63,29 @@ point of the structure. `pop` touches `bottom` only; `steal` touches `top` only.
 | `last_element_race_thief_first` | `steal [t] = some (empty, t) ∧ pop empty = none` | the symmetric case |
 | `steal_from_empty_is_none` | no successful steal of an empty deque | the thief's precondition; why a retry loop terminates per victim |
 
+### 5.1 Scheduler level (completed after the tenth iteration)
+
+| Theorem | Statement |
+|---|---|
+| `steal_conserves` / `run_conserves` | work conservation, stated generally |
+| `stealFrom_work` / `runOwn_work` | a steal or a run leaves `work` unchanged |
+| `stealFrom_ran` | **a steal moves work without running it** — the log is unchanged |
+| `runOwn_ran` | a run appends exactly one task to the log |
+| **`ran_le_work`** | along any sequence of executing steps the log never outgrows the total work |
+| **`ran_le_initial_work`** | the log never exceeds the scheduler's *initial* responsibility |
+
+`ran_le_work` is the theorem the shipped `isFair` was reaching for, and the only
+honest version of "the scheduler terminates".
+
+Two modelling corrections came out of the completion, both found by computing:
+
+- **`Pair.stealFrom` was wrong.** It pushed the stolen task into the thief's queue
+  *and* logged it, so `work` grew by one per steal — a double count. A steal moves
+  work; running it is a separate step.
+- **`ran_bounded_by_initial` was false.** Stated as `ran ≤ queues + ran_init`, a
+  run shrinks the thief's queue as it grows the log, so the bound fails by one per
+  step. Replaced by `ran_le_initial_work`, which uses conservation and is true.
+
 ## 6. Why `isBalanced` is not the invariant
 
 From queue lengths `[2,1,1,1]` — which satisfies `isBalanced` — an idle thief
@@ -73,15 +96,10 @@ properties above are where work-stealing's correctness actually lives.
 
 ## 7. Scope: explicit non-claims
 
-1. **No step relation, so no liveness bound.** The multi-worker accounting
-   (`State.queued`, a `Consumes` closure and the termination bound
-   `ran ≤ total`) was designed and *removed*: aggregating over worker queues
-   requires rewriting inside a `foldl`'s accumulator, which is where this loop
-   spent its remaining budget. The named theorem to add next is
-   **`ran_le_work`** — along any sequence of executing steps the run log never
-   outgrows the scheduler's total work. That is the statement `isFair` was
-   reaching for, and it is the only honest version of "the scheduler
-   terminates".
+1. **Two workers, not N.** The accounting is a thief/victim *pair*, which is
+   enough for every claim here and keeps the arithmetic free of a `foldl` over
+   worker queues. The general `State`/`Step` relation in `Spec.lean` is
+   retained but unused by the theorems.
 2. **No anti-duplication invariant across steps.** The per-operation facts are
    proven (`pop`/`steal` remove from their own end). The global invariant — a
    logged task is in no queue — additionally needs a no-duplicates invariant on

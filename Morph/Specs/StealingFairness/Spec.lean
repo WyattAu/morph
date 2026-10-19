@@ -152,12 +152,13 @@ structure Pair where
 Blumofe & Leiserson's work measure. -/
 def Pair.work (p : Pair) : Nat := p.thief.total + p.victim.total + p.ran.length
 
-/-- A steal step on a pair: the thief takes the victim's oldest task. -/
+/-- A steal step on a pair: the thief takes the victim's oldest task **into its
+own queue**. A steal *moves* work; it does not execute it. (Running is a
+separate step, so work is conserved by the pair of them.) -/
 def Pair.stealFrom (p : Pair) : Option Pair :=
   match Deque.steal p.victim with
   | none => none
-  | some (v', t) =>
-      some { thief := Deque.push p.thief t, victim := v', ran := t :: p.ran }
+  | some (v', t) => some { thief := Deque.push p.thief t, victim := v', ran := p.ran }
 
 /-- A run step on a pair: the thief runs its own newest task. -/
 def Pair.runOwn (p : Pair) : Option Pair :=

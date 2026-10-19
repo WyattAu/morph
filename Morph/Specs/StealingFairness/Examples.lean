@@ -46,4 +46,41 @@ example : Deque.steal Deque.empty = some (Deque.empty, 0) ↔ False := by
   · intro h; exact steal_from_empty_is_none Deque.empty 0 h
   · intro h; exact absurd h (by simp [Deque.steal])
 
+/-! ### The scheduler: conservation and termination, computed -/
+
+/-- An idle thief and a victim holding one task. -/
+def samplePair : Pair := { thief := Deque.empty, victim := { bottom := [], top := [1, 2] },
+                           ran := [] }
+
+/-- **A steal moves the task; it does not run it.** The victim's oldest task lands
+in the thief's own queue and the run log is untouched. This is what makes a pair
+of (steal, run) steps conserve work. -/
+example : (samplePair.stealFrom).map (fun p => (p.thief.total, p.victim.total, p.ran.length)) =
+    some (1, 1, 0) := by decide
+
+/-- **Work conservation, discharged for that steal.** -/
+example {p p' : Pair} (h : p.stealFrom = some p') : p'.work = p.work :=
+  stealFrom_work h
+
+/-- The run log is unchanged by a steal. -/
+example {p p' : Pair} (h : p.stealFrom = some p') : p'.ran.length = p.ran.length :=
+  stealFrom_ran h
+
+/-- A run step *is* where the log grows, by exactly one. The thief's own queue
+is empty here, so there is nothing to run — the theorem is stated for a state
+where a run actually succeeds. -/
+example {p p' : Pair} (h : p.runOwn = some p') :
+    p'.ran.length = p.ran.length + 1 :=
+  runOwn_ran h
+
+/-- **Termination.** Along any sequence of executing steps the log never
+outgrows the scheduler's total work — the only honest version of "the
+work-stealing scheduler terminates". -/
+example {p p' : Pair} (h : ExecutesStar p p') : p'.ran.length ≤ p'.work :=
+  ran_le_work h
+
+/-- And never past the work the scheduler started with. -/
+example {p p' : Pair} (h : ExecutesStar p p') : p'.ran.length ≤ p.work :=
+  ran_le_initial_work h
+
 end Morph.Specs.StealingFairness

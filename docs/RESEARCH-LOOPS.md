@@ -191,7 +191,7 @@ What remains is only bookkeeping: the token *list* is not assembled, so
 `lexAll`'s length bound is still open (§6 of the spec). The termination claim
 itself is discharged.
 
-### Iteration 8 — Scheduler: work-stealing correctness (PARTIAL — see below)
+### Iteration 8 — Scheduler: work-stealing correctness (DONE, completed after the tenth)
 
 **Target.** `Morph/Specs/SchedulerRandomizedStealing/`.
 
@@ -230,14 +230,30 @@ conservation.
 * `Examples.lean`: the discipline computed — `pop` takes the newest, `steal` the
   oldest, and the race resolves one way or the other.
 
-**Loop marked PARTIAL, deliberately.** The multi-worker accounting was designed
-and then removed: proving that a *sequence* of steps terminates requires
-aggregating over worker queues, i.e. rewriting inside a `foldl`'s accumulator,
-and that consumed the loop's remaining budget. The named next theorem is
-recorded in the spec: **`ran_le_work`** — along any sequence of executing steps
-the run log never outgrows the scheduler's total work. That is the only honest
-version of "the scheduler terminates", and it is what `isFair` was reaching for.
-The eight delivered theorems are the part that is actually true.
+**Completion (after the tenth iteration).** The missing liveness bound was then
+proved, so this loop is no longer partial. The way through was to state the
+arithmetic *generally* (`steal_conserves`, `run_conserves`) so no proof ever
+touches a structure-update expression:
+
+* `stealFrom_work` / `runOwn_work` — a steal or a run leaves `work` unchanged;
+* `stealFrom_ran` — a steal moves work *without running it*;
+* **`ran_le_work`** — along any sequence of executing steps the run log never
+  outgrows the scheduler's total work. This is what `isFair` was reaching for,
+  and the only honest version of "the scheduler terminates";
+* **`ran_le_initial_work`** — the log never exceeds the work the scheduler
+  started with.
+
+**Two modelling bugs found by computing, not by reading.** (1) `Pair.stealFrom`
+pushed the stolen task into the thief's queue *and* logged it, so `work` grew by
+one per steal — a double count; a steal moves work and running it is a separate
+step. (2) The first attempt at the bounded-log theorem,
+`ran_bounded_by_initial : ran ≤ queues + ran_init`, is **false**: a run shrinks
+the thief's queue exactly as it grows the log, so the bound fails by one per step.
+It was replaced by `ran_le_initial_work`, which uses conservation and is true.
+
+This is the third time in these loops that computing a definition rather than
+reasoning about it caught a modelling error (with loop 5's measure and loop 9's
+fallback branch).
 
 **Proof-engineering findings worth keeping.** Representing the deque as a single
 list with a `reverse`-based `pop` makes the conservation proofs need
