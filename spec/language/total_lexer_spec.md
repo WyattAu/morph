@@ -68,16 +68,20 @@ lemmas, every one `rfl` about `String.length`, `Char.isDigit`, or
 | `nextToken_total` | every input has a step result — the step cannot fail |
 | `nextToken_nil` | exhausted input yields `.eof` |
 | `nextToken_eof_iff` | `.eof` **exactly** on exhausted input (whitespace-insensitive) |
+| `scanNum_consumes'`, `scanIdent_consumes'`, `scanOp_consumes'` | every scanner that succeeds shortens its input |
+| **`nextToken_progress`** | a step either reports `.eof` or consumes a character |
+| `residual_bound` | after `k` non-`.eof` steps the residual input has shrunk by at least `k` |
+| **`reaches_eof`** | **the lexer reaches end of input within `|cs| + 1` steps** |
 
 ## 6. Scope: explicit non-claims
 
-1. **No termination theorem for the whole scanner.** The natural next theorem is
-   `lexAll`: fuel `cs.length` suffices, because every non-`.eof` step consumes a
-   character. That is the statement that replaces the shipped `partial`, and it
-   is the one this loop did not reach.
-2. **No progress theorem.** `nextToken_progress` (each step consumes a character
-   or reports `.eof`) is provable but fiddly; the design already ensures it, and
-   `nextToken_eof_iff` pins the only branch that does not consume.
+1. **The token *list* is not assembled.** `reaches_eof` bounds the iteration;
+   it does not build `lexAll : List Char → List TokKind` and prove that its
+   length is bounded by the input. That bookkeeping remains.
+2. **The theorem is about this scanner, not `Morph/Frontend/Lexer.lean`'s.** The
+   shipped `partial` driver is still `partial`; `reaches_eof` is what a
+   re-implementation on this design would be able to state instead. Porting it
+   needs the `Array`-based lexer replaced by this one.
 3. **Not the shipped lexer.** This is a specification-level scanner over
    `List Char`; `Morph/Frontend/Lexer.lean` uses `Array` and partial string
    scanning. The bridge is mechanical but absent.

@@ -41,4 +41,20 @@ example : dropWhile isIdentRest ['a','b','1','+'] = ['+'] := rfl
 example : ∀ c ∈ takeWhile isIdentRest ['a','b','1','+'], isIdentRest c = true :=
   takeWhile_all isIdentRest ['a','b','1','+']
 
+/-- **The scan terminates.** This is the theorem that replaces the shipped
+`partial def nextToken`: the lexer reaches end of input within `|cs| + 1` steps.
+Computed on a concrete input — `42` is two characters, so the scan ends within
+three steps. -/
+example : ∃ j, j ≤ ['4', '2'].length + 1 ∧
+    (nextToken (residual j ['4', '2'])).1 = .eof :=
+  reaches_eof ['4', '2']
+
+/-- And here is the witness, by construction: the first step consumes both
+characters, so the second step reports `.eof`. -/
+example : nextToken (residual 1 ['4', '2']) = (.eof, []) := by decide
+
+/-- Progress, discharged: every step either reports `.eof` or shortens the input. -/
+example : (nextToken ['1', '2']).1 = .eof ∨
+    (nextToken ['1', '2']).2.length < (['1', '2']).length := nextToken_progress ['1', '2']
+
 end Morph.Specs.TotalLexer

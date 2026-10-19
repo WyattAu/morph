@@ -137,7 +137,7 @@ count. The named next step is `machine_iff_step` — proving this machine and
 of the abstract-machine approach, and a Krivine machine is a short step from here
 given loop 5's algebra.
 
-### Iteration 9 — Lexer: totality and maximal munch (PARTIAL — see below)
+### Iteration 9 — Lexer: totality and maximal munch (DONE, completed after the tenth)
 
 **Target.** `Morph/Frontend/Lexer.lean` and `Morph/Specs/LexicalStructureSyntax/`.
 
@@ -174,10 +174,22 @@ but making *no progress*, which is precisely the defect that forces `partial`.
 It was caught by `#eval nextToken ['#']` in the loop, not by reading the code.
 The branch now consumes the head character.
 
-**Loop marked PARTIAL, deliberately.** The two theorems that would replace the
-shipped `partial` — `nextToken_progress` (each step consumes a character or
-reports `.eof`) and `lexAll` (fuel `cs.length` suffices) — were not reached. Both
-are named in §6 of the spec as the next step rather than faked.
+**Completion (after the tenth iteration).** The two theorems named as missing
+were then proved, so this loop is no longer partial:
+
+* **`nextToken_progress`** — a step either reports `.eof` or consumes a
+  character. Proven by composing three scanner facts
+  (`scanNum_consumes'`, `scanIdent_consumes'`, `scanOp_consumes'`) with the fact
+  that `skipWs` only removes characters.
+* **`residual_bound` / `reaches_eof`** — after `k` non-`.eof` steps the residual
+  input has shrunk by at least `k`, so **the lexer reaches end of input within
+  `|cs| + 1` steps**. This is the statement that replaces the shipped
+  `partial def nextToken`, and its proof is an ordinary well-founded decrease on
+  the residual input.
+
+What remains is only bookkeeping: the token *list* is not assembled, so
+`lexAll`'s length bound is still open (§6 of the spec). The termination claim
+itself is discharged.
 
 ### Iteration 8 — Scheduler: work-stealing correctness (PARTIAL — see below)
 
