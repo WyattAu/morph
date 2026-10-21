@@ -814,3 +814,53 @@ Baseline finding (2026-10-09): the shipped `Subtype` inductive
 derives nothing beyond equality, and nothing in `HasType`/`typeCheck`
 consumes it. GA-005 declares decidability "assumed" over a relation with no
 content. Research agent dispatched for the cutting edge + language survey.
+
+## Remaining work, measured
+
+After eighteen iterations the repository's specifications fall into three
+categories.
+
+**Closed.** Every SG gap: SG-001 (loop 7), SG-002 (loop 2), SG-003 (loop 4),
+SG-004 (loop 3), SG-005 (loop 12). The three loops that first shipped as
+PARTIAL were finished afterwards: loop 9's `nextToken_progress`/`reaches_eof`
+(`bcd5899`), loop 8's `ran_le_work` (`7fdbfb3`), loop 10's
+`substAll_single` (`07b5bc3`).
+
+**Audited and found empty.** Every `Morph/Specs/*/Lemmas.lean` now contains at
+least one real theorem — the modules that carried only `rfl` facts about
+`List`, `Option` and `Char` have been replaced (loops 6, 7, 13, 14, 15, 16, 17,
+18) or consolidated with the framework that superseded them.
+
+**Not yet audited — 97 `Prop := True` stubs remain**, concentrated in:
+
+| Module | Stubs | Subject |
+|---|---|---|
+| `ConcurrencyProcessAlgebra` | 23 | process algebra laws |
+| `LayeredConcurrency` | 20 | layered concurrency |
+| `MemoryModel` | 14 | the four memory stubs this loop did not claim |
+| `MemoryAffineLogic` | 11 | affine typing laws |
+| `ModuleExistential` | 7 | module existence |
+| `TerminologyStandardization` | 5 | terminology consistency |
+| `SecurityOCap` | 5 | object-capability security |
+| `MorphLanguage` | 4 | the projectional-only mandate |
+| `LicenseDeonticLogic` | 3 | licence obligations |
+| `UnitGroupTheory` | 2 | group structure |
+| `ASTGraph` | 2 | AST graph invariants |
+| `MemoryAcyclicity` | 1 | acyclicity |
+
+These are the next iterations, in that order. The pattern is now known well
+enough that each is a *form*: find the property the module names, decide
+whether it is true (prove it), false (say so, as loop 8 did for `isBalanced`), or
+a stub (replace the advertisement, as loop 14 did for `spec_memory_access`).
+
+**Two things that are not iterations.** The first is *adoption*: none of the
+eighteen iterations' results is wired into the shipped compiler. The shipped
+lexer is still `partial` where loop 9 proved a total scanner terminates; the
+shipped β-rule still uses `substAll` where loops 10 and 11 proved the single
+substitution is the same function; `HasType` still compares exact types where
+loop 12 proved a decidable subtyping. The second is a **core-level defect** that
+three separate loops hit independently: `Morph/Core.lean` derives `BEq` without
+`LawfulBEq` for `BlockId`, `ModuleId` and (for `Typ`) has no decidable equality
+at all — so `==` comparisons on them are unprovably sound. Loops 12, 14 and 18
+fixed the three instances they needed; the remaining ones in `Morph/Core.lean`
+should be swept together.
