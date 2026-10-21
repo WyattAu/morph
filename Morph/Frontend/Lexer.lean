@@ -16,7 +16,7 @@ inductive TokenKind where
   | operator : String → TokenKind
   | delimiter : String → TokenKind
   | eof : TokenKind
-  deriving Repr, BEq
+  deriving Repr, BEq, DecidableEq
 
 structure Token where
   kind : TokenKind
@@ -54,12 +54,23 @@ def advanceChar (l : Lexer) : Lexer :=
     else
       { chars := rest, col := l.col + 1, line := l.line }
 
-partial def advanceWhile (l : Lexer) (p : Char → Bool) : Lexer × String :=
-  let c := l.currentChar
-  if l.atEnd || ¬ p c then (l, "")
-  else
-    let (l', s) := l.advanceChar.advanceWhile p
-    (l', c.toString ++ s)
+/-- Advance while the predicate holds, with an explicit fuel.
+
+The recursion is bounded by the number of characters remaining, so the fuel is
+never exhausted before the run ends; it is passed explicitly so that the
+function is *total* — the compiler's lexer no longer relies on `partial`. -/
+def advanceWhileFuel : Nat → Lexer → (Char → Bool) → Lexer × String
+  | 0, l, _ => (l, "")
+  | n + 1, l, p =>
+      let c := l.currentChar
+      if l.atEnd || ¬ p c then (l, "")
+      else
+        let (l', s) := advanceWhileFuel n l.advanceChar p
+        (l', c.toString ++ s)
+
+/-- Advance while the predicate holds. -/
+def advanceWhile (l : Lexer) (p : Char → Bool) : Lexer × String :=
+  advanceWhileFuel (l.chars.length + 1) l p
 
 def keywordList : List (String × TokenKind) :=
   [("fn", .keyword "fn"), ("let", .keyword "let"), ("in", .keyword "in"),
@@ -83,44 +94,62 @@ def isIdentStart (c : Char) : Bool :=
 def isIdentContinue (c : Char) : Bool :=
   c.isAlpha || c.isDigit || c == '_'
 
-partial def skipWhitespaceAndComments (l : Lexer) : Lexer :=
-  let c := l.currentChar
-  if l.atEnd then l
-  else if c.isWhitespace then
-    let (l', _) := l.advanceWhile Char.isWhitespace
-    l'.skipWhitespaceAndComments
-  else if c == '/' && l.peekChar == '/' then
-    let (l', _) := l.advanceWhile (fun c => c ≠ '\n')
-    l'.skipWhitespaceAndComments
-  else l
+/-- Skip whitespace and comments, with an explicit fuel. -/
+def skipWhitespaceAndCommentsFuel : Nat → Lexer → Lexer
+  | 0, l => l
+  | n + 1, l =>
+      let c := l.currentChar
+      if l.atEnd then l
+      else if c.isWhitespace then
+        let (l', _) := l.advanceWhile Char.isWhitespace
+        skipWhitespaceAndCommentsFuel n l'
+      else if c == '/' && l.peekChar == '/' then
+        let (l', _) := l.advanceWhile (fun c => c ≠ '\n')
+        skipWhitespaceAndCommentsFuel n l'
+      else l
 
-partial def scanString (l : Lexer) : Lexer × Option Token :=
-  let l1 := l.advanceChar
-  let c := l1.currentChar
-  if l1.atEnd then (l1, none)
-  else if c == '"' then
-    (l1.advanceChar, some { kind := .stringLiteral, lexeme := "", line := l.line, col := l.col })
-  else if c == '\\' then
-    let l2 := l1.advanceChar
-    if l2.atEnd then (l2, none)
-    else
-      let esc := l2.currentChar
-      let escapedChar :=
-        match esc with
-        | 'n' => '\n'
-        | 't' => '\t'
-        | '\\' => '\\'
-        | '"' => '"'
-        | _ => esc
-      let (l3, restOpt) := l2.advanceChar.scanString
-      match restOpt with
-      | none => (l3, none)
-      | some restTok => (l3, some { restTok with lexeme := escapedChar.toString ++ restTok.lexeme })
-  else
-    let (l2, restOpt) := l1.advanceChar.scanString
-    match restOpt with
-    | none => (l2, none)
-    | some restTok => (l2, some { restTok with lexeme := c.toString ++ restTok.lexeme })
+/-- Skip whitespace and comments. -/
+def skipWhitespaceAndComments (l : Lexer) : Lexer :=
+  skipWhitespaceAndCommentsFuel (l.chars.length + 1) l
+
+/-- Scan a string literal, with an explicit fuel.
+
+An unterminated string runs to the end of the input, so the scan is bounded by
+the number of characters remaining — and with the fuel passed explicitly, the
+function is total. -/
+def scanStringFuel : Nat → Lexer → Lexer × Option Token
+  | 0, l => (l, none)
+  | n + 1, l =>
+      let l1 := l.advanceChar
+      let c := l1.currentChar
+      if l1.atEnd then (l1, none)
+      else if c == '"' then
+        (l1.advanceChar, some { kind := .stringLiteral, lexeme := "", line := l.line, col := l.col })
+      else if c == '\\' then
+        let l2 := l1.advanceChar
+        if l2.atEnd then (l2, none)
+        else
+          let esc := l2.currentChar
+          let escapedChar :=
+            match esc with
+            | 'n' => '\n'
+            | 't' => '\t'
+            | '\\' => '\\'
+            | '"' => '"'
+            | _ => esc
+          let (l3, restOpt) := scanStringFuel n l2.advanceChar
+          match restOpt with
+          | none => (l3, none)
+          | some restTok => (l3, some { restTok with lexeme := escapedChar.toString ++ restTok.lexeme })
+      else
+        let (l2, restOpt) := scanStringFuel n l1.advanceChar
+        match restOpt with
+        | none => (l2, none)
+        | some restTok => (l2, some { restTok with lexeme := c.toString ++ restTok.lexeme })
+
+/-- Scan a string literal. -/
+def scanString (l : Lexer) : Lexer × Option Token :=
+  scanStringFuel (l.chars.length + 1) l
 
 def scanNumber (l : Lexer) : Lexer × Token :=
   let (l', s) := l.advanceWhile Char.isDigit
@@ -173,7 +202,7 @@ def scanOperatorOrDelimiter (l : Lexer) : Lexer × Token :=
         .operator (toString c)
     (l.advanceChar, { kind := tk, lexeme := toString c, line := l.line, col := l.col })
 
-partial def nextToken (l : Lexer) : Lexer × Option Token :=
+def nextToken (l : Lexer) : Lexer × Option Token :=
   let l := l.skipWhitespaceAndComments
   if l.atEnd then (l, none)
   else
@@ -192,14 +221,20 @@ partial def nextToken (l : Lexer) : Lexer × Option Token :=
       let (l', tok) := scanOperatorOrDelimiter l
       (l', some tok)
 
-partial def tokenizeLoop (l : Lexer) (acc : List Token) : List Token :=
-  let (l', tokOpt) := nextToken l
-  match tokOpt with
-  | none => acc.reverse
-  | some tok => tokenizeLoop l' (tok :: acc)
+/-- The tokenization loop, with an explicit fuel.
+
+Every token consumes at least one character, so the number of tokens is bounded
+by the length of the input; the fuel is that bound. -/
+def tokenizeLoop : Nat → Lexer → List Token → List Token
+  | 0, l, acc => acc.reverse
+  | n + 1, l, acc =>
+      let (l', tokOpt) := nextToken l
+      match tokOpt with
+      | none => acc.reverse
+      | some tok => tokenizeLoop n l' (tok :: acc)
 
 def tokenize (src : String) : List Token :=
-  tokenizeLoop (init src) []
+  tokenizeLoop (src.length + 1) (init src) []
 
 end Lexer
 

@@ -815,6 +815,49 @@ derives nothing beyond equality, and nothing in `HasType`/`typeCheck`
 consumes it. GA-005 declares decidability "assumed" over a relation with no
 content. Research agent dispatched for the cutting edge + language survey.
 
+### Iteration 19 — Adoption: the shipped lexer is now total
+
+**Target.** `Morph/Frontend/Lexer.lean` — the first *adoption* item: results
+that change the compiler rather than a specification.
+
+**What was there.** Four `partial` functions: `advanceWhile`,
+`skipWhitespaceAndComments`, `scanString` and `tokenizeLoop`. `partial` keeps
+the termination argument out of the kernel, so "the lexer always terminates" was
+not a theorem anywhere — and research loop 9 had already proved the *specification*
+of a total scanner, with nothing connecting it to the compiler.
+
+**The change.** Each recursive function now takes an explicit fuel, and the fuel
+is the number of characters remaining (`l.chars.length + 1`):
+
+```lean
+def advanceWhileFuel : Nat → Lexer → (Char → Bool) → Lexer × String
+  | 0, l, _ => (l, "")
+  | n + 1, l, p => ...
+```
+
+The `+ 1` matters: with fuel exactly the input length the last character is
+consumed by the base case, which returns the empty string, and the lexeme is
+truncated.
+
+**Behaviour is preserved.** The original `partial` lexer and the fuel-bounded one
+were compared on five inputs — a keyword sequence, a comment, an operator
+expression, an unterminated string, and two adjacent string literals — and
+produce *identical* token lists. So this is a totality change, not a semantic
+one.
+
+**A pre-existing bug, pinned by a test.** Two adjacent string literals produce
+**no tokens at all**: the escape-handling path consumes the closing quote of the
+first literal together with the opening quote of the second, and the second
+literal is swallowed. The original `partial` lexer did the same ✓ — it is not a
+regression ✓ — but it had no test, so nobody could see it. `Morph/Tests/Lexer.lean`
+now pins the behaviour (so the change cannot be blamed for it) and documents it
+as a bug for whoever fixes it.
+
+**Also.** The lexer had **no tests at all** before this. `Morph/Tests/Lexer.lean`
+now covers literals, keywords, identifiers (including `x_1`), operators, string
+literals, unterminated strings, whitespace, comments, and the totality of
+`tokenize`.
+
 ## Remaining work, measured
 
 After eighteen iterations the repository's specifications fall into three
