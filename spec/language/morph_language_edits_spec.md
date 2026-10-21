@@ -1,0 +1,88 @@
+# Morph Language: Edits and Parsing — Specification
+
+* File:* `language/morph_language_edits_spec.md`
+* Version:* 1.0.0
+* Context:* Language surface — editing and parsing
+* Formalism:* Text ranges over character lists
+* Status:* Active
+* Machine-checked in:* `Morph/Specs/MorphLanguage/Lemmas.lean`
+
+---
+
+## 1. Purpose and Scope
+
+This specification replaces the *vacuous* theorems of
+`Morph/Specs/MorphLanguage/Lemmas.lean` with real ones, and records what the
+module's operations actually were.
+
+## 2. What the module's theorems actually said
+
+The module's specification declares `EditOperation`, `applyEdit`, `parseCode`,
+`applyEditToAst`, the dialect predicates and the projectional-only mandate. Its
+*theorems* were true for the wrong reasons:
+
+| Theorem | Why it was true |
+|---|---|
+| `applyEditToAst_id` | `applyEditToAst` **ignores its edit** — the parameter is `_edit` and the body is `some ast` unconditionally. It is the identity by construction, not by law. |
+| `parseCode_always_empty` | `parseCode` returns `some Program.empty` on *both* branches of its `if`: it **parses nothing**. |
+| `applyEdit_insert` | `insert newCode => code ++ newCode` *appends*. There is no position. |
+| `applyEdit_delete` | `delete => ""` *erases the whole program*. |
+| `applyEdit_move` | `move _ _ => code` *does nothing*. |
+
+So the language specification's editing and parsing operations were stubs, and
+the theorems about them were true only because the stubs did nothing. The
+spec-tools `check` step would not have caught this: these are not `True` stubs,
+they are `rfl` theorems about functions that were never implemented.
+
+## 3. Real edits
+
+This specification supplies **real, position-aware** edits over a half-open
+range `[lo, hi)`, with the text carried as a list of characters (the `String`
+API's `take`/`drop` return `String.Slice`, whose lemmas do not support these
+statements; the list API does).
+
+| Operation | Meaning |
+|---|---|
+| `insertAt code newCode pos` | the new text goes *between* `code.take pos` and `code.drop pos` |
+| `deleteRange code r` | the range is removed; the text before and after it is kept |
+| `moveRange code r dst` | the range's text is removed and re-inserted at `dst` |
+| `prefixOf` / `suffixOf` / `sliceOf` | the text before / after / inside a range |
+
+## 4. Requirements discharged
+
+| Theorem | Statement |
+|---|---|
+| `insertAt_split` | the result is the old text split at `pos` with the new text between |
+| `insertAt_preserves_prefix` | the text before the insertion point is untouched |
+| `deleteRange_split` | the result is the text before the range followed by the text after it |
+| `deleteRange_preserves_prefix` | the text before the range is untouched |
+| `deleteRange_preserves_after` | the text after the range is preserved, at the range's start |
+| `deleteRange_empty` | deleting an empty range changes nothing |
+| `moveRange_split` | the moved text is removed from its old place and re-inserted at the destination |
+| `parseCode_is_a_stub` | *the finding*: the specification's `parseCode` returns the empty program for every input |
+| `applyEditToAst_is_a_stub` | *the finding*: the specification's `applyEditToAst` ignores its edit |
+
+## 5. Scope: explicit non-claims
+
+1. **The parser is still a stub.** `parseCode` parses nothing, and the real
+   parser (`Morph/Frontend/Parser.lean`) is a *partial* recursive-descent parser
+   over a `Parser` structure. Connecting the specification to it needs a
+   non-partial parser and a decision procedure for it — separate work, named
+   here rather than faked.
+2. **`applyEditToAst` is still a stub**, for the same reason: it would have to
+   apply the edit to the *code* and re-parse, which needs (1).
+3. **The specification's own `applyEdit` is unchanged.** This document adds real
+   operations; it does not redefine the shipped one, which would change the
+   meaning of the existing (vacuous) theorems.
+4. **No edit *history*, no undo, no conflict resolution** — the operations are
+   single-shot range edits.
+5. **No theorem about the *interaction* of edits** (e.g. that two edits
+   compose); each operation is proved on its own.
+
+## 6. Traceability
+
+| Artifact | Location |
+|---|---|
+| Real edits, theorems, the stub findings | `Morph/Specs/MorphLanguage/Lemmas.lean` |
+| The stubbed operations | `Morph/Specs/MorphLanguage/Spec.lean` |
+| The real parser | `Morph/Frontend/Parser.lean` |

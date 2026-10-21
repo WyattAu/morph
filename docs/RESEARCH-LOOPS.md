@@ -102,6 +102,44 @@ first-class modules rather than inline proofs.
 zero `sorry` declarations, no `True`-stub theorems in any module this project
 wrote, and the repository's own pre-commit suite passing on every commit.
 
+### Iteration 13 — MorphLanguage: real edits behind vacuous theorems
+
+**Target.** `Morph/Specs/MorphLanguage/`.
+
+**What the loop found.** The module's *theorems* were true for the wrong
+reasons — and, importantly, **not** `True` stubs, so the spec-tools check could
+not have caught them:
+
+| Theorem | Why it was true |
+|---|---|
+| `applyEditToAst_id` | `applyEditToAst` **ignores its edit** — the parameter is `_edit`, the body is `some ast`. The identity by construction, not by law. |
+| `parseCode_always_empty` | `parseCode` returns `some Program.empty` on **both** branches of its `if`. It parses nothing. |
+| `applyEdit_insert` | `insert newCode => code ++ newCode` *appends*; there is no position. |
+| `applyEdit_delete` | `delete => ""` *erases the whole program*. |
+| `applyEdit_move` | `move _ _ => code` *does nothing*. |
+
+**Delivered.** `Morph/Specs/MorphLanguage/Lemmas.lean` rewritten +
+`spec/language/morph_language_edits_spec.md`. Real, position-aware edits over a
+half-open range `[lo, hi)`: `insertAt`, `deleteRange`, `moveRange`, and the
+`prefixOf`/`suffixOf`/`sliceOf` views — with the properties the old theorems
+should have had: the insertion point, the prefix and suffix preservation, the
+empty-range no-op, and the move's relocation. The two stubs are now *stated as
+findings* (`parseCode_is_a_stub`, `applyEditToAst_is_a_stub`) rather than
+hiding behind a `rfl`.
+
+**A design note worth keeping.** The edits are over `List Char`, not `String`:
+`String.take`/`String.drop` return `String.Slice`, whose API cannot support
+these statements, while the list API's `take_append`/`drop_append` can. The
+range is half-open and the text is a list — so the *shape* of an edit is stated
+once, in the one representation where its laws are provable.
+
+**Not claimed (§5 of the spec).** The parser and `applyEditToAst` remain stubs:
+the real parser (`Morph/Frontend/Parser.lean`) is a *partial* recursive-descent
+parser, and connecting the specification to it needs a non-partial parser and a
+decision procedure for it — separate work, named rather than faked. The
+specification's own `applyEdit` is unchanged, since redefining it would change
+the meaning of the existing (vacuous) theorems.
+
 ### Iteration 12 — Subtyping: a decidable relation (SG-005 CLOSED)
 
 **Target.** SG-005, "Decidability proof for subtyping", and GA-005.
