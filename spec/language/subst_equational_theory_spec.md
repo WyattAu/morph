@@ -147,11 +147,10 @@ claim:
    substitute is lifted at the hit site rather than stored lifted, the naive
    statement is false and the correct one is index-shift-heavy. Worth a dedicated
    loop; deliberately not claimed here.
-3. **Interaction with lifting.** The law "lifting a substituted term equals
-   substituting the lifted term" needs `subst' i (liftUnder i k e) v =
-   liftUnder (i+k) k (subst' (i+k) e v)`; proving it needs the map-distribution
-   lemmas over `args.map`, which the current helpers do not yet provide. Not
-   claimed.
+3. **Interaction with lifting.** *Now discharged*, in the sharper form that was
+   actually needed: `subst' (k + m) (liftUnder m (k+1) w) v = liftUnder m k w` —
+   substituting into a lifted term shifts it down, and that shift is exactly the
+   lift. See `spec/language/simultaneous_substitution_spec.md`.
 4. **Algebraic laws about `fvar` renaming.** Named variables are inert by
    design; no renaming theory is stated.
 

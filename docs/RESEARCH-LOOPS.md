@@ -102,6 +102,38 @@ first-class modules rather than inline proofs.
 zero `sorry` declarations, no `True`-stub theorems in any module this project
 wrote, and the repository's own pre-commit suite passing on every commit.
 
+### Iteration 11 — The two substitution operations, related
+
+**Target.** The gap between `subst'` (single, implicit offset — the machine's) and
+`substAll'` (simultaneous, explicit offset and a value list — the shipped
+relation's).
+
+**Delivered.** `Morph/Specs/SimultaneousSubst/` +
+`spec/language/simultaneous_substitution_spec.md`.
+
+**`subst_lifted`** — `subst' (k + m) (liftUnder m (k+1) w) v = liftUnder m k w`.
+This is **the law loop 5 explicitly declined to claim** (§6.3 of the substitution
+spec): "the law 'lifting a substituted term equals substituting the lifted term'
+needs the map-distribution lemmas over `args.map`, which the current helpers do not
+yet provide". The statement needed was sharper than loop 5 guessed — it is about
+substituting *into* a lifted term, and it holds at every offset. Proved by strong
+induction on `nodeCount` (the third time the two-constructors-deep shape of
+`match_` arm bodies has forced this).
+
+**Why it matters here.** A value inserted at a higher level is shifted down by
+the next substitution — which is exactly what the simultaneous substitution does
+to it. So the law is the ingredient the multi-argument result needs.
+
+**The multi-argument result is open, and stated precisely.** The target is
+`substAll' k vs e = seqSubst k vs e`, with `seqSubst` applying the
+substitutions one at a time from the highest level down. The missing piece is the
+**absorption step** `substAll' k (v :: rest) e = subst' k (substAll' (k+1) rest e) v`;
+its `bvar` case must relate `n - k`, `j + 1` and `n - (k+1)` through
+`substAll'`'s *proof-carrying* `getElem` (`vs[n - k]` under
+`if h : n - k < vs.length`) before it can invoke `subst_lifted`. The ingredient
+is proved; the index arithmetic that feeds it is not, and is named in §5 of the
+spec rather than approximated.
+
 ### Iteration 10 — Execution model: a CEK machine (DONE, completed after the tenth)
 
 **Target.** `Morph/Specs/ExecutionModel/`.
