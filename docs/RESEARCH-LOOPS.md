@@ -102,6 +102,55 @@ first-class modules rather than inline proofs.
 zero `sorry` declarations, no `True`-stub theorems in any module this project
 wrote, and the repository's own pre-commit suite passing on every commit.
 
+### Iteration 12 — Subtyping: a decidable relation (SG-005 CLOSED)
+
+**Target.** SG-005, "Decidability proof for subtyping", and GA-005.
+
+**The finding — the gap table contradicted itself.** GA-005 read "Subtyping over
+`Typ` is decidable — **Validated** — `instDecidableSubtype` (ADR-015):
+`isSubtype` decision procedure", while SG-005 listed the same thing as an open
+High-priority gap. Both were wrong about the same object: `isSubtype` and
+`instDecidableSubtype` **do not exist anywhere in the repository**, and no
+ADR-015 exists either. GA-005 was *Validated* against a decision procedure that
+was never written. Meanwhile the shipped `Subtype` relation — `refl` and `trans`
+over reflexivity — derives **exactly equality** (`subtype_iff_eq`), and nothing
+in `HasType`, `inferType` or `typeCheck` consumes it.
+
+**Why it was hard.** `Typ` is a *nested* inductive, so `DecidableEq` cannot be
+derived for it, and the derived `BEq` is **not lawful** (no `LawfulBEq`
+instance), so `x == y` cannot decide `x = y`. The shipped code had already
+solved that: `eqTyp` is a hand-built structural comparison, proved lawful
+against propositional `=` and used to derive the `DecidableEq` instance
+(`TypeSystem/Spec.lean` §73, §412). **SG-005 was not a missing proof; it was a
+missing decision procedure, and the procedure was blocked on a missing lawful
+equality that already existed two hundred lines away in a module nobody had
+connected.**
+
+**Delivered.** `Morph/Specs/Subtyping/` + `spec/language/subtyping_spec.md`.
+
+* `Sub` — a preorder with `neverType` as bottom, `unitType` as top, covariance
+  in `optionType`/`resultType`/`arrayType`, and `refType` **invariant** in both
+  capability and payload (handing a `refType .iso (optionType τ)` where a
+  `refType .iso τ` is expected would widen what the holder may do with it, which
+  is unsound in a capability system).
+* `isSubtype` — a total, structural decision procedure, reusing `eqTyp` for the
+  comparisons.
+* **`isSubtype_sound`** and **`isSubtype_complete`** — and therefore
+  **`instDecidableSub` : `Decidable (Sub τ σ)`**, the decidability SG-005 asks
+  for. The soundness proof is a fuel induction on the shipped measure `tS`; the
+  completeness proof is an induction on the derivation.
+* `subtype_iff_eq` — the old relation is exactly equality, which is why loop 1
+  found nothing to prove about it.
+
+**Not claimed (§6 of the spec).** **Function contravariance is missing**:
+`functionType` and `linearFunctionType` are compared *exactly* here. Variance
+needs a list relation mutually inductive with `Sub`, and core Lean's `induction`
+does not support mutual inductives — so the completeness proof would need a
+hand-written mutual recursor or a further measure argument. This is the single
+most important refinement left, and it is named rather than approximated with a
+weaker relation. Also: the type checker still computes and compares *exact*
+types; wiring subtyping into `HasType` is a separate change.
+
 ### Iteration 11 — The two substitution operations, related
 
 **Target.** The gap between `subst'` (single, implicit offset — the machine's) and

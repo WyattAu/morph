@@ -32,7 +32,7 @@ The following assumptions were identified as needing formal validation. See `spe
 | GA-002 | SSUS pattern preserves referential transparency | Validated | See `spec/language/strict_state_unidirectional_spec.md` |
 | GA-003 | Projectional editing can express all syntactic forms | Under Review | See `spec/language/dialect_projection_spec.md` |
 | GA-004 | Actor message ordering is deterministic | Validated | See `spec/architecture/layered_concurrency_spec.md` |
-| GA-005 | Subtyping over `Typ` is decidable | Validated | `instDecidableSubtype` (ADR-015): `isSubtype` decision procedure proved sound + complete; 2026-10-09, research loop 1 |
+| GA-005 | Subtyping over `Typ` is decidable | **Corrected** | The claimed `instDecidableSubtype`/`isSubtype` (ADR-015) did not exist in the repository. Loop 12 supplies both: `Morph/Specs/Subtyping/` — `isSubtype` with `isSubtype_sound`/`isSubtype_complete` and the `instDecidableSub` instance. The *old* `Subtype` relation is exactly equality (`subtype_iff_eq`). |
 
 ---
 
@@ -48,7 +48,7 @@ The following assumptions were identified as needing formal validation. See `spe
 | SG-002 | Memory Model | Formal bounds on heap allocation growth | **CLOSED** | Phase 1.5 — `spec/memory/memory_bounds_spec.md` (research loop 2) |
 | SG-003 | Security Flow | Taint tracking across dialect boundaries | **CLOSED** | Phase 1.6 — `spec/security/taint_flow_spec.md` (research loop 4) |
 | SG-004 | Concurrency | Deadlock-freedom proof for actor system | **CLOSED** | Phase 4.4 — `spec/concurrency/actor_deadlock_freedom_spec.md` (research loop 3) |
-| SG-005 | Type System | Decidability proof for subtyping | High | Phase 1.7 |
+| SG-005 | Type System | Decidability proof for subtyping | **CLOSED** (loop 12: `Morph/Specs/Subtyping/`, `spec/language/subtyping_spec.md`) | — | — |
 
 ---
 
