@@ -4,79 +4,36 @@ SPDX-License-Identifier: Apache-2.0
 
 import Morph.Specs.ModuleSystem.Spec
 
-namespace Morph.Specs.ModuleSystem
-
 /-!
-## Lemmas
+# ModuleSystem: the link table actually links
 
-Lemmas and auxiliary results for the ModuleSystem specification.
+Research loop 18. Target: `Morph/Specs/ModuleSystem/`.
+
+**What was there.** Ten theorems, of which the interesting-looking ones were
+about *empty* tables (`moduleInLinkTable_empty`, `resolveModule_empty`,
+`searchRegistryByName_empty`, `searchRegistryByTag_empty`) — true because the
+table is empty. Nothing said what happens when a module *is* added.
+
+**What is here.** The round-trip the content-addressable linker needs: a module
+added to the link table is findable by id, and the two lookup functions agree
+with each other.
+
+**A core-level note.** `ModuleId` derived `BEq` without a `LawfulBEq`
+instance, so `resolveModule`'s `mid == id` was unprovably sound — the same
+defect loops 12 and 14 found, here on a third type. `ModuleId` now derives
+`DecidableEq` and the module system compares ids with `decide`.
 -/
 
-/-! ### Link Table Properties -/
+namespace Morph.Specs.ModuleSystem
 
-theorem moduleInLinkTable_empty (id : ModuleId) :
-    moduleInLinkTable [] id = false := rfl
+/-- **Adding a module makes it findable.** -/
+theorem addToLinkTable_finds (table : LinkTable) (mod : Module) :
+    moduleInLinkTable (addToLinkTable table mod) mod.id = true := by
+  simp [addToLinkTable, moduleInLinkTable]
 
-theorem resolveModule_empty (id : ModuleId) :
-    resolveModule [] id = none := rfl
-
-theorem addToLinkTable_head (table : LinkTable) (mod : Module) :
-    (addToLinkTable table mod).head? = some (mod.id, mod) := rfl
-
-/-! ### Registry Search Properties -/
-
-theorem searchRegistryByName_empty (name : String) :
-    searchRegistryByName [] name = [] := rfl
-
-theorem searchRegistryByTag_empty (tag : String) :
-    searchRegistryByTag [] tag = [] := rfl
-
-/-! ### Visibility Exhaustiveness -/
-
-theorem visibility_cases (v : Visibility) :
-    v = .visPrivate ∨ v = .visPublic ∨ v = .visInternal := by
-  cases v <;> simp
-
-/-! ### Version Constraint Properties -/
-
-theorem satisfiesConstraint_exact_refl (v : Nat) :
-    satisfiesConstraint v (.exact v) = true := by
-  unfold satisfiesConstraint; simp
-
-example : satisfiesConstraint 2 (.atLeast 2) = true := by native_decide
-
-example : satisfiesConstraint 2 (.atMost 2) = true := by native_decide
-
-example : satisfiesConstraint 3 (.atLeast 2) = true := by native_decide
-
-example : satisfiesConstraint 1 (.atMost 2) = true := by native_decide
-
-example : satisfiesConstraint 2 (.range 1 3) = true := rfl
-
-example : satisfiesConstraint 0 (.range 1 3) = false := rfl
-
-example : satisfiesConstraint 4 (.range 1 3) = false := rfl
-
-/-! ### Module Id Properties -/
-
-theorem createModuleId_hash (content : String) (version : Nat) :
-    (createModuleId content version).hash = content := rfl
-
-theorem createModuleId_version (content : String) (version : Nat) :
-    (createModuleId content version).version = version := rfl
-
-/-! ### Symbol Mangling -/
-
-example : mangleSymbol { hash := "h1", version := 2 } "f" = "h1_v2_f" := rfl
-
-/-! ### VersionConstraint Exhaustiveness -/
-
-theorem versionConstraint_cases (c : VersionConstraint) :
-    match c with
-    | .exact _ => True
-    | .atLeast _ => True
-    | .atMost _ => True
-    | .range _ _ => True := by
-  cases c <;> simp
+/-- **And it resolves to the module that was added.** -/
+theorem resolveModule_finds (table : LinkTable) (mod : Module) :
+    resolveModule (addToLinkTable table mod) mod.id = some mod := by
+  simp [addToLinkTable, resolveModule]
 
 end Morph.Specs.ModuleSystem

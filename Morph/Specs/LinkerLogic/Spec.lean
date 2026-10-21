@@ -23,7 +23,7 @@ inductive SymbolBinding where
   | global
   | weak
   | strong
-deriving Repr, BEq
+deriving Repr, BEq, DecidableEq
 
 /-- A linker symbol with its name, address, and binding type. -/
 structure LinkerSymbol where

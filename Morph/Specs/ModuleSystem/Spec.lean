@@ -32,7 +32,7 @@ namespace Morph.Specs.ModuleSystem
 structure ModuleId where
   hash : String
   version : Nat
-  deriving Repr, BEq
+  deriving Repr, BEq, DecidableEq
 
 def computeModuleHash (content : String) : String :=
   content
@@ -74,13 +74,13 @@ structure Module where
 abbrev LinkTable := List (ModuleId × Module)
 
 def resolveModule (table : LinkTable) (id : ModuleId) : Option Module :=
-  table.find? (fun (mid, _) => mid == id) |>.map Prod.snd
+  table.find? (fun (mid, _) => decide (mid = id)) |>.map Prod.snd
 
 def addToLinkTable (table : LinkTable) (module : Module) : LinkTable :=
   (module.id, module) :: table
 
 def moduleInLinkTable (table : LinkTable) (id : ModuleId) : Bool :=
-  table.any (fun (mid, _) => mid == id)
+  table.any (fun (mid, _) => decide (mid = id))
 
 /-!
 ## Workspace Resolution

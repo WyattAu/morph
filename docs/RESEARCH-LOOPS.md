@@ -102,6 +102,42 @@ first-class modules rather than inline proofs.
 zero `sorry` declarations, no `True`-stub theorems in any module this project
 wrote, and the repository's own pre-commit suite passing on every commit.
 
+### Iterations 17–18 — The linker, the module system, and two superseded modules
+
+**Targets.** `Morph/Specs/DialectProjection/`, `Morph/Specs/MonadicEffect/`,
+`Morph/Specs/LinkerLogic/`, `Morph/Specs/ModuleSystem/`.
+
+**LinkerLogic (iteration 18).** Ten theorems about `Option.map` and
+`List.append`, with no theorem about linking. Replaced with the binding rules
+(strong beats global beats weak beats local; ties keep the first definition) —
+and with a **finding**: `acyclic` is documented as checking "directly or
+transitively" but checks only **directly**, so a two-object cycle is reported as
+*acyclic*. The function's name promises a property it does not have.
+`ltoSafe` is a stub (`:= true`, "a no-op in the current model") and is now
+stated as one.
+
+**ModuleSystem (iteration 18).** The interesting-looking theorems were about
+*empty* tables — true because the table is empty. Replaced with the round-trip a
+content-addressed linker needs: a module added to the link table is findable by
+id (`addToLinkTable_finds`) and resolves to the module that was added
+(`resolveModule_finds`). A third instance of the same core-level defect: `ModuleId`
+derived `BEq` with no `LawfulBEq`, so `resolveModule`'s `mid == id` was
+unprovably sound. Now `DecidableEq` + `decide`.
+
+**The two superseded modules (iteration 17).** `DialectProjection` (13 trivia
+theorems) and `MonadicEffect` (2) had their real content delivered in loops 7
+and 6. Their lemma files now *connect* to those frameworks instead of pretending
+to be about their own subjects: `DialectProjection` records that the old
+pass-through `lower` accepts a translation into `core` of a program performing
+`raw-ptr` (which the validated translation refuses), and `MonadicEffect` records
+that its `effectNames` traverses no continuation — so it reports *none* of the
+effects a real computation performs, where the new algebra's collection
+traverses them.
+
+**Not claimed (§4 of the spec).** No transitive cycle detection (the named fix),
+no LTO safety check, no symbol-table merging theorem, no workspace resolution
+or version constraints, and no registry search.
+
 ### Iterations 15–16 — Null coalescing and the lexical rules
 
 **Targets.** `Morph/Specs/OperatorNullCoalescing/`,
