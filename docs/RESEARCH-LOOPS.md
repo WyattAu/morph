@@ -102,6 +102,45 @@ first-class modules rather than inline proofs.
 zero `sorry` declarations, no `True`-stub theorems in any module this project
 wrote, and the repository's own pre-commit suite passing on every commit.
 
+### Iteration 14 — MemoryModel: seven `True` stubs, replaced
+
+**Target.** `Morph/Specs/MemoryModel/`.
+
+**What the loop found.** The module advertised **seven** `Prop := True`
+stubs — `spec_memory_allocation`, `spec_memory_deallocation`,
+`spec_memory_access`, `memory_safety_invariant`, `allocation_preserves_safety`,
+`deallocation_preserves_safety`, `empty_memory_well_formed` — and
+`isMemorySafe` was `True` *for every memory*, so every safety theorem about it
+was vacuous. The one theorem that looked like a real property was a tautology:
+
+```lean
+theorem read_preserves_memory (mem : Memory) (id : Core.BlockId) (offset : Nat) :
+    readByte mem id offset = readByte mem id offset := by rfl
+```
+
+**Delivered.** The three advertised `spec_memory_*` properties now say what they
+claim — allocation is fresh and well-formed, deallocation removes the block, and
+**access is bounds-checked** (a read past the end of a block yields nothing; a
+write past the end leaves the memory alone) — and they are proved
+(`allocation_spec`, `deallocation_spec`, `readByte_out_of_bounds`,
+`writeByte_out_of_bounds`, `access_spec`). `isMemorySafe` is now a real
+predicate: every block's data has exactly the size it claims.
+
+**A core-level finding.** Proving the deallocation property needed `BlockId`'s
+equality to be decidable *and* sound. It was neither: `Morph/Core.lean` derived
+`BEq` for `BlockId` with **no `LawfulBEq` instance**, so every `==` on a block
+id in the compiler was unprovably sound — the same defect loop 12 found for
+`Typ`, but at the level of the core type. Fixed by deriving `DecidableEq` for
+`BlockId` and comparing ids with `decide` in the memory model. The same
+treatment is still owed for the other `BEq` types in `Morph/Core.lean` that lack
+a `LawfulBEq` instance — named in §4 of the spec.
+
+**Not claimed (§5 of the spec).** Four stubs remain `True` and are recorded as
+vacuous rather than quietly left; two of them are proved in their honest form.
+No refcount semantics (that is loop 2's `MemoryBounds`, at the affine-type
+level), no aliasing or use-after-free reasoning, and no connection to
+`Morph/Memory.lean` — this is the *model*, not the runtime.
+
 ### Iteration 13 — MorphLanguage: real edits behind vacuous theorems
 
 **Target.** `Morph/Specs/MorphLanguage/`.

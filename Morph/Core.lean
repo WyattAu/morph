@@ -41,7 +41,7 @@ See ADR-002 and Coding Standards Section 1.2 for details.
 -/
 structure BlockId where
   id : Nat
-deriving Repr, BEq, Hashable
+deriving Repr, BEq, Hashable, DecidableEq
 
 /-!
 ## ProvenanceId

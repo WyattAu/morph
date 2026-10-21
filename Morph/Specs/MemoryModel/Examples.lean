@@ -2,7 +2,7 @@
 SPDX-License-Identifier: Apache-2.0
 -/
 
-import Morph.Specs.MemoryModel.Spec
+import Morph.Specs.MemoryModel.Lemmas
 
 namespace Morph.Specs.MemoryModel
 
@@ -29,8 +29,19 @@ example (id : Core.BlockId) (offset : Nat) :
 example : (default : Memory).blocks = [] := by
   rfl
 
-/-- Memory safety is trivially true. -/
-example (mem : Memory) : isMemorySafe mem := by
-  trivial
+/-- **Memory safety used to be trivial — it was `True`.** It is now a real
+predicate: every block's data has exactly the size it claims. The old
+"theorem" was true for every memory because the predicate was; now it is a
+statement about a particular memory. -/
+example (mem : Memory) (h : isMemorySafe mem) : isMemorySafe mem := h
+
+/-- And the specification's own allocation property, proved. -/
+example (mem : Memory) (size : Nat) : spec_memory_allocation mem size :=
+  allocation_spec mem size
+
+/-- The bounds check, proved. -/
+example (mem : Memory) (id : Core.BlockId) (offset : Nat) :
+    spec_memory_access mem id offset :=
+  access_spec mem id offset
 
 end Morph.Specs.MemoryModel

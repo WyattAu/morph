@@ -49,7 +49,7 @@ instance : Inhabited Memory where
 -/
 
 def getBlock (mem : Memory) (id : Core.BlockId) : Option Block :=
-  mem.blocks.find? (fun (bid, _) => bid == id) |>.map Prod.snd
+  mem.blocks.find? (fun (bid, _) => decide (bid = id)) |>.map Prod.snd
 
 /-!
 ## Well-Formedness Predicates
@@ -58,8 +58,11 @@ def getBlock (mem : Memory) (id : Core.BlockId) : Option Block :=
 def isWellFormedBlock (block : Block) : Prop :=
   block.data.size = block.size
 
-def isMemorySafe (_mem : Memory) : Prop :=
-  True
+/-- **Memory safety**: every allocated block's data has exactly the size it
+claims. This was `True` — a vacuous predicate that made every safety theorem
+about it vacuous too. -/
+def isMemorySafe (mem : Memory) : Prop :=
+  ∀ p ∈ mem.blocks, isWellFormedBlock p.2
 
 /-!
 ## Memory Operations
@@ -76,7 +79,7 @@ def allocate (mem : Memory) (size : Nat) : Memory × Core.BlockId :=
   ({ blocks := newBlocks, nextId := mem.nextId + 1 }, id)
 
 def deallocate (mem : Memory) (id : Core.BlockId) : Memory :=
-  { mem with blocks := mem.blocks.filter (fun (bid, _) => bid != id) }
+  { mem with blocks := mem.blocks.filter (fun (bid, _) => !decide (bid = id)) }
 
 def readByte (mem : Memory) (id : Core.BlockId) (offset : Nat) : Option UInt8 :=
   match getBlock mem id with
@@ -93,7 +96,7 @@ def writeByte (mem : Memory) (id : Core.BlockId) (offset : Nat) (value : UInt8) 
       if offset < block.size then
         let newBlock := { block with data := block.data.set! offset value }
         { mem with blocks := mem.blocks.map (fun (bid, b) =>
-          if bid == id then (id, newBlock) else (bid, b)) }
+          if decide (bid = id) then (id, newBlock) else (bid, b)) }
       else
         mem
   | none => mem
@@ -112,7 +115,7 @@ def decrementRefCount (mem : Memory) (id : Core.BlockId) : Memory :=
       if block.refCount > 0 then
         let newBlock := { block with refCount := block.refCount - 1 }
         { mem with blocks := mem.blocks.map (fun (bid, b) =>
-          if bid == id then (id, newBlock) else (bid, b)) }
+          if decide (bid = id) then (id, newBlock) else (bid, b)) }
       else
         mem
   | none => mem
@@ -121,9 +124,24 @@ def decrementRefCount (mem : Memory) (id : Core.BlockId) : Memory :=
 ## Specification Theorems
 -/
 
-def spec_memory_allocation : Prop := True
-def spec_memory_deallocation : Prop := True
-def spec_memory_access : Prop := True
+/-- **Allocation** returns a fresh id, a block that is well formed, and bumps
+the id counter. -/
+def spec_memory_allocation (mem : Memory) (size : Nat) : Prop :=
+  let (mem', id) := allocate mem size
+  id.id = mem.nextId ∧ mem'.nextId = mem.nextId + 1 ∧
+    isWellFormedBlock ((mem'.blocks.map Prod.snd).headD
+      { id := id, size := 0, data := #[], refCount := 0 })
+
+/-- **Deallocation** removes the block it is given. -/
+def spec_memory_deallocation (mem : Memory) (id : Core.BlockId) : Prop :=
+  getBlock (deallocate mem id) id = none
+
+/-- **Access is bounds-checked**: a read outside the block's size yields
+nothing, and a write outside the block's size leaves the memory alone. -/
+def spec_memory_access (mem : Memory) (id : Core.BlockId) (offset : Nat) : Prop :=
+  (∀ b, getBlock mem id = some b → offset ≥ b.size → readByte mem id offset = none) ∧
+  (∀ b, getBlock mem id = some b → offset ≥ b.size →
+    writeByte mem id offset 7 = mem)
 def memory_safety_invariant : Prop := True
 def allocation_preserves_safety : Prop := True
 def deallocation_preserves_safety : Prop := True
