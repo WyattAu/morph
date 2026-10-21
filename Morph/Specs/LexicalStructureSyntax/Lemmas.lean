@@ -1,33 +1,62 @@
-/-!
-Lemmas for LexicalStructureSyntax.
-
-Lemmas about lexical structure, token classification,
-and syntax properties.
+/- Copyright 2024-2025 The Morph Project Authors
+SPDX-License-Identifier: Apache-2.0
 -/
+
+import Morph.Specs.LexicalStructureSyntax.Spec
+
+/-!
+# Lexical structure: the invariants the two rules must satisfy
+
+Research loop 16. Target: `Morph/Specs/LexicalStructureSyntax/`.
+
+**What was there.** Ten theorems, all `rfl` facts about `String.length`,
+`Char.isDigit` and `List.toString` — nothing about lexing. The module declares
+two lexical rules, `classifyChar` and `isIdentStart`/`isIdentContinue`, and
+**no theorem related them**.
+
+**The finding.** The two rules *disagree*. `isIdentStart` accepts `'_'`
+(identifiers may contain underscores), but `classifyChar` classifies `'_'` as an
+**operator**, because it tests `c.isAlpha` only. So the module's own character
+classification would tokenize the first character of every `snake_case`
+identifier as an operator. That is a real inconsistency in the specification, and
+it is invisible until the two rules are put side by side — which is what this
+loop does.
+
+**What is here.** The invariants a lexical specification must satisfy, and the
+disagreement, stated.
+
+(The *totality* of lexing — that every input is consumed in finite time — is
+proved separately, in `Morph/Specs/TotalLexer` (research loop 9); this module is
+about the character rules.)
+-/
+
 namespace Morph.Specs.LexicalStructureSyntax
 
-theorem string_empty_length : "".length = 0 := rfl
+/-- **An identifier start is also an identifier continuation.** A lexical
+invariant: whatever may begin an identifier may continue one. -/
+theorem isIdentStart_implies_continue (c : Char) (h : isIdentStart c = true) :
+    isIdentContinue c = true := by
+  unfold isIdentStart at h
+  unfold isIdentContinue
+  cases hc : c.isAlpha with
+  | true => simp [hc]
+  | false =>
+      have h2 : (c == '_') = true := by simpa [hc] using h
+      simp [hc, h2]
 
-theorem string_singleton_length : (String.singleton 'a').length = 1 := rfl
+/-- **The classification agrees with the identifier rules on letters.** -/
+theorem classifyChar_alpha (c : Char) (h : c.isAlpha = true) :
+    classifyChar c = .identifier := by
+  simp [classifyChar, h]
 
-example : ("ab" ++ "cd").length = 4 := rfl
-
-example : ("hello".push 'x').length = 6 := rfl
-
-theorem list_nil_toString : String.ofList ([] : List Char) = "" := rfl
-
-theorem char_isDigit_zero : '0'.isDigit = true := rfl
-
-theorem char_isDigit_nine : '9'.isDigit = true := rfl
-
-theorem char_isDigit_A : 'A'.isDigit = false := rfl
-
-theorem char_isAlpha_a : 'a'.isAlpha = true := rfl
-
-theorem char_isAlpha_0 : '0'.isAlpha = false := rfl
-
-theorem char_isWhitespace_space : ' '.isWhitespace = true := rfl
-
-theorem char_isWhitespace_a : 'a'.isWhitespace = false := rfl
+/-- **The finding: the two rules disagree on `'_'`.** `isIdentStart` accepts the
+underscore — identifiers may contain it — but `classifyChar` classifies it as an
+operator, because it tests `c.isAlpha` only. Every `snake_case` identifier
+would therefore be tokenized with its first character split off as an operator. -/
+theorem classifyChar_underscore_disagrees :
+    isIdentStart '_' = true ∧ classifyChar '_' = .operator := by
+  constructor
+  · simp [isIdentStart]
+  · simp [classifyChar]
 
 end Morph.Specs.LexicalStructureSyntax

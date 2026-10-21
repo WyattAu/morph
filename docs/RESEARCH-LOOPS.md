@@ -102,6 +102,33 @@ first-class modules rather than inline proofs.
 zero `sorry` declarations, no `True`-stub theorems in any module this project
 wrote, and the repository's own pre-commit suite passing on every commit.
 
+### Iterations 15–16 — Null coalescing and the lexical rules
+
+**Targets.** `Morph/Specs/OperatorNullCoalescing/`,
+`Morph/Specs/LexicalStructureSyntax/`.
+
+**Null coalescing (iteration 15).** Four theorems, all `rfl` facts about
+`Option.getOrDeref` and `Option.orElse` — nothing about the module's subject.
+Replaced with the *semantics* of `??`: a chain resolves to the **first
+non-null** value, a null head continues the chain, a non-null head
+short-circuits it, and `evaluate` agrees with the chain
+(`evaluate_eq_chain`).
+
+**Lexical rules (iteration 16).** Ten theorems, all `rfl` facts about
+`String.length` and `Char.isDigit`. Replaced with the lexical invariants —
+*an identifier start is also an identifier continuation* — and with a **finding**:
+the module's two rules **disagree**. `isIdentStart` accepts `'_'`, but
+`classifyChar` classifies `'_'` as an **operator** (it tests `c.isAlpha` only),
+so every `snake_case` identifier would be tokenized with its first character
+split off. The inconsistency is invisible until the two rules are put side by
+side, which is what the loop does.
+
+**Not claimed (§4 of the spec).** No keyword/identifier exclusion proof, and
+**no character-class disjointness** — `Char.isAlpha` and `Char.isDigit` are
+range tests in the standard library whose disjointness is not proved here, so
+"a digit is not an identifier start" is not claimed. No `??` type system, no
+chain-length accounting.
+
 ### Iteration 14 — MemoryModel: seven `True` stubs, replaced
 
 **Target.** `Morph/Specs/MemoryModel/`.
