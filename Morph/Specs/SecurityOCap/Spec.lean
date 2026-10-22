@@ -46,10 +46,16 @@ abbrev NodeSet := List Node
 
 abbrev EdgeSet := List Edge
 
-def AccessGraph.well_formed (_g : AccessGraph) : Prop := True
 
 def AccessGraph.edges_valid (g : AccessGraph) : Prop :=
   ∀ (e : Edge), e ∈ g.edges → e.source ∈ g.nodes ∧ e.target ∈ g.nodes
+
+/-- An access graph is *well formed* when every edge's endpoints are nodes of
+the graph — that is, when its edges are valid. (This was `True`, sitting next to
+`edges_valid`, which is the real statement.) -/
+def AccessGraph.well_formed (g : AccessGraph) : Prop :=
+  g.edges_valid
+
 
 inductive Path where
   | nil : Path

@@ -13,11 +13,15 @@ Lemmas and auxiliary results for the SecurityOCap specification.
 
 /-- The empty access graph is well-formed. -/
 theorem empty_graph_well_formed :
-    AccessGraph.well_formed { nodes := [], edges := [] } := trivial
+    AccessGraph.well_formed { nodes := [], edges := [] } := by
+  intro e hmem
+  simp at hmem
 
 /-- A singleton access graph is well-formed. -/
 theorem singleton_graph_well_formed (n : Node) :
-    AccessGraph.well_formed { nodes := [n], edges := [] } := trivial
+    AccessGraph.well_formed { nodes := [n], edges := [] } := by
+  intro e hmem
+  simp at hmem
 
 /-- The empty access graph has valid edges (vacuously: no edges to check). -/
 theorem empty_graph_edges_valid :
@@ -61,10 +65,16 @@ theorem authority_transfer_from_edge (g : AccessGraph) (A _B O : Node)
   intro _
   trivial
 
-/-- Adding a node preserves well-formedness (since well_formed is always true). -/
+/-- **Adding a node preserves well-formedness.** The old proof was `fun h => h` —
+a tautology, valid only because `well_formed` was `True`. Now that it means
+"every edge's endpoints are nodes", the proof is real: the edges are unchanged,
+and a node list that grew still contains every endpoint it did. -/
 theorem add_node_preserves_well_formed (g : AccessGraph) (n : Node) :
     AccessGraph.well_formed g →
-    AccessGraph.well_formed { g with nodes := n :: g.nodes } := fun h => h
+    AccessGraph.well_formed { g with nodes := n :: g.nodes } := by
+  intro h e hmem
+  have h' := h e hmem
+  exact ⟨by simpa using Or.inr h'.1, by simpa using Or.inr h'.2⟩
 
 /-- A graph satisfying spec_access_graph has well-formed edges. -/
 theorem spec_access_graph_implies_edges_valid (g : AccessGraph)

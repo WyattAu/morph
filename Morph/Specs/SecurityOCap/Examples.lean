@@ -36,7 +36,12 @@ example : connectivity_rule capGraph nodeAlice nodeAlice "read" := by
 example : Allowed capGraph nodeAlice nodeAlice "write" := by
   unfold Allowed Path.exists; left; rfl
 
-example : AccessGraph.well_formed capGraph := trivial
+example : AccessGraph.well_formed capGraph := by
+  intro e hmem
+  simp [capGraph] at hmem
+  rcases hmem with rfl | rfl
+  · exact ⟨by simp [capGraph], by simp [capGraph]⟩
+  · exact ⟨by simp [capGraph], by simp [capGraph]⟩
 
 example : authority_transfer capGraph nodeAlice nodeBob nodeBob := by
   unfold authority_transfer
@@ -59,7 +64,9 @@ example : Path.exists capGraphRevoked nodeAlice nodeBob := by
   exists { source := nodeAlice, target := nodeBob }
   exact ⟨.head [], ⟨rfl, rfl⟩⟩
 
-example : AccessGraph.well_formed { nodes := [], edges := [] } := trivial
+example : AccessGraph.well_formed { nodes := [], edges := [] } := by
+  intro e hmem
+  simp at hmem
 
 /-- No edge can be in an empty list. -/
 example : AccessGraph.edges_valid { nodes := [], edges := [] } := by

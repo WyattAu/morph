@@ -950,6 +950,25 @@ has neither, so those claims are unstateable here for the same reason the
 concurrency module's message-passing claims were (loop 20): the operation they
 constrain does not exist.
 
+### Iteration 23 — SecurityOCap: well-formedness meant nothing
+
+**Target.** `Morph/Specs/SecurityOCap/`.
+
+**What was there.** `AccessGraph.well_formed` was `True` — and it sat *directly
+next to* `AccessGraph.edges_valid`, which is the real statement: every edge's
+endpoints are nodes of the graph. The module had the property it needed and named
+the wrong thing.
+
+**The cost of the stub.** The old proof of `add_node_preserves_well_formed` was
+`fun h => h` — a tautology, valid only because the property was `True`. With
+`well_formed` meaning "the edges are valid", the theorem became a real one and
+the proof real: the edges are unchanged, and a node list that grew still contains
+every endpoint it did.
+
+**What is here.** `well_formed` is now `edges_valid` ✓, the two "trivial" graph
+theorems are proved properly ✓, and the add-a-node preservation theorem is a real
+argument rather than `fun h => h` ✓.
+
 ## Remaining work, measured
 
 After eighteen iterations the repository's specifications fall into three
