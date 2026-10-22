@@ -1277,6 +1277,20 @@ its owner; and every delivery error has a non-empty message.
 **Deadlock claims.** `specDeadlockFreeTheorem`, `specDeadlockDetection` and
 `specCycleDetection` remain backed by `Morph/Specs/ActorDeadlock`, unchanged.
 
+### Iteration 36 — correcting the MemoryAcyclicity record
+
+**Target.** `Morph/Specs/MemoryAcyclicity/` (documentation only).
+
+**What was wrong.** The loop-21 docstring claimed that
+`eventuallyDeallocated` and `weakReferences` had been fixed. They had not:
+both are still stubs in `Spec.lean`. The first has no graph/roots parameter,
+and the second has no weak-reference marker in `ReferenceGraph.edges`, so
+neither is repairable without a model change.
+
+**What is here.** The docstring now says so, and the two are recorded as open.
+The proved results (`spec_no_reference_cycles`, empty and single-vertex
+acyclicity) are unchanged.
+
 ## Remaining work, measured
 
 After eighteen iterations the repository's specifications fall into three

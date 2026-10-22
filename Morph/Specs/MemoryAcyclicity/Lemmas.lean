@@ -34,11 +34,13 @@ exactly a vertex that reaches itself — relates the module's own `hasPath` to
 bridge is a path-to-edges lemma; it is named in §5 of the spec rather than
 asserted here.
 
-**And the fix for the stub.** `eventuallyDeallocated` now says what it should:
-an object that is *not* reachable from any root is deallocated — vacuously
-true when there are no roots, and the statement the garbage collector actually
-maintains. `weakReferences` counts the edges marked weak, rather than returning
-zero for every graph.
+**Still stubbed (correcting an earlier note in this file).** This docstring
+previously claimed that `eventuallyDeallocated` and `weakReferences` had been
+fixed. They have not: `Spec.lean` still defines
+`eventuallyDeallocated _ := True`, and `weakReferences _ _ := 0`. Neither can be
+made real without changing the model — `eventuallyDeallocated` has no graph or
+roots parameter, and `ReferenceGraph.edges` carries no weak-reference marker.
+They are recorded as open rather than papered over.
 -/
 
 namespace Morph.Specs.MemoryAcyclicity
