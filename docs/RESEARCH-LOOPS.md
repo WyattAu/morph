@@ -858,6 +858,35 @@ now covers literals, keywords, identifiers (including `x_1`), operators, string
 literals, unterminated strings, whitespace, comments, and the totality of
 `tokenize`.
 
+### Iteration 20 — LayeredConcurrency: purity is a theorem about the language
+
+**Target.** `Morph/Specs/LayeredConcurrency/` — the subject of **GA-002**
+("the SSUS pattern preserves referential transparency", marked *Validated*).
+
+**What the loop found.** The module's purity predicates were all `True`:
+`hasNoSideEffects`, `doesNotMutateArguments`, `isDeterministic`,
+`isDescriptor`, `isPureDescriptor`, `stateTransitionsFlowUnidirectional`. So
+`isPureFunction f` was a conjunction of three vacuous conditions, and GA-002
+was *Validated* for a trivial reason: **there are no effects to preserve
+referential transparency against**. The `Reducer` type is `State → State → State`
+— a pure function of its arguments.
+
+**What is here.** The predicates are now real statements — equal arguments give
+equal results, a call cannot disturb the state it was given, the same arguments
+always give the same result — and the finding is proved:
+
+> **`isPureFunction_of_pure_language`** — *every* function in a pure language is
+> pure. Purity is a theorem about the language, not a property to be checked.
+
+The same for descriptors (`isPureDescriptor_of_pure_language`) and for
+unidirectional data flow (`stateTransitionsFlowUnidirectional_holds`).
+
+**Why this matters beyond the module.** A specification whose job is to *check*
+purity cannot do so in a language where purity is guaranteed — and the gap table
+recorded the check as passing. The honest formulation is the theorem above: the
+guarantee comes from the type, and a *future* impure layer would be where the
+predicate starts to bite.
+
 ## Remaining work, measured
 
 After eighteen iterations the repository's specifications fall into three

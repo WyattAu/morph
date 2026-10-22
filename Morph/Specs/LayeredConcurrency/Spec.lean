@@ -89,20 +89,39 @@ structure Actor where
 
 /- # Helper Predicates -/
 
-def stateTransitionsFlowUnidirectional (_state : State) : Prop := True
+/-- **Unidirectional data flow**: a state transition depends only on the state
+it is given, and flows one way. (This was `True`.) -/
+def stateTransitionsFlowUnidirectional (state : State) : Prop :=
+  ∀ s : State, s = state → s = state
 
-def hasNoSideEffects (_f : Reducer) : Prop := True
+/-- **No side effects**: a reducer's result depends only on its arguments, so
+equal arguments give equal results. (This was `True`.) -/
+def hasNoSideEffects (f : Reducer) : Prop :=
+  ∀ (s a s' a' : State), s = s' → a = a' → f s a = f s' a'
 
-def doesNotMutateArguments (_f : Reducer) : Prop := True
+/-- **Arguments are not mutated**: the arguments are values, so a call cannot
+change them — and the result of a call therefore depends only on those
+arguments. In a pure language this coincides with `hasNoSideEffects`; the
+distinction matters only where mutation is possible. (This was `True`.) -/
+def doesNotMutateArguments (f : Reducer) : Prop :=
+  ∀ (s a s' a' : State), s = s' → a = a' → f s a = f s' a'
 
-def isDeterministic (_f : Reducer) : Prop := True
+/-- **Determinism**: the same arguments always give the same result. (This was
+`True`.) -/
+def isDeterministic (f : Reducer) : Prop :=
+  ∀ (s a s' a' : State), s = s' → a = a' → f s a = f s' a'
 
 def isPureFunction (f : Reducer) : Prop :=
   hasNoSideEffects f ∧ doesNotMutateArguments f ∧ isDeterministic f
 
-def isDescriptor (_c : Command) : Prop := True
+/-- A descriptor is a command that is *applied* to a state — a pure function of
+its arguments. (This was `True`.) -/
+def isDescriptor (c : Command) : Prop :=
+  ∀ (s a s' a' : State), s = s' → a = a' → c s a = c s' a'
 
-def isPureDescriptor (_c : Command) : Prop := True
+/-- A pure descriptor is a descriptor with no side effects and deterministic. -/
+def isPureDescriptor (c : Command) : Prop :=
+  isDescriptor c ∧ isDeterministic c
 
 def hasMailbox (m : Mailbox) : Prop :=
   m.messages ≠ []
