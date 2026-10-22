@@ -907,6 +907,49 @@ vertex that reaches itself — relates the module's own `hasPath` to
 bridge is a path-to-edges lemma; it is named in the spec rather than asserted
 here.
 
+### Iteration 22 — MemoryAffineLogic: a false law, refuted
+
+**Target.** `Morph/Specs/MemoryAffineLogic/`.
+
+**What was there.** The module has a real model — `AffineContext` with variables
+and resources, `joinContexts`, `splitContext`, `isWellFormedContext`,
+`disjointContexts` — and it *states* three laws of the context algebra. None was
+proved: the lemma file had only `rfl` facts about counts and lookup. Eleven
+further properties were `True`.
+
+**The finding.** One of the three stated laws is **false**:
+
+```lean
+def context_join_commutative (Γ₁ Γ₂ : AffineContext) : Prop :=
+  joinContexts Γ₁ Γ₂ = joinContexts Γ₂ Γ₁
+```
+
+`joinContexts` appends the first context's variables to the second's, and
+`a ++ b ≠ b ++ a` — so this was a counterexample waiting to be written, and it
+was never noticed because it was never proved. The order of a context's variables
+is part of its meaning (it is the order in which resources are consumed), so the
+law cannot be rescued by weakening it to "equal up to reordering" — but it *can*
+be stated correctly, as commutativity **up to permutation**, which is what the
+specification now says and what `context_join_commutative_holds` proves.
+
+**Also proved.** Associativity of the join, the empty context as a unit, and
+**`context_join_not_commutative`** — the explicit refutation of the old claim, so
+that nobody re-adds it.
+
+**A toolchain note.** Core Lean 4.27 has **no `List.append_comm` theorem** (only
+the `List.Perm` version, `List.perm_append_comm`), and no `List.Perm.eq` — so
+the permutation law is proved with `List.perm_append_comm` directly, and the
+refutation with `simp`. The absence of `List.append_comm` from core is why this
+loop's first attempt (an induction proving commutativity) could not work — and
+that attempt is what exposed the law as false.
+
+**What is not proved.** The eleven `True` properties are about *typing* and
+*copying*: `spec_affine_typing` needs a typing judgment for expressions, and
+`affine_types_no_copy` / `copy_requires_affine` need a copy operation. The module
+has neither, so those claims are unstateable here for the same reason the
+concurrency module's message-passing claims were (loop 20): the operation they
+constrain does not exist.
+
 ## Remaining work, measured
 
 After eighteen iterations the repository's specifications fall into three

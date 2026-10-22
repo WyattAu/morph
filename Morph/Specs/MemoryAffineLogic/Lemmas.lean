@@ -4,79 +4,94 @@ SPDX-License-Identifier: Apache-2.0
 
 import Morph.Specs.MemoryAffineLogic.Spec
 
+/-!
+# MemoryAffineLogic: the context algebra, proved — and a false law, refuted
+
+Research loop 22. Target: `Morph/Specs/MemoryAffineLogic/`.
+
+**What was there.** The module has a real model — `AffineContext` with variables
+and resources, `joinContexts`, `splitContext`, `isWellFormedContext`,
+`disjointContexts` — and it *states* three laws of the context algebra. None was
+proved: the lemma file had only `rfl` facts about counts and lookup. Eleven
+further properties were `True`.
+
+**The finding.** One of the three stated laws is **false**:
+
+```lean
+def context_join_commutative (Γ₁ Γ₂ : AffineContext) : Prop :=
+  joinContexts Γ₁ Γ₂ = joinContexts Γ₂ Γ₁
+```
+
+`joinContexts` appends the first context's variables to the second's, and
+`a ++ b ≠ b ++ a` — so this is not a law, it is a counterexample waiting to be
+written. It was never noticed because it was never proved.
+
+The order of a context's variables is part of its meaning — it is the order in
+which resources are consumed — so the correct statement is that the join is
+commutative **up to permutation**, which is what the specification now says, and
+what `context_join_commutative_holds` proves.
+
+**What is proved here.** The permutation law, associativity, the unit law, and
+`context_join_not_commutative` — the explicit refutation of the old claim.
+
+**What is not proved.** The eleven `True` properties are about *typing* and
+*copying*: `spec_affine_typing` needs a typing judgment for expressions, and
+`affine_types_no_copy` / `copy_requires_affine` need a copy operation. The module
+has neither, so those claims are unstateable here for the same reason the
+concurrency module's message-passing claims were (research loop 20): the
+operation they constrain does not exist. They are named in §5 of the spec.
+-/
+
 namespace Morph.Specs.MemoryAffineLogic
 
 open Morph.Specs.CommonTypes
 
-/-!
-## Lemmas
+/-- **Joining is commutative up to permutation.** -/
+theorem context_join_commutative_holds (Γ₁ Γ₂ : AffineContext) :
+    context_join_commutative Γ₁ Γ₂ := by
+  unfold context_join_commutative joinContexts
+  exact List.perm_append_comm
 
-Lemmas and auxiliary results for the MemoryAffineLogic specification.
--/
+/-- **Joining is associative.** -/
+theorem context_join_associative_holds (Γ₁ Γ₂ Γ₃ : AffineContext) :
+    context_join_associative Γ₁ Γ₂ Γ₃ := by
+  unfold context_join_associative joinContexts
+  cases Γ₁ with
+  | mk v₁ r₁ =>
+      cases Γ₂ with
+      | mk v₂ r₂ =>
+          cases Γ₃ with
+          | mk v₃ r₃ =>
+              simp only [List.append_assoc]
 
-/-! ### Variable/Resource Counting -/
+/-- **The empty context is a unit for joining.** -/
+theorem empty_context_join_identity_holds (Γ : AffineContext) :
+    empty_context_join_identity Γ := by
+  unfold empty_context_join_identity joinContexts
+  cases Γ with
+  | mk v r =>
+      constructor <;> simp
 
-theorem variableCount_empty (x : String) :
-  variableCount { variables := [], resources := [] } x = 0 := by
-  unfold variableCount; rfl
+/-- **The refutation.** The join is *not* literally commutative: the order of a
+context's variables is part of its meaning, and joining reverses it. This is the
+counterexample to the module's original `context_join_commutative`. -/
+theorem context_join_not_commutative :
+    joinContexts { variables := [("a", .unit)], resources := [] }
+      { variables := [("b", .unit)], resources := [] }
+      ≠
+    joinContexts { variables := [("b", .unit)], resources := [] }
+      { variables := [("a", .unit)], resources := [] } := by
+  simp [joinContexts]
 
-theorem resourceCount_empty (x : String) :
-  resourceCount { variables := [], resources := [] } x = 0 := by
-  unfold resourceCount; rfl
+/-- A context's variable count is bounded by the number of variables it
+declares — the context cannot mention a variable it does not have. -/
+theorem variableCount_le (Γ : AffineContext) (x : String) :
+    variableCount Γ x ≤ Γ.variables.length := by
+  exact List.length_filter_le _ _
 
-theorem variableCount_nonneg (Γ : AffineContext) (x : String) :
-  variableCount Γ x ≥ 0 := Nat.zero_le (variableCount Γ x)
-
-theorem resourceCount_nonneg (Γ : AffineContext) (x : String) :
-  resourceCount Γ x ≥ 0 := Nat.zero_le (resourceCount Γ x)
-
-/-! ### Well-Formedness -/
-
-theorem isWellFormedContext_empty :
-  isWellFormedContext { variables := [], resources := [] } := by
-  unfold isWellFormedContext variableCount; intro _; simp
-
-/-! ### Context Operations -/
-
-theorem joinContexts_empty_right (Γ : AffineContext) :
-  joinContexts Γ { variables := [], resources := [] } = Γ := by
-  unfold joinContexts; simp [List.append_nil]
-
-theorem joinContexts_empty_left (Γ : AffineContext) :
-  joinContexts { variables := [], resources := [] } Γ =
-  { variables := Γ.variables, resources := Γ.resources } := by
-  unfold joinContexts; simp [List.nil_append]
-
-/-! ### Variable Lookup -/
-
-theorem getVariableType_none (x : String) :
-  getVariableType { variables := [], resources := [] } x = none := by
-  unfold getVariableType; simp
-
-theorem getResourceType_none (x : String) :
-  getResourceType { variables := [], resources := [] } x = none := by
-  unfold getResourceType; simp
-
-/-! ### Affine Type Predicates -/
-
-theorem isAffineTypeM_unit : isAffineTypeM .unit := trivial
-theorem isAffineTypeM_nat : isAffineTypeM .nat := trivial
-theorem isAffineTypeM_bool : isAffineTypeM .bool := trivial
-theorem isAffineTypeM_arrow (a b : MorphType) : isAffineTypeM (.arrow a b) := trivial
-theorem isAffineTypeM_int : isAffineTypeM .int := trivial
-theorem isAffineTypeM_string : isAffineTypeM .string := trivial
-
-/-! ### Linear Type Predicates -/
-
-theorem isLinearType_base (t : MorphType) : isLinearType (.base t) := trivial
-
-theorem isLinearType_unit : ¬isLinearType .unit := by unfold isLinearType; simp
-
-theorem isLinearType_bool : ¬isLinearType .bool := by unfold isLinearType; simp
-
-theorem isLinearType_nat : ¬isLinearType .nat := by unfold isLinearType; simp
-
-theorem isLinearType_arrow (a b : MorphType) : ¬isLinearType (.arrow a b) := by
-  unfold isLinearType; simp
+/-- The same for resources. -/
+theorem resourceCount_le (Γ : AffineContext) (x : String) :
+    resourceCount Γ x ≤ Γ.resources.length := by
+  exact List.length_filter_le _ _
 
 end Morph.Specs.MemoryAffineLogic

@@ -97,8 +97,14 @@ def spec_resource_linearity (_Γ₁ _Γ₂ : AffineContext) : Prop := True
 
 def spec_context_splitting (_Γ : AffineContext) (_x : String) : Prop := True
 
+/-- **Joining is commutative up to permutation, not literally.** This was
+stated as `joinContexts Γ₁ Γ₂ = joinContexts Γ₂ Γ₁` — which is **false**:
+`joinContexts` appends the variables of the first context to those of the second,
+and `a ++ b ≠ b ++ a`. The order of a context's variables is part of its
+meaning (it is the order in which resources are consumed), so the correct
+statement is the permutation one. -/
 def context_join_commutative (Γ₁ Γ₂ : AffineContext) : Prop :=
-  joinContexts Γ₁ Γ₂ = joinContexts Γ₂ Γ₁
+  List.Perm (joinContexts Γ₁ Γ₂).variables (joinContexts Γ₂ Γ₁).variables
 
 def context_join_associative (Γ₁ Γ₂ Γ₃ : AffineContext) : Prop :=
   joinContexts (joinContexts Γ₁ Γ₂) Γ₃ = joinContexts Γ₁ (joinContexts Γ₂ Γ₃)
