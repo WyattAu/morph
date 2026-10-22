@@ -1041,6 +1041,46 @@ specification itself, and left that way here: the property it gestures at
 `areCompatible`, which does not exist in this module. Also `unitToString`
 ignores its vector entirely, returning `"unit"` for every unit.
 
+### Iteration 26 — MemoryModel: the other fourteen
+
+**Target.** `Morph/Specs/MemoryModel/`.
+
+**What was there.** Loop 14 replaced the three `spec_memory_*` properties and
+gave `isMemorySafe` a real definition, but fourteen `Prop := True`
+advertisements remained: `memory_safety_invariant`, the three preservation
+claims, `read_does_not_modify`, `write_modifies_only_target`, the two ref-count
+claims, `zero_ref_count_allows_deallocation`,
+`non_zero_ref_count_prevents_deallocation`, `unique_block_identifiers`,
+`block_data_integrity`, `write_read_consistency`.
+
+**What is here.** Every one is now a real statement, proved or refuted:
+* `memory_safety_invariant` is a *closed* proposition — the empty memory is safe
+  and allocation, deallocation and writing all preserve safety — assembled from
+  the four preservation theorems.
+* `read_does_not_modify` becomes expressible through a stateful wrapper
+  (`readByteWithState`) that returns `(mem, readByte …)`; the proof is `rfl`,
+  but the property is no longer a tautology in the spec.
+* `write_modifies_only_target`, `ref_count_increment`, `ref_count_decrement`
+  are proved in their **no-target** form; the strong "changes exactly one
+  block" forms need a uniqueness hypothesis on the block list and a
+  find-after-map lemma, and are not claimed.
+* `write_read_consistency` is proved for a write to a *missing* id; the strong
+  write-then-read form is not claimed for the same reason.
+* `unique_block_identifiers`, `block_data_integrity`,
+  `zero_ref_count_allows_deallocation` are proved.
+
+**A finding, and a refuted law.**
+`non_zero_ref_count_prevents_deallocation` is **false**: `deallocate` filters
+the block out without ever reading `refCount`. The spec now states its
+refutation — a witness memory with a live reference whose block is removed all
+the same — the same form as loop 22's `context_join_commutative`.
+
+**A note on the model.** The implementation's `writeByte` uses `Array.set!`
+(which is `setIfInBounds`), so array size — and therefore block well-formedness
+— is preserved by construction. The proofs lean on
+`Array.size_setIfInBounds`, which is why the size-preservation argument is
+three lines and not a case analysis.
+
 ## Remaining work, measured
 
 After eighteen iterations the repository's specifications fall into three
@@ -1062,7 +1102,7 @@ least one real theorem — the modules that carried only `rfl` facts about
 | Module | Stubs | Subject | Why they remain |
 |---|---|---|---|
 | `ConcurrencyProcessAlgebra` | 19 | message-passing laws | need a message-passing semantics the module lacks |
-| `MemoryModel` | 14 | the memory claims loop 14 did not claim | need a deallocation model |
+| `MemoryModel` | 0 | **audited** — the fourteen claims are real (loop 26); three are no-target/refuted forms | done |
 | `LayeredConcurrency` | 14 | the remaining concurrency claims | need a layer model |
 | `MemoryAffineLogic` | 11 | affine typing and copying laws | need a typing judgment and a copy operation |
 | `ModuleExistential` | 7 | module existence | need an existence semantics |
