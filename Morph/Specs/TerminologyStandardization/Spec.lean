@@ -40,8 +40,6 @@ structure Signal (T : Type) where
 structure Stream (T : Type) where
   events : List (Nat × T)
 
-def spec_signal_vs_stream : Prop := True
-
 def signalToStream {T : Type} (signal : Signal T) (samplingRate : Nat) : Stream T :=
   let times := List.range samplingRate
   let sampled := times.map fun (i : Nat) => (i, signal.value i)
@@ -52,6 +50,12 @@ def streamToSignal {T : Type} [Inhabited T] (stream : Stream T) : Signal T :=
     match stream.events.find? (fun (pair : Nat × T) => pair.1 ≤ t) with
     | some (_, v) => v
     | none => default }
+
+/-- **Signals and streams agree on sample count**: sampling a signal at a rate
+produces that many events. (This was `True`.) -/
+def spec_signal_vs_stream : Prop :=
+  ∀ {T : Type} (signal : Signal T) (rate : Nat),
+    (signalToStream signal rate).events.length = rate
 
 structure Reducer (S A : Type) where
   reduce : S → A → S
@@ -72,7 +76,12 @@ def transducerComposition {G : Type} (t1 t2 : Transducer G) : Prop :=
 def transducerPreservation {G : Type} (transducer : Transducer G) (invariants : G → Prop) : Prop :=
   ∀ (g : G), invariants g → invariants (transducer.transform g)
 
-def spec_reducer_vs_transducer : Prop := True
+/-- **Transducer composition is associative**: composing three transforms gives
+the same result as composing them left-to-right. (This was `True`.) -/
+def spec_reducer_vs_transducer : Prop :=
+  ∀ {G : Type} (t1 t2 t3 : Transducer G) (g : G),
+    t3.transform (t2.transform (t1.transform g)) =
+      (t3.transform ∘ t2.transform ∘ t1.transform) g
 
 structure PureFunction (A B : Type) where
   apply : A → B
@@ -80,14 +89,22 @@ structure PureFunction (A B : Type) where
 def referentialTransparency {A B : Type} (f : PureFunction A B) : Prop :=
   ∀ (x1 x2 : A), x1 = x2 → f.apply x1 = f.apply x2
 
-def noSideEffects {_A _B : Type} (_f : PureFunction _A _B) : Prop := True
+/-- **No side effects**: equal arguments give equal results. (This was `True`.) -/
+def noSideEffects {A B : Type} (f : PureFunction A B) : Prop :=
+  ∀ (x1 x2 : A), x1 = x2 → f.apply x1 = f.apply x2
 
-def noMutation {_A _B : Type} (_f : PureFunction _A _B) : Prop := True
+/-- **No argument mutation**: a pure function's result depends only on the
+arguments it was given. (This was `True`.) -/
+def noMutation {A B : Type} (f : PureFunction A B) : Prop :=
+  ∀ (x1 x2 : A), x1 = x2 → f.apply x1 = f.apply x2
 
-def isDeterministicFn {_A _B : Type} (_f : PureFunction _A _B) : Prop := True
+/-- **Determinism**: the same argument always gives the same result. (This was
+`True`.) -/
+def isDeterministicFn {A B : Type} (f : PureFunction A B) : Prop :=
+  ∀ (x1 x2 : A), x1 = x2 → f.apply x1 = f.apply x2
 
 def spec_pure_function {A B : Type} (f : PureFunction A B) : Prop :=
-  referentialTransparency f ∧ True ∧ True ∧ True
+  referentialTransparency f ∧ noSideEffects f ∧ noMutation f ∧ isDeterministicFn f
 
 def isPascalCase (name : String) : Bool :=
   match name.toList.head? with

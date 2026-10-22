@@ -1166,6 +1166,22 @@ be proved (the `LawfulBEq` gap first recorded in the ten-loop summary).
 * `inv_private_no_public_impl` — **derived** from `hasImplementation` rather
   than assumed: an exported symbol cannot be a private one.
 
+### Iteration 30 — TerminologyStandardization: proving five, refuting three
+
+**Target.** `Morph/Specs/TerminologyStandardization/`.
+
+**What was there.** Five `Prop := True` claims; `spec_pure_function` was
+`RT ∧ True ∧ True ∧ True`; three naming implications were real but false.
+
+**What is here.** `spec_signal_vs_stream` (sample count), 
+`spec_reducer_vs_transducer` (associativity of transducer composition), and
+`noSideEffects` / `noMutation` / `isDeterministicFn` (all referential
+transparency) are proved. `spec_pure_function` is now the real four-way
+conjunction. The naming implications are **refuted** with witnesses `"aB"` and
+`"A"`: the predicates admit an uppercase letter without constraining the first
+character. Spec repair noted; the proofs are honest refutations, not renamed
+assumptions.
+
 ## Remaining work, measured
 
 After eighteen iterations the repository's specifications fall into three
