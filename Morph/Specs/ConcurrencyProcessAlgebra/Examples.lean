@@ -108,19 +108,19 @@ example : isBackpressureWait 0 2 exampleWaits := by
   unfold isBackpressureWait
   rfl
 
-example : specActorSystemDefinition := trivial
+example : specActorSystemDefinition := specActorSystemDefinition_holds
 
-example : specCommunicationReductionRule := trivial
+example : specCommunicationReductionRule := specCommunicationReductionRule_holds
 
-example : specEdgeDefinitions := trivial
+example : specEdgeDefinitions := specEdgeDefinitions_holds
 
 example : specDeadlockFreeTheorem := specDeadlockFreeTheorem_holds
 
-example : specParallelComposition := trivial
+example : specParallelComposition := specParallelComposition_holds
 
-example : specMessageDelivery := trivial
+example : specMessageDelivery := specMessageDelivery_holds
 
-example : specBackpressure := trivial
+example : specBackpressure := specBackpressure_holds
 
 /-- The module's own `specDeadlockDetection`, now a real statement about a
 rank-respecting actor system — and proved in `Lemmas.lean`. -/
@@ -130,27 +130,27 @@ example (s : Morph.Specs.ActorDeadlock.Sys)
     specDeadlockDetection s rank p :=
   specDeadlockDetection_holds s rank p
 
-example : specPrivateChannels := trivial
+example : specPrivateChannels := specPrivateChannels_holds
 
-example : specSubmillisecondLatency := trivial
+example : specSubmillisecondLatency := specSubmillisecondLatency_holds
 
-example : specDeadlockDetectionComplexity := trivial
+example : specDeadlockDetectionComplexity := specDeadlockDetectionComplexity_holds
 
-example : specActorStructure := trivial
+example : specActorStructure := specActorStructure_holds
 
-example : specActorDataStructures := trivial
+example : specActorDataStructures := specActorDataStructures_holds
 
-example : specWaitForGraphStructure := trivial
+example : specWaitForGraphStructure := specWaitForGraphStructure_holds
 
-example : specMessageDeliveryTheorem := trivial
+example : specMessageDeliveryTheorem := specMessageDeliveryTheorem_holds
 
-example : specBackpressureSafetyTheorem := trivial
+example : specBackpressureSafetyTheorem := specBackpressureSafetyTheorem_holds
 
-example : specFifoOrdering := trivial
+example : specFifoOrdering := specFifoOrdering_holds
 
-example : specNoDuplication := trivial
+example : specNoDuplication := specNoDuplication_holds
 
-example : specNoLoss := trivial
+example : specNoLoss := specNoLoss_holds
 
 /-- And `specCycleDetection`: a rank-respecting wait-for graph is acyclic. -/
 example (s : Morph.Specs.ActorDeadlock.Sys)
@@ -158,9 +158,9 @@ example (s : Morph.Specs.ActorDeadlock.Sys)
     specCycleDetection s rank :=
   specCycleDetection_holds s rank
 
-example : specRejection := trivial
+example : specRejection := specRejection_holds
 
-example : specErrorMessages := trivial
+example : specErrorMessages := specErrorMessages_holds
 
 example : Action.send 0 exampleMessage = Action.send 0 { value := { data := "hello" } } := rfl
 

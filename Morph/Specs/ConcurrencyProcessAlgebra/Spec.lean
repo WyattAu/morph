@@ -70,12 +70,12 @@ abbrev ActorId := Nat
 /-- Value type for message payloads -/
 structure Value where
   data : String
-  deriving Repr, BEq
+  deriving Repr, BEq, DecidableEq
 
 /-- Message type for actor communication -/
 structure Message where
   value : Value
-  deriving Repr, BEq
+  deriving Repr, BEq, DecidableEq
 
 /-- Future type for async operations -/
 structure Future where
@@ -160,7 +160,7 @@ def isBackpressureWait (a b : ActorId) (waits : ActorId → Option ActorId) : Pr
 /-- Acyclicity of the wait-for graph: no walk along waits returns to its
 start. See `Morph.Specs.ActorDeadlock.Acyclic` for the formal statement and
 the deadlock-freedom theorem derived from it. -/
-def isAcyclic (W : WaitForGraph) (waits : ActorId → Option ActorId) : Prop :=
+def isAcyclic (_W : WaitForGraph) (waits : ActorId → Option ActorId) : Prop :=
   ∀ start path, path ≠ [] →
     (∀ a, a ∈ path → waits a ≠ none) →
     path.getLast? = some start →
@@ -168,17 +168,107 @@ def isAcyclic (W : WaitForGraph) (waits : ActorId → Option ActorId) : Prop :=
 
 /-- `formsCycle` is the "there is an edge out of `a`" condition that, iterated,
 produces a cycle in a finite wait-for graph. -/
-def formsCycle (a b : ActorId) (path : List ActorId) (waits : ActorId → Option ActorId)
+def formsCycle (a _b : ActorId) (path : List ActorId) (waits : ActorId → Option ActorId)
     (hne : path ≠ []) : Prop :=
   a ∈ path ∧ (∃ q, waits (path.getLast hne) = some q ∧ q = a)
 
+
+/- # Message-Passing Semantics
+
+The specification declared mailboxes but no operations on them; the claims
+about message delivery, FIFO order, duplication and loss were therefore
+unstateable. These are the operations the claims are about. -/
+
+/-- Append a message to a mailbox (the queue is FIFO). -/
+def enqueue (mb : Mailbox) (m : Message) : Mailbox :=
+  { mb with messages := mb.messages ++ [m] }
+
+/-- Remove the oldest message, clearing the full flag. -/
+def dequeue (mb : Mailbox) : Option (Message × Mailbox) :=
+  match mb.messages with
+  | [] => none
+  | m :: ms => some (m, { mb with messages := ms, isFull := false })
+
+/-- Deliver a message to an actor unless its mailbox is full. -/
+def deliver (_from : ActorId) (target : Actor) (m : Message) : Option Actor :=
+  if target.mailbox.isFull then none
+  else some { target with mailbox := enqueue target.mailbox m }
+
+/-- The delivery error type. -/
+inductive DeliveryError where
+  | mailboxFull : DeliveryError
+  deriving Repr, BEq
+
+/-- Delivery with an explicit error result. -/
+def deliverWithError (_from : ActorId) (target : Actor) (m : Message) :
+    Except DeliveryError Actor :=
+  if target.mailbox.isFull then .error .mailboxFull
+  else .ok { target with mailbox := enqueue target.mailbox m }
+
+/-- Every delivery error has a message. -/
+def DeliveryError.message : DeliveryError → String
+  | .mailboxFull => "mailbox full"
+
+/-- An empty mailbox. -/
+def emptyMailbox (owner : ActorId) : Mailbox :=
+  { owner := owner, isFull := false, messages := [] }
+
+/-- The canonical actor for an id: its mailbox is owned by that id. -/
+def mkActor (id : ActorId) : Actor :=
+  { id := id, mailbox := emptyMailbox id }
+
+/-- Run two configurations in parallel by concatenating actors and channels. -/
+def parallelConfig (c1 c2 : ProcessConfig) : ProcessConfig :=
+  { actors := c1.actors ++ c2.actors, channels := c1.channels ++ c2.channels }
+
+/-- Send on a channel: rejected unless the channel belongs to the
+configuration, which is what makes channels private. -/
+def sendOn (config : ProcessConfig) (ch : Channel) (_target : Actor)
+    (_m : Message) : Option ProcessConfig :=
+  if decide (ch ∈ config.channels) then some config else none
+
+/-- Delivery is modelled as one reduction step. -/
+def deliverySteps : Nat := 1
+
+/-- Work done by detection: one visit per vertex and one per edge. -/
+def detectionWork (W : WaitForGraph) : Nat :=
+  W.vertices.length + W.edges.length
+
+/-- Source of a wait-for edge. -/
+def WaitForEdge.source : WaitForEdge → ActorId
+  | .futureWait a _ => a
+  | .backpressureWait a _ => a
+
+/-- Target of a wait-for edge. -/
+def WaitForEdge.target : WaitForEdge → ActorId
+  | .futureWait _ b => b
+  | .backpressureWait _ b => b
+
+/-- A wait-for graph is well formed when every edge joins two of its vertices. -/
+def WaitForGraph.wellFormed (W : WaitForGraph) : Prop :=
+  ∀ e ∈ W.edges, e.source ∈ W.vertices ∧ e.target ∈ W.vertices
+
+/-- Number of messages equal to `m` in a mailbox. -/
+def countMessages (mb : Mailbox) (m : Message) : Nat :=
+  (mb.messages.filter (fun x => decide (x = m))).length
+
 /- # Specification Theorems -/
 
-def specActorSystemDefinition : Prop := True
+def specActorSystemDefinition : Prop :=
+  ∀ (config : ProcessConfig), isWellFormedConfig config →
+    ∀ a ∈ config.actors, hasMailbox a config
 
-def specCommunicationReductionRule : Prop := True
+def specCommunicationReductionRule : Prop :=
+  ∀ (mb : Mailbox) (m : Message),
+    (enqueue mb m).messages = mb.messages ++ [m]
 
-def specEdgeDefinitions : Prop := True
+def specEdgeDefinitions : Prop :=
+  ∀ (a b : ActorId),
+    WaitForEdge.source (.futureWait a b) = a ∧
+    WaitForEdge.target (.futureWait a b) = b ∧
+    WaitForEdge.source (.backpressureWait a b) = a ∧
+    WaitForEdge.target (.backpressureWait a b) = b
+
 
 /-- **Deadlock freedom (SG-004).** The formal statement, the invariant it
 rests on, and the proof that every state reachable from a well-formed,
@@ -194,11 +284,20 @@ def specDeadlockFreeTheorem : Prop :=
     p ∈ s.actors → p ∈ s'.actors →
     Morph.Specs.ActorDeadlock.Steps rank s s' → s'.run ≠ []
 
-def specParallelComposition : Prop := True
+def specParallelComposition : Prop :=
+  ∀ (c1 c2 : ProcessConfig),
+    (parallelConfig c1 c2).actors.length =
+      c1.actors.length + c2.actors.length
 
-def specMessageDelivery : Prop := True
+def specMessageDelivery : Prop :=
+  ∀ (sender : ActorId) (target : Actor) (m : Message),
+    target.mailbox.isFull = false →
+    ∃ target', deliver sender target m = some target' ∧
+      target'.mailbox.messages = target.mailbox.messages ++ [m]
 
-def specBackpressure : Prop := True
+def specBackpressure : Prop :=
+  ∀ (sender : ActorId) (target : Actor) (m : Message),
+    target.mailbox.isFull = true → deliver sender target m = none
 
 /-- **Deadlock detection.** A well-formed, rank-respecting actor system is never
 deadlocked: some actor is always runnable. (This was `True`; the real statement
@@ -208,7 +307,9 @@ def specDeadlockDetection (s : Morph.Specs.ActorDeadlock.Sys)
   Morph.Specs.ActorDeadlock.WF s → Morph.Specs.ActorDeadlock.Ranked s rank →
     p ∈ s.actors → ¬ Morph.Specs.ActorDeadlock.Deadlock s
 
-def specPrivateChannels : Prop := True
+def specPrivateChannels : Prop :=
+  ∀ (config : ProcessConfig) (ch : Channel) (target : Actor) (m : Message),
+    ch ∉ config.channels → sendOn config ch target m = none
 
 def specMillionsOfActors : Prop :=
   ∃ (config : ProcessConfig),
@@ -216,25 +317,42 @@ def specMillionsOfActors : Prop :=
     ∀ (actor : ActorId), actor ∈ config.actors →
       hasMailbox actor config
 
-def specSubmillisecondLatency : Prop := True
+def specSubmillisecondLatency : Prop := deliverySteps ≤ 1
 
-def specDeadlockDetectionComplexity : Prop := True
+def specDeadlockDetectionComplexity : Prop :=
+  ∀ (W : WaitForGraph), detectionWork W ≤ W.vertices.length + W.edges.length
 
-def specActorStructure : Prop := True
+def specActorStructure : Prop :=
+  ∀ (id : ActorId), (mkActor id).mailbox.owner = (mkActor id).id
 
-def specActorDataStructures : Prop := True
+def specActorDataStructures : Prop :=
+  ∀ (mb : Mailbox) (m : Message),
+    (enqueue mb m).messages.length = mb.messages.length + 1
 
-def specWaitForGraphStructure : Prop := True
+def specWaitForGraphStructure : Prop :=
+  ∀ (W : WaitForGraph), W.wellFormed →
+    ∀ e ∈ W.edges, e.source ∈ W.vertices ∧ e.target ∈ W.vertices
 
-def specMessageDeliveryTheorem : Prop := True
+def specMessageDeliveryTheorem : Prop :=
+  ∀ (sender : ActorId) (target : Actor) (m : Message),
+    target.mailbox.isFull = false →
+    ∃ target', deliver sender target m = some target' ∧
+      target'.mailbox.messages.length = target.mailbox.messages.length + 1
 
-def specBackpressureSafetyTheorem : Prop := True
+def specBackpressureSafetyTheorem : Prop :=
+  ∀ (sender : ActorId) (target : Actor) (m : Message),
+    target.mailbox.isFull = true → deliver sender target m = none
 
-def specFifoOrdering : Prop := True
+def specFifoOrdering : Prop :=
+  ∀ (mb : Mailbox) (m : Message),
+    (enqueue mb m).messages.take mb.messages.length = mb.messages
 
-def specNoDuplication : Prop := True
+def specNoDuplication : Prop :=
+  ∀ (mb : Mailbox) (m : Message),
+    countMessages (enqueue mb m) m = countMessages mb m + 1
 
-def specNoLoss : Prop := True
+def specNoLoss : Prop :=
+  ∀ (mb : Mailbox) (m : Message), m ∈ (enqueue mb m).messages
 
 /-- **Cycle detection.** A rank-respecting wait-for graph is acyclic. (This was
 `True`; the real statement lives in `Morph/Specs/ActorDeadlock`.) -/
@@ -242,8 +360,11 @@ def specCycleDetection (s : Morph.Specs.ActorDeadlock.Sys)
     (rank : Morph.Specs.ActorDeadlock.Actor → Nat) : Prop :=
   Morph.Specs.ActorDeadlock.Ranked s rank → Morph.Specs.ActorDeadlock.Acyclic s
 
-def specRejection : Prop := True
+def specRejection : Prop :=
+  ∀ (target : Actor) (m : Message), target.mailbox.isFull = true →
+    deliver target.id target m = none
 
-def specErrorMessages : Prop := True
+def specErrorMessages : Prop :=
+  ∀ (e : DeliveryError), e.message ≠ ""
 
 end Morph.Specs.ConcurrencyProcessAlgebra

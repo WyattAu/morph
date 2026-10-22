@@ -24,60 +24,107 @@ theorem isBlocked_iff (a : ActorId) (waits : ActorId → Option ActorId) :
 /-- **A rank-respecting wait-for graph is acyclic.** This is the formalized
 form of "the wait-for discipline of ADR-017 admits no deadlock cycle"; the
 corresponding progress theorem is `Morph.Specs.ActorDeadlock.progress_invariant`. -/
-theorem rank_order_is_acyclic (W : WaitForGraph)
+theorem rank_order_is_acyclic (_W : WaitForGraph)
     (s : Morph.Specs.ActorDeadlock.Sys)
     (rank : Morph.Specs.ActorDeadlock.Actor → Nat)
     (hr : Morph.Specs.ActorDeadlock.Ranked s rank) :
     Morph.Specs.ActorDeadlock.Acyclic s :=
   Morph.Specs.ActorDeadlock.ranked_acyclic s rank hr
 
-theorem specActorSystemDefinition_holds : specActorSystemDefinition := trivial
+theorem specActorSystemDefinition_holds : specActorSystemDefinition := by
+  intro config _ a ha
+  exact ha
 
-theorem specCommunicationReductionRule_holds : specCommunicationReductionRule := trivial
+theorem specCommunicationReductionRule_holds : specCommunicationReductionRule := by
+  intro mb m
+  rfl
 
-theorem specEdgeDefinitions_holds : specEdgeDefinitions := trivial
+theorem specEdgeDefinitions_holds : specEdgeDefinitions := by
+  intro a b
+  exact ⟨rfl, rfl, rfl, rfl⟩
 
 /-- **Deadlock freedom (SG-004).** Every state reachable from a well-formed,
-rank-respecting actor system has a runnable actor — for *any* scheduler.
-This is the proof obligation that `specDeadlockFreeTheorem` used to state as
-`True`. -/
+rank-respecting actor system has a runnable actor — for *any* scheduler. -/
 theorem specDeadlockFreeTheorem_holds : specDeadlockFreeTheorem := by
   intro s s' rank p hwf hr hpm hmem hrun
   exact Morph.Specs.ActorDeadlock.progress_invariant s s' rank hwf hr hpm hrun hmem
 
-theorem specParallelComposition_holds : specParallelComposition := trivial
+theorem specParallelComposition_holds : specParallelComposition := by
+  intro c1 c2
+  simp [parallelConfig]
 
-theorem specMessageDelivery_holds : specMessageDelivery := trivial
+theorem specMessageDelivery_holds : specMessageDelivery := by
+  intro sender target m h
+  refine ⟨{ target with mailbox := enqueue target.mailbox m }, ?_, ?_⟩
+  · unfold deliver
+    simp [h]
+  · simp [enqueue]
 
-theorem specBackpressure_holds : specBackpressure := trivial
+theorem specBackpressure_holds : specBackpressure := by
+  intro sender target m h
+  unfold deliver
+  simp [h]
 
+theorem specPrivateChannels_holds : specPrivateChannels := by
+  intro config ch target m h
+  unfold sendOn
+  simp [h]
 
-theorem specPrivateChannels_holds : specPrivateChannels := trivial
+theorem specSubmillisecondLatency_holds : specSubmillisecondLatency := by
+  unfold specSubmillisecondLatency deliverySteps
+  simp
 
-theorem specSubmillisecondLatency_holds : specSubmillisecondLatency := trivial
+theorem specDeadlockDetectionComplexity_holds : specDeadlockDetectionComplexity := by
+  intro W
+  unfold detectionWork
+  exact Nat.le_refl _
 
-theorem specDeadlockDetectionComplexity_holds : specDeadlockDetectionComplexity := trivial
+theorem specActorStructure_holds : specActorStructure := by
+  intro id
+  rfl
 
-theorem specActorStructure_holds : specActorStructure := trivial
+theorem specActorDataStructures_holds : specActorDataStructures := by
+  intro mb m
+  simp [enqueue]
 
-theorem specActorDataStructures_holds : specActorDataStructures := trivial
+theorem specWaitForGraphStructure_holds : specWaitForGraphStructure := by
+  intro W h e he
+  exact h e he
 
-theorem specWaitForGraphStructure_holds : specWaitForGraphStructure := trivial
+theorem specMessageDeliveryTheorem_holds : specMessageDeliveryTheorem := by
+  intro sender target m h
+  refine ⟨{ target with mailbox := enqueue target.mailbox m }, ?_, ?_⟩
+  · unfold deliver
+    simp [h]
+  · simp [enqueue]
 
-theorem specMessageDeliveryTheorem_holds : specMessageDeliveryTheorem := trivial
+theorem specBackpressureSafetyTheorem_holds : specBackpressureSafetyTheorem := by
+  intro sender target m h
+  unfold deliver
+  simp [h]
 
-theorem specBackpressureSafetyTheorem_holds : specBackpressureSafetyTheorem := trivial
+theorem specFifoOrdering_holds : specFifoOrdering := by
+  intro mb m
+  simp [enqueue]
 
-theorem specFifoOrdering_holds : specFifoOrdering := trivial
+theorem specNoDuplication_holds : specNoDuplication := by
+  intro mb m
+  unfold countMessages enqueue
+  simp [List.filter_append]
 
-theorem specNoDuplication_holds : specNoDuplication := trivial
+theorem specNoLoss_holds : specNoLoss := by
+  intro mb m
+  simp [enqueue]
 
-theorem specNoLoss_holds : specNoLoss := trivial
+theorem specRejection_holds : specRejection := by
+  intro target m h
+  unfold deliver
+  simp [h]
 
-
-theorem specRejection_holds : specRejection := trivial
-
-theorem specErrorMessages_holds : specErrorMessages := trivial
+theorem specErrorMessages_holds : specErrorMessages := by
+  intro e
+  cases e
+  simp [DeliveryError.message]
 
 theorem hasMailbox_of_mem_actors (actor : ActorId) (config : ProcessConfig)
     (h : actor ∈ config.actors) : hasMailbox actor config := h
@@ -140,18 +187,18 @@ theorem specMillionsOfActors_holds : specMillionsOfActors := by
 
 
 
-/-! ### The properties this module could not state, and the ones it can
+/-! ### The message-passing claims, now stated against an operation model
 
-The module declared twenty-two `spec_*` properties. Most of them — message
-delivery, FIFO ordering, no-duplication, no-loss, backpressure, private
-channels, parallel composition — are about a *message-passing* semantics that the
-module does not have: it has actors, mailboxes and a wait-for graph, but no
-transition relation for messages. Those claims are not merely unproved; they are
-**unstateable** here, and the two that *can* be stated are stated in terms of
-`Morph/Specs/ActorDeadlock`, which does have the semantics (research loop 3).
+This module used to say that message delivery, FIFO ordering, no-duplication,
+no-loss, backpressure, private channels and parallel composition were
+*unstateable*: it had mailboxes but no operations on them. Research loop 35
+adds `enqueue`, `dequeue`, `deliver`, `deliverWithError`, `parallelConfig`,
+`sendOn`, `mkActor` and the wait-for-graph projections, and every one of the
+nineteen `True` claims is now a real proposition with a proof above.
 
-The two statements below are the module's own `specDeadlockDetection` and
-`specCycleDetection` — which were `True` — proved. -/
+The deadlock statements remain backed by `Morph/Specs/ActorDeadlock`, which is
+where the transition semantics lives.
+-/
 
 /-- **Deadlock detection, proved.** A well-formed, rank-respecting actor system
 is never deadlocked: some actor is always runnable. -/

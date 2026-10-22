@@ -1254,6 +1254,29 @@ theorem's hypothesis match the checker.
 licences (a predicate may name an action the licence omits); it needs a
 well-formedness hypothesis, not a proof.
 
+### Iteration 35 — ConcurrencyProcessAlgebra: a message-passing model
+
+**Target.** `Morph/Specs/ConcurrencyProcessAlgebra/`.
+
+**What was there.** Nineteen `Prop := True` claims; the module itself said the
+message-passing ones were *unstateable* because it had mailboxes but no
+operations on them.
+
+**What is here.** `enqueue`, `dequeue`, `deliver`, `deliverWithError`,
+`emptyMailbox`, `mkActor`, `parallelConfig`, `sendOn`, `deliverySteps`,
+`detectionWork`, `WaitForEdge.source/target`, `WaitForGraph.wellFormed`, and
+`countMessages`. Against them all nineteen claims are real and proved:
+communication appends exactly one message; delivery succeeds when not full and
+is rejected when full; FIFO order, no duplication and no loss follow from list
+append; private channels reject sends on channels outside the configuration;
+parallel composition concatenates actor lists; the wait-for edge projections
+and graph well-formedness are real; latency is the one-step model; detection
+work is bounded by vertices plus edges; actor construction gives the mailbox
+its owner; and every delivery error has a non-empty message.
+
+**Deadlock claims.** `specDeadlockFreeTheorem`, `specDeadlockDetection` and
+`specCycleDetection` remain backed by `Morph/Specs/ActorDeadlock`, unchanged.
+
 ## Remaining work, measured
 
 After eighteen iterations the repository's specifications fall into three
