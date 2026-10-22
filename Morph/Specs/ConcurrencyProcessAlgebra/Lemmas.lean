@@ -12,9 +12,7 @@ namespace Morph.Specs.ConcurrencyProcessAlgebra
 Lemmas and auxiliary results for the ConcurrencyProcessAlgebra specification.
 -/
 
-theorem isWellFormedConfig_always_true (config : ProcessConfig) : isWellFormedConfig config := trivial
 
-theorem isValidProcess_always_true (config : ProcessConfig) (p : Unit) : isValidProcess config p := trivial
 
 /-- `isBlockedWaiting` is exactly the wait-for edge relation. -/
 theorem isBlockedWaiting_iff (a : ActorId) (waits : ActorId → Option ActorId) :
@@ -53,7 +51,6 @@ theorem specMessageDelivery_holds : specMessageDelivery := trivial
 
 theorem specBackpressure_holds : specBackpressure := trivial
 
-theorem specDeadlockDetection_holds : specDeadlockDetection := trivial
 
 theorem specPrivateChannels_holds : specPrivateChannels := trivial
 
@@ -77,7 +74,6 @@ theorem specNoDuplication_holds : specNoDuplication := trivial
 
 theorem specNoLoss_holds : specNoLoss := trivial
 
-theorem specCycleDetection_holds : specCycleDetection := trivial
 
 theorem specRejection_holds : specRejection := trivial
 
@@ -141,5 +137,53 @@ theorem specMillionsOfActors_holds : specMillionsOfActors := by
   unfold specMillionsOfActors
   refine ⟨{ actors := List.range 1000000, channels := [] : ProcessConfig }, by
     simp [List.length_range], fun _ h => h⟩
+
+
+
+/-! ### The properties this module could not state, and the ones it can
+
+The module declared twenty-two `spec_*` properties. Most of them — message
+delivery, FIFO ordering, no-duplication, no-loss, backpressure, private
+channels, parallel composition — are about a *message-passing* semantics that the
+module does not have: it has actors, mailboxes and a wait-for graph, but no
+transition relation for messages. Those claims are not merely unproved; they are
+**unstateable** here, and the two that *can* be stated are stated in terms of
+`Morph/Specs/ActorDeadlock`, which does have the semantics (research loop 3).
+
+The two statements below are the module's own `specDeadlockDetection` and
+`specCycleDetection` — which were `True` — proved. -/
+
+/-- **Deadlock detection, proved.** A well-formed, rank-respecting actor system
+is never deadlocked: some actor is always runnable. -/
+theorem specDeadlockDetection_holds (s : Morph.Specs.ActorDeadlock.Sys)
+    (rank : Morph.Specs.ActorDeadlock.Actor → Nat) (p : Morph.Specs.ActorDeadlock.Actor) :
+    specDeadlockDetection s rank p := by
+  intro hwf hranked hmem
+  exact Morph.Specs.ActorDeadlock.ranked_not_deadlocked s rank hwf hranked hmem
+
+/-- **Cycle detection, proved.** A rank-respecting wait-for graph is acyclic. -/
+theorem specCycleDetection_holds (s : Morph.Specs.ActorDeadlock.Sys)
+    (rank : Morph.Specs.ActorDeadlock.Actor → Nat) :
+    specCycleDetection s rank := by
+  intro hranked
+  exact Morph.Specs.ActorDeadlock.ranked_acyclic s rank hranked
+
+/-- **A well-formed configuration has distinct actors.** -/
+theorem isWellFormedConfig_empty : isWellFormedConfig { actors := [], channels := [] } := by
+  intro a ha
+  simp at ha
+
+/-- **The well-formedness predicate is not vacuous**: it is a real statement about
+the actor list, and the empty configuration satisfies it. -/
+theorem isWellFormedConfig_is_a_real_statement :
+    ¬ (∀ config : ProcessConfig, isWellFormedConfig config) := by
+  intro hall
+  have h := hall { actors := [1, 1], channels := [] }
+  simp [isWellFormedConfig] at h
+
+/-- **A process is valid when the actor it names is in the configuration.** -/
+theorem isValidProcess_in (config : ProcessConfig) (a : ActorId)
+    (h : a ∈ config.actors) : isValidProcess config a := by
+  exact h
 
 end Morph.Specs.ConcurrencyProcessAlgebra

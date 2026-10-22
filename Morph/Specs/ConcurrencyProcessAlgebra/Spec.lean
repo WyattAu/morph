@@ -127,9 +127,16 @@ structure WaitForGraph where
 
 /- # Helper Predicates -/
 
-def isWellFormedConfig (_config : ProcessConfig) : Prop := True
+/-- A configuration is *well formed* when its actor ids are distinct — a
+configuration naming the same actor twice is not a configuration of actors. (This
+was `True`.) -/
+def isWellFormedConfig (config : ProcessConfig) : Prop :=
+  ∀ a ∈ config.actors, (config.actors.filter (· == a)).length ≤ 1
 
-def isValidProcess (_config : ProcessConfig) (_p : Unit) : Prop := True
+/-- A process is *valid* for a configuration when the actor it names is one of
+the configuration's actors. (This was `True`.) -/
+def isValidProcess (config : ProcessConfig) (p : ActorId) : Prop :=
+  p ∈ config.actors
 
 def isFutureWait (_a _b : ActorId) (future : Future) : Prop :=
   future.resolvedBy = _b
@@ -193,7 +200,13 @@ def specMessageDelivery : Prop := True
 
 def specBackpressure : Prop := True
 
-def specDeadlockDetection : Prop := True
+/-- **Deadlock detection.** A well-formed, rank-respecting actor system is never
+deadlocked: some actor is always runnable. (This was `True`; the real statement
+lives in `Morph/Specs/ActorDeadlock`, which is the module with the semantics.) -/
+def specDeadlockDetection (s : Morph.Specs.ActorDeadlock.Sys)
+    (rank : Morph.Specs.ActorDeadlock.Actor → Nat) (p : Morph.Specs.ActorDeadlock.Actor) : Prop :=
+  Morph.Specs.ActorDeadlock.WF s → Morph.Specs.ActorDeadlock.Ranked s rank →
+    p ∈ s.actors → ¬ Morph.Specs.ActorDeadlock.Deadlock s
 
 def specPrivateChannels : Prop := True
 
@@ -223,7 +236,11 @@ def specNoDuplication : Prop := True
 
 def specNoLoss : Prop := True
 
-def specCycleDetection : Prop := True
+/-- **Cycle detection.** A rank-respecting wait-for graph is acyclic. (This was
+`True`; the real statement lives in `Morph/Specs/ActorDeadlock`.) -/
+def specCycleDetection (s : Morph.Specs.ActorDeadlock.Sys)
+    (rank : Morph.Specs.ActorDeadlock.Actor → Nat) : Prop :=
+  Morph.Specs.ActorDeadlock.Ranked s rank → Morph.Specs.ActorDeadlock.Acyclic s
 
 def specRejection : Prop := True
 

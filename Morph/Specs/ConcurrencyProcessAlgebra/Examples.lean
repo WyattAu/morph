@@ -63,11 +63,23 @@ def exampleWaitForGraph : WaitForGraph := {
   edges := [WaitForEdge.futureWait 0 1]
 }
 
-example : isWellFormedConfig exampleProcessConfig := trivial
+example : isWellFormedConfig exampleProcessConfig := by
+  intro a ha
+  rcases List.mem_cons.mp ha with rfl | ha
+  · simp [exampleProcessConfig]
+  · rcases List.mem_cons.mp ha with rfl | ha
+    · simp [exampleProcessConfig]
+    · rcases List.mem_cons.mp ha with rfl | ha
+      · simp [exampleProcessConfig]
+      · simp at ha
 
-example : isWellFormedConfig { actors := [], channels := [] } := trivial
+example : isWellFormedConfig { actors := [], channels := [] } := by
+  intro a ha
+  exact absurd ha (by simp)
 
-example : isValidProcess exampleProcessConfig () := trivial
+example : isValidProcess exampleProcessConfig 0 := by
+  simp [isValidProcess]
+  simp [exampleProcessConfig]
 
 example : isFutureWait 0 2 exampleFuture := rfl
 
@@ -110,7 +122,13 @@ example : specMessageDelivery := trivial
 
 example : specBackpressure := trivial
 
-example : specDeadlockDetection := trivial
+/-- The module's own `specDeadlockDetection`, now a real statement about a
+rank-respecting actor system — and proved in `Lemmas.lean`. -/
+example (s : Morph.Specs.ActorDeadlock.Sys)
+    (rank : Morph.Specs.ActorDeadlock.Actor → Nat)
+    (p : Morph.Specs.ActorDeadlock.Actor) :
+    specDeadlockDetection s rank p :=
+  specDeadlockDetection_holds s rank p
 
 example : specPrivateChannels := trivial
 
@@ -134,7 +152,11 @@ example : specNoDuplication := trivial
 
 example : specNoLoss := trivial
 
-example : specCycleDetection := trivial
+/-- And `specCycleDetection`: a rank-respecting wait-for graph is acyclic. -/
+example (s : Morph.Specs.ActorDeadlock.Sys)
+    (rank : Morph.Specs.ActorDeadlock.Actor → Nat) :
+    specCycleDetection s rank :=
+  specCycleDetection_holds s rank
 
 example : specRejection := trivial
 
