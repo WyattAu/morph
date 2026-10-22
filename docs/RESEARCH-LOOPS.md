@@ -985,27 +985,37 @@ least one real theorem — the modules that carried only `rfl` facts about
 `List`, `Option` and `Char` have been replaced (loops 6, 7, 13, 14, 15, 16, 17,
 18) or consolidated with the framework that superseded them.
 
-**Not yet audited — 87 `Prop := True` stubs remain**, concentrated in:
+**Not yet audited — 86 `Prop := True` stubs remain**, concentrated in:
 
-| Module | Stubs | Subject |
-|---|---|---|
-| `ConcurrencyProcessAlgebra` | 19 | message-passing laws (the two stateable ones are now proved) |
-| `MemoryModel` | 14 | the memory stubs loop 14 did not claim |
-| `LayeredConcurrency` | 14 | the remaining concurrency claims |
-| `MemoryAffineLogic` | 11 | affine typing laws |
-| `ModuleExistential` | 7 | module existence |
-| `TerminologyStandardization` | 5 | terminology consistency |
-| `SecurityOCap` | 5 | object-capability security |
-| `MorphLanguage` | 4 | the projectional-only mandate |
-| `LicenseDeonticLogic` | 3 | licence obligations |
-| `UnitGroupTheory` | 2 | group structure |
-| `ASTGraph` | 2 | AST graph invariants |
-| `MemoryAcyclicity` | 1 | deallocation (the cycle characterisation is proved) |
+| Module | Stubs | Subject | Why they remain |
+|---|---|---|---|
+| `ConcurrencyProcessAlgebra` | 19 | message-passing laws | need a message-passing semantics the module lacks |
+| `MemoryModel` | 14 | the memory claims loop 14 did not claim | need a deallocation model |
+| `LayeredConcurrency` | 14 | the remaining concurrency claims | need a layer model |
+| `MemoryAffineLogic` | 11 | affine typing and copying laws | need a typing judgment and a copy operation |
+| `ModuleExistential` | 7 | module existence | need an existence semantics |
+| `TerminologyStandardization` | 5 | terminology consistency | need the term model |
+| `SecurityOCap` | 4 | capability paths | need a path semantics |
+| `MorphLanguage` | 4 | the projectional-only mandate | need a projection semantics |
+| `LicenseDeonticLogic` | 3 | licence obligations | need a deontic semantics |
+| `UnitGroupTheory` | 2 | group structure | need the unit model |
+| `ASTGraph` | 2 | AST graph invariants | need a reachability definition |
+| `MemoryAcyclicity` | 1 | deallocation | need a deallocation model |
 
 These are the next iterations, in that order. The pattern is now known well
 enough that each is a *form*: find the property the module names, decide
-whether it is true (prove it), false (say so, as loop 8 did for `isBalanced`), or
-a stub (replace the advertisement, as loop 14 did for `spec_memory_access`).
+whether it is true (prove it), false (say so, as loop 8 did for `isBalanced`),
+or a stub (replace the advertisement, as loop 14 did for `spec_memory_access`).
+Loops 19–23 showed the fourth case as well: a property that is *true but
+vacuous*, where the module sat next to the real statement under a different name
+(`SecurityOCap.well_formed` next to `edges_valid`), or a stated law that was
+simply **false** (`MemoryAffineLogic.context_join_commutative`).
+
+A note on the `True` stubs that remain: most of them are not waiting for a
+proof, they are waiting for a *model* — a typing judgment, a copy operation, a
+message-passing semantics, a deallocation model. A property about an operation
+that does not exist cannot be stated, and saying so is the honest outcome
+(the same finding as loops 20 and 22).
 
 **Two things that are not iterations.** The first is *adoption*: none of the
 eighteen iterations' results is wired into the shipped compiler. The shipped
