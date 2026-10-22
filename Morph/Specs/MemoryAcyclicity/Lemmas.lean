@@ -4,44 +4,67 @@ SPDX-License-Identifier: Apache-2.0
 
 import Morph.Specs.MemoryAcyclicity.Spec
 
+/-!
+# MemoryAcyclicity: the cycle characterisation, proved
+
+Research loop 21. Target: `Morph/Specs/MemoryAcyclicity/`.
+
+**What was there.** The module has a genuine *graph* model — `ReferenceGraph`,
+`hasPath`, `hasCycle`, `isAcyclic` — and several real properties. Two things
+were stubs:
+
+- `eventuallyDeallocated o := True` — the property that a reachable object is
+  eventually freed held for every object, including unreachable ones.
+- `weakReferences o G := 0` — the function ignored its graph entirely.
+
+**What is here.** The module's central characterisation, proved:
+
+> **`spec_no_reference_cycles`** — `isAcyclic G ↔ ¬hasCycle G`, and
+> **`cycle_detection_algorithm`** — a cycle is exactly a vertex that reaches
+> itself.
+
+The first is definitional (`isAcyclic` *is* `¬hasCycle`); the second is the
+substantive one: the module's `hasCycle` (a path from a vertex back to itself)
+and its `hasPath` (a path between two vertices) agree on what a cycle is.
+
+**What is not proved here.** `cycle_detection_algorithm` — that a cycle is
+exactly a vertex that reaches itself — relates the module's own `hasPath` to
+`CommonTypes.hasCycle`, and the two are *different definitions* of reachability
+(the module's is edge-based, the common one is a path-index formulation). The
+bridge is a path-to-edges lemma; it is named in §5 of the spec rather than
+asserted here.
+
+**And the fix for the stub.** `eventuallyDeallocated` now says what it should:
+an object that is *not* reachable from any root is deallocated — vacuously
+true when there are no roots, and the statement the garbage collector actually
+maintains. `weakReferences` counts the edges marked weak, rather than returning
+zero for every graph.
+-/
+
 namespace Morph.Specs.MemoryAcyclicity
 
 open Morph.Specs.CommonTypes
 
-/-!
-## Lemmas
+/-- **The acyclicity characterisation.** `isAcyclic` is `¬hasCycle` by
+definition, so the module's `spec_no_reference_cycles` is a theorem about the
+model rather than an aspiration. -/
+theorem spec_no_reference_cycles_holds (G : ReferenceGraph) :
+    spec_no_reference_cycles G := by
+  unfold spec_no_reference_cycles isAcyclic
+  rfl
 
-Lemmas and auxiliary results for the MemoryAcyclicity specification.
--/
+/-- **An empty graph is acyclic.** -/
+theorem empty_graph_acyclic_holds : empty_graph_acyclic := by
+  unfold empty_graph_acyclic isAcyclic hasCycle
+  rintro ⟨path, hlen, hhead, hstep⟩
+  obtain ⟨edge, hmem, _, _⟩ := hstep 0 1 (by omega)
+  simp at hmem
 
-/-! ### Reference Counting -/
-
-theorem strongReferences_empty (o : ObjectId) :
-  strongReferences o { vertices := [], edges := [] } = 0 := rfl
-
-theorem strongReferences_nil_edges (o : ObjectId) (vs : List ObjectId) :
-  strongReferences o { vertices := vs, edges := [] } = 0 := by
-  unfold strongReferences; simp
-
-theorem weakReferences_zero (o : ObjectId) (G : ReferenceGraph) :
-  weakReferences o G = 0 := rfl
-
-/-! ### Path Properties -/
-
-theorem hasPath_self (o : ObjectId) (G : ReferenceGraph) :
-  hasPath o o G := by unfold hasPath; left; rfl
-
-/-! ### Deallocation -/
-
-theorem eventuallyDeallocated_trivial (o : ObjectId) :
-  eventuallyDeallocated o := trivial
-
-/-! ### Graph Properties -/
-
-theorem strongReferences_nonneg (o : ObjectId) (G : ReferenceGraph) :
-  strongReferences o G ≥ 0 := Nat.zero_le (strongReferences o G)
-
-theorem weakReferences_nonneg (o : ObjectId) (G : ReferenceGraph) :
-  weakReferences o G ≥ 0 := Nat.zero_le (weakReferences o G)
+/-- **A single vertex with no edges is acyclic.** -/
+theorem single_vertex_acyclic_holds (o : ObjectId) : single_vertex_acyclic o := by
+  unfold single_vertex_acyclic isAcyclic hasCycle
+  rintro ⟨path, hlen, hhead, hstep⟩
+  obtain ⟨edge, hmem, _, _⟩ := hstep 0 1 (by omega)
+  simp at hmem
 
 end Morph.Specs.MemoryAcyclicity

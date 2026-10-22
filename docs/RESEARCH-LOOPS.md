@@ -887,6 +887,26 @@ recorded the check as passing. The honest formulation is the theorem above: the
 guarantee comes from the type, and a *future* impure layer would be where the
 predicate starts to bite.
 
+### Iteration 21 — MemoryAcyclicity: the cycle characterisation, proved
+
+**Target.** `Morph/Specs/MemoryAcyclicity/`.
+
+**What was there.** The module has a genuine graph model — `ReferenceGraph`,
+`hasPath`, `hasCycle`, `isAcyclic` — and several real properties, but two
+functions were stubs: `eventuallyDeallocated o := True` and
+`weakReferences o G := 0` (the graph was ignored).
+
+**What is here.** The module's central characterisation, proved:
+`spec_no_reference_cycles_holds` — `isAcyclic G ↔ ¬hasCycle G` — and
+`empty_graph_acyclic_holds` / `single_vertex_acyclic_holds` ✓.
+
+**What is not proved.** `cycle_detection_algorithm` — that a cycle is exactly a
+vertex that reaches itself — relates the module's own `hasPath` to
+`CommonTypes.hasCycle`, and the two are *different definitions* of reachability
+(the module's is edge-based, the common one is a path-index formulation). The
+bridge is a path-to-edges lemma; it is named in the spec rather than asserted
+here.
+
 ## Remaining work, measured
 
 After eighteen iterations the repository's specifications fall into three
@@ -903,13 +923,13 @@ least one real theorem — the modules that carried only `rfl` facts about
 `List`, `Option` and `Char` have been replaced (loops 6, 7, 13, 14, 15, 16, 17,
 18) or consolidated with the framework that superseded them.
 
-**Not yet audited — 97 `Prop := True` stubs remain**, concentrated in:
+**Not yet audited — 87 `Prop := True` stubs remain**, concentrated in:
 
 | Module | Stubs | Subject |
 |---|---|---|
-| `ConcurrencyProcessAlgebra` | 23 | process algebra laws |
-| `LayeredConcurrency` | 20 | layered concurrency |
-| `MemoryModel` | 14 | the four memory stubs this loop did not claim |
+| `ConcurrencyProcessAlgebra` | 19 | message-passing laws (the two stateable ones are now proved) |
+| `MemoryModel` | 14 | the memory stubs loop 14 did not claim |
+| `LayeredConcurrency` | 14 | the remaining concurrency claims |
 | `MemoryAffineLogic` | 11 | affine typing laws |
 | `ModuleExistential` | 7 | module existence |
 | `TerminologyStandardization` | 5 | terminology consistency |
@@ -918,7 +938,7 @@ least one real theorem — the modules that carried only `rfl` facts about
 | `LicenseDeonticLogic` | 3 | licence obligations |
 | `UnitGroupTheory` | 2 | group structure |
 | `ASTGraph` | 2 | AST graph invariants |
-| `MemoryAcyclicity` | 1 | acyclicity |
+| `MemoryAcyclicity` | 1 | deallocation (the cycle characterisation is proved) |
 
 These are the next iterations, in that order. The pattern is now known well
 enough that each is a *form*: find the property the module names, decide
