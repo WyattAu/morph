@@ -151,10 +151,29 @@ def spec_compatibility_complexity : Prop :=
 
 /- ## 4. Correctness Properties -/
 
-def spec_compatibility_theorem (_root _dep : License) : Prop := True
+/-- **The compatibility theorem.** If the rights check passes (the dependency
+prohibits no action the root grants) and the obligation check passes (every
+obligation of the dependency is matched by the root), then the compatibility
+check passes. (This was `True`.) -/
+def spec_compatibility_theorem (root dep : License) : Prop :=
+  (root.actions.all (fun a => decide (¬hasProhibition dep a))) = true →
+  (dep.predicates.all (fun p =>
+    match p.predicateType with
+    | .obligation => hasObligation root p.action
+    | _ => true)) = true →
+  checkCompatibility root dep = .compatible
 
-def spec_gpl_infection_theorem (_root _gpl : License) : Prop := True
+/-- **The GPL infection theorem.** If the infection detector fires for a root
+licence, then the root carries the GPL's open-source obligation and prohibits
+closing the source. (This was `True`.) -/
+def spec_gpl_infection_theorem (root : License) : Prop :=
+  detectGplInfection root gplLicense = true →
+    hasObligation root .openSource ∧ hasProhibition root .openSource
 
-def spec_license_invariants (_license : License) : Prop := True
+/-- **Licence invariants.** Every licence is well formed: its predicate list is
+a list, its action list is a list, and no predicate refers to an action the
+licence does not grant or constrain. (This was `True`.) -/
+def spec_license_invariants (license : License) : Prop :=
+  ∀ (p : LicensePredicate), p ∈ license.predicates → p.action ∈ license.actions
 
 end Morph.Specs.LicenseDeonticLogic

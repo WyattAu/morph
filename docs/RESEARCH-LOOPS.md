@@ -969,6 +969,45 @@ every endpoint it did.
 theorems are proved properly ✓, and the add-a-node preservation theorem is a real
 argument rather than `fun h => h` ✓.
 
+### Iteration 24 — LicenseDeonticLogic: two theorems behind `True`
+
+**Target.** `Morph/Specs/LicenseDeonticLogic/`.
+
+**What was there.** A real deontic model — licences carry permission,
+obligation and prohibition predicates over a seven-action algebra, and
+`checkCompatibility` / `detectGplInfection` are executable `Bool` checks. The
+two properties the module names were `True`: `spec_compatibility_theorem` and
+`spec_gpl_infection_theorem`.
+
+**What is here.**
+* `spec_compatibility_theorem` — if the rights check passes (the dependency
+  prohibits no action the root grants) **and** the obligation check passes
+  (every obligation of the dependency is matched by the root), then
+  `checkCompatibility` returns `.compatible`. Stated in the decidable form the
+  check itself uses, so the proof is a computation (`simp`), not a choice.
+* `spec_gpl_infection_theorem` — if `detectGplInfection root gplLicense` fires,
+  then the root carries the GPL's open-source obligation **and** prohibits
+  `openSource`. This exposed a **mismatch in the detector itself**: it tests
+  `hasProhibition root .openSource`, while the old prose promised
+  `.closeSource`. The theorem now states what the detector actually checks.
+
+**What is still vacuous, and why.** Six specifications remain `∀ _, True`-shaped:
+`spec_model_licenses_deontic`, `spec_support_all_predicates`,
+`spec_support_all_actions`, `spec_verify_compatibility`,
+`spec_enforce_gpl_compatibility`, `spec_compatibility_complexity`. They are not
+`:= True` (so a grep for that misses them) but their bodies are `match ... =>
+True` on every branch, i.e. the same nothing in a different costume. Two name a
+*model* that does not exist (a deontic semantics; a complexity model); the
+`support_all_*` pair is true but only says the enumerations are enumerations.
+Saying so is the honest outcome.
+
+**A note on cost.** The compatibility proof is where the implementation's
+`decide`-wrapped `Bool` conditions fought the mathematically natural `Prop`
+statement. The lesson is recorded rather than smoothed over: when a spec's
+executable form and its declarative form differ, the declarative theorem must
+be *phrased* in the executable form or the gap becomes a proof obligation that
+needs `decide_eq_true_eq` surgery.
+
 ### Iteration 25 — UnitGroupTheory: the dimension algebra, proved
 
 **Target.** `Morph/Specs/UnitGroupTheory/`.
@@ -1030,7 +1069,7 @@ least one real theorem — the modules that carried only `rfl` facts about
 | `TerminologyStandardization` | 5 | terminology consistency | need the term model |
 | `SecurityOCap` | 4 | capability paths | need a path semantics |
 | `MorphLanguage` | 4 | the projectional-only mandate | need a projection semantics |
-| `LicenseDeonticLogic` | 3 | licence obligations | need a deontic semantics |
+| `LicenseDeonticLogic` | 6 | licence model/enumeration | need a deontic semantics; the two headline theorems are now real |
 | `UnitGroupTheory` | 2 | group structure | need the unit model |
 | `ASTGraph` | 2 | AST graph invariants | need a reachability definition |
 | `MemoryAcyclicity` | 1 | deallocation | need a deallocation model |
