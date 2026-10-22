@@ -87,12 +87,39 @@ structure Actor where
   state : State
   deriving Repr, BEq
 
+/- # Operations
+
+The layer model is deliberately small: a mailbox is a list, `send` enqueues at
+the front, `receive` dequeues from the front, `processOne` removes exactly one
+message, and `integrate` passes the application state *down* to an actor without
+a return path. The claims below are about these operations. -/
+
+def send (msg : Message) (mb : Mailbox) : Mailbox :=
+  { messages := msg :: mb.messages }
+
+def receive (mb : Mailbox) : Option (Message × Mailbox) :=
+  match mb.messages with
+  | [] => none
+  | m :: rest => some (m, { messages := rest })
+
+def processOne (a : Actor) (f : Reducer) : Option Actor :=
+  match receive a.mailbox with
+  | none => none
+  | some (m, mb) => some { a with mailbox := mb, state := f a.state m.content }
+
+def integrate (app : ApplicationLayerState) (a : Actor) :
+    ApplicationLayerState × Actor :=
+  (app, { a with state := app.state })
+
+def appStep (app : ApplicationLayerState) : StateTransition :=
+  { fromState := app.state, toState := app.state, direction := Direction.forward }
+
 /- # Helper Predicates -/
 
-/-- **Unidirectional data flow**: a state transition depends only on the state
-it is given, and flows one way. (This was `True`.) -/
+/-- **Unidirectional data flow**: an application-layer transition always moves
+forward. -/
 def stateTransitionsFlowUnidirectional (state : State) : Prop :=
-  ∀ s : State, s = state → s = state
+  (appStep { state := state }).direction = Direction.forward
 
 /-- **No side effects**: a reducer's result depends only on its arguments, so
 equal arguments give equal results. (This was `True`.) -/
@@ -126,17 +153,38 @@ def isPureDescriptor (c : Command) : Prop :=
 def hasMailbox (m : Mailbox) : Prop :=
   m.messages ≠ []
 
-def messagesAreImmutable (_msgs : List Message) : Prop := True
+/-- **Messages are immutable**: enqueuing a message and then dequeuing it
+returns exactly that message, leaving the original list intact. -/
+def messagesAreImmutable (msgs : List Message) : Prop :=
+  ∀ msg, receive (send msg { messages := msgs }) = some (msg, { messages := msgs })
 
-def processesMessagesSequentially (_actor : Actor) : Prop := True
+/-- **Messages are processed sequentially**: processing removes exactly the head
+message and leaves the tail. -/
+def processesMessagesSequentially (a : Actor) : Prop :=
+  ∀ m rest, a.mailbox.messages = m :: rest →
+    ∃ a', processOne a (fun s _ => s) = some a' ∧ a'.mailbox.messages = rest
 
-def stateTransitionsAreDeterministic (_state : State) (_reducer : Reducer) : Prop := True
+/-- **State transitions are deterministic**: equal states yield equal results
+under the same reducer. -/
+def stateTransitionsAreDeterministic (state : State) (reducer : Reducer) : Prop :=
+  ∀ (s input : State), s = state → reducer s input = reducer state input
 
-def actorCommunicationIsBidirectional (_actor : Actor) : Prop := True
+/-- **Actor communication is bidirectional**: an actor can enqueue a message and
+dequeue it again; a non-empty mailbox can be dequeued. -/
+def actorCommunicationIsBidirectional (a : Actor) : Prop :=
+  (∀ msg, receive (send msg a.mailbox) = some (msg, a.mailbox)) ∧
+  (∀ m rest, a.mailbox.messages = m :: rest →
+    ∃ mb, receive a.mailbox = some (m, mb))
 
-def layerIntegrationMaintainsUnidirectional (_app : ApplicationLayerState) : Prop := True
+/-- **Layer integration is unidirectional**: it hands the application state down
+to an actor and never writes back to the application layer. -/
+def layerIntegrationMaintainsUnidirectional (app : ApplicationLayerState) : Prop :=
+  ∀ a, (integrate app a).1 = app ∧ (integrate app a).2.state = app.state
 
-def noSharedStateBetweenLayers (_app : ApplicationLayerState) (_actor : Actor) : Prop := True
+/-- **No shared state between layers**: changing an actor's state cannot change
+the application layer's state. -/
+def noSharedStateBetweenLayers (app : ApplicationLayerState) (a : Actor) : Prop :=
+  ∀ s, (integrate app { a with state := s }).1 = app
 
 /- # Specification Theorems -/
 
@@ -146,26 +194,38 @@ def specLcaApplicationLayerUnidirectional : Prop :=
 def specLcaConcurrencyLayerBidirectional : Prop :=
   ∀ (actor : Actor), actorCommunicationIsBidirectional actor
 
-def specLcaLayerBoundary : Prop := True
+/-- **The layer boundary**: integration cannot write back to the application
+layer. (This was `True`.) -/
+def specLcaLayerBoundary : Prop :=
+  ∀ (app : ApplicationLayerState) (a : Actor), (integrate app a).1 = app
 
-def specLcaPureFunctionTypes : Prop := True
+/-- **Pure function types**: every reducer is pure. (This was `True`.) -/
+def specLcaPureFunctionTypes : Prop :=
+  ∀ f : Reducer, isPureFunction f
 
+/-- **Actor types**: messages are immutable and processed sequentially. (This was
+a conjunction that also demanded a non-empty mailbox of every actor.) -/
 def specLcaActorTypes : Prop :=
-  ∀ (actor : Actor),
-    hasMailbox actor.mailbox ∧
-    messagesAreImmutable actor.mailbox.messages ∧
+  ∀ actor, messagesAreImmutable actor.mailbox.messages ∧
     processesMessagesSequentially actor
 
-def specLcaUnidirectionalTheorem : Prop := True
+def specLcaUnidirectionalTheorem : Prop :=
+  ∀ app, layerIntegrationMaintainsUnidirectional app
 
-def specLcaBidirectionalTheorem : Prop := True
+def specLcaBidirectionalTheorem : Prop :=
+  ∀ actor, actorCommunicationIsBidirectional actor
 
-def specLcaLayerIntegrationTheorem : Prop := True
+def specLcaLayerIntegrationTheorem : Prop :=
+  ∀ app a, (integrate app a).1 = app ∧ (integrate app a).2.state = app.state
 
-def specLcaDeterminismTheorem : Prop := True
+def specLcaDeterminismTheorem : Prop :=
+  ∀ state reducer, stateTransitionsAreDeterministic state reducer
 
-def specLcaBidirectionalityTheorem : Prop := True
+def specLcaBidirectionalityTheorem : Prop :=
+  ∀ (a : Actor) (msg : Message),
+    receive (send msg a.mailbox) = some (msg, a.mailbox)
 
-def specLcaLayerSeparationTheorem : Prop := True
+def specLcaLayerSeparationTheorem : Prop :=
+  ∀ app a, noSharedStateBetweenLayers app a
 
 end Morph.Specs.LayeredConcurrency

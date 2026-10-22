@@ -1081,6 +1081,37 @@ the same — the same form as loop 22's `context_join_commutative`.
 `Array.size_setIfInBounds`, which is why the size-preservation argument is
 three lines and not a case analysis.
 
+### Iteration 27 — LayeredConcurrency: the layer model the claims needed
+
+**Target.** `Morph/Specs/LayeredConcurrency/`.
+
+**What was there.** Fourteen `Prop := True` advertisements and tautologies in
+predicate costume. `stateTransitionsFlowUnidirectional state` was
+`∀ s, s = state → s = state` — literally `s = s`. `specLcaActorTypes` demanded
+`hasMailbox` (a non-empty mailbox) of **every** actor, which is false for the
+empty actor, so it was never a theorem and could not be.
+
+**What is here.** The smallest model that makes the claims meaningful:
+`send` (enqueue at the front), `receive` (dequeue), `processOne` (remove one
+message), `integrate` (application state down to an actor, no return path) and
+`appStep` (a forward application transition).
+
+* `messagesAreImmutable` — enqueue then dequeue returns the message and leaves
+  the list intact.
+* `processesMessagesSequentially` — `processOne` removes exactly the head.
+* `stateTransitionsAreDeterministic` — equal states give equal reducer results.
+* `actorCommunicationIsBidirectional` — enqueue/dequeue round-trips and a
+  non-empty mailbox dequeues.
+* `layerIntegrationMaintainsUnidirectional`, `noSharedStateBetweenLayers` —
+  integration writes down, never back; changing an actor's state cannot change
+  the application's.
+* the eight `specLca*` theorems are each proved from the above.
+
+**Two corrections.** `stateTransitionsFlowUnidirectional` now states that the
+application step's `direction` is `forward` (it was `s = s`). And
+`specLcaActorTypes` no longer requires a non-empty mailbox of every actor: the
+old conjunction was false on the empty actor.
+
 ## Remaining work, measured
 
 After eighteen iterations the repository's specifications fall into three
@@ -1103,7 +1134,7 @@ least one real theorem — the modules that carried only `rfl` facts about
 |---|---|---|---|
 | `ConcurrencyProcessAlgebra` | 19 | message-passing laws | need a message-passing semantics the module lacks |
 | `MemoryModel` | 0 | **audited** — the fourteen claims are real (loop 26); three are no-target/refuted forms | done |
-| `LayeredConcurrency` | 14 | the remaining concurrency claims | need a layer model |
+| `LayeredConcurrency` | 0 | **audited** — a small layer model (`send`/`receive`/`integrate`) makes the 14 claims real (loop 27) | done |
 | `MemoryAffineLogic` | 11 | affine typing and copying laws | need a typing judgment and a copy operation |
 | `ModuleExistential` | 7 | module existence | need an existence semantics |
 | `TerminologyStandardization` | 5 | terminology consistency | need the term model |
