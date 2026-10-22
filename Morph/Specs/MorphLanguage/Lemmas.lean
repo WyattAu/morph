@@ -31,6 +31,11 @@ real parser (`Morph/Frontend/Parser.lean`) is a *partial* recursive-descent
 parser over a `Parser` structure, and connecting the specification to it needs
 both a non-partial parser and a decision procedure for it — a separate piece of
 work, named in §5 of the spec rather than faked here.
+
+**Loop 32.** The four `Prop := True` claims at the end of the spec are now real
+and proved: `parseCode` is total, `applyEditToAst` yields a program, `min` is
+canonical and `hum` transient, and every `ErrorResult` is either an `ok` or an
+error carrying a file/line/column.
 -/
 
 namespace Morph.Specs.MorphLanguage
@@ -198,5 +203,27 @@ theorem applyEditToAst_is_a_stub (ast : Morph.Syntax.Program)
     (edit : Morph.Specs.MorphLanguage.EditOperation) :
     Morph.Specs.MorphLanguage.applyEditToAst ast edit = some ast := by
   rfl
+
+/-! ### The correctness properties, proved -/
+
+theorem projectionalOnlyMandate_holds : projectionalOnlyMandate := by
+  intro code
+  simp [parseCode]
+
+theorem projectional_only_mandate_holds : projectional_only_mandate := by
+  intro ast edit
+  simp [applyEditToAst]
+
+theorem min_is_canonical_holds : min_is_canonical := by
+  unfold min_is_canonical isCanonicalDialect; rfl
+
+theorem hum_is_transient_holds : hum_is_transient := by
+  unfold hum_is_transient isTransientDialect; rfl
+
+theorem error_handling_explicit_holds : error_handling_explicit := by
+  intro α r
+  cases r with
+  | ok a => exact Or.inl ⟨a, rfl⟩
+  | error e => exact Or.inr ⟨e, rfl⟩
 
 end Morph.Specs.MorphLanguage

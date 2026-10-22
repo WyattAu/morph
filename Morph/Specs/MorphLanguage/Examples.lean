@@ -44,15 +44,22 @@ example : renderCode Morph.Syntax.Program.empty Dialect.min = "" := rfl
 example : renderCode Morph.Syntax.Program.empty Dialect.hum = "" := rfl
 
 -- Correctness properties
-example : projectionalOnlyMandate := by intro _ _; trivial
+example : projectionalOnlyMandate := by intro code; simp [parseCode]
 
-example : projectional_only_mandate = True := rfl
+example : projectional_only_mandate := by
+  intro ast edit; simp [applyEditToAst]
 
-example : min_is_canonical = True := rfl
+example : min_is_canonical := by
+  unfold min_is_canonical isCanonicalDialect; rfl
 
-example : hum_is_transient = True := rfl
+example : hum_is_transient := by
+  unfold hum_is_transient isTransientDialect; rfl
 
-example : error_handling_explicit = True := rfl
+example : error_handling_explicit := by
+  intro α r
+  cases r with
+  | ok a => exact Or.inl ⟨a, rfl⟩
+  | error e => exact Or.inr ⟨e, rfl⟩
 
 -- Error BEq
 example : ((Error.syntaxError "a") == (Error.syntaxError "a")) = true := rfl

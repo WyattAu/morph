@@ -1197,6 +1197,25 @@ edge `A → O`; `mem_Authority_iff` relates the computed list to edge membership
 `Path.exists` is left as the one-step relation and linked by
 `path_exists_reaches`.
 
+### Iteration 32 — MorphLanguage: the four trailing claims
+
+**Target.** `Morph/Specs/MorphLanguage/`.
+
+**What was there.** `projectional_only_mandate`, `min_is_canonical`,
+`hum_is_transient`, `error_handling_explicit` were `True`; the neighbouring
+`projectionalOnlyMandate` was `∀ _, True`; the dialect predicates used `==`.
+
+**What is here.** `Dialect` derives `DecidableEq` and the predicates use
+`decide`. `projectionalOnlyMandate` says every string parses, and
+`projectional_only_mandate` says every AST edit returns a program. `min` and
+`hum` are proved canonical/transient by computation. `error_handling_explicit`
+is exhaustive: every `ErrorResult` is an `ok` or an error with a location.
+
+**Still stubbed, and recorded as such (loop 13).** `parseCode` returns the
+empty program for every input and `applyEditToAst` is the identity; the real
+edits live in `Lemmas.lean`. The new claims are true of the stubs — they are
+total, but they parse/edit nothing.
+
 ## Remaining work, measured
 
 After eighteen iterations the repository's specifications fall into three

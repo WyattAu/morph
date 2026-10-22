@@ -51,8 +51,9 @@ def applyEditToAst (ast : Morph.Syntax.Program)
   (_edit : EditOperation) : Option Morph.Syntax.Program :=
   some ast
 
+/-- Every source string parses. (This was `∀ _, True`.) -/
 def projectionalOnlyMandate : Prop :=
-  ∀ (_code : String) (_edit : EditOperation), True
+  ∀ (code : String), (parseCode code).isSome = true
 
 def renderCode (_ast : Morph.Syntax.Program) (_dialect : Dialect) : String := ""
 
@@ -63,13 +64,13 @@ def renderCode (_ast : Morph.Syntax.Program) (_dialect : Dialect) : String := ""
 inductive Dialect where
   | min : Dialect
   | hum : Dialect
-  deriving Repr, BEq
+  deriving Repr, BEq, DecidableEq
 
 def isCanonicalDialect (d : Dialect) : Bool :=
-  d == Dialect.min
+  decide (d = Dialect.min)
 
 def isTransientDialect (d : Dialect) : Bool :=
-  d == Dialect.hum
+  decide (d = Dialect.hum)
 
 /-!
 ## Error Handling
@@ -175,9 +176,25 @@ structure Precedence where
 ## Correctness Properties
 -/
 
-def projectional_only_mandate : Prop := True
-def min_is_canonical : Prop := True
-def hum_is_transient : Prop := True
-def error_handling_explicit : Prop := True
+/-- **Projectional-only mandate**: every edit of a parsed program yields a
+parsed program. (This was `True`.) -/
+def projectional_only_mandate : Prop :=
+  ∀ (ast : Morph.Syntax.Program) (edit : EditOperation),
+    (applyEditToAst ast edit).isSome = true
+
+/-- **`min` is the canonical dialect**. (This was `True`.) -/
+def min_is_canonical : Prop :=
+  isCanonicalDialect Dialect.min = true
+
+/-- **`hum` is the transient dialect**. (This was `True`.) -/
+def hum_is_transient : Prop :=
+  isTransientDialect Dialect.hum = true
+
+/-- **Error handling is explicit**: every result is either a success or an
+error carrying a location. (This was `True`.) -/
+def error_handling_explicit : Prop :=
+  ∀ {α : Type} (r : ErrorResult α),
+    (∃ a, r = ErrorResult.ok a) ∨
+      ∃ e, r = ErrorResult.error e
 
 end Morph.Specs.MorphLanguage
