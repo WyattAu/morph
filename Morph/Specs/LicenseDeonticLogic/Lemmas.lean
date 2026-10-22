@@ -24,11 +24,15 @@ were never related to its claims.
   `openSource` (what the detector actually tests, which differs from the old
   prose's `.closeSource`).
 
+**Loop 34.** The six remaining `∀ _, True`/`match _ => True` specifications
+are now real and proved: `isAllowed` gives the deontic reading; predicate and
+action support are exhaustive-case statements; compatibility is total and its
+two outcomes are exclusive. The rights check now uses `!hasProhibition`
+explicitly, which removed a `decide`/Prop coercion mismatch.
+
 **What is not here.** `spec_license_invariants` is stated but not proved: it is
 false for arbitrary licences (a predicate may name an action the licence does
-not list), and the honest form would carry a well-formedness hypothesis. The
-six remaining `∀ _, True`/`match _ => True` specifications are recorded in
-`docs/RESEARCH-LOOPS.md` iteration 24 as needing a model, not a proof.
+not list), and the honest form would carry a well-formedness hypothesis.
 -/
 
 namespace Morph.Specs.LicenseDeonticLogic
@@ -48,5 +52,39 @@ theorem spec_gpl_infection_theorem_holds (root : License) :
   unfold detectGplInfection at h
   simp only [decide_eq_true_eq] at h
   exact ⟨h.2.2.1, h.2.2.2⟩
+
+/-! ### The six previously-`True` claims -/
+
+theorem spec_model_licenses_deontic_holds : spec_model_licenses_deontic := by
+  intro license action h
+  unfold License.isAllowed at h
+  rw [Bool.and_eq_true] at h
+  exact h.1
+
+theorem spec_support_all_predicates_holds : spec_support_all_predicates := by
+  intro license p _
+  cases p.predicateType <;> simp
+
+theorem spec_support_all_actions_holds : spec_support_all_actions := by
+  intro a
+  cases a <;> simp
+
+theorem spec_verify_compatibility_holds : spec_verify_compatibility := by
+  intro root dep
+  unfold checkCompatibility
+  dsimp only
+  split <;> simp
+
+theorem spec_enforce_gpl_compatibility_holds : spec_enforce_gpl_compatibility := by
+  intro root gpl _
+  unfold checkCompatibility
+  dsimp only
+  split <;> simp
+
+theorem spec_compatibility_complexity_holds : spec_compatibility_complexity := by
+  intro root dep
+  unfold checkCompatibility
+  dsimp only
+  split <;> simp
 
 end Morph.Specs.LicenseDeonticLogic

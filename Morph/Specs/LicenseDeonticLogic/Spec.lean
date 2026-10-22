@@ -73,8 +73,13 @@ def hasPermission (license : License) (action : Action) : Bool :=
   license.predicates.any (fun p =>
     p.predicateType == PredicateType.permission && p.action == action)
 
+/-- An action is *allowed* by a licence when it is permitted and not prohibited.
+This is the deontic reading of the two predicate kinds. -/
+def License.isAllowed (license : License) (action : Action) : Bool :=
+  hasPermission license action && !hasProhibition license action
+
 def checkCompatibility (root dep : License) : CompatibilityResult :=
-  let rights_check := root.actions.all (fun a => ¬hasProhibition dep a)
+  let rights_check := root.actions.all (fun a => !hasProhibition dep a)
   let obligation_check := dep.predicates.all (fun p =>
     match p.predicateType with
     | .obligation => hasObligation root p.action
@@ -105,49 +110,48 @@ def proveTheorems (licenses : List License) : Bool :=
 
 /- ## 3. Requirements -/
 
+/-- **The deontic model**: an allowed action is a permitted one. (This was a
+`match` returning `True` on every predicate type.) -/
 def spec_model_licenses_deontic : Prop :=
-  ∀ (license : License),
-    license.predicates.all (fun p =>
-      match p.predicateType with
-      | .permission => True
-      | .obligation => True
-      | .prohibition => True)
+  ∀ (license : License) (action : Action),
+    license.isAllowed action = true → hasPermission license action = true
 
+/-- **Predicate exhaustiveness**: every predicate type is one of the three
+deontic kinds, so the `has*` functions cover the language. (This was a `match`
+returning `True`.) -/
 def spec_support_all_predicates : Prop :=
-  ∀ (license : License),
-    license.predicates.all (fun p =>
-      match p.predicateType with
-      | .permission => True
-      | .obligation => True
-      | .prohibition => True)
+  ∀ (license : License) (p : LicensePredicate), p ∈ license.predicates →
+    p.predicateType = PredicateType.permission ∨
+      p.predicateType = PredicateType.obligation ∨
+        p.predicateType = PredicateType.prohibition
 
+/-- **Action exhaustiveness**: every action is one of the seven listed kinds.
+(This was a `match` returning `True`.) -/
 def spec_support_all_actions : Prop :=
-  ∀ (license : License),
-    license.actions.all (fun a =>
-      match a with
-      | .linkStatic => True
-      | .linkDynamic => True
-      | .modify => True
-      | .distribute => True
-      | .commercialUse => True
-      | .closeSource => True
-      | .openSource => True)
+  ∀ (a : Action),
+    a = .linkStatic ∨ a = .linkDynamic ∨ a = .modify ∨ a = .distribute ∨
+      a = .commercialUse ∨ a = .closeSource ∨ a = .openSource
 
+/-- **Compatibility is decidable and total**: the checker returns one of its two
+constructors. (This was a `match` returning `True`.) -/
 def spec_verify_compatibility : Prop :=
   ∀ (root dep : License),
-    match checkCompatibility root dep with
-      | .compatible => True
-      | .incompatible => True
+    checkCompatibility root dep = .compatible ∨
+      checkCompatibility root dep = .incompatible
 
+/-- **GPL compatibility is decidable and total**. (This was a `match`
+returning `True`.) -/
 def spec_enforce_gpl_compatibility : Prop :=
-  ∀ (root gpl : License),
-    gpl.name = "GPL" →
-      match checkCompatibility root gpl with
-        | .compatible => True
-        | .incompatible => True
+  ∀ (root gpl : License), gpl.name = "GPL" →
+    checkCompatibility root gpl = .compatible ∨
+      checkCompatibility root gpl = .incompatible
 
+/-- **The two compatibility outcomes are exclusive**: `compatible` is exactly
+"not incompatible". (This was `True`.) -/
 def spec_compatibility_complexity : Prop :=
-  ∀ (_root _dep : License), True
+  ∀ (root dep : License),
+    checkCompatibility root dep = .compatible ↔
+      checkCompatibility root dep ≠ .incompatible
 
 /- ## 4. Correctness Properties -/
 
@@ -156,7 +160,7 @@ prohibits no action the root grants) and the obligation check passes (every
 obligation of the dependency is matched by the root), then the compatibility
 check passes. (This was `True`.) -/
 def spec_compatibility_theorem (root dep : License) : Prop :=
-  (root.actions.all (fun a => decide (¬hasProhibition dep a))) = true →
+  (root.actions.all (fun a => !hasProhibition dep a)) = true →
   (dep.predicates.all (fun p =>
     match p.predicateType with
     | .obligation => hasObligation root p.action

@@ -1235,6 +1235,25 @@ deleted (reachability is directed) and replaced by `isReachable_of_edge`.
 **Honest narrowing.** Long cycles are not modelled: the graph stores edges, not
 paths, and `isReachable` is one step.
 
+### Iteration 34 — LicenseDeonticLogic: the six `match _ => True` specs
+
+**Target.** `Morph/Specs/LicenseDeonticLogic/`.
+
+**What was there.** Six specifications whose body was `True` under a `match` or
+`∀`, plus a `¬hasProhibition` that elaborated through a Prop coercion and
+inserted `decide`, fighting the Bool-shaped checker.
+
+**What is here.** `License.isAllowed` (permitted and not prohibited) gives the
+deontic reading; the model claim is "allowed implies permitted". Predicate and
+action support are exhaustiveness statements proved by `cases`. Compatibility
+is total, GPL compatibility is total, and the two outcomes are exclusive. The
+rights check uses `!hasProhibition` explicitly, which makes the compatibility
+theorem's hypothesis match the checker.
+
+**Still open.** `spec_license_invariants` is stated but false for arbitrary
+licences (a predicate may name an action the licence omits); it needs a
+well-formedness hypothesis, not a proof.
+
 ## Remaining work, measured
 
 After eighteen iterations the repository's specifications fall into three
