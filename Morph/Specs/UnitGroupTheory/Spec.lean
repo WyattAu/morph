@@ -105,7 +105,13 @@ def spec_identity_scalar : Prop :=
     vector.exponents = List.replicate vector.exponents.length 0 →
       vector = identityVector vector.exponents.length
 
-def spec_exchange_rate_invariant : Prop := True
+/-- **The exchange-rate invariant.** A ratio of like units is *dimensionless*:
+dividing a unit expression by itself gives the identity unit vector, so an
+exchange rate is a pure number rather than a quantity with a unit. (This was
+`True`.) -/
+def spec_exchange_rate_invariant : Prop :=
+  ∀ (u : BaseUnit),
+    evaluateUnitExpression (.div (.base u) (.base u)) = identityVector 4
 
 def spec_reject_incompatible_dimensions : Prop :=
   ∀ (v1 v2 : UnitVector), ¬areCompatible v1 v2 → True
@@ -139,7 +145,13 @@ def spec_dimensionless_identity_element : Prop :=
     vector.exponents = List.replicate vector.exponents.length 0 →
       vector = identityVector vector.exponents.length
 
-def spec_unit_names_unique : Prop := True
+/-- **The base units are distinct.** No two base units have the same unit
+vector, so a quantity in one base unit cannot be silently used as another. (This
+was `True`.) -/
+def spec_unit_names_unique : Prop :=
+  ∀ (v1 v2 : BaseUnit), v1 ≠ v2 →
+    (evaluateUnitExpression (.base v1)).exponents ≠
+      (evaluateUnitExpression (.base v2)).exponents
 
 def spec_multiplication_adds_vectors : Prop :=
   ∀ (v1 v2 : UnitVector),

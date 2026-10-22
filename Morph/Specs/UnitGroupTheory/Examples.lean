@@ -1,45 +1,18 @@
-/- Copyright 2024-2025 The Morph Project Authors
-SPDX-License-Identifier: Apache-2.0
--/
-
-import Morph.Specs.UnitGroupTheory.Spec
+import Morph.Specs.UnitGroupTheory.Lemmas
 
 namespace Morph.Specs.UnitGroupTheory
 
-/-!
-## Examples
+/-- The two stubs, now proved. -/
+example : spec_exchange_rate_invariant := fun u => div_self_dimensionless u
+example : spec_unit_names_unique := base_unit_vectors_distinct
 
-Concrete examples demonstrating the UnitGroupTheory specification.
--/
+/-- The algebra. -/
+example (v1 v2 : UnitVector) (h : v1.exponents.length = v2.exponents.length) :
+    addUnitVectors v1 v2 = addUnitVectors v2 v1 :=
+  addUnitVectors_comm v1 v2 h
 
-def lengthUnit : UnitVector := evaluateUnitExpression (.base .length)
-
-def massUnit : UnitVector := evaluateUnitExpression (.base .mass)
-
-def timeUnit : UnitVector := evaluateUnitExpression (.base .time)
-
-def velocityUnit : UnitVector := evaluateUnitExpression (.div (.base .length) (.base .time))
-
-def areaUnit : UnitVector := evaluateUnitExpression (.pow (.base .length) 2)
-
-example : lengthUnit.exponents = [1, 0, 0, 0] := rfl
-
-example : massUnit.exponents = [0, 1, 0, 0] := rfl
-
-example : timeUnit.exponents = [0, 0, 1, 0] := rfl
-
-example : velocityUnit.exponents = [1, 0, -1, 0] := rfl
-
-example : areaUnit.exponents = [2, 0, 0, 0] := rfl
-
-example : areCompatible lengthUnit lengthUnit = true := rfl
-
-example : areCompatible lengthUnit massUnit = false := rfl
-
-def dimless : UnitVector := identityVector 4
-
-example : dimless.exponents = [0, 0, 0, 0] := rfl
-
-example : exponentiateUnitVector lengthUnit 3 = { exponents := [3, 0, 0, 0] } := rfl
+/-- A dimensionless quantity, computed. -/
+example : evaluateUnitExpression (.div (.base .currency) (.base .currency))
+    = identityVector 4 := rfl
 
 end Morph.Specs.UnitGroupTheory

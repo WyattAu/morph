@@ -969,6 +969,39 @@ every endpoint it did.
 theorems are proved properly ✓, and the add-a-node preservation theorem is a real
 argument rather than `fun h => h` ✓.
 
+### Iteration 25 — UnitGroupTheory: the dimension algebra, proved
+
+**Target.** `Morph/Specs/UnitGroupTheory/`.
+
+**What was there.** A genuine dimensional-analysis model — four base units, unit
+*vectors* over the integers, `mul`/`div`/`pow` as vector arithmetic — and
+fifteen real theorems about the base evaluations. Two properties were `True`:
+`spec_exchange_rate_invariant` and `spec_unit_names_unique`.
+
+**What is here.** Both, stated and proved, plus the algebra they rest on:
+* `spec_exchange_rate_invariant` — dividing a unit by itself is
+  **dimensionless** (the identity unit vector), which is what makes an exchange
+  rate a pure number rather than a quantity with a unit.
+* `spec_unit_names_unique` — the four base units have pairwise distinct unit
+  vectors, so a quantity in one base unit cannot be silently used as another.
+* `addUnitVectors_comm` (for equal-length vectors), `addUnitVectors_assoc`,
+  and `addUnitVectors_ident` — the algebra of the vector arithmetic, proved on
+  the raw exponent lists and lifted to the structures.
+
+**A finding.** `addUnitVectors` is commutative **only for equal-length
+vectors**: `List.zipWith` truncates to the shorter list, so adding a length-1
+vector to a length-2 vector keeps the length-2 vector's tail. Units of different
+lengths are not compatible in the first place (`areCompatible` requires equal
+lengths), so the operation is never called that way — but the commutativity law
+needs the hypothesis stated, and it is.
+
+**What is not proved.** `spec_reject_incompatible_dimensions` is stated as
+`∀ v1 v2, ¬areCompatible v1 v2 → True` — literally vacuous even in the
+specification itself, and left that way here: the property it gestures at
+("reject incompatible dimensions") needs a type checker that consumes
+`areCompatible`, which does not exist in this module. Also `unitToString`
+ignores its vector entirely, returning `"unit"` for every unit.
+
 ## Remaining work, measured
 
 After eighteen iterations the repository's specifications fall into three
