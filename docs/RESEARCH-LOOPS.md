@@ -1216,6 +1216,25 @@ empty program for every input and `applyEditToAst` is the identity; the real
 edits live in `Lemmas.lean`. The new claims are true of the stubs — they are
 total, but they parse/edit nothing.
 
+### Iteration 33 — ASTGraph: HashMap well-formedness without axioms
+
+**Target.** `Morph/Specs/ASTGraph/`.
+
+**What was there.** Two `True` predicates, `isReachable := source = target`, a
+traversal theorem `∀ _, True`, and an addNode preservation proved by
+`trivial`.
+
+**What is here.** A `LawfulBEq ObjectId` instance (the custom `BEq` is
+equality of the underlying `Nat`) unlocks `Std.HashMap.getElem?_insert`, so
+`getNode_addNode` is proved and `addNode` preserves endpoint well-formedness.
+`isReachable` is reflexive-or-one-edge; `isAcyclic` excludes one-step mutual
+reachability; the old universally-quantified structure theorem became a
+proposition, since it is false for an arbitrary graph. `isReachable_sym` was
+deleted (reachability is directed) and replaced by `isReachable_of_edge`.
+
+**Honest narrowing.** Long cycles are not modelled: the graph stores edges, not
+paths, and `isReachable` is one step.
+
 ## Remaining work, measured
 
 After eighteen iterations the repository's specifications fall into three

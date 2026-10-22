@@ -27,11 +27,21 @@ namespace Morph.Specs.ASTGraph
 
 open Morph.Specs.CommonTypes
 
-instance : BEq ObjectId where
+instance instBEqObjectId : BEq ObjectId where
   beq a b := a.id == b.id
 
 instance : Hashable ObjectId where
   hash a := hash a.id
+
+/-- The custom `BEq` on `ObjectId` is just equality of the underlying `Nat`, so
+the `Std.HashMap` lemmas apply. -/
+instance : LawfulBEq ObjectId where
+  eq_of_beq {a b} h := by
+    have hid : a.id = b.id := by simpa [instBEqObjectId] using h
+    cases a; cases b; simp_all
+  rfl {a} := by
+    show (a.id == a.id) = true
+    simp
 
 /-!
 ## AST Node Types
@@ -107,29 +117,74 @@ def getChildren (G : ASTGraph) (id : ObjectId) : List ObjectId :=
 ## Reachability
 -/
 
-def isReachable (_G : ASTGraph) (source target : ObjectId) : Prop :=
-  source = target
+/-- One-step reachability: the node itself, or a direct edge. -/
+def isReachable (G : ASTGraph) (source target : ObjectId) : Prop :=
+  source = target ∨
+    ∃ (e : ASTEdge), e ∈ G.edges ∧ e.source = source ∧ e.target = target
 
 /-!
 ## AST Graph Properties
 -/
 
-def isWellFormed (_G : ASTGraph) : Prop := True
-def isAcyclic (_G : ASTGraph) : Prop := True
+def ASTGraph.hasNode (G : ASTGraph) (id : ObjectId) : Prop :=
+  (getNode G id).isSome = true
+
+/-- **Well-formedness**: every edge's endpoints are nodes of the graph. (This
+was `True`.) -/
+def isWellFormed (G : ASTGraph) : Prop :=
+  ∀ (e : ASTEdge), e ∈ G.edges → G.hasNode e.source ∧ G.hasNode e.target
+
+/-- **Acyclicity**: no two distinct nodes reach each other in one step. (This
+was `True`.) -/
+def isAcyclic (G : ASTGraph) : Prop :=
+  ∀ (a b : ObjectId), isReachable G a b → isReachable G b a → a = b
 
 /-!
 ## Specification Theorems
 -/
 
-theorem spec_ast_graph_structure (G : ASTGraph) : isWellFormed G := trivial
+/-- The structural requirement on an AST graph. (This was a theorem claiming
+`isWellFormed G` for every `G`, which is false now that the predicate is real.) -/
+def spec_ast_graph_structure (G : ASTGraph) : Prop := isWellFormed G
 
-theorem spec_ast_graph_properties (G : ASTGraph) : isAcyclic G ∧ True := by constructor <;> trivial
+/-- The combined structural and acyclicity requirement. -/
+def spec_ast_graph_properties (G : ASTGraph) : Prop :=
+  isWellFormed G ∧ isAcyclic G
 
-theorem spec_ast_graph_traversal (_G : ASTGraph) (_rootId : ObjectId) :
-  ∀ (_id : ObjectId), True := by intro _; trivial
+/-- **Traversal stays inside the graph**: every node reachable from a present
+root is present, assuming the graph is well formed. -/
+theorem spec_ast_graph_traversal (G : ASTGraph) (rootId : ObjectId)
+    (hWF : isWellFormed G) (hroot : G.hasNode rootId) :
+    ∀ (id : ObjectId), isReachable G rootId id → G.hasNode id := by
+  intro id h
+  rcases h with rfl | ⟨e, he, _, htgt⟩
+  · exact hroot
+  · subst htgt
+    exact (hWF e he).2
+
+theorem getNode_addNode (G : ASTGraph) (node : ASTNode) (id : ObjectId) :
+    getNode (addNode G node) id =
+      if node.id == id then some node else getNode G id := by
+  unfold getNode addNode
+  change (Std.HashMap.insert G.nodes node.id node)[id]? =
+    if node.id == id then some node else G.nodes[id]?
+  rw [Std.HashMap.getElem?_insert]
 
 theorem add_node_preserves_well_formed (G : ASTGraph) (node : ASTNode) :
-  isWellFormed G → isWellFormed (addNode G node) := by intro _; trivial
+    isWellFormed G → isWellFormed (addNode G node) := by
+  intro h e he
+  have he' : e ∈ G.edges := by simpa [addNode] using he
+  obtain ⟨hs, ht⟩ := h e he'
+  unfold ASTGraph.hasNode at hs ht ⊢
+  constructor
+  · rw [getNode_addNode]
+    by_cases hk : node.id == e.source
+    · simp [hk]
+    · simp [hk, hs]
+  · rw [getNode_addNode]
+    by_cases hk : node.id == e.target
+    · simp [hk]
+    · simp [hk, ht]
 
 /-!
 ## Default Values
