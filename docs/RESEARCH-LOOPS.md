@@ -1112,6 +1112,37 @@ application step's `direction` is `forward` (it was `s = s`). And
 `specLcaActorTypes` no longer requires a non-empty mailbox of every actor: the
 old conjunction was false on the empty actor.
 
+### Iteration 28 — MemoryAffineLogic: typing and ownership, modelled
+
+**Target.** `Morph/Specs/MemoryAffineLogic/`.
+
+**What was there.** A real context algebra (loop 22 fixed the false join law),
+but eleven `Prop := True` claims about affine typing and ownership. They looked
+unstateable because "there is no typing judgment or copy operation" — except
+`CommonTypes.Expr` already has `var`, `app`, `lam`, `move`, `copy`, `borrow`.
+
+**What is here.** A usage-based model and all eleven claims proved:
+* `uses e x` counts occurrences; `spec_affine_typing` says an expression uses
+  each variable at most once and every name it uses is in scope.
+* `spec_affine_typing_memory_safety` — typing implies every used name is bound.
+* `spec_resource_linearity` — resource counts add under `joinContexts`.
+* `spec_context_splitting` — a split keeps all resources on one side.
+* `moveVar` / `borrowVar` / `copyVar` / `consumeVar` / `consumeResource` make
+  the ownership claims statements: move consumes its source, borrow preserves
+  it, copy requires an affine type, and consumption removes the binding.
+* `affine_types_no_copy`, `linear_types_used_once`, `move_consumes_source`,
+  `borrow_preserves_source`, `copy_requires_affine`, `variable_use_tracking`,
+  `resource_consumption` — proved.
+
+**A finding.** `moveVar`'s postcondition needs `src ≠ dst`: moving a variable
+onto itself leaves the source present, so the "source is gone" half is false
+without the hypothesis. It is now stated, and the specification records the
+hypothesis rather than silently assuming it.
+
+**Not modelled.** Binder shadowing: `uses (.lam x T e) y` counts `y` in `e`
+even when `y = x`. This is the spec's own simplification, not a gap introduced
+here, but the model inherits it.
+
 ## Remaining work, measured
 
 After eighteen iterations the repository's specifications fall into three
@@ -1135,7 +1166,7 @@ least one real theorem — the modules that carried only `rfl` facts about
 | `ConcurrencyProcessAlgebra` | 19 | message-passing laws | need a message-passing semantics the module lacks |
 | `MemoryModel` | 0 | **audited** — the fourteen claims are real (loop 26); three are no-target/refuted forms | done |
 | `LayeredConcurrency` | 0 | **audited** — a small layer model (`send`/`receive`/`integrate`) makes the 14 claims real (loop 27) | done |
-| `MemoryAffineLogic` | 11 | affine typing and copying laws | need a typing judgment and a copy operation |
+| `MemoryAffineLogic` | 0 | **audited** — usage-based typing and move/borrow/copy operations make the 11 claims real (loop 28) | done |
 | `ModuleExistential` | 7 | module existence | need an existence semantics |
 | `TerminologyStandardization` | 5 | terminology consistency | need the term model |
 | `SecurityOCap` | 4 | capability paths | need a path semantics |

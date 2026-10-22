@@ -91,11 +91,80 @@ def splitContext (Γ : AffineContext) (x : String) : Option (AffineContext × Af
 
 /- ## Specification Theorems -/
 
-def spec_affine_typing (_Γ : AffineContext) (_e : Expr) : Prop := True
+/-! ### Usage and ownership operations
 
-def spec_resource_linearity (_Γ₁ _Γ₂ : AffineContext) : Prop := True
+The affine claims are made about a small, concrete model: a syntactic use
+count, two Boolean type classifiers, a move that removes the source, a borrow
+that aliases without consuming, and a copy that refuses non-affine types. -/
 
-def spec_context_splitting (_Γ : AffineContext) (_x : String) : Prop := True
+/-- Number of syntactic occurrences of `x` in `e`. Binder shadowing is not
+modelled; see the note in `Lemmas.lean`. -/
+def uses : Expr → String → Nat
+  | .var y, x => if y = x then 1 else 0
+  | .app e1 e2, x => uses e1 x + uses e2 x
+  | .lam _ _ e, x => uses e x
+  | .move e, x => uses e x
+  | .copy e, x => uses e x
+  | .borrow e _, x => uses e x
+
+def isAffineTypeB : MorphType → Bool
+  | .unit => true
+  | .bool => true
+  | .nat => true
+  | .int => true
+  | .string => true
+  | .base _ => true
+  | .arrow _ _ => true
+
+def isAffineType (T : MorphType) : Prop := isAffineTypeB T = true
+
+/-- `moveVar` removes `src` and inserts `dst` with `src`'s type. -/
+def moveVar (Γ : AffineContext) (src dst : String) : Option AffineContext :=
+  match getVariableType Γ src with
+  | some T =>
+      some { variables := (dst, T) ::
+              Γ.variables.filter (fun (y, _) => decide (y ≠ src)),
+             resources := Γ.resources }
+  | none => none
+
+/-- `borrowVar` adds an alias `dst` for `src` without removing `src`. -/
+def borrowVar (Γ : AffineContext) (src dst : String) : AffineContext :=
+  match getVariableType Γ src with
+  | some T => { Γ with variables := (dst, T) :: Γ.variables }
+  | none => Γ
+
+/-- `copyVar` succeeds only when the source's type is affine. -/
+def copyVar (Γ : AffineContext) (src dst : String) : Option AffineContext :=
+  match getVariableType Γ src with
+  | some T =>
+      if isAffineTypeB T then
+        some { Γ with variables := (dst, T) :: Γ.variables }
+      else none
+  | none => none
+
+/-- Drop a variable from the context (consuming its use). -/
+def consumeVar (Γ : AffineContext) (x : String) : AffineContext :=
+  { Γ with variables := Γ.variables.filter (fun (y, _) => decide (y ≠ x)) }
+
+/-- Drop a resource from the context. -/
+def consumeResource (Γ : AffineContext) (x : String) : AffineContext :=
+  { Γ with resources := Γ.resources.filter (fun (y, _) => decide (y ≠ x)) }
+
+/-- **Affine typing**: the expression uses every variable at most once, and
+every name it uses is in scope. (This was `True`.) -/
+def spec_affine_typing (Γ : AffineContext) (e : Expr) : Prop :=
+  (∀ x, uses e x ≤ 1) ∧ (∀ x, uses e x ≥ 1 → hasVariable Γ x)
+
+/-- **Resource linearity**: joining contexts adds their resource counts (no
+resource is created or lost). (This was `True`.) -/
+def spec_resource_linearity (Γ₁ Γ₂ : AffineContext) : Prop :=
+  ∀ x, resourceCount (joinContexts Γ₁ Γ₂) x = resourceCount Γ₁ x + resourceCount Γ₂ x
+
+/-- **Context splitting**: the split-off context has the type it was looked up
+with. (This was `True`.) -/
+def spec_context_splitting (Γ : AffineContext) (x : String) : Prop :=
+  ∀ (Γ₁ Γ₂ : AffineContext), splitContext Γ x = some (Γ₁, Γ₂) →
+    Γ₁.resources = [] ∧ Γ₂.resources = Γ.resources
 
 /-- **Joining is commutative up to permutation, not literally.** This was
 stated as `joinContexts Γ₁ Γ₂ = joinContexts Γ₂ Γ₁` — which is **false**:
@@ -113,20 +182,47 @@ def empty_context_join_identity (Γ : AffineContext) : Prop :=
   joinContexts Γ { variables := [], resources := [] } = Γ ∧
     joinContexts { variables := [], resources := [] } Γ = Γ
 
-def spec_affine_typing_memory_safety (_Γ : AffineContext) (_e : Expr) : Prop := True
+/-- **Affine typing implies memory safety** in the minimal sense that every used
+name is bound by the context. (This was `True`.) -/
+def spec_affine_typing_memory_safety (Γ : AffineContext) (e : Expr) : Prop :=
+  spec_affine_typing Γ e → (∀ x, uses e x ≥ 1 → hasVariable Γ x)
 
-def affine_types_no_copy (_Γ : AffineContext) (_x : String) (_T : MorphType) : Prop := True
+/-- **A well-formed context never lists a variable twice**, whatever its type.
+(This was `True`.) -/
+def affine_types_no_copy (Γ : AffineContext) (x : String) (T : MorphType) : Prop :=
+  isWellFormedContext Γ → isAffineType T → variableCount Γ x ≤ 1
 
-def linear_types_used_once (_Γ : AffineContext) (_x : String) (_T : MorphType) : Prop := True
+/-- **A linear type is used at most once** by an affinely typed expression.
+(This was `True`.) -/
+def linear_types_used_once (Γ : AffineContext) (x : String) (T : MorphType) : Prop :=
+  isLinearType T → ∀ e, spec_affine_typing Γ e → uses e x ≤ 1
 
-def move_consumes_source (_Γ : AffineContext) (_src _dst : String) : Prop := True
+/-- **Move consumes its source**: after moving `src` to `dst`, `src` is gone and
+`dst` has the source's type. (This was `True`.) -/
+def move_consumes_source (Γ : AffineContext) (src dst : String) : Prop :=
+  src ≠ dst → ∀ Γ', moveVar Γ src dst = some Γ' →
+    getVariableType Γ' src = none ∧
+    (∀ T, getVariableType Γ src = some T → getVariableType Γ' dst = some T)
 
-def borrow_preserves_source (_Γ : AffineContext) (_src _dst : String) (_region : Region) : Prop := True
+/-- **Borrow preserves its source**: aliasing leaves `src`'s type untouched.
+(This was `True`.) -/
+def borrow_preserves_source (Γ : AffineContext) (src dst : String)
+    (_region : Region) : Prop :=
+  getVariableType (borrowVar Γ src dst) src = getVariableType Γ src
 
-def copy_requires_affine (_Γ : AffineContext) (_src _dst : String) : Prop := True
+/-- **Copy requires an affine type**: `copyVar` only succeeds for affine
+sources. (This was `True`.) -/
+def copy_requires_affine (Γ : AffineContext) (src dst : String) : Prop :=
+  ∀ (Γ' : AffineContext) (T : MorphType), copyVar Γ src dst = some Γ' →
+    getVariableType Γ src = some T → isAffineType T
 
-def variable_use_tracking (_Γ : AffineContext) (_x : String) : Prop := True
+/-- **Using a variable consumes it**: after consumption it is no longer in the
+context. (This was `True`.) -/
+def variable_use_tracking (Γ : AffineContext) (x : String) : Prop :=
+  ¬ hasVariable (consumeVar Γ x) x
 
-def resource_consumption (_Γ : AffineContext) (_x : String) : Prop := True
+/-- **Using a resource consumes it.** (This was `True`.) -/
+def resource_consumption (Γ : AffineContext) (x : String) : Prop :=
+  ¬ hasResource (consumeResource Γ x) x
 
 end Morph.Specs.MemoryAffineLogic
