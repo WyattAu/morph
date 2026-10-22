@@ -30,12 +30,12 @@ namespace Morph.Specs.SecurityOCap
 
 inductive Node where
   | mk : String → Node
-  deriving Repr, BEq, Hashable
+  deriving Repr, BEq, Hashable, DecidableEq
 
 structure Edge where
   source : Node
   target : Node
-  deriving Repr, BEq, Hashable
+  deriving Repr, BEq, Hashable, DecidableEq
 
 structure AccessGraph where
   nodes : List Node
@@ -65,9 +65,26 @@ inductive Path where
 def Path.exists (g : AccessGraph) (source target : Node) : Prop :=
   source = target ∨ ∃ (e : Edge), e ∈ g.edges ∧ e.source = source ∧ e.target = target
 
-def Path.transitive (_g : AccessGraph) (_A _B _C : Node) : Prop := True
+/-- An edge chain from `a` to `b`, alternating graph membership and endpoint
+equalities. -/
+inductive EdgeChain (g : AccessGraph) : Node → Node → List Edge → Prop
+  | nil (a : Node) : EdgeChain g a a []
+  | cons {a b c : Node} {e : Edge} {es : List Edge} :
+      e ∈ g.edges → e.source = a → e.target = b →
+      EdgeChain g b c es → EdgeChain g a c (e :: es)
 
-def Reachable (_g : AccessGraph) (_start : Node) : List Node := []
+/-- `a` reaches `b` when some edge chain does. -/
+def Reaches (g : AccessGraph) (a b : Node) : Prop :=
+  ∃ es, EdgeChain g a b es
+
+/-- **Reachability is transitive**: `A →* B` and `B →* C` compose to `A →* C`.
+(This was `True`.) -/
+def Path.transitive (g : AccessGraph) (A B C : Node) : Prop :=
+  Reaches g A B → Reaches g B C → Reaches g A C
+
+/-- Direct successors of `start` in the graph. -/
+def Reachable (g : AccessGraph) (start : Node) : List Node :=
+  (g.edges.filter (fun e => decide (e.source = start))).map (fun e => e.target)
 
 /- ## 2.2 The Connectivity Rule -/
 
@@ -94,14 +111,28 @@ structure CapabilityRoot where
 
 abbrev Function := String
 
-def authority_inheritance (_ctx : CapabilityRoot) (_f _g : Function) : Prop := True
+/-- Every function's authority is rooted at its context's `ctx` node. -/
+def Function.authorityRoot (ctx : CapabilityRoot) (_f : Function) : Node :=
+  ctx.ctx
 
-def ctx_capability_root (_ctx : CapabilityRoot) (_f : Function) : Prop := True
+/-- **Authority inheritance**: two functions in the same context share the
+authority root. (This was `True`.) -/
+def authority_inheritance (ctx : CapabilityRoot) (f g : Function) : Prop :=
+  Function.authorityRoot ctx f = Function.authorityRoot ctx g
 
+/-- **The context node is the capability root** of each of its functions. (This
+was `True`.) -/
+def ctx_capability_root (ctx : CapabilityRoot) (f : Function) : Prop :=
+  Function.authorityRoot ctx f = ctx.ctx
+
+/-- **Authority transfer**: `A` can hand `O` to another principal exactly when
+there is an edge `A → O`. (This was an implication to `True`.) -/
 def authority_transfer (g : AccessGraph) (A _B O : Node) : Prop :=
-  ∃ (e : Edge), e ∈ g.edges ∧ e.source = A ∧ e.target = O → True
+  ∃ (e : Edge), e ∈ g.edges ∧ e.source = A ∧ e.target = O
 
-def Authority (_g : AccessGraph) (_ctx : CapabilityRoot) (_f : Function) : List Node := []
+/-- The nodes directly authorised by the context. -/
+def Authority (g : AccessGraph) (ctx : CapabilityRoot) (_f : Function) : List Node :=
+  (g.edges.filter (fun e => decide (e.source = ctx.ctx))).map (fun e => e.target)
 
 /- ## 3. Requirements -/
 
@@ -115,7 +146,9 @@ def spec_connectivity_rule (g : AccessGraph) : Prop :=
 def spec_no_global_ambient_authority (g : AccessGraph) : Prop :=
   no_global_ambient_authority g
 
-def spec_authority_inheritance (_ctx : CapabilityRoot) (_f _g : Function) : Prop := True
+/-- **Authority inheritance**, as a specification. (This was `True`.) -/
+def spec_authority_inheritance (ctx : CapabilityRoot) (f g : Function) : Prop :=
+  authority_inheritance ctx f g
 
 def spec_authority_transfer (g : AccessGraph) (A B O : Node) : Prop :=
   authority_transfer g A B O

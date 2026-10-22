@@ -44,9 +44,7 @@ example : AccessGraph.well_formed capGraph := by
   · exact ⟨by simp [capGraph], by simp [capGraph]⟩
 
 example : authority_transfer capGraph nodeAlice nodeBob nodeBob := by
-  unfold authority_transfer
-  exists { source := nodeAlice, target := nodeBob }
-  intro _; trivial
+  exact ⟨{ source := nodeAlice, target := nodeBob }, by simp [capGraph], rfl, rfl⟩
 
 /-- Revocation: remove Bob→Resource edge. -/
 def capGraphRevoked : AccessGraph := {

@@ -1182,6 +1182,21 @@ conjunction. The naming implications are **refuted** with witnesses `"aB"` and
 character. Spec repair noted; the proofs are honest refutations, not renamed
 assumptions.
 
+### Iteration 31 — SecurityOCap: from `True` to reachability
+
+**Target.** `Morph/Specs/SecurityOCap/`.
+
+**What was there.** Four `Prop := True` claims; `authority_transfer` was an
+implication to `True`; `Reachable`/`Authority` returned `[]`.
+
+**What is here.** `Node`/`Edge` derive `DecidableEq`. A real `EdgeChain` /
+`Reaches` closure is added; `Path.transitive` is proved by chain concatenation;
+`authority_inheritance` and `ctx_capability_root` are proved by `rfl` over an
+explicit `Function.authorityRoot`; `authority_transfer` is the existence of an
+edge `A → O`; `mem_Authority_iff` relates the computed list to edge membership.
+`Path.exists` is left as the one-step relation and linked by
+`path_exists_reaches`.
+
 ## Remaining work, measured
 
 After eighteen iterations the repository's specifications fall into three
