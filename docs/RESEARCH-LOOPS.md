@@ -1143,6 +1143,29 @@ hypothesis rather than silently assuming it.
 even when `y = x`. This is the spec's own simplification, not a gap introduced
 here, but the model inherits it.
 
+### Iteration 29 — ModuleExistential: seven claims, and a `BEq` fix
+
+**Target.** `Morph/Specs/ModuleExistential/`.
+
+**What was there.** Seven `Prop := True` claims over a real module model.
+`AccessControl.isAllowed` and `ModuleComposition.importsOf` compared ids with
+`==`; `ModuleId` derived only `BEq`, so no soundness statement about them could
+be proved (the `LawfulBEq` gap first recorded in the ten-loop summary).
+
+**What is here.** `ModuleId`, `Visibility` and `AccessRule` now derive
+`DecidableEq`, and both functions use `decide` equality. Then:
+* `spec_module_privacy` — environment entries for a module carry its
+  visibility; proved for the empty environment.
+* `ModuleDecl.isEncapsulated` — exported names are public; proved for a module
+  with no exports.
+* `spec_module_access_control` / `inv_access_control_sound` — an allowed name
+  has an `allow` entry; proved from `find?`.
+* `spec_module_composition` — a successful import relates two declared
+  modules.
+* `spec_existential_types` — a conforming value's interface is the bound one.
+* `inv_private_no_public_impl` — **derived** from `hasImplementation` rather
+  than assumed: an exported symbol cannot be a private one.
+
 ## Remaining work, measured
 
 After eighteen iterations the repository's specifications fall into three
@@ -1167,7 +1190,7 @@ least one real theorem — the modules that carried only `rfl` facts about
 | `MemoryModel` | 0 | **audited** — the fourteen claims are real (loop 26); three are no-target/refuted forms | done |
 | `LayeredConcurrency` | 0 | **audited** — a small layer model (`send`/`receive`/`integrate`) makes the 14 claims real (loop 27) | done |
 | `MemoryAffineLogic` | 0 | **audited** — usage-based typing and move/borrow/copy operations make the 11 claims real (loop 28) | done |
-| `ModuleExistential` | 7 | module existence | need an existence semantics |
+| `ModuleExistential` | 0 | **audited** — the seven claims are real; access/import compare with `decide`, not `==` (loop 29) | done |
 | `TerminologyStandardization` | 5 | terminology consistency | need the term model |
 | `SecurityOCap` | 4 | capability paths | need a path semantics |
 | `MorphLanguage` | 4 | the projectional-only mandate | need a projection semantics |
