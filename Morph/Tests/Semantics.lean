@@ -3,6 +3,7 @@ import Morph.Core
 import Morph.Syntax
 import Morph.Semantics
 import Morph.Store
+import Morph.Specs.MachineRelation.Spec
 import Aesop
 
 /-!
@@ -700,5 +701,47 @@ section PropertyTests
     aesop
 
 end PropertyTests
+
+/-! ### The two β-substitutions agree
+
+`Morph/Semantics.lean`'s β-rule uses `substAll` — a *simultaneous*
+substitution — while the CEK machine uses `subst'`, a *single* substitution.
+Research loop 10 proved the two are the same function for a single argument; this
+is the regression guard that keeps the *shipped* relation and the *shipped*
+machine in step.
+
+If the two ever diverge, the relation and the machine are computing different
+things, and the preservation proof in `Morph/Proofs/TypeSoundness` would be about
+a substitution the compiler does not use. -/
+
+section BetaSubstitution
+
+open Morph.Syntax
+open Morph.Specs.MachineRelation
+
+/-- The shipped relation's β-substitution for one argument. -/
+def shippedBeta (body : Expr) (arg : Expr) : Expr := substAll [arg] body
+
+/-- The machine's β-substitution for one argument. -/
+def machineBeta (body : Expr) (arg : Expr) : Expr := subst' 0 body arg
+
+/-- **They agree.** The single-argument case of the shipped simultaneous
+substitution *is* the machine's single substitution. -/
+example (body arg : Expr) : shippedBeta body arg = machineBeta body arg :=
+  Morph.Specs.MachineRelation.substAll_single 0 arg body
+
+/-- And on a concrete β-redex. -/
+example : shippedBeta (.bvar 0) (.lit (.int 1)) = .lit (.int 1) := by
+  simp [shippedBeta, substAll, substAll', liftUnder]
+
+example : machineBeta (.bvar 0) (.lit (.int 1)) = .lit (.int 1) := by
+  simp [machineBeta, subst', liftUnder, lift]
+
+/-- The agreement holds under a binder too — the offset is raised on both sides. -/
+example (body arg : Expr) :
+    shippedBeta (.lam 1 body) arg = machineBeta (.lam 1 body) arg :=
+  Morph.Specs.MachineRelation.substAll_single 0 arg (.lam 1 body)
+
+end BetaSubstitution
 
 end Tests.Semantics
