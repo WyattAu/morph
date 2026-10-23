@@ -1293,7 +1293,7 @@ acyclicity) are unchanged.
 
 ## Remaining work, measured
 
-After eighteen iterations the repository's specifications fall into three
+After thirty-six iterations the repository's specifications fall into three
 categories.
 
 **Closed.** Every SG gap: SG-001 (loop 7), SG-002 (loop 2), SG-003 (loop 4),
@@ -1307,46 +1307,41 @@ least one real theorem — the modules that carried only `rfl` facts about
 `List`, `Option` and `Char` have been replaced (loops 6, 7, 13, 14, 15, 16, 17,
 18) or consolidated with the framework that superseded them.
 
-**Not yet audited — 86 `Prop := True` stubs remain**, concentrated in:
+**The stub sweep is complete (loops 26–35).** Every literal
+`Prop := True` advertisement in `Morph/Specs` is gone except one, and every
+previously-unproved claim is either proved or replaced by its honest
+refutation:
 
-| Module | Stubs | Subject | Why they remain |
-|---|---|---|---|
-| `ConcurrencyProcessAlgebra` | 19 | message-passing laws | need a message-passing semantics the module lacks |
-| `MemoryModel` | 0 | **audited** — the fourteen claims are real (loop 26); three are no-target/refuted forms | done |
-| `LayeredConcurrency` | 0 | **audited** — a small layer model (`send`/`receive`/`integrate`) makes the 14 claims real (loop 27) | done |
-| `MemoryAffineLogic` | 0 | **audited** — usage-based typing and move/borrow/copy operations make the 11 claims real (loop 28) | done |
-| `ModuleExistential` | 0 | **audited** — the seven claims are real; access/import compare with `decide`, not `==` (loop 29) | done |
-| `TerminologyStandardization` | 5 | terminology consistency | need the term model |
-| `SecurityOCap` | 4 | capability paths | need a path semantics |
-| `MorphLanguage` | 4 | the projectional-only mandate | need a projection semantics |
-| `LicenseDeonticLogic` | 6 | licence model/enumeration | need a deontic semantics; the two headline theorems are now real |
-| `UnitGroupTheory` | 2 | group structure | need the unit model |
-| `ASTGraph` | 2 | AST graph invariants | need a reachability definition |
-| `MemoryAcyclicity` | 1 | deallocation | need a deallocation model |
+| Module | Closed in | How |
+|---|---|---|
+| `MemoryModel` | loop 26 | 14 claims real; three no-target narrowings, one refutation |
+| `LayeredConcurrency` | loop 27 | `send`/`receive`/`integrate`/`appStep` model |
+| `MemoryAffineLogic` | loop 28 | usage-based typing; `move`/`borrow`/`copy` operations |
+| `ModuleExistential` | loop 29 | 7 claims; access/import compare with `decide`, not `==` |
+| `TerminologyStandardization` | loop 30 | 5 proved; the 3 naming implications **refuted** (`"aB"`, `"A"`) |
+| `SecurityOCap` | loop 31 | `EdgeChain`/`Reaches`; authority rooted at `ctx` |
+| `MorphLanguage` | loop 32 | 4 claims; `parseCode`/`applyEditToAst` still stubs (loop 13 note) |
+| `ASTGraph` | loop 33 | `LawfulBEq ObjectId` unlocks HashMap lemmas; `addNode` preserved |
+| `LicenseDeonticLogic` | loop 34 | deontic `isAllowed`; totality and exclusivity of the checker |
+| `ConcurrencyProcessAlgebra` | loop 35 | full message-passing model; all 19 claims proved |
+| `MemoryAcyclicity` | **open** | `eventuallyDeallocated _ := True` and `weakReferences _ _ := 0` remain; both need a model change (loop 36 corrected the record) |
 
-These are the next iterations, in that order. The pattern is now known well
-enough that each is a *form*: find the property the module names, decide
-whether it is true (prove it), false (say so, as loop 8 did for `isBalanced`),
-or a stub (replace the advertisement, as loop 14 did for `spec_memory_access`).
-Loops 19–23 showed the fourth case as well: a property that is *true but
-vacuous*, where the module sat next to the real statement under a different name
-(`SecurityOCap.well_formed` next to `edges_valid`), or a stated law that was
-simply **false** (`MemoryAffineLogic.context_join_commutative`).
-
-A note on the `True` stubs that remain: most of them are not waiting for a
-proof, they are waiting for a *model* — a typing judgment, a copy operation, a
-message-passing semantics, a deallocation model. A property about an operation
-that does not exist cannot be stated, and saying so is the honest outcome
-(the same finding as loops 20 and 22).
+The pattern held across all of them: find the property the module names, decide
+whether it is true (prove it), false (say so, as loops 8 and 30 did), a stub
+(replace the advertisement), or *true but vacuous* (state it against a real
+model). Most of the `True` stubs were not waiting for a proof, they were
+waiting for a *model* — and each of loops 26–35 built the smallest model that
+made its claims stateable.
 
 **Two things that are not iterations.** The first is *adoption*: none of the
-eighteen iterations' results is wired into the shipped compiler. The shipped
-lexer is still `partial` where loop 9 proved a total scanner terminates; the
-shipped β-rule still uses `substAll` where loops 10 and 11 proved the single
-substitution is the same function; `HasType` still compares exact types where
-loop 12 proved a decidable subtyping. The second is a **core-level defect** that
-three separate loops hit independently: `Morph/Core.lean` derives `BEq` without
-`LawfulBEq` for `BlockId`, `ModuleId` and (for `Typ`) has no decidable equality
-at all — so `==` comparisons on them are unprovably sound. Loops 12, 14 and 18
-fixed the three instances they needed; the remaining ones in `Morph/Core.lean`
-should be swept together.
+iterations' results is wired into the shipped compiler. The shipped lexer is
+still `partial` where loop 9 proved a total scanner terminates; the shipped
+β-rule still uses `substAll` where loops 10 and 11 proved the single-argument
+case is the same function; `checkType` still compares exact types where
+`Morph.Specs.Subtyping` proves a decidable subtyping. The second was the
+**core-level `BEq` defect** that three loops hit independently:
+`Morph/Core.lean` derived `BEq` without `LawfulBEq`, so `==` on its types was
+unprovably sound. This is now fixed at the source — `BlockId`, `ProvenanceId`,
+`Pointer` and `Phase` derive `ReflBEq`/`LawfulBEq`, with `beq_iff_eq` guard
+theorems in `Morph/Core.lean` (loops 12, 14, 18 and 33 fixed the instances they
+needed locally; the source types now carry them).

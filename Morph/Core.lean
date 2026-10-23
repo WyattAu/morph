@@ -22,7 +22,7 @@ inductive Phase where
   | Surface
   | Resolved
   | Core
-deriving Repr, BEq, Hashable
+deriving Repr, BEq, ReflBEq, LawfulBEq, Hashable
 
 /-!
 ## BlockId
@@ -41,7 +41,7 @@ See ADR-002 and Coding Standards Section 1.2 for details.
 -/
 structure BlockId where
   id : Nat
-deriving Repr, BEq, Hashable, DecidableEq
+deriving Repr, BEq, ReflBEq, LawfulBEq, Hashable, DecidableEq
 
 /-!
 ## ProvenanceId
@@ -56,7 +56,7 @@ See Coding Standards Section 1.2 and RISK-SEC-007 (Memory Model Soundness).
 -/
 structure ProvenanceId where
   id : Nat
-deriving Repr, BEq, Hashable
+deriving Repr, BEq, ReflBEq, LawfulBEq, Hashable
 
 /-!
 ## Pointer
@@ -78,7 +78,7 @@ structure Pointer where
   block : BlockId
   offset : Int
   provenance : Option ProvenanceId
- deriving Repr, BEq, Hashable
+ deriving Repr, BEq, ReflBEq, LawfulBEq, Hashable
 
 inductive IntWidth where
   | i8 | i16 | i32 | i64
@@ -249,5 +249,29 @@ Variables can be looked up using list operations.
 See Coding Standards Section 10.1 for performance considerations.
 -/
 abbrev Env := List (String × Value)
+
+/-!
+## Lawful Boolean Equality
+
+`BlockId`, `ProvenanceId`, `Pointer` and `Phase` derive `BEq` for runtime
+comparison. Until now that `==` was *unprovably* sound: no `LawfulBEq` instance
+existed, so no proof could conclude `a = b` from `a == b`, and the `Std.HashMap`
+lemmas that need lawful equality did not apply. Three separate research loops
+(12, 14, 18) hit this defect independently and each fixed the one instance it
+needed in a spec module. The instances now live on the types themselves.
+-/
+
+/-- Structural equality is decidable and agrees with `==`. -/
+theorem beq_iff_eq_blockId (a b : BlockId) : (a == b) = true ↔ a = b :=
+  beq_iff_eq
+
+theorem beq_iff_eq_provenanceId (a b : ProvenanceId) : (a == b) = true ↔ a = b :=
+  beq_iff_eq
+
+theorem beq_iff_eq_pointer (a b : Pointer) : (a == b) = true ↔ a = b :=
+  beq_iff_eq
+
+theorem beq_iff_eq_phase (a b : Phase) : (a == b) = true ↔ a = b :=
+  beq_iff_eq
 
 end Morph.Core
