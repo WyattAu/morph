@@ -27,9 +27,11 @@ open Morph.Syntax
 
 instance : Inhabited Expr := ⟨Expr.lit Value.unit⟩
 
-/-- Fuel-bounded total clone of `eval`. Identical semantics to `eval` until
-    fuel exhaustion; exists because `eval` is a `partial def` whose equation
-    lemmas are unavailable for proof. -/
+/-- Fuel-bounded total clone of the evaluator. This predates loop 38, which made
+    `Executable.eval` itself total by fuel; the clone is kept because its
+    semantics differ slightly (blocks return the last value, an armless `match`
+    yields unit, `forLoop` recurses at `fuel - 1`) and the loop-7 lowering
+    agreement proof is stated against exactly these rules. -/
 def evalFuel : Nat → Context → Expr → Option Expr
   | 0, _, _ => none
   | fuel+1, ctx, e =>
