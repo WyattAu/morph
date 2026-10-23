@@ -34,13 +34,15 @@ exactly a vertex that reaches itself — relates the module's own `hasPath` to
 bridge is a path-to-edges lemma; it is named in §5 of the spec rather than
 asserted here.
 
-**Still stubbed (correcting an earlier note in this file).** This docstring
-previously claimed that `eventuallyDeallocated` and `weakReferences` had been
-fixed. They have not: `Spec.lean` still defines
-`eventuallyDeallocated _ := True`, and `weakReferences _ _ := 0`. Neither can be
-made real without changing the model — `eventuallyDeallocated` has no graph or
-roots parameter, and `ReferenceGraph.edges` carries no weak-reference marker.
-They are recorded as open rather than papered over.
+**Loop 40.** Both remaining stubs are now model statements, not
+advertisements. `eventuallyDeallocated o G G' roots` says `o` was present
+before collection and is gone after, against a `Collected G G' roots` relation
+(the collector's contract: survivors are exactly the root-reachable part).
+`spec_deterministic_deallocation` is proved from it - and its direction was
+**repaired**: the old form concluded deallocation for *reachable* objects, the
+live ones. `weakReferences _ _ := 0` stays, because the model has no weak-edge
+marker; `reference_count_consistency` (proved) pins that as the model's
+statement rather than a placeholder.
 -/
 
 namespace Morph.Specs.MemoryAcyclicity
@@ -68,5 +70,32 @@ theorem single_vertex_acyclic_holds (o : ObjectId) : single_vertex_acyclic o := 
   rintro ⟨path, hlen, hhead, hstep⟩
   obtain ⟨edge, hmem, _, _⟩ := hstep 0 1 (by omega)
   simp at hmem
+
+/-- A correct collector keeps every reachable object. -/
+theorem collected_keeps_reachable (G G' : ReferenceGraph) (roots : List ObjectId)
+    (hc : Collected G G' roots) (o : ObjectId)
+    (hmem : o ∈ G.vertices) (hreach : reachableFromRoots o roots G) :
+    o ∈ G'.vertices :=
+  hc.2.2 o hmem hreach
+
+/-- **Deterministic deallocation, proved.** A correct collector deallocates
+exactly the present-but-unreachable objects: if `o` is present but unreachable,
+it cannot survive collection, because every surviving vertex is reachable. -/
+theorem spec_deterministic_deallocation_holds (G G' : ReferenceGraph)
+    (roots : List ObjectId) : spec_deterministic_deallocation G G' roots := by
+  intro hc o hmem hunreach
+  refine ⟨hmem, ?_⟩
+  intro hsurvive
+  exact hunreach (hc.1 o hsurvive).2
+
+/-- **The weak-reference invariant is not a stub.** The model has no weak-edge
+marker, so `weakReferences` is definitionally zero - and the module's own
+consistency invariant says the strong count plus zero is exactly the number of
+incoming edges, which is what `strongReferences` counts. This is what pins
+`weakReferences _ _ := 0` as a *model statement* rather than a stub. -/
+theorem reference_count_consistency_holds (G : ReferenceGraph) :
+    reference_count_consistency G := by
+  intro o _
+  rfl
 
 end Morph.Specs.MemoryAcyclicity

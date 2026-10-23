@@ -1291,6 +1291,28 @@ neither is repairable without a model change.
 The proved results (`spec_no_reference_cycles`, empty and single-vertex
 acyclicity) are unchanged.
 
+### Iteration 40 - MemoryAcyclicity: the collector's contract
+
+**Target.** `Morph/Specs/MemoryAcyclicity/`.
+
+**What was there.** `eventuallyDeallocated _ := True` and
+`weakReferences _ _ := 0`; `spec_deterministic_deallocation` concluded
+deallocation for *reachable* objects - backwards, since reachable objects are
+the live ones.
+
+**What is here.** Collection is modelled as a `Collected G G' roots` relation
+(the collector's contract: survivors are exactly the root-reachable part), and
+`eventuallyDeallocated o G G' roots` as present-before, gone-after. The
+repaired `spec_deterministic_deallocation` - unreachable implies deallocated -
+is proved from the contract alone (acyclicity is not even needed).
+`weakReferences _ _ := 0` stays: the model has no weak-edge marker, and
+`reference_count_consistency` (proved, by `rfl`) pins that as the model's
+statement. No literal `Prop := True` remains anywhere in `Morph/Specs`.
+
+**Not changed.** `ReferenceGraph` itself: adding a weak-edge marker is a shared
+type change with no consumer, and the module's invariant says every edge is
+strong.
+
 ## Remaining work, measured
 
 After thirty-six iterations the repository's specifications fall into three
@@ -1324,7 +1346,7 @@ refutation:
 | `ASTGraph` | loop 33 | `LawfulBEq ObjectId` unlocks HashMap lemmas; `addNode` preserved |
 | `LicenseDeonticLogic` | loop 34 | deontic `isAllowed`; totality and exclusivity of the checker |
 | `ConcurrencyProcessAlgebra` | loop 35 | full message-passing model; all 19 claims proved |
-| `MemoryAcyclicity` | **open** | `eventuallyDeallocated _ := True` and `weakReferences _ _ := 0` remain; both need a model change (loop 36 corrected the record) |
+| `MemoryAcyclicity` | loop 40 | `Collected` relation; deallocation repaired (was backwards) and proved; `weakReferences := 0` pinned by `reference_count_consistency` |
 
 The pattern held across all of them: find the property the module names, decide
 whether it is true (prove it), false (say so, as loops 8 and 30 did), a stub

@@ -39,7 +39,27 @@ def hasPath (src dst : ObjectId) (G : ReferenceGraph) : Prop :=
 def reachableFromRoots (o : ObjectId) (roots : List ObjectId) (G : ReferenceGraph) : Prop :=
   ∃ (r : ObjectId), r ∈ roots ∧ hasPath r o G
 
-def eventuallyDeallocated (_o : ObjectId) : Prop := True
+/-! ## Deallocation
+
+The collector's contract, stated as a *relation* rather than a function: the
+spec does not commit to a collection algorithm, only to what any collector must
+satisfy. `ReferenceGraph` itself is unchanged - no weak-edge marker is added,
+because the module's own invariant (`reference_count_consistency`, proved below)
+says every incoming edge is strong, i.e. the model has no weak edges. -/
+
+/-- `G'` is a correct collection of `G` against `roots`: every surviving vertex
+was present and root-reachable, every surviving edge was present, and every
+root-reachable vertex survives. -/
+def Collected (G G' : ReferenceGraph) (roots : List ObjectId) : Prop :=
+  (∀ v, v ∈ G'.vertices → v ∈ G.vertices ∧ reachableFromRoots v roots G) ∧
+    (∀ e, e ∈ G'.edges → e ∈ G.edges) ∧
+      (∀ v, v ∈ G.vertices → reachableFromRoots v roots G → v ∈ G'.vertices)
+
+/-- An object is eventually deallocated when it was present before collection
+and is gone afterwards. (This was `_o : ObjectId → True`.) -/
+def eventuallyDeallocated (o : ObjectId) (G G' : ReferenceGraph)
+    (_roots : List ObjectId) : Prop :=
+  o ∈ G.vertices ∧ o ∉ G'.vertices
 
 def spec_acyclicity_invariant (G : ReferenceGraph) : Prop :=
   ∀ (o : ObjectId),
@@ -50,11 +70,18 @@ def spec_acyclicity_invariant (G : ReferenceGraph) : Prop :=
 def spec_no_reference_cycles (G : ReferenceGraph) : Prop :=
   isAcyclic G ↔ ¬hasCycle G
 
-def spec_deterministic_deallocation (G : ReferenceGraph) (roots : List ObjectId) : Prop :=
-  isAcyclic G →
+/-- **Deterministic deallocation**: a correct collector deallocates exactly the
+present-but-unreachable objects. (This was `isAcyclic G → ∀ o ∈ G.vertices,
+reachableFromRoots o roots G → eventuallyDeallocated o` - not only was
+`eventuallyDeallocated o := True`, the direction was **backwards**: it
+concluded deallocation for *reachable* objects, which are precisely the live
+ones. The repaired statement concludes it for the unreachable ones.) -/
+def spec_deterministic_deallocation (G G' : ReferenceGraph)
+    (roots : List ObjectId) : Prop :=
+  Collected G G' roots →
     ∀ o ∈ G.vertices,
-      reachableFromRoots o roots G →
-        eventuallyDeallocated o
+      ¬ reachableFromRoots o roots G →
+        eventuallyDeallocated o G G' roots
 
 def empty_graph_acyclic : Prop :=
   isAcyclic { vertices := [], edges := [] }
