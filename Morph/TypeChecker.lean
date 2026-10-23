@@ -145,24 +145,41 @@ attribute [simp] TypeChecker.checkType.eq_1 TypeChecker.checkType.eq_2
 
     This is a simple structural unifier — no type variables are introduced
     in the current type system. If type variables are added (e.g., for
-    polymorphism), extend this with substitution. -/
-partial def unify (t1 t2 : Typ) : Option Typ :=
-  if t1 == t2 then some t1
-  else
-    match t1, t2 with
-    | .arrayType e1 s1, .arrayType e2 s2 =>
-      if s1 == s2 then
-        match unify e1 e2 with
-        | some _ => some t1
-        | none => none
-      else none
-    | .functionType ps1 r1, .functionType ps2 r2 =>
-      if ps1.length == ps2.length then
-        let paramOk := (ps1.zip ps2).all (fun (p1, p2) => (unify p1 p2).isSome)
-        let retOk := (unify r1 r2).isSome
-        if paramOk && retOk then some t1 else none
-      else none
-    | _, _ => none
+    polymorphism), extend this with substitution.
+
+    **Totality.** This used to be `partial`. The parameter sub-unifications sit
+    inside a `zip`-`all` walk, which the structural termination checker cannot
+    see through, so totality is by fuel: each recursive call consumes one unit
+    and recurses into strict subterms. `tS` (the shipped type measure) counts
+    every constructor as one, and the fuel consumed on a pair `(a, b)` is at
+    most `tS a + tS b` by induction on the type (array nodes cost 1 plus their
+    element; function nodes cost 1 plus the disjoint parameter/return
+    budgets). `unify` seeds the recursion with `tS t1 + tS t2 + 1`, so the
+    fuel can never run out on any pair of types; exhaustion would return
+    conservative `none` instead of divergence. -/
+def unifyFuel : Nat → Typ → Typ → Option Typ
+  | 0, _, _ => none
+  | fuel + 1, t1, t2 =>
+    if t1 == t2 then some t1
+    else
+      match t1, t2 with
+      | .arrayType e1 s1, .arrayType e2 s2 =>
+        if s1 == s2 then
+          match unifyFuel fuel e1 e2 with
+          | some _ => some t1
+          | none => none
+        else none
+      | .functionType ps1 r1, .functionType ps2 r2 =>
+        if ps1.length == ps2.length then
+          let paramOk :=
+            (ps1.zip ps2).all (fun (p1, p2) => (unifyFuel fuel p1 p2).isSome)
+          let retOk := (unifyFuel fuel r1 r2).isSome
+          if paramOk && retOk then some t1 else none
+        else none
+      | _, _ => none
+
+def unify (t1 t2 : Typ) : Option Typ :=
+  unifyFuel (tS t1 + tS t2 + 1) t1 t2
 
 /-! ## Block Type Checking -/
 

@@ -1345,3 +1345,13 @@ unprovably sound. This is now fixed at the source — `BlockId`, `ProvenanceId`,
 `Pointer` and `Phase` derive `ReflBEq`/`LawfulBEq`, with `beq_iff_eq` guard
 theorems in `Morph/Core.lean` (loops 12, 14, 18 and 33 fixed the instances they
 needed locally; the source types now carry them).
+
+**Adoption progress.** The `partial` sweep has begun: `TypeChecker.unify` is
+now total by fuel (loop 37) — the parameter sub-unifications sit inside a
+`zip`-`all` walk the structural checker cannot see through, and `tS` (the
+shipped type measure) bounds the fuel. Two `partial` definitions remain:
+`Executable.eval` (termination is genuinely non-structural — β-substitution
+grows the term — and needs a fuel interface) and `Frontend.Parser.parseExpr`
+(the descent chain `parseOr → … → parseAtom` makes no progress, so totality
+needs either a precedence-climbing rewrite with a position measure or a fuel
+bound).
