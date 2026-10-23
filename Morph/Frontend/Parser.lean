@@ -77,79 +77,130 @@ def isAtomStart (tk : TokenKind) : Bool :=
   | .delimiter "{" => true
   | _ => false
 
-partial def parseExpr (p : Parser) : Option (Expr × Parser) :=
-  parseOr p
-where
-  parseBinaryLeft (p : Parser)
-      (parseNext : Parser → Option (Expr × Parser))
-      (ops : List (String × Operator)) : Option (Expr × Parser) :=
-    match parseNext p with
-    | none => none
-    | some (left, p) => parseBinaryTail left p parseNext ops
+/-! ## Total Parser
 
-  parseBinaryTail (left : Expr) (p : Parser)
-      (parseNext : Parser → Option (Expr × Parser))
-      (ops : List (String × Operator)) : Option (Expr × Parser) :=
+This used to be a single `partial def` with a `where` block: the descent chain
+`parseOr -> parseAnd -> ... -> parseUnary -> parseApplication -> parseAtom`
+makes no token progress, so no structural measure terminates it, and the
+higher-order `parseNext` callbacks defeat well-founded recursion too (the
+checker cannot see which function a parameter invokes).
+
+The rewrite removes both obstacles:
+- the seven nested binary levels are replaced by **precedence climbing**
+  (`parseBinaryPrec`/`parseBinaryRest`), which is the same left-associative
+  grammar expressed as one loop over an explicit precedence table; and
+- every function takes a `Nat` fuel budget, returns `none` at zero, and passes
+  the *predecessor* to every call - including each descent hop - with
+  `termination_by fuel`.
+
+The grammar nests at most seven levels per token, and every token-consuming
+recursion consumes a token, so `10 * tokens + 100` bounds any well-formed
+input; a malformed one fails earlier. Exhaustion is conservative `none`, not
+divergence, and the parser reduces in the kernel, which the `partial` version
+never did. -/
+
+/-- Binary operators with their precedence (higher binds tighter). All levels
+are left-associative, matching the original nested `parseBinaryLeft` chain. -/
+def precedenceOf (opStr : String) : Option (Nat × Operator) :=
+  match opStr with
+  | "||" => some (1, .or)
+  | "&&" => some (2, .and)
+  | "==" => some (3, .eq)
+  | "!=" => some (3, .neq)
+  | "<" => some (3, .lt)
+  | ">" => some (3, .gt)
+  | "<=" => some (3, .leq)
+  | ">=" => some (3, .geq)
+  | "+" => some (4, .add)
+  | "-" => some (4, .sub)
+  | "*" => some (5, .mul)
+  | "/" => some (5, .div)
+  | "%" => some (5, .mod)
+  | _ => none
+
+mutual
+private def parseExprFuel (fuel : Nat) (p : Parser) : Option (Expr × Parser) :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 => parseBinaryPrec fuel 1 p
+
+
+/-- Parse a binary expression whose operators must have precedence at least
+`minPrec` (precedence climbing). -/
+private def parseBinaryPrec (fuel : Nat) (minPrec : Nat) (p : Parser) :
+    Option (Expr × Parser) :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
+    match parseUnary fuel p with
+    | none => none
+    | some (left, p) => parseBinaryRest left fuel minPrec p
+
+
+private def parseBinaryRest (left : Expr) (fuel : Nat) (minPrec : Nat)
+    (p : Parser) : Option (Expr × Parser) :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
     match peek p with
     | some t =>
       match t.kind with
       | .operator opStr =>
-        match ops.find? (fun (s, _) => s == opStr) with
-        | some (_, op) =>
-          let p := advance p
-          match parseNext p with
-          | none => none
-          | some (right, p) =>
-            parseBinaryTail (.binop op left right) p parseNext ops
+        match precedenceOf opStr with
+        | some (prec, op) =>
+          if prec < minPrec then some (left, p)
+          else
+            let p := advance p
+            match parseBinaryPrec fuel (prec + 1) p with
+            | none => none
+            | some (right, p) =>
+              parseBinaryRest (.binop op left right) fuel minPrec p
         | none => some (left, p)
       | _ => some (left, p)
     | none => some (left, p)
 
-  parseOr (p : Parser) : Option (Expr × Parser) :=
-    parseBinaryLeft p parseAnd [("||", .or)]
 
-  parseAnd (p : Parser) : Option (Expr × Parser) :=
-    parseBinaryLeft p parseComparison [("&&", .and)]
-
-  parseComparison (p : Parser) : Option (Expr × Parser) :=
-    parseBinaryLeft p parseAdditive
-      [("==", .eq), ("!=", .neq), ("<", .lt), (">", .gt), ("<=", .leq), (">=", .geq)]
-
-  parseAdditive (p : Parser) : Option (Expr × Parser) :=
-    parseBinaryLeft p parseMultiplicative [("+", .add), ("-", .sub)]
-
-  parseMultiplicative (p : Parser) : Option (Expr × Parser) :=
-    parseBinaryLeft p parseUnary [("*", .mul), ("/", .div), ("%", .mod)]
-
-  parseUnary (p : Parser) : Option (Expr × Parser) :=
+private def parseUnary (fuel : Nat) (p : Parser) : Option (Expr × Parser) :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
     match peek p with
     | some t =>
       match t.kind with
       | .operator "!" =>
         let p := advance p
-        match parseUnary p with
+        match parseUnary fuel p with
         | none => none
         | some (e, p) => some (.unop .not e, p)
       | .operator "-" =>
         let p := advance p
-        match parseUnary p with
+        match parseUnary fuel p with
         | none => none
         | some (e, p) => some (.unop .sub e, p)
-      | _ => parseApplication p
+      | _ => parseApplication fuel p
     | none => none
 
-  parseApplication (p : Parser) : Option (Expr × Parser) :=
-    match parseAtom p with
-    | none => none
-    | some (fnExpr, p) => parseAppArgs fnExpr [] p
 
-  parseAppArgs (fnExpr : Expr) (args : List Expr) (p : Parser) : Option (Expr × Parser) :=
+private def parseApplication (fuel : Nat) (p : Parser) : Option (Expr × Parser) :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
+    match parseAtom fuel p with
+    | none => none
+    | some (fnExpr, p) => parseAppArgs fnExpr fuel [] p
+
+
+private def parseAppArgs (fnExpr : Expr) (fuel : Nat) (args : List Expr)
+    (p : Parser) : Option (Expr × Parser) :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
     match peek p with
     | some t =>
       if isAtomStart t.kind then
-        match parseAtom p with
+        match parseAtom fuel p with
         | none => none
-        | some (arg, p) => parseAppArgs fnExpr (arg :: args) p
+        | some (arg, p) => parseAppArgs fnExpr fuel (arg :: args) p
       else
         match args with
         | [] => some (fnExpr, p)
@@ -159,7 +210,11 @@ where
       | [] => some (fnExpr, p)
       | _ => some (.app fnExpr args.reverse, p)
 
-  parseAtom (p : Parser) : Option (Expr × Parser) :=
+
+private def parseAtom (fuel : Nat) (p : Parser) : Option (Expr × Parser) :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
     match peek p with
     | some t =>
       match t.kind with
@@ -170,40 +225,48 @@ where
       | .keyword "false" => parseLiteral p
       | .delimiter "(" =>
         let p' := advance p
-        match parseExpr p' with
+        match parseExprFuel fuel p' with
         | some (e, p'') =>
           match expect (.delimiter ")") p'' with
           | some p''' => some (e, p''')
           | none => none
         | none => none
-      | .keyword "if" => parseIfExpr p
-      | .keyword "let" => parseLetExpr p
-      | .keyword "fn" => parseFnExpr p
-      | .delimiter "{" => parseBlockExpr p
+      | .keyword "if" => parseIfExpr fuel p
+      | .keyword "let" => parseLetExpr fuel p
+      | .keyword "fn" => parseFnExpr fuel p
+      | .delimiter "{" => parseBlockExpr fuel p
       | _ => none
     | none => none
 
-  parseIfExpr (p : Parser) : Option (Expr × Parser) :=
+
+private def parseIfExpr (fuel : Nat) (p : Parser) : Option (Expr × Parser) :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
     match matchKeyword "if" p with
     | none => none
     | some p =>
-      match parseExpr p with
+      match parseExprFuel fuel p with
       | none => none
       | some (cond, p) =>
         match matchKeyword "then" p with
         | none => none
         | some p =>
-          match parseExpr p with
+          match parseExprFuel fuel p with
           | none => none
           | some (thenE, p) =>
             match matchKeyword "else" p with
             | none => none
             | some p =>
-              match parseExpr p with
+              match parseExprFuel fuel p with
               | none => none
               | some (elseE, p) => some (.ifThenElse cond thenE elseE, p)
 
-  parseLetExpr (p : Parser) : Option (Expr × Parser) :=
+
+private def parseLetExpr (fuel : Nat) (p : Parser) : Option (Expr × Parser) :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
     match matchKeyword "let" p with
     | none => none
     | some p =>
@@ -215,57 +278,81 @@ where
           match expect (.operator "=") p with
           | none => none
           | some p =>
-            match parseExpr p with
+            match parseExprFuel fuel p with
             | none => none
             | some (init, p) =>
               match matchKeyword "in" p with
               | none => none
               | some p =>
-                match parseExpr p with
+                match parseExprFuel fuel p with
                 | none => none
                 | some (body, p) => some (.let_ init body, p)
         | _ => none
       | none => none
 
-  parseFnExpr (p : Parser) : Option (Expr × Parser) :=
-    match matchKeyword "fn" p with
-    | none => none
-    | some p => parseFnParams [] p
 
-  parseFnParams (params : List String) (p : Parser) : Option (Expr × Parser) :=
+private def parseFnExpr (fuel : Nat) (p : Parser) : Option (Expr × Parser) :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 => parseFnParams fuel [] p
+
+
+private def parseFnParams (fuel : Nat) (params : List String)
+    (p : Parser) : Option (Expr × Parser) :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
     match peek p with
     | some t =>
       match t.kind with
       | .identifier =>
         let p := advance p
-        parseFnParams (t.lexeme :: params) p
+        parseFnParams fuel (t.lexeme :: params) p
       | .operator "->" =>
         let p := advance p
-        match parseExpr p with
+        match parseExprFuel fuel p with
         | none => none
         | some (body, p) => some (.lam params.length body, p)
       | _ => none
     | none => none
 
-  parseBlockExpr (p : Parser) : Option (Expr × Parser) :=
+
+private def parseBlockExpr (fuel : Nat) (p : Parser) : Option (Expr × Parser) :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
     match expect (.delimiter "{") p with
     | none => none
-    | some p => parseBlockBody [] p
+    | some p => parseBlockBody fuel [] p
 
-  parseBlockBody (exprs : List Expr) (p : Parser) : Option (Expr × Parser) :=
+
+private def parseBlockBody (fuel : Nat) (exprs : List Expr)
+    (p : Parser) : Option (Expr × Parser) :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
     match peek p with
     | some t =>
       if t.kind == .delimiter "}" then
         some (.block exprs.reverse, advance p)
       else
-        match parseExpr p with
+        match parseExprFuel fuel p with
         | none => none
         | some (e, p) =>
           let p := match expect (.delimiter ";") p with
             | some p => p
             | none => p
-          parseBlockBody (e :: exprs) p
+          parseBlockBody fuel (e :: exprs) p
     | none => none
+
+
+end
+
+/-- Parse an expression, seeding the recursion with `10 * tokens + 100` fuel -
+the grammar nests at most seven descent levels per token, so this bounds any
+well-formed input. -/
+def parseExpr (p : Parser) : Option (Expr × Parser) :=
+  parseExprFuel (10 * p.tokens.length + 100) p
 
 end Parser
 
@@ -284,5 +371,33 @@ def parse (src : String) : ParseResult :=
     match Parser.peek p with
     | some t => .error [{ message := "failed to parse", line := t.line, col := t.col }]
     | none => .error [{ message := "empty input", line := 0, col := 0 }]
+
+/-- Precedence and associativity, checked on the compiled evaluator (the same
+`native_decide` style as the `Executable` tests). -/
+example :
+    (match parse "1 + 2 * 3" with
+      | .ok e => e
+      | .error _ => .lit .unit) ==
+      .binop .add (.lit (.int 1)) (.binop .mul (.lit (.int 2)) (.lit (.int 3))) := by
+  native_decide
+
+example :
+    (match parse "10 - 3 - 2" with
+      | .ok e => e
+      | .error _ => .lit .unit) ==
+      .binop .sub (.binop .sub (.lit (.int 10)) (.lit (.int 3))) (.lit (.int 2)) := by
+  native_decide
+
+/-- Precedence of `&&` under `||`, checked by kernel reduction on the
+destructured result: the fuel-based mutual recursion reduces definitionally,
+which the `partial` version could never do. (The numeric examples above go
+through `native_decide` because `String.toNat?` on lexer-produced substrings is
+not kernel-reducible - the `String.Slice` API gap recorded in loop 13.) -/
+example :
+    (match parse "a || b && c" with
+      | .ok e => e
+      | .error _ => .lit .unit) =
+      .binop .or (.fvar "a") (.binop .and (.fvar "b") (.fvar "c")) := by
+  rfl
 
 end Morph.Frontend

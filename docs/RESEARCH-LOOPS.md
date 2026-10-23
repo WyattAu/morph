@@ -1355,7 +1355,12 @@ threads an explicit bound (one unit per step, including per `forLoop`
 iteration) and `eval` seeds it with 256, so every `native_decide` test in
 `Morph/Tests/Executable.lean` now runs against a kernel-transparent
 evaluator. `Lowering.evalFuel` (loop 7's proof clone) is unchanged and still
-mirrors the old semantics. One `partial` definition remains:
-`Frontend.Parser.parseExpr` (the descent chain `parseOr → … → parseAtom` makes
-no progress, so totality needs either a precedence-climbing rewrite with a
-position measure or a fuel bound).
+mirrors the old semantics. `Frontend.Parser.parseExpr` was the last (loop 39): the descent chain made no
+token progress and its higher-order `parseNext` callbacks defeated both
+structural and well-founded recursion, so the seven nested binary levels were
+rewritten as precedence climbing over an explicit precedence table
+(`precedenceOf`, same left-associative grammar) and every function threads a
+fuel budget its callers decrease — the parser is now structurally recursive and
+kernel-reducible on symbolic input (verified by `rfl`; the numeric examples go
+through `native_decide` because `String.toNat?` on lexer substrings is not
+kernel-reducible). **No `partial def` remains in the shipped compiler.**
