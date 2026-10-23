@@ -1346,12 +1346,16 @@ unprovably sound. This is now fixed at the source — `BlockId`, `ProvenanceId`,
 theorems in `Morph/Core.lean` (loops 12, 14, 18 and 33 fixed the instances they
 needed locally; the source types now carry them).
 
-**Adoption progress.** The `partial` sweep has begun: `TypeChecker.unify` is
-now total by fuel (loop 37) — the parameter sub-unifications sit inside a
-`zip`-`all` walk the structural checker cannot see through, and `tS` (the
-shipped type measure) bounds the fuel. Two `partial` definitions remain:
-`Executable.eval` (termination is genuinely non-structural — β-substitution
-grows the term — and needs a fuel interface) and `Frontend.Parser.parseExpr`
-(the descent chain `parseOr → … → parseAtom` makes no progress, so totality
-needs either a precedence-climbing rewrite with a position measure or a fuel
-bound).
+**Adoption progress.** The `partial` sweep: `TypeChecker.unify` is total by
+fuel (loop 37) — the parameter sub-unifications sit inside a `zip`-`all` walk
+the structural checker cannot see through, and `tS` (the shipped type measure)
+bounds the fuel. `Executable.eval` is total by fuel (loop 38) — β-substitution
+grows the term, so termination is genuinely non-structural; `evalWithFuel`
+threads an explicit bound (one unit per step, including per `forLoop`
+iteration) and `eval` seeds it with 256, so every `native_decide` test in
+`Morph/Tests/Executable.lean` now runs against a kernel-transparent
+evaluator. `Lowering.evalFuel` (loop 7's proof clone) is unchanged and still
+mirrors the old semantics. One `partial` definition remains:
+`Frontend.Parser.parseExpr` (the descent chain `parseOr → … → parseAtom` makes
+no progress, so totality needs either a precedence-climbing rewrite with a
+position measure or a fuel bound).
