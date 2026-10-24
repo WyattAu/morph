@@ -51,6 +51,11 @@ def resourceCount (Γ : AffineContext) (x : String) : Nat :=
 
 /- ## Affine Type Predicates -/
 
+/-- Every type is affine: in this model affine is the *default* discipline
+(values may be dropped), and linearity is the exception, discriminated by
+`isLinearType`. The case split below is exhaustive over `MorphType` and each arm
+is `True`, so this is the model constant `fun _ => True`; `isAffineTypeM_all`
+in `Lemmas` records that. -/
 def isAffineTypeM (T : MorphType) : Prop :=
   match T with
   | .unit => True

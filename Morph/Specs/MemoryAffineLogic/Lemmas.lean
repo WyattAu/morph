@@ -231,4 +231,9 @@ theorem move_consumes_source_holds (Γ : AffineContext) (src dst : String) :
         unfold getVariableType
         simp
 
+/-- Affinity is the model's default: every type is affine. Linearity is the
+exception, discriminated by `isLinearType`. -/
+theorem isAffineTypeM_all (T : MorphType) : isAffineTypeM T := by
+  cases T <;> trivial
+
 end Morph.Specs.MemoryAffineLogic

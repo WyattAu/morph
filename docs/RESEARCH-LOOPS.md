@@ -1347,6 +1347,15 @@ liveness, allocation respects the handle bound, and both operations preserve
 heap well-formedness. The examples exercise acceptance, rejection, and the null
 pointer.
 
+### Iteration 42 - `isAffineTypeM` as a model constant
+
+The last all-`True` match in the audit. `MemoryAffineLogic.isAffineTypeM` maps
+every `MorphType` constructor to `True`: affinity is the model's default
+discipline (values may be dropped) and `isLinearType` is the exception. The
+definition is kept as an exhaustive case split - it documents the intended
+enumeration - and `isAffineTypeM_all` proves the constant, so the "vacuity" is
+now a proved model statement rather than an unremarked tautology.
+
 ## Remaining work, measured
 
 After thirty-six iterations the repository's specifications fall into three
