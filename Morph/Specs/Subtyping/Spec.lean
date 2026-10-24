@@ -21,6 +21,13 @@ inductive Subtype : Typ -> Typ -> Prop where
 `subtype_iff_eq` below — and nothing in `HasType`, `inferType` or `typeCheck`
 consumes the relation. Loop 1 recorded exactly this.
 
+(Since loop 44 the executable checker *does* consume the new relation, but only
+at its acceptance boundary: `Morph.TypeChecker.checkTypeAs` is the exact check
+or a top-level `isSubtype` of the inferred type, with soundness
+`checkTypeAs_sound` in `Morph.Specs.TypeSystem.InferenceSound`. The judgment
+`HasType` stays exact on purpose — adding subsumption to it would falsify its
+inversion lemmas, since `boolType <: unitType`.)
+
 **And the gap table claims otherwise.** `SPEC_GAPS_AND_BASIS.md` marks GA-005
 "Subtyping over `Typ` is decidable — **Validated** — `instDecidableSubtype`
 (ADR-015): `isSubtype` decision procedure". Neither `isSubtype` nor

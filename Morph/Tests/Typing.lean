@@ -555,6 +555,20 @@ section CheckingModeTests
     checkArms_sound_true [] [] .intType .unitType [(["a"], .lit (.unit))]
       (by native_decide)
 
+  -- Subtyping-aware acceptance (loop 44). `unitType` is the top type, so an int
+  -- literal is accepted against it through `checkTypeAs` even though the exact
+  -- check rejects it. The soundness theorem returns the actual type (`intType`)
+  -- and the witness `Sub intType unitType`.
+  example : checkType [] [] (.lit (.int 1)) .unitType = false := by native_decide
+
+  example : checkTypeAs [] [] (.lit (.int 1)) .unitType = true := by native_decide
+
+  example : checkTypeAs [] [] (.lit (.int 1)) .boolType = false := by native_decide
+
+  example : ∃ τ, HasType [] [] (.lit (.int 1)) τ ∧
+      Morph.Specs.Subtyping.Sub τ .unitType :=
+    checkTypeAs_sound [] [] (.lit (.int 1)) .unitType (by native_decide)
+
 end CheckingModeTests
 
 end Tests.Typing

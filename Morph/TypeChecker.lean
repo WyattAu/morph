@@ -4,12 +4,14 @@ SPDX-License-Identifier: Apache-2.0 -/
 import Morph.Core
 import Morph.Syntax
 import Morph.Specs.TypeSystem.Spec
+import Morph.Specs.Subtyping.Spec
 
 namespace Morph.TypeChecker
 
 open Morph.Core
 open Morph.Syntax
 open Morph.Specs.TypeSystem
+open Morph.Specs.Subtyping
 
 /-!
 # Type Checker — Certified Executable Extraction
@@ -117,6 +119,28 @@ def checkArms (bvs : List Typ) (env : TypEnv) (tyScrut : Typ)
     checkArms bvs env tyScrut rest expected
 termination_by sizeOf arms
 end
+
+/-- **Subtyping-aware acceptance.** The exact check, or else a top-level
+subtype of the inferred type.
+
+The recursion inside `checkType` stays exact: function types are invariant in
+this system (the subtyping relation is `neverType` bottom, `unitType` top, and
+covariance only in `optionType`/`resultType`/`arrayType`), so a structural
+sub-check has a determined expected type and subtyping would have nothing to
+vary. Subtyping applies at the acceptance boundary, where the checker's leaf
+compares the inferred type against the caller's expectation.
+
+Soundness (`checkTypeAs_sound`, `Morph.Specs.TypeSystem`) yields a type the
+expression *actually* has together with the subtyping witness, rather than
+pretending `HasType` is subsumption-closed: the judgment is exact by design, and
+adding subsumption to it would falsify the inversion lemmas (e.g. `boolType <:
+unitType` would make "a bool literal has type `boolType`" false). -/
+def checkTypeAs (bvs : List Typ) (env : TypEnv) (e : Expr) (expected : Typ) : Bool :=
+  checkType bvs env e expected ||
+    match inferType bvs env e with
+    | some t => isSubtype t expected
+    | none => false
+
 
 /-! ## Equations as rewrite rules
 

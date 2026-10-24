@@ -4,6 +4,7 @@ SPDX-License-Identifier: Apache-2.0
 
 import Morph.Specs.TypeSystem.Spec
 import Morph.TypeChecker
+import Morph.Specs.Subtyping.Spec
 
 /-!
 # Inference Soundness (research program P13, CakeML frontend-2 discipline)
@@ -36,6 +37,7 @@ has no `refCast` rule either (ADR-010 amendment).
 namespace Morph.Specs.TypeSystem
 
 open Morph.Syntax
+open Morph.Specs.Subtyping
 
 /-! ## Size measure for the mutual induction
 
@@ -1225,5 +1227,41 @@ theorem typeCheckBlock_sound (bvs : List Morph.Core.Typ) (Γ : TypEnv) (exprs : 
     simp at hall
   | some t =>
     exact ⟨t, inferType_sound bvs Γ e t hs⟩
+
+/-! ## Subtyping-aware acceptance
+
+`checkTypeAs` (in `Morph.TypeChecker`) is `checkType` extended with a top-level
+subtyping step: if the exact check fails, the inferred type may still be a
+subtype of the expectation. Its soundness cannot be `HasType ... expected`
+directly - the judgment is exact, and subsumption is deliberately *not* a
+`HasType` rule (it would falsify the inversion lemmas, since `boolType <:
+unitType`) - so the theorem returns the type the expression actually has
+together with the subtyping witness. -/
+
+/-- **`checkTypeAs` is sound.** Acceptance yields a type the expression actually
+has, plus a subtyping witness against the caller's expectation. -/
+theorem checkTypeAs_sound (bvs : List Morph.Core.Typ) (Γ : TypEnv) (e : Expr)
+    (expected : Morph.Core.Typ)
+    (h : Morph.TypeChecker.checkTypeAs bvs Γ e expected = true) :
+    ∃ τ, HasType bvs Γ e τ ∧ Sub τ expected := by
+  unfold Morph.TypeChecker.checkTypeAs at h
+  simp only [Bool.or_eq_true] at h
+  rcases h with h | h
+  · exact ⟨expected, checkType_sound_true bvs Γ e expected h, Sub.refl expected⟩
+  · cases hinfer : inferType bvs Γ e with
+    | none => simp [hinfer] at h
+    | some t =>
+      simp only [hinfer] at h
+      exact ⟨t, inferType_sound bvs Γ e t hinfer, isSubtype_sound t expected h⟩
+
+/-- Exact acceptance implies subtyping-aware acceptance: the new checker is
+compatible with the old one. -/
+theorem checkTypeAs_of_checkType (bvs : List Morph.Core.Typ) (Γ : TypEnv) (e : Expr)
+    (expected : Morph.Core.Typ)
+    (h : Morph.TypeChecker.checkType bvs Γ e expected = true) :
+    Morph.TypeChecker.checkTypeAs bvs Γ e expected = true := by
+  unfold Morph.TypeChecker.checkTypeAs
+  rw [h]
+  rfl
 
 end Morph.Specs.TypeSystem

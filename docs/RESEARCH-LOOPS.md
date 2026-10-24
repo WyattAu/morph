@@ -1379,6 +1379,25 @@ larger than the seed also succeeds under the seed with the same result.
 recursion consumes a token). What is now machine-checked is that the constant
 only has to be large enough once - a smaller successful budget is never lost.
 
+### Iteration 44 - subtyping at the checker's acceptance boundary
+
+**Target.** The last adoption item: `checkType`'s exact-equality leaf versus
+`Morph.Specs.Subtyping.isSubtype`.
+
+**Why not full subsumption.** Adding `HasType.sub` is the textbook move and is
+unsound here: the judgment's inversion lemmas (used by progress and
+preservation) say a bool literal has type `boolType`, and with `boolType <: unitType` in scope subsumption makes that false. `HasType` is exact by design.
+
+**What is here.** `Morph.TypeChecker.checkTypeAs` is the exact check, or else
+`isSubtype (inferType ...) expected`. Recursive sub-checks stay exact - function
+types are invariant in this system (`Sub` is bottom/top plus covariance in
+option/result/array) - so subtyping applies exactly where the checker's leaf
+compares the inferred type with the caller's expectation. Proved:
+`checkTypeAs_sound` yields the type the expression actually has *and* the
+subtyping witness; `checkTypeAs_of_checkType` shows the new entry point accepts
+everything the exact checker does; the tests exhibit strictness (`intType`
+accepted against `unitType`, rejected against `boolType`).
+
 ## Remaining work, measured
 
 After thirty-six iterations the repository's specifications fall into three
@@ -1425,8 +1444,10 @@ made its claims stateable.
 iterations' results is wired into the shipped compiler. The shipped lexer is
 still `partial` where loop 9 proved a total scanner terminates; the shipped
 β-rule still uses `substAll` where loops 10 and 11 proved the single-argument
-case is the same function; `checkType` still compares exact types where
-`Morph.Specs.Subtyping` proves a decidable subtyping. The second was the
+case is the same function. (`checkType` compared exact types where
+`Morph.Specs.Subtyping` proves a decidable subtyping; loop 44 wired the relation
+into the checker's acceptance boundary — `checkTypeAs` — while keeping the
+recursive sub-checks and the `HasType` judgment exact.) The second was the
 **core-level `BEq` defect** that three loops hit independently:
 `Morph/Core.lean` derived `BEq` without `LawfulBEq`, so `==` on its types was
 unprovably sound. This is now fixed at the source — `BlockId`, `ProvenanceId`,
@@ -1451,4 +1472,8 @@ rewritten as precedence climbing over an explicit precedence table
 fuel budget its callers decrease — the parser is now structurally recursive and
 kernel-reducible on symbolic input (verified by `rfl`; the numeric examples go
 through `native_decide` because `String.toNat?` on lexer substrings is not
-kernel-reducible). **No `partial def` remains in the shipped compiler.**
+kernel-reducible). **No `partial def` remains in the shipped compiler.** The
+subtyping adoption (loop 44) completes the adoption track: `checkTypeAs` is the
+shipped checker's subtyping-aware entry point, with `checkTypeAs_sound` giving
+the actual type and the witness, and `checkTypeAs_of_checkType` guaranteeing it
+accepts everything the exact checker does.
