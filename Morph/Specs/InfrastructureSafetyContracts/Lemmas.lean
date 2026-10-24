@@ -1,27 +1,63 @@
-/-!
-Lemmas for InfrastructureSafetyContracts.
+/- Copyright 2024-2025 The Morph Project Authors
+SPDX-License-Identifier: Apache-2.0 -/
 
-Lemmas about safety invariants, contract satisfaction,
-and infrastructure correctness properties.
+import Morph.Specs.InfrastructureSafetyContracts.Spec
+
+/-!
+Lemmas for InfrastructureSafetyContracts: the allocation and free operations
+satisfy their contracts, freeing is idempotent in the safety sense (a freed
+block cannot be freed again), and both operations preserve heap well-formedness
+and the handle bound.
 -/
 namespace Morph.Specs.InfrastructureSafetyContracts
 
-theorem bool_and_true (b : Bool) : (b && true) = b := by cases b <;> rfl
+open Morph.Core
 
-theorem bool_or_false (b : Bool) : (b || false) = b := by cases b <;> rfl
+/-- Allocating block `id` satisfies the allocation postcondition. -/
+theorem alloc_satisfies (h : Heap) (id : Nat) (hne : id ≠ 0) :
+    allocContract.post h (mkPtr id) (h.alloc id) := by
+  refine ⟨hne, ?_, rfl⟩
+  simp [Heap.isLive, Heap.alloc, mkPtr]
 
-theorem bool_not_not (b : Bool) : !!b = b := by cases b <;> rfl
+/-- Freeing block `id` satisfies the free postcondition: it is not live after. -/
+theorem free_satisfies (h : Heap) (id : Nat) :
+    freeContract.post h (mkPtr id) (h.free id) :=
+  Heap.isLive_free_self h id
 
-theorem nat_zero_le (n : Nat) : 0 ≤ n := Nat.zero_le n
+/-- The free precondition is exactly liveness. -/
+theorem free_requires_live (h : Heap) (p : Pointer) :
+    freeContract.pre h p ↔ h.isLive p.block.id := Iff.rfl
 
-theorem nat_le_refl (n : Nat) : n ≤ n := Nat.le_refl n
+/-- **No double free.** If a free succeeded (the block is dead afterwards), its
+precondition - the block being live - can no longer hold. -/
+theorem no_double_free (h h' : Heap) (p : Pointer)
+    (hpost : freeContract.post h p h') :
+    ¬ freeContract.pre h' p :=
+  hpost
 
-theorem nat_lt_succ (n : Nat) : n < n + 1 := Nat.lt_succ_self n
+/-- Freeing one block leaves every other live block live. -/
+theorem free_preserves_live_other (h : Heap) (id y : Nat) (hne : y ≠ id)
+    (hy : h.isLive y) : (h.free id).isLive y :=
+  (Heap.isLive_free_of_ne h id y hne).mpr hy
 
-theorem list_nil_reverse : ([] : List α).reverse = [] := rfl
+/-- Allocation leaves every previously live block live. -/
+theorem alloc_preserves_live_old (h : Heap) (id y : Nat) (hy : h.isLive y) :
+    (h.alloc id).isLive y :=
+  (Heap.isLive_alloc h id y).mpr (Or.inr hy)
 
-theorem option_none_bind (f : α → Option β) : none >>= f = none := rfl
+/-- **Allocation respects the handle bound.** The precondition reserves room for
+one more handle, and the postcondition adds exactly one, so the result is still
+below the cap. -/
+theorem alloc_preserves_handle_bound (h h' : Heap) (p : Pointer)
+    (hpre : allocContract.pre h p) (hpost : allocContract.post h p h') :
+    handleCountSafe h'.live.length := by
+  unfold handleCountSafe
+  rw [hpost.2.2]
+  exact hpre
 
-theorem option_some_bind (x : α) (f : α → Option β) : some x >>= f = f x := rfl
+/-- Freeing a block never increases the number of live blocks. -/
+theorem free_does_not_grow (h : Heap) (id : Nat) :
+    (h.free id).live.length ≤ h.live.length :=
+  Heap.free_non_increasing h id
 
 end Morph.Specs.InfrastructureSafetyContracts

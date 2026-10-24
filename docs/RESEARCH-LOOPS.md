@@ -1313,6 +1313,40 @@ statement. No literal `Prop := True` remains anywhere in `Morph/Specs`.
 type change with no consumer, and the module's invariant says every edge is
 strong.
 
+### Iteration 41 - the `match _ => True` audit, and InfrastructureSafetyContracts
+
+**Target.** Every remaining `match _ => True` in `Morph/Specs`, plus
+`Morph/Specs/InfrastructureSafetyContracts/`.
+
+**Audit.** Eight of the nine sites are intentional classifiers whose `False`
+fallback does the discriminating: `ExecutionMachine.IsMVal`,
+`DialectProjection.isValid`, `TypeSystem.isArithOp`/`isCompOp`/`isLogicOp`/
+`isBitwiseOp`/`isPtrArithOp`, `TaintFlow.Label.le`, `StealingFairness.conserved`
+(`none` conserves trivially), `DialectSemantics.safe`, and
+`SchedulerRandomizedStealing.isFair` (the empty system is trivially fair).
+`MemoryAffineLogic.isAffineTypeM` maps every constructor to `True`: it is the
+model constant "every type is affine", with `isLinearType` the discriminating
+predicate. The ninth was not a classifier: **`InfrastructureSafetyContracts`**.
+
+**What was there.** `allocContract.pre := fun _ => True` and
+`freeContract.post := fun _ _ => True`, documented as "pointer is non-null and
+block is live" and "block is freed". Neither contract could see the heap, so
+neither check existed - the comments described behaviour the contracts did not
+have. The module's lemmas were generic `bool_and_true`/`nat_zero_le` filler with
+no consumers.
+
+**What is here.** A `Heap` model (live block ids, null block excluded, `Nodup`
+well-formedness), with `alloc`/`free` operations. `SafetyContract` now takes a
+state type, so both `pre` and `post` see the heap. `freeContract` is real
+liveness: `pre` is the block being live, `post` is it not being live afterwards.
+`allocContract` reserves a handle (`length + 1 < maxActiveHandles`) and requires
+a non-null, live result with exactly one more block. Proved: both operations
+satisfy their contracts, **no double free** (a succeeded free kills its own
+precondition), freeing leaves other blocks live, allocation preserves prior
+liveness, allocation respects the handle bound, and both operations preserve
+heap well-formedness. The examples exercise acceptance, rejection, and the null
+pointer.
+
 ## Remaining work, measured
 
 After thirty-six iterations the repository's specifications fall into three

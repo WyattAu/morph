@@ -1,33 +1,50 @@
-/-!
-Examples for InfrastructureSafetyContracts.
+/- Copyright 2024-2025 The Morph Project Authors
+SPDX-License-Identifier: Apache-2.0 -/
 
-Concrete examples of safety contract specifications and
-invariant checks.
+import Morph.Specs.InfrastructureSafetyContracts.Lemmas
+
+/-!
+Examples for InfrastructureSafetyContracts: a small heap, the two operations,
+and the contracts holding or rejecting as specified.
 -/
 namespace Morph.Specs.InfrastructureSafetyContracts
 
-structure SafetyCheck where
-  name : String
-  passed : Bool
-  deriving Repr
+/-- Two live blocks, `1` and `2`. -/
+def h0 : Heap := { live := [1, 2] }
 
-def checks : List SafetyCheck :=
-  [{ name := "memory_bounds", passed := true },
-   { name := "type_safety", passed := true },
-   { name := "null_check", passed := false }]
+example : h0.live = [1, 2] := rfl
 
-example : checks.length = 3 := rfl
+example : (h0.alloc 3).live = [3, 1, 2] := rfl
 
-example : (checks.filter (·.passed)).length = 2 := rfl
+example : (h0.free 1).live = [2] := rfl
 
-example : (checks.any (·.passed)) = true := rfl
+example : (h0.free 9).live = [1, 2] := rfl
 
-example : (checks.all (·.passed)) = false := rfl
+/-- The initial heap is well formed. -/
+example : Heap.WellFormed h0 := ⟨by decide, by decide⟩
 
-example : (1 + 1 : Nat) = 2 := rfl
+/-- Allocation of a fresh non-null block satisfies its contract. -/
+example : allocContract.post h0 (mkPtr 3) (h0.alloc 3) :=
+  alloc_satisfies h0 3 (by decide)
 
-example : (2 * 3 : Nat) = 6 := rfl
+/-- Freeing a live block satisfies its contract. -/
+example : freeContract.post h0 (mkPtr 1) (h0.free 1) :=
+  free_satisfies h0 1
 
-example : (10 - 3 : Nat) = 7 := rfl
+/-- A double free is rejected: after freeing block `1`, its precondition fails. -/
+example : ¬ freeContract.pre (h0.free 1) (mkPtr 1) :=
+  no_double_free h0 (h0.free 1) (mkPtr 1) (free_satisfies h0 1)
+
+/-- The null block never satisfies the free precondition of a well-formed heap. -/
+example : ¬ freeContract.pre h0 (mkPtr 0) := by
+  show ¬ (0 ∈ h0.live)
+  decide
+
+/-- The stack guard accepts a shallow stack and rejects one at the limit. -/
+example : stackSafe 10 := by unfold stackSafe maxStackDepth; decide
+
+example : ¬ stackSafe maxStackDepth := by
+  unfold stackSafe maxStackDepth
+  exact Nat.lt_irrefl _
 
 end Morph.Specs.InfrastructureSafetyContracts
