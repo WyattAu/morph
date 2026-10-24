@@ -1356,6 +1356,29 @@ definition is kept as an exhaustive case split - it documents the intended
 enumeration - and `isAffineTypeM_all` proves the constant, so the "vacuity" is
 now a proved model statement rather than an unremarked tautology.
 
+### Iteration 43 - parser fuel monotonicity, proved
+
+**Target.** `Morph/Frontend/Parser.lean`, the `10 * tokens + 100` seed.
+
+**What was there.** Loop 39 made the parser total by threading a `Nat` budget
+through a 13-function mutual block, and the docstring *claimed* the seed bounds
+every well-formed input. That claim was prose: nothing connected the constant to
+the recursion.
+
+**What is here.** A mutual theorem block proves **fuel monotonicity** for all 13
+functions: a parse that succeeds at fuel `n` succeeds with the same result at
+`n + k`. Each function passes its predecessor to every call, so the induction is
+structural on `n` and cross-recursive across the block; the proof is uniform
+(`simp only [f]`, `repeat' split at h`, `simp_all` with the sibling
+monotonicity lemmas as conditional rewrites). From it, `parseExpr_seed_robust`
+states the usable corollary: a parse that succeeds under any budget `f` no
+larger than the seed also succeeds under the seed with the same result.
+
+**Honest boundary.** The *tightness* of `10 * tokens + 100` remains empirical
+(the grammar argument: seven descent levels per token, and every token-consuming
+recursion consumes a token). What is now machine-checked is that the constant
+only has to be large enough once - a smaller successful budget is never lost.
+
 ## Remaining work, measured
 
 After thirty-six iterations the repository's specifications fall into three

@@ -94,10 +94,13 @@ The rewrite removes both obstacles:
   `termination_by fuel`.
 
 The grammar nests at most seven levels per token, and every token-consuming
-recursion consumes a token, so `10 * tokens + 100` bounds any well-formed
-input; a malformed one fails earlier. Exhaustion is conservative `none`, not
-divergence, and the parser reduces in the kernel, which the `partial` version
-never did. -/
+recursion consumes a token, so `10 * tokens + 100` is believed to bound any
+well-formed input; a malformed one fails earlier. That bound is an empirical
+argument, not a proof - what *is* proved below is fuel monotonicity (more fuel
+never loses a successful parse) and, from it, that the seed is robust: any input
+that parses under a budget no larger than the seed also parses under the seed
+with the same result. Exhaustion is conservative `none`, not divergence, and the
+parser reduces in the kernel, which the `partial` version never did. -/
 
 /-- Binary operators with their precedence (higher binds tighter). All levels
 are left-associative, matching the original nested `parseBinaryLeft` chain. -/
@@ -348,11 +351,246 @@ private def parseBlockBody (fuel : Nat) (exprs : List Expr)
 
 end
 
+/-! ## Fuel monotonicity
+
+Every function in the parser block takes a `Nat` budget and passes the
+predecessor to each call. This section proves the design invariant: **more fuel
+never hurts**. If a parse succeeds at fuel `n`, it succeeds with the same result
+at any larger budget `n + k`.
+
+That is what makes the fixed seed in `parseExpr` sound in the only way a fixed
+constant can be: the seed need not be tight, only large enough *once*. The
+grammar argument that `10 * tokens + 100` is large enough is empirical (recorded
+in the module docstring); the machine-checked part is that no well-formed input
+that fits under any smaller budget is lost by the larger one. -/
+mutual
+
+private theorem parseExprFuel_mono (n : Nat) (p : Parser) (r : Expr × Parser)
+    (h : parseExprFuel n p = some r) (k : Nat) :
+    parseExprFuel (n + k) p = some r := by
+  match n with
+  | 0 => simp [parseExprFuel] at h
+  | n + 1 =>
+    rw [Nat.succ_add]
+    exact parseBinaryPrec_mono n 1 p r h k
+
+private theorem parseBinaryPrec_mono (n : Nat) (minPrec : Nat) (p : Parser)
+    (r : Expr × Parser) (h : parseBinaryPrec n minPrec p = some r) (k : Nat) :
+    parseBinaryPrec (n + k) minPrec p = some r := by
+  match n with
+  | 0 => simp [parseBinaryPrec] at h
+  | n + 1 =>
+    rw [Nat.succ_add]
+    simp only [parseBinaryPrec] at h ⊢
+    repeat' split at h
+    all_goals try simp_all [parseUnary_mono, parseBinaryRest_mono]
+    all_goals first
+      | (intro _; assumption)
+      | (intro _; simp_all)
+      | (intro hc; exact absurd hc (by omega))
+      | exact parseUnary_mono _ _ r h k
+      | exact parseBinaryRest_mono _ _ _ _ r h k
+
+private theorem parseBinaryRest_mono (left : Expr) (n : Nat) (minPrec : Nat)
+    (p : Parser) (r : Expr × Parser)
+    (h : parseBinaryRest left n minPrec p = some r) (k : Nat) :
+    parseBinaryRest left (n + k) minPrec p = some r := by
+  match n with
+  | 0 => simp [parseBinaryRest] at h
+  | n + 1 =>
+    rw [Nat.succ_add]
+    simp only [parseBinaryRest] at h ⊢
+    repeat' split at h
+    all_goals try simp_all [parseBinaryPrec_mono, parseBinaryRest_mono]
+    all_goals first
+      | (intro _; assumption)
+      | (intro _; simp_all)
+      | (intro hc; exact absurd hc (by omega))
+      | exact parseBinaryPrec_mono _ _ _ r h k
+      | exact parseBinaryRest_mono _ _ _ _ r h k
+
+private theorem parseUnary_mono (n : Nat) (p : Parser) (r : Expr × Parser)
+    (h : parseUnary n p = some r) (k : Nat) :
+    parseUnary (n + k) p = some r := by
+  match n with
+  | 0 => simp [parseUnary] at h
+  | n + 1 =>
+    rw [Nat.succ_add]
+    simp only [parseUnary] at h ⊢
+    repeat' split at h
+    all_goals try simp_all [parseUnary_mono, parseApplication_mono]
+    all_goals first
+      | (intro _; assumption)
+      | (intro _; simp_all)
+      | (intro hc; exact absurd hc (by omega))
+      | exact parseUnary_mono _ _ r h k
+      | exact parseApplication_mono _ _ r h k
+
+private theorem parseApplication_mono (n : Nat) (p : Parser) (r : Expr × Parser)
+    (h : parseApplication n p = some r) (k : Nat) :
+    parseApplication (n + k) p = some r := by
+  match n with
+  | 0 => simp [parseApplication] at h
+  | n + 1 =>
+    rw [Nat.succ_add]
+    simp only [parseApplication] at h ⊢
+    repeat' split at h
+    all_goals try simp_all [parseAtom_mono, parseAppArgs_mono]
+    all_goals first
+      | (intro _; assumption)
+      | (intro _; simp_all)
+      | (intro hc; exact absurd hc (by omega))
+      | exact parseAtom_mono _ _ r h k
+      | exact parseAppArgs_mono _ _ _ _ r h k
+
+private theorem parseAppArgs_mono (fnExpr : Expr) (n : Nat) (args : List Expr)
+    (p : Parser) (r : Expr × Parser)
+    (h : parseAppArgs fnExpr n args p = some r) (k : Nat) :
+    parseAppArgs fnExpr (n + k) args p = some r := by
+  match n with
+  | 0 => simp [parseAppArgs] at h
+  | n + 1 =>
+    rw [Nat.succ_add]
+    simp only [parseAppArgs] at h ⊢
+    repeat' split at h
+    all_goals try simp_all [parseAtom_mono, parseAppArgs_mono]
+    all_goals first
+      | (intro _; assumption)
+      | (intro _; simp_all)
+      | (intro hc; exact absurd hc (by omega))
+      | exact parseAtom_mono _ _ r h k
+      | exact parseAppArgs_mono _ _ _ _ r h k
+
+private theorem parseAtom_mono (n : Nat) (p : Parser) (r : Expr × Parser)
+    (h : parseAtom n p = some r) (k : Nat) :
+    parseAtom (n + k) p = some r := by
+  match n with
+  | 0 => simp [parseAtom] at h
+  | n + 1 =>
+    rw [Nat.succ_add]
+    simp only [parseAtom] at h ⊢
+    repeat' split at h
+    all_goals try simp_all [parseExprFuel_mono, parseIfExpr_mono, parseLetExpr_mono, parseFnExpr_mono, parseBlockExpr_mono]
+    all_goals first
+      | (intro _; assumption)
+      | (intro _; simp_all)
+      | (intro hc; exact absurd hc (by omega))
+      | exact parseExprFuel_mono _ _ r h k
+      | exact parseIfExpr_mono _ _ r h k
+      | exact parseLetExpr_mono _ _ r h k
+      | exact parseFnExpr_mono _ _ r h k
+      | exact parseBlockExpr_mono _ _ r h k
+
+private theorem parseIfExpr_mono (n : Nat) (p : Parser) (r : Expr × Parser)
+    (h : parseIfExpr n p = some r) (k : Nat) :
+    parseIfExpr (n + k) p = some r := by
+  match n with
+  | 0 => simp [parseIfExpr] at h
+  | n + 1 =>
+    rw [Nat.succ_add]
+    simp only [parseIfExpr] at h ⊢
+    repeat' split at h
+    all_goals try simp_all [parseExprFuel_mono]
+    all_goals first
+      | (intro _; assumption)
+      | (intro _; simp_all)
+      | (intro hc; exact absurd hc (by omega))
+      | exact parseExprFuel_mono _ _ r h k
+
+private theorem parseLetExpr_mono (n : Nat) (p : Parser) (r : Expr × Parser)
+    (h : parseLetExpr n p = some r) (k : Nat) :
+    parseLetExpr (n + k) p = some r := by
+  match n with
+  | 0 => simp [parseLetExpr] at h
+  | n + 1 =>
+    rw [Nat.succ_add]
+    simp only [parseLetExpr] at h ⊢
+    repeat' split at h
+    all_goals try simp_all [parseExprFuel_mono]
+    all_goals first
+      | (intro _; assumption)
+      | (intro _; simp_all)
+      | (intro hc; exact absurd hc (by omega))
+      | exact parseExprFuel_mono _ _ r h k
+
+private theorem parseFnExpr_mono (n : Nat) (p : Parser) (r : Expr × Parser)
+    (h : parseFnExpr n p = some r) (k : Nat) :
+    parseFnExpr (n + k) p = some r := by
+  match n with
+  | 0 => simp [parseFnExpr] at h
+  | n + 1 =>
+    rw [Nat.succ_add]
+    exact parseFnParams_mono n [] p r h k
+
+private theorem parseFnParams_mono (n : Nat) (params : List String) (p : Parser)
+    (r : Expr × Parser) (h : parseFnParams n params p = some r) (k : Nat) :
+    parseFnParams (n + k) params p = some r := by
+  match n with
+  | 0 => simp [parseFnParams] at h
+  | n + 1 =>
+    rw [Nat.succ_add]
+    simp only [parseFnParams] at h ⊢
+    repeat' split at h
+    all_goals try simp_all [parseFnParams_mono, parseExprFuel_mono]
+    all_goals first
+      | (intro _; assumption)
+      | (intro _; simp_all)
+      | (intro hc; exact absurd hc (by omega))
+      | exact parseFnParams_mono _ _ _ r h k
+      | exact parseExprFuel_mono _ _ r h k
+
+private theorem parseBlockExpr_mono (n : Nat) (p : Parser) (r : Expr × Parser)
+    (h : parseBlockExpr n p = some r) (k : Nat) :
+    parseBlockExpr (n + k) p = some r := by
+  match n with
+  | 0 => simp [parseBlockExpr] at h
+  | n + 1 =>
+    rw [Nat.succ_add]
+    simp only [parseBlockExpr] at h ⊢
+    repeat' split at h
+    all_goals try simp_all [parseBlockBody_mono]
+    all_goals exact parseBlockBody_mono _ _ _ r h k
+
+private theorem parseBlockBody_mono (n : Nat) (exprs : List Expr) (p : Parser)
+    (r : Expr × Parser) (h : parseBlockBody n exprs p = some r) (k : Nat) :
+    parseBlockBody (n + k) exprs p = some r := by
+  match n with
+  | 0 => simp [parseBlockBody] at h
+  | n + 1 =>
+    rw [Nat.succ_add]
+    simp only [parseBlockBody] at h ⊢
+    repeat' split at h
+    all_goals try simp_all [parseExprFuel_mono, parseBlockBody_mono]
+    all_goals first
+      | (intro _; assumption)
+      | (intro _; simp_all)
+      | (intro hc; exact absurd hc (by omega))
+      | exact parseExprFuel_mono _ _ r h k
+      | exact parseBlockBody_mono _ _ _ r h k
+
+end
+
+
+
 /-- Parse an expression, seeding the recursion with `10 * tokens + 100` fuel -
 the grammar nests at most seven descent levels per token, so this bounds any
 well-formed input. -/
 def parseExpr (p : Parser) : Option (Expr × Parser) :=
   parseExprFuel (10 * p.tokens.length + 100) p
+
+/-- **The seed is robust.** If a parse succeeds at any budget `f` that does not
+exceed the seeded budget, it succeeds at the seeded budget with the same result.
+This is the machine-checked half of the fixed-seed argument: the constant in
+`parseExpr` only has to be large enough for the longest well-formed input, and
+no input that fits under a smaller budget is lost. -/
+private theorem parseExpr_seed_robust (p : Parser) (f : Nat) (r : Expr × Parser)
+    (hf : f ≤ 10 * p.tokens.length + 100)
+    (h : parseExprFuel f p = some r) :
+    parseExpr p = some r := by
+  unfold parseExpr
+  obtain ⟨d, hd⟩ := Nat.exists_eq_add_of_le hf
+  rw [hd]
+  exact parseExprFuel_mono f p r h d
 
 end Parser
 
