@@ -1398,6 +1398,32 @@ subtyping witness; `checkTypeAs_of_checkType` shows the new entry point accepts
 everything the exact checker does; the tests exhibit strictness (`intType`
 accepted against `unitType`, rejected against `boolType`).
 
+### Iteration 45 - the last four `partial def`s
+
+**Target.** A repo-wide scan after loop 44: `partial def` was gone from the
+shipped compiler but four remained in `Morph/Specs` - `Maths.gcd`,
+`StateGraph.reachable`, `DependencySat.addTransitiveDependencies` and
+`DependencySat.hasCycle`.
+
+**Maths.gcd.** Euclidean recursion, total by `termination_by n` (the second
+argument): `m % n < n` when `n ≠ 0`. The obvious measure `m + n` is *wrong* when
+`n > m` (`m % n = m`), which the first attempt hit.
+
+**StateGraph.reachable.** BFS with a globally threaded `visited` list, hoisted
+to a fuel-bounded `bfsFuel`. Each expansion marks a state and pushes one
+frontier element per transition, so `states.length + transitions.length + 1`
+bounds the walk.
+
+**DependencySat.** `addTransitiveDependencies` keeps its semantics, hoisted to
+`transitiveDepsFuel` with `nodes.length + totalDependencies + 2` fuel. `hasCycle`
+was not just non-total but **wrong**: its path-local two-call DFS could run
+exponentially and reported a diamond (`A→B`, `A→C`, `B→D`, `C→D`) as a cycle,
+because `D` is reached twice along different paths. It is now Kahn's algorithm
+(drop nodes whose dependencies are all dropped; a non-empty residue is a cycle),
+total in `nodes.length + 1`, with the diamond/cycle distinction tested.
+
+**Result.** No `partial def` or `unsafe def` remains anywhere in `Morph/`.
+
 ## Remaining work, measured
 
 After thirty-six iterations the repository's specifications fall into three
@@ -1472,7 +1498,8 @@ rewritten as precedence climbing over an explicit precedence table
 fuel budget its callers decrease — the parser is now structurally recursive and
 kernel-reducible on symbolic input (verified by `rfl`; the numeric examples go
 through `native_decide` because `String.toNat?` on lexer substrings is not
-kernel-reducible). **No `partial def` remains in the shipped compiler.** The
+kernel-reducible). **No `partial def` remains in the shipped compiler** - and, since loop 45, none
+in `Morph/Specs` either. The
 subtyping adoption (loop 44) completes the adoption track: `checkTypeAs` is the
 shipped checker's subtyping-aware entry point, with `checkTypeAs_sound` giving
 the actual type and the witness, and `checkTypeAs_of_checkType` guaranteeing it

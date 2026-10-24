@@ -70,16 +70,25 @@ def predecessors (g : StateGraph) (s : StateId) : List StateId :=
   g.transitions.filterMap (fun t =>
     if t.dst == s then some t.src else none)
 
-/-- Check reachability via BFS -/
-partial def reachable (g : StateGraph) (start target : StateId) : Bool :=
-  let rec bfs (visited : List StateId) (frontier : List StateId) : Bool :=
+/-- One BFS step, total by fuel. `visited` grows by one per expansion and the
+frontier receives one element per transition, so
+`states.length + transitions.length + 1` fuel bounds the walk. -/
+private def bfsFuel (g : StateGraph) (target : StateId) :
+    Nat → List StateId → List StateId → Bool
+  | 0, _, _ => false
+  | fuel + 1, visited, frontier =>
     match frontier with
     | [] => false
     | h :: rest =>
       if h == target then true
-      else if visited.any (fun x => x == h) then bfs visited rest
-      else bfs (h :: visited) (rest ++ g.successors h)
-  bfs [] [start]
+      else if visited.any (fun x => x == h) then bfsFuel g target fuel visited rest
+      else bfsFuel g target fuel (h :: visited) (rest ++ g.successors h)
+
+/-- Check reachability via BFS. Total: the traversal is bounded by
+`states.length + transitions.length + 1` (one expansion per state, one frontier
+push per transition). This was a `partial def` with a `let rec` inside. -/
+def reachable (g : StateGraph) (start target : StateId) : Bool :=
+  bfsFuel g target (g.states.length + g.transitions.length + 1) [] [start]
 
 /-- Check if the graph has no cycles (all transitions go to higher states) -/
 def isAcyclic (g : StateGraph) : Bool :=

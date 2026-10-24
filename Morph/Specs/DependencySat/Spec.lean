@@ -61,44 +61,61 @@ def saturateStep (graph : DependencyGraph) (state : SaturationState) : Saturatio
     let newVisited := state.visited ++ readyNodes.map fun n => n.id
     { visited := newVisited, saturated := newSaturated }
 
-/-- Add transitive dependencies to a node. -/
-partial def addTransitiveDependencies (graph : DependencyGraph) (node : DependencyNode) : DependencyNode :=
-  let rec helper (visited : List String) (toVisit : List String) (accum : List String) : List String :=
+/-- Total number of declared dependencies. -/
+def totalDependencies (graph : DependencyGraph) : Nat :=
+  graph.nodes.foldl (fun acc n => acc + n.dependencies.length) 0
+
+/-- One transitive-dependency walk, total by fuel. Each expansion marks a node
+visited and pushes its dependencies, so at most `1 + totalDependencies` elements
+are ever processed. -/
+private def transitiveDepsFuel (graph : DependencyGraph) :
+    Nat → List String → List String → List String → List String
+  | 0, _, _, accum => accum
+  | fuel + 1, visited, toVisit, accum =>
     match toVisit with
     | [] => accum
     | current :: rest =>
-        if current ∈ visited then
-          helper visited rest accum
-        else
-          let visited' := current :: visited
-          let deps := match graph.nodes.find? fun n => n.id = current with
-            | some n => n.dependencies
-            | none => []
-          let accum' := deps ++ accum
-          let toVisit' := deps ++ rest
-          helper visited' toVisit' accum'
-  let transitiveDeps := helper [] [node.id] []
+      if current ∈ visited then
+        transitiveDepsFuel graph fuel visited rest accum
+      else
+        let deps := match graph.nodes.find? (fun n => n.id = current) with
+          | some n => n.dependencies
+          | none => []
+        transitiveDepsFuel graph fuel (current :: visited) (deps ++ rest) (deps ++ accum)
+
+/-- Add transitive dependencies to a node. Total: the walk is bounded by
+`nodes.length + totalDependencies + 2` (one expansion per node, one push per
+declared dependency). This was a `partial def` with a `let rec` inside. -/
+def addTransitiveDependencies (graph : DependencyGraph) (node : DependencyNode) : DependencyNode :=
+  let transitiveDeps :=
+    transitiveDepsFuel graph (graph.nodes.length + totalDependencies graph + 2) [] [node.id] []
   { id := node.id, dependencies := transitiveDeps }
 
-/-- Check if a graph has a cycle. -/
-partial def hasCycle (graph : DependencyGraph) : Bool :=
-  let rec visit (visited : List String) (toVisit : List String) : Bool :=
-    match toVisit with
-    | [] => false
-    | current :: rest =>
-        if current ∈ visited then
-          true
-        else
-          let visited' := current :: visited
-          let deps := match graph.nodes.find? fun n => n.id = current with
-            | some n => n.dependencies
-            | none => []
-          let toVisit' := deps ++ rest
-          if visit visited' toVisit' then
-            true
-          else
-            visit visited' rest
-  graph.nodes.any fun node => visit [] [node.id]
+/-- Kahn's algorithm, total by fuel: each step removes at least one node, so
+`nodes.length + 1` fuel suffices. -/
+private def kahnFuel : Nat → List DependencyNode → Bool
+  | 0, remaining => !remaining.isEmpty
+  | fuel + 1, remaining =>
+    if remaining.isEmpty then false
+    else
+      let ready := remaining.filter fun n =>
+        n.dependencies.all fun dep => !remaining.any fun m => m.id = dep
+      if ready.isEmpty then true
+      else
+        kahnFuel fuel (remaining.filter fun n => !ready.any fun m => m.id = n.id)
+
+/-- Check if a graph has a cycle, by Kahn's algorithm: repeatedly drop nodes
+whose dependencies have all been dropped; a cycle is exactly a non-empty
+residue.
+
+This replaces a `partial def` that ran a path-local DFS from every node. That
+version was both non-total (no linear bound: the second recursive call re-ran
+the remaining frontier, so the walk could be exponential) and **wrong**: it
+reported a diamond (`A→B`, `A→C`, `B→D`, `C→D`) as a cycle, because `D` is
+reached twice along different paths. Kahn accepts the diamond and rejects the
+cycle, and `hasDirectCycle`/`hasTwoCycle` remain sound special cases. -/
+def hasCycle (graph : DependencyGraph) : Bool :=
+  kahnFuel (graph.nodes.length + 1) graph.nodes
 
 /-- Compute transitive closure of dependencies. -/
 def saturateDependencies (graph : DependencyGraph) : DependencyGraph :=
