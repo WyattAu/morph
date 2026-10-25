@@ -1424,9 +1424,47 @@ total in `nodes.length + 1`, with the diamond/cycle distinction tested.
 
 **Result.** No `partial def` or `unsafe def` remains anywhere in `Morph/`.
 
+### Iteration 46 - MorphLanguage: the last three stubs
+
+**Target.** `Morph/Specs/MorphLanguage/`, the module the ledger still flagged
+for `parseCode`/`applyEditToAst`.
+
+**What was still stubbed.** `parseCode` returned `some Program.empty` on both
+branches of an `if` (it parsed nothing); `applyEditToAst` ignored its edit
+(`fun _ _ => some ast`); `renderCode` returned `""` for every program. The
+first two made `projectionalOnlyMandate` ("every string parses") and
+`projectional_only_mandate` ("every edit succeeds") look like theorems about a
+real editor.
+
+**What replaced them.** `parseCode` now delegates to the total frontend parser
+(`Morph.Frontend.parse`), wrapping the expression as a one-statement program.
+`applyEditToAst` dispatches the four edits: `replace`/`insert` re-parse their
+text, `delete` clears the program, `move i j` reorders statements through a
+total `moveStmt` (an out-of-range source is a no-op, a destination past the end
+appends). `renderCode` renders statements in both dialects with a full
+mutually-recursive printer (`typStr`, `valueStr`, `exprStr`, `stmtStr` and their
+list helpers; `List.map` defeats structural termination, so the helpers are
+separate recursions).
+
+**What was proved.** `parseCode_isSome_iff` (success exactly when the frontend
+accepts), `parseCode_ok`, `parseCode_malformed` (`"("` rejected), the four
+`applyEditToAst_*` equations, `applyEditToAst_delete_isSome`/`_move_isSome`,
+`applyEditToAst_insert_malformed`, `moveStmt_out_of_range`/`moveStmt_length`/
+`moveStmt_singleton`, and the empty/compact/spaced render facts.
+
+**What was refuted.** With a real parser the projectional claims are false, and
+the loop records them as such: `projectionalOnlyMandate_refuted` (witness
+`"("`) and `projectional_only_mandate_refuted` (witness a malformed `insert`).
+A projectional editor guarantees that accepted edits go through the AST, not
+that arbitrary text parses. This is the third refutation in the sweep (loops 8
+and 30) and the honest form of the module's headline claim.
+
+**Result.** `Morph/Specs` now has no `Prop := True`, no `sorry`, no `partial`
+or `unsafe def`, and no operation that ignores its arguments.
+
 ## Remaining work, measured
 
-After thirty-six iterations the repository's specifications fall into three
+After forty-six iterations the repository's specifications fall into three
 categories.
 
 **Closed.** Every SG gap: SG-001 (loop 7), SG-002 (loop 2), SG-003 (loop 4),
@@ -1440,8 +1478,8 @@ least one real theorem — the modules that carried only `rfl` facts about
 `List`, `Option` and `Char` have been replaced (loops 6, 7, 13, 14, 15, 16, 17,
 18) or consolidated with the framework that superseded them.
 
-**The stub sweep is complete (loops 26–35).** Every literal
-`Prop := True` advertisement in `Morph/Specs` is gone except one, and every
+**The stub sweep is complete (loops 26–35, finished in loop 46).** Every
+literal `Prop := True` advertisement in `Morph/Specs` is gone, and every
 previously-unproved claim is either proved or replaced by its honest
 refutation:
 
@@ -1453,7 +1491,7 @@ refutation:
 | `ModuleExistential` | loop 29 | 7 claims; access/import compare with `decide`, not `==` |
 | `TerminologyStandardization` | loop 30 | 5 proved; the 3 naming implications **refuted** (`"aB"`, `"A"`) |
 | `SecurityOCap` | loop 31 | `EdgeChain`/`Reaches`; authority rooted at `ctx` |
-| `MorphLanguage` | loop 32 | 4 claims; `parseCode`/`applyEditToAst` still stubs (loop 13 note) |
+| `MorphLanguage` | loop 32, 46 | 4 claims; `parseCode`/`applyEditToAst`/`renderCode` stubs replaced by the parser adapter, edit dispatcher and renderer; both projectional claims **refuted** |
 | `ASTGraph` | loop 33 | `LawfulBEq ObjectId` unlocks HashMap lemmas; `addNode` preserved |
 | `LicenseDeonticLogic` | loop 34 | deontic `isAllowed`; totality and exclusivity of the checker |
 | `ConcurrencyProcessAlgebra` | loop 35 | full message-passing model; all 19 claims proved |
@@ -1466,11 +1504,11 @@ model). Most of the `True` stubs were not waiting for a proof, they were
 waiting for a *model* — and each of loops 26–35 built the smallest model that
 made its claims stateable.
 
-**Two things that are not iterations.** The first is *adoption*: none of the
-iterations' results is wired into the shipped compiler. The shipped lexer is
-still `partial` where loop 9 proved a total scanner terminates; the shipped
+**Two things that are not iterations.** The first is *adoption*: some of the
+iterations' results are not wired into the shipped compiler. The shipped
 β-rule still uses `substAll` where loops 10 and 11 proved the single-argument
-case is the same function. (`checkType` compared exact types where
+case is the same function (the shipped lexer and parser are total since loops 9
+and 39). (`checkType` compared exact types where
 `Morph.Specs.Subtyping` proves a decidable subtyping; loop 44 wired the relation
 into the checker's acceptance boundary — `checkTypeAs` — while keeping the
 recursive sub-checks and the `HasType` judgment exact.) The second was the

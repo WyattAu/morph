@@ -59,18 +59,29 @@ statements; the list API does).
 | `deleteRange_preserves_after` | the text after the range is preserved, at the range's start |
 | `deleteRange_empty` | deleting an empty range changes nothing |
 | `moveRange_split` | the moved text is removed from its old place and re-inserted at the destination |
-| `parseCode_is_a_stub` | *the finding*: the specification's `parseCode` returns the empty program for every input |
-| `applyEditToAst_is_a_stub` | *the finding*: the specification's `applyEditToAst` ignores its edit |
+| `parseCode_isSome_iff` | parsing succeeds exactly when the frontend parser accepts the text |
+| `parseCode_malformed` | `"("` is rejected, so not every string parses |
+| `projectionalOnlyMandate_refuted` | the mandate "every string parses" is false (witness `"("`) |
+| `applyEditToAst_delete` / `_replace` / `_insert` / `_move` | the four edit cases, as defining equations |
+| `applyEditToAst_insert_malformed` | a malformed `insert` fails instead of silently succeeding |
+| `projectional_only_mandate_refuted` | "every edit succeeds" is false (witness a malformed `insert`) |
+| `moveStmt_out_of_range` / `moveStmt_length` | the reordering primitive is total and length-preserving |
+| `renderCode_min_empty` / `renderCode_hum_empty` | rendering is real and dialect-sensitive |
 
 ## 5. Scope: explicit non-claims
 
-1. **The parser is still a stub.** `parseCode` parses nothing, and the real
-   parser (`Morph/Frontend/Parser.lean`) is a *partial* recursive-descent parser
-   over a `Parser` structure. Connecting the specification to it needs a
-   non-partial parser and a decision procedure for it — separate work, named
-   here rather than faked.
-2. **`applyEditToAst` is still a stub**, for the same reason: it would have to
-   apply the edit to the *code* and re-parse, which needs (1).
+*Loops 13 and 46 discharged items 1 and 2 below; they are kept so the history
+stays visible.*
+
+1. ~~**The parser is still a stub.**~~ **Closed in loop 46.** `parseCode` now
+   delegates to `Morph.Frontend.parse`, which is total since loop 39. Parsing
+   succeeds exactly when the frontend accepts (`parseCode_isSome_iff`); the
+   frontend still parses *expressions*, not statement syntax, and that gap is
+   in `Morph/Frontend/Parser.lean`, not here.
+2. ~~**`applyEditToAst` is still a stub.**~~ **Closed in loop 46.**
+   `replace`/`insert` re-parse their text, `delete` clears the program, `move`
+   reorders statements through a total `moveStmt`. Malformed input fails, which
+   is why both projectional claims are *refuted* rather than proved.
 3. **The specification's own `applyEdit` is unchanged.** This document adds real
    operations; it does not redefine the shipped one, which would change the
    meaning of the existing (vacuous) theorems.
@@ -78,11 +89,14 @@ statements; the list API does).
    single-shot range edits.
 5. **No theorem about the *interaction* of edits** (e.g. that two edits
    compose); each operation is proved on its own.
+6. **`renderCode` is a printer, not a round-trip proof.** It renders the AST in
+   both dialects, but no theorem states that parsing the rendered text returns
+   the original AST.
 
 ## 6. Traceability
 
 | Artifact | Location |
 |---|---|
-| Real edits, theorems, the stub findings | `Morph/Specs/MorphLanguage/Lemmas.lean` |
-| The stubbed operations | `Morph/Specs/MorphLanguage/Spec.lean` |
+| Real edits, theorems, refutations | `Morph/Specs/MorphLanguage/Lemmas.lean` |
+| Parser adapter, edit dispatcher, renderer | `Morph/Specs/MorphLanguage/Spec.lean` |
 | The real parser | `Morph/Frontend/Parser.lean` |

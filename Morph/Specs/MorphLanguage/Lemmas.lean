@@ -26,16 +26,29 @@ theorems about them are true only because the stubs do nothing. This loop
 replaces the editing operations with **real, position-aware** ones and proves
 the properties that were previously vacuous.
 
-**What is not fixed here.** `applyEditToAst` and `parseCode` remain stubs: the
-real parser (`Morph/Frontend/Parser.lean`) is a *partial* recursive-descent
-parser over a `Parser` structure, and connecting the specification to it needs
-both a non-partial parser and a decision procedure for it — a separate piece of
-work, named in §5 of the spec rather than faked here.
+**Loop 32.** The four `Prop := True` claims at the end of the spec were made
+real: `min` is canonical, `hum` transient, every `ErrorResult` is either an `ok`
+or an error carrying a file/line/column.
 
-**Loop 32.** The four `Prop := True` claims at the end of the spec are now real
-and proved: `parseCode` is total, `applyEditToAst` yields a program, `min` is
-canonical and `hum` transient, and every `ErrorResult` is either an `ok` or an
-error carrying a file/line/column.
+**Loop 46 closed the remaining stubs.** `parseCode` now delegates to the shipped
+*total* frontend parser (`Morph.Frontend.parse`), `applyEditToAst` dispatches
+the four edits for real (`replace`/`insert` re-parse, `delete` clears, `move`
+reorders statements), and `renderCode` renders programs in both dialects. The
+old vacuous claims are replaced by:
+
+- `parseCode_isSome_iff` — parsing succeeds exactly when the frontend accepts
+  the text; `parseCode_malformed` — `"("` is rejected.
+- `projectionalOnlyMandate_refuted` and `projectional_only_mandate_refuted` —
+  "every string parses" and "every edit succeeds" are **false** for a real
+  parser, and the witnesses prove it. What a projectional editor guarantees is
+  that *accepted* edits go through the AST, not that arbitrary text parses.
+- `applyEditToAst_delete`/`_replace`/`_insert`/`_move` — the four edit cases;
+  `applyEditToAst_insert_malformed` — a malformed insert fails rather than
+  silently succeeding.
+- `moveStmt_out_of_range`/`moveStmt_length`/`moveStmt_singleton` — the
+  reordering primitive is total and length-preserving.
+- `renderCode_min_empty`/`renderCode_hum_empty` plus native-decided examples —
+  rendering is real and dialect-sensitive.
 -/
 
 namespace Morph.Specs.MorphLanguage
@@ -185,34 +198,142 @@ example : deleteRange "hello world".toList ⟨0, 5⟩ = " world".toList := by de
 /-- The specification's `insert` appended; the real one inserts at a position. -/
 example : insertAt "hello".toList "say ".toList 0 = "say hello".toList := by decide
 
-/-! ### The stubs, stated precisely
+/-! ### The parser adapter, characterised
 
-The following are the properties the specification's theorems *claimed*; they
-hold only because the operations are stubs. They are recorded here so that the
-gap is explicit rather than hidden behind a `rfl`. -/
+`parseCode` is a thin wrapper around `Morph.Frontend.parse`: it wraps the parsed
+expression as a one-statement program and turns a parse error into `none`. -/
 
-/-- The specification's `parseCode` returns the empty program for every input,
-including non-empty ones: it parses nothing. -/
-theorem parseCode_is_a_stub (code : String) :
-    Morph.Specs.MorphLanguage.parseCode code = some Morph.Syntax.Program.empty := by
-  simp [Morph.Specs.MorphLanguage.parseCode]
+/-- **Parsing succeeds exactly when the frontend accepts the text.** -/
+theorem parseCode_isSome_iff (code : String) :
+    (parseCode code).isSome = true ↔ ∃ e, Morph.Frontend.parse code = .ok e := by
+  unfold parseCode
+  cases h : Morph.Frontend.parse code with
+  | ok e => simp [h]
+  | error err => simp [h]
 
-/-- The specification's `applyEditToAst` ignores its edit: it is the identity
-on programs. -/
-theorem applyEditToAst_is_a_stub (ast : Morph.Syntax.Program)
-    (edit : Morph.Specs.MorphLanguage.EditOperation) :
-    Morph.Specs.MorphLanguage.applyEditToAst ast edit = some ast := by
-  rfl
+/-- **On an accepted input the result is the wrapped expression.** -/
+theorem parseCode_ok (code : String) (e : Expr)
+    (h : Morph.Frontend.parse code = .ok e) :
+    parseCode code = some { stmts := [.exprStmt e] } := by
+  unfold parseCode
+  rw [h]
 
-/-! ### The correctness properties, proved -/
+/-- **Malformed input is rejected.** `"("` is an unbalanced parenthesis; the
+frontend parser returns an error for it, so `parseCode` returns `none`. -/
+theorem parseCode_malformed : (parseCode "(").isNone = true := by native_decide
 
-theorem projectionalOnlyMandate_holds : projectionalOnlyMandate := by
-  intro code
-  simp [parseCode]
+/-- **The projectional-only mandate is false as stated.** It claims every source
+string parses; `"("` does not. (Recorded as a refutation, not deleted, so the
+false law stays visible.) -/
+theorem projectionalOnlyMandate_refuted : ¬ projectionalOnlyMandate := by
+  intro h
+  have h1 := h "("
+  have h2 : (parseCode "(").isSome = false := by native_decide
+  rw [h2] at h1
+  exact Bool.false_ne_true h1
 
-theorem projectional_only_mandate_holds : projectional_only_mandate := by
-  intro ast edit
-  simp [applyEditToAst]
+/-! ### AST edits
+
+`applyEditToAst` is now a real dispatcher. Each case has its defining equation;
+the interesting content is that `delete`/`move` cannot fail, while
+`replace`/`insert` fail exactly when their text fails to parse. -/
+
+theorem applyEditToAst_delete (ast : Morph.Syntax.Program) :
+    applyEditToAst ast EditOperation.delete = some Morph.Syntax.Program.empty := rfl
+
+theorem applyEditToAst_replace (ast : Morph.Syntax.Program) (src : String) :
+    applyEditToAst ast (EditOperation.replace src) = parseCode src := rfl
+
+theorem applyEditToAst_insert (ast : Morph.Syntax.Program) (src : String) :
+    applyEditToAst ast (EditOperation.insert src) =
+      (parseCode src).map (fun p => { stmts := ast.stmts ++ p.stmts }) := rfl
+
+theorem applyEditToAst_move (ast : Morph.Syntax.Program) (i j : Nat) :
+    applyEditToAst ast (EditOperation.move i j) =
+      some { stmts := moveStmt i j ast.stmts } := rfl
+
+/-- `delete` always succeeds. -/
+theorem applyEditToAst_delete_isSome (ast : Morph.Syntax.Program) :
+    (applyEditToAst ast EditOperation.delete).isSome = true := rfl
+
+/-- `move` always succeeds. -/
+theorem applyEditToAst_move_isSome (ast : Morph.Syntax.Program) (i j : Nat) :
+    (applyEditToAst ast (EditOperation.move i j)).isSome = true := rfl
+
+/-- A malformed `insert` fails: the edit is not silently accepted. -/
+theorem applyEditToAst_insert_malformed :
+    (applyEditToAst Morph.Syntax.Program.empty (EditOperation.insert "(")).isNone = true := by
+  native_decide
+
+/-- **"Every edit yields a program" is false**: a malformed `insert` yields
+`none`. The true statement is per-case (`_delete_isSome`, `_move_isSome`, and
+`_replace`/`_insert` conditional on parsing). -/
+theorem projectional_only_mandate_refuted : ¬ projectional_only_mandate := by
+  intro h
+  have h1 := h Morph.Syntax.Program.empty (EditOperation.insert "(")
+  have h2 : (applyEditToAst Morph.Syntax.Program.empty
+      (EditOperation.insert "(")).isSome = false := by native_decide
+  rw [h2] at h1
+  exact Bool.false_ne_true h1
+
+/-! ### Statement reordering
+
+`moveStmt i j xs` removes statement `i` and re-inserts it at position `j`. It is
+total: an out-of-range source index is a no-op, and a destination past the end
+appends. -/
+
+/-- An out-of-range source index leaves the statement list unchanged. -/
+theorem moveStmt_out_of_range (i j : Nat) (xs : List Stmt) (h : xs[i]? = none) :
+    moveStmt i j xs = xs := by
+  unfold moveStmt
+  rw [h]
+
+/-- **A move preserves the number of statements.** -/
+theorem moveStmt_length (i j : Nat) (xs : List Stmt) (h : i < xs.length) :
+    (moveStmt i j xs).length = xs.length := by
+  unfold moveStmt
+  split
+  · next hnone =>
+      have := List.getElem?_eq_none_iff.mp hnone
+      omega
+  · next x _ =>
+      simp only [List.length_append, List.length_cons, List.length_take,
+        List.length_drop, List.length_eraseIdx_of_lt h]
+      omega
+
+/-- A singleton is unchanged by a move. -/
+theorem moveStmt_singleton (j : Nat) (s : Stmt) :
+    moveStmt 0 j [s] = [s] := by
+  unfold moveStmt
+  simp
+
+/-! ### Rendering
+
+`renderCode` used to return `""` for every program. It now renders statements
+in either dialect; `hum` puts spaces around binary operators and separates
+statements with `;\n`, `min` is compact. The empty-program facts are proved by
+`rfl`; the concrete renderings are checked by evaluation (the renderers are
+mutually recursive, so the kernel does not reduce them definitionally). -/
+
+theorem renderCode_min_empty :
+    renderCode Morph.Syntax.Program.empty Dialect.min = "" := rfl
+
+theorem renderCode_hum_empty :
+    renderCode Morph.Syntax.Program.empty Dialect.hum = "" := rfl
+
+/-- `min` renders compactly. -/
+example : renderCode { stmts := [.exprStmt (.binop .add (.lit (.int 1)) (.lit (.int 2)))] }
+    Dialect.min = "(1+2)" := by native_decide
+
+/-- `hum` spaces binary operators. -/
+example : renderCode { stmts := [.exprStmt (.binop .add (.lit (.int 1)) (.lit (.int 2)))] }
+    Dialect.hum = "(1 + 2)" := by native_decide
+
+/-- Declarations render with their type annotation. -/
+example : renderCode { stmts := [.varDecl ⟨"x"⟩ .intType (.lit (.int 5))] }
+    Dialect.min = "let x: int = 5" := by native_decide
+
+/-! ### The remaining spec claims, proved -/
 
 theorem min_is_canonical_holds : min_is_canonical := by
   unfold min_is_canonical isCanonicalDialect; rfl
