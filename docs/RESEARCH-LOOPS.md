@@ -1488,9 +1488,46 @@ Examples check `(λx. x) 3 → 3` in the shipped relation.
 explicitly recorded as a design choice with a proof. The remaining
 `substAll` uses are simultaneous by necessity.
 
+### Iteration 48 - UnidirectionalDataFlow: the empty module
+
+**Target.** `Morph/Specs/UnidirectionalDataFlow/`. `Spec.lean` was a single
+`TODO: Implement this module`; `Lemmas.lean` carried only generic `List`/`Nat`
+facts and defined its own `Edge` type that `Spec.lean` did not have.
+
+**Model.** Seven small models, one per guarantee named in
+`spec/language/unidirectional_data_flow_spec.md`:
+
+- **Polarity** (`Polarity`, `Access`, `allows`, `Endpoint`, `WellPolarized`) —
+  sources read only, sinks write only; a declared endpoint is legal exactly
+  when it is source/read or sink/write.
+- **Graphs** (`Edge`, `Reaches`, `Acyclic`, `Respects`) — acyclicity from a
+  rank function that increases along every edge.
+- **Feedback** (`isFeedback`, `immediate`) — delayed edges are removed from
+  the instantaneous graph, so the loop they close is not an instantaneous
+  cycle.
+- **Reducers** (`Reducer`, `runState`, `runOut`) — a pure Mealy machine; a run
+  emits one output per input and composes over input concatenation.
+- **Backpressure** (`Stream`, `send`, `receive`) — a send adds one element and
+  is refused when the buffer is full; capacity never changes.
+- **Fusion** (`fuse`, `chain`) — composition is associative and a chain is a
+  left fold.
+
+**Proved.** `allows_iff`, `wellPolarized_iff`, `reaches_rank_le`,
+`acyclic_of_rank`, `immediate_acyclic`, `not_mem_immediate_of_feedback`,
+`runOut_length`, `runState_append`, `runOut_append`, `run_append`,
+`runState_ext`, `runOut_ext`, `run_ext`, `send_length`, `send_capacity`,
+`send_bounded`, `send_full`, `receive_length`, `send_never_exceeds`,
+`fuse_assoc`, `chain_append`, `chain_foldl`, `chain_two`.
+
+**Narrowed.** The non-functional requirements (O(V+E) analysis, 1,000,000
+concurrent flows) are complexity/scale claims, not correctness claims, and are
+not modeled. `Respects` uses a rank *function* rather than a list order: it
+carries the same topological data and makes the acyclicity induction a
+three-line proof. The concrete runtime is out of scope per §1.2.
+
 ## Remaining work, measured
 
-After forty-seven iterations the repository's specifications fall into three
+After forty-eight iterations the repository's specifications fall into three
 categories.
 
 **Closed.** Every SG gap: SG-001 (loop 7), SG-002 (loop 2), SG-003 (loop 4),

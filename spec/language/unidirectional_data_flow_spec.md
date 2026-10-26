@@ -5,9 +5,10 @@
 * Context:* Layer 2 (Semantic Analysis) & Layer 3 (Runtime)
 * Formalism:* Category Theory (F-Coalgebras) & Graph Theory
 * Status:* Active
-* Last Modified:* 2026-01-02
+* Last Modified:* 2026-10-26
 * Author:* Kilo Code
 * Reviewers:* Pending
+* Machine-checked in:* `Morph/Specs/UnidirectionalDataFlow/{Spec,Lemmas}.lean`
 
 - -
 
@@ -1133,8 +1134,25 @@ flow MultiInput {
 
 - -
 
+## 7. Machine-Checked Model
+
+The guarantees above are realized in a deliberately small Lean model
+(`Morph/Specs/UnidirectionalDataFlow/`). It captures the shape of each
+guarantee, not the concrete runtime (out of scope per §1.2):
+
+| Requirement | Lean model | Theorem |
+|---|---|---|
+| UDF-INV-001/002, UDF-REQ-004 | `Polarity`, `Access`, `allows` | `allows_iff` (only source/read and sink/write are accepted) |
+| UDF-INV-004 | `Endpoint`, `WellPolarized` | `wellPolarized_iff` |
+| UDF-THM-001/005, UDF-INV-011 | `Edge`, `Reaches`, `Respects` | `acyclic_of_rank` (a ranked graph is acyclic) |
+| UDF-REQ-002 | `isFeedback`, `immediate` | `immediate_acyclic` (feedback is the only allowed cycle) |
+| UDF-THM-002/006, UDF-INV-007 | `Reducer`, `runState`, `runOut` | `runOut_length`, `runState_append`, `runOut_append`, `run_ext` |
+| UDF-THM-003/007, UDF-INV-010 | `Stream`, `send`, `receive` | `send_bounded`, `send_capacity`, `send_full`, `receive_length` |
+| UDF-THM-004, UDF-REQ-007 | `fuse`, `chain` | `fuse_assoc`, `chain_append`, `chain_foldl` |
+
 ## Change Log
 
 | Version | Date       | Author      | Changes                                                                 |
 |---------|------------|-------------|-------------------------------------------------------------------------|
 | 1.0.0   | 2026-01-02 | Kilo Code    | Initial version                                                        |
+| 1.0.1   | 2026-10-26 | Loop 48      | Added the machine-checked model and theorem mapping (§7)               |
