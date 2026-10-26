@@ -1462,9 +1462,35 @@ and 30) and the honest form of the module's headline claim.
 **Result.** `Morph/Specs` now has no `Prop := True`, no `sorry`, no `partial`
 or `unsafe def`, and no operation that ignores its arguments.
 
+### Iteration 47 - the shipped β-rule at one argument
+
+**Target.** The ledger's last adoption note: the shipped `Step.app_lam` uses
+`substAll args.reverse body` where loops 10 and 11 proved the single-argument
+case equals the machine's `subst`.
+
+**The finding.** This is not a defect to refactor. `app_lam` fires for an
+application of `n` arguments at once, so it *must* use simultaneous
+substitution: sequential `subst` folding is wrong (later substitutions shift
+earlier free indices — the reason `substAll` exists). `n = 1` is a use of the
+rule, not a separate rule, so there is no branch to specialise.
+
+**What was missing.** The bridge at that use. `Morph/Specs/MachineRelation/Lemmas.lean`
+adds:
+
+- `substAll_singleton` — `substAll [v] body = subst body v`;
+- `Step.app_lam_one` — the shipped step at one argument lands on
+  `subst body v`, the CEK machine's β-step;
+- `Step.app_lam_of_length_one` — the same with the arity named.
+
+Examples check `(λx. x) 3 → 3` in the shipped relation.
+
+**Result.** Every adoption note in the ledger is now either discharged or
+explicitly recorded as a design choice with a proof. The remaining
+`substAll` uses are simultaneous by necessity.
+
 ## Remaining work, measured
 
-After forty-six iterations the repository's specifications fall into three
+After forty-seven iterations the repository's specifications fall into three
 categories.
 
 **Closed.** Every SG gap: SG-001 (loop 7), SG-002 (loop 2), SG-003 (loop 4),
@@ -1505,10 +1531,14 @@ waiting for a *model* — and each of loops 26–35 built the smallest model tha
 made its claims stateable.
 
 **Two things that are not iterations.** The first is *adoption*: some of the
-iterations' results are not wired into the shipped compiler. The shipped
-β-rule still uses `substAll` where loops 10 and 11 proved the single-argument
-case is the same function (the shipped lexer and parser are total since loops 9
-and 39). (`checkType` compared exact types where
+iterations' results are not wired into the shipped compiler. The last such note
+— that the shipped β-rule uses `substAll` where loops 10 and 11 proved the
+single-argument case is the same function — was closed in loop 47, not by
+rewriting the rule but by proving the bridge at the step level
+(`Step.app_lam_one`): the rule *must* stay simultaneous because it substitutes
+`n` arguments at once, and `n = 1` is a use of it, not a different rule. (The
+shipped lexer and parser are total since loops 9 and 39.) (`checkType` compared
+exact types where
 `Morph.Specs.Subtyping` proves a decidable subtyping; loop 44 wired the relation
 into the checker's acceptance boundary — `checkTypeAs` — while keeping the
 recursive sub-checks and the `HasType` judgment exact.) The second was the
