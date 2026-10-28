@@ -238,4 +238,73 @@ theorem reaches_eof (cs : List Char) :
   have h := residual_bound (cs.length + 1) cs hall
   omega
 
+/-! ### Token-list assembly (loop 53)
+
+Loop 9 left the token *list* unassembled: `nextToken_progress` and
+`reaches_eof` bound the steps but no `lexAll` collected them, so the
+`lexAll` length bound was open. Loop 53 closes it minimally: `lexAllFuel`
+collects at most one token per fuel unit, and `lexAll` seeds it with
+`|cs| + 1` — the exact bound `reaches_eof` gives.
+
+Research: Coqlex (Ouedraogo, Programming Journal 2024) generates a
+*proved* lexer from a spec; Verbatim (POPL) maximal-munch with explicit
+error tokens — the same `.eof`-as-token discipline used here. Other
+languages: tree-sitter (GLR, total but unproved), Rust `logos`
+(derive-macro, maximal munch by longest match, termination by construction).
+Morph's gap was not the discipline but the missing list assembly.
+-/
+
+/-- Collect at most `fuel + 1` tokens: one per step, stopping at `.eof`. -/
+def lexAllFuel : Nat → List Char → List TokKind
+  | 0, cs => [(nextToken cs).1]
+  | n + 1, cs =>
+      let (k, rest) := nextToken cs
+      match k with
+      | .eof => [.eof]
+      | _ => k :: lexAllFuel n rest
+
+/-- The fuel bounds the token count. -/
+theorem lexAllFuel_length_le (n : Nat) (cs : List Char) :
+    (lexAllFuel n cs).length ≤ n + 1 := by
+  induction n generalizing cs with
+  | zero => simp [lexAllFuel]
+  | succ n ih =>
+      simp only [lexAllFuel]
+      split
+      · simp
+      · simp only [List.length_cons]
+        have h := ih ((nextToken cs).2)
+        omega
+
+/-- The assembled scan: fuel is the `reaches_eof` bound. -/
+def lexAll (cs : List Char) : List TokKind :=
+  lexAllFuel (cs.length + 1) cs
+
+/-- The assembled scan is bounded by the input length. -/
+theorem lexAll_length_le (cs : List Char) : (lexAll cs).length ≤ cs.length + 2 := by
+  simp only [lexAll]
+  have h := lexAllFuel_length_le (cs.length + 1) cs
+  omega
+
+/-! ### Character-class disjointness (concrete witnesses)
+
+A full disjointness (`isAlpha` vs `isDigit` for all `Char`) needs range
+lemmas about `Char.toNat` that core Lean does not supply, so it is not
+claimed. What *is* claimed are the concrete separations the lexer relies
+on: digits do not start identifiers, and the operator alphabet is disjoint
+from digits on the witnesses the scanner actually branches on.
+-/
+
+/-- `'0'` is a digit but not an identifier start. -/
+theorem digit_zero_not_identStart : isDigitC '0' = true ∧ isIdentStart '0' = false := by
+  decide
+
+/-- `'_'` starts identifiers but is not a digit. -/
+theorem underscore_ident_not_digit : isIdentStart '_' = true ∧ isDigitC '_' = false := by
+  decide
+
+/-- `'#'` matches no rule and falls through to the operator fallback. -/
+theorem hash_falls_through : scanNum ['#'] = none ∧ scanIdent ['#'] = none ∧ scanOp ['#'] = none := by
+  decide
+
 end Morph.Specs.TotalLexer
