@@ -1525,9 +1525,36 @@ not modeled. `Respects` uses a rank *function* rather than a list order: it
 carries the same topological data and makes the acyclicity induction a
 three-line proof. The concrete runtime is out of scope per §1.2.
 
+### Iteration 49 - simultaneous = sequential substitution, every arity
+
+**Target.** `Morph/Specs/SimultaneousSubst/Spec.lean` proved the lifting law
+and *shaped* the multi-argument result but left it unproved. The missing piece
+was the absorption step
+`substAll' k (v :: rest) e = subst' k (substAll' (k + 1) rest e) v`.
+
+**The proof.** `Morph/Specs/SimultaneousSubst/Lemmas.lean` isolates the three
+`bvar` cases of `substAll'` (`substAll'_bvar_below`, `_hit`, `_above`), proves
+absorption by strong induction on `nodeCount`, and then inducts on the value
+list:
+
+- `substAll_cons` — absorption;
+- `substAll'_eq_seqSubst` — `substAll' k vs e = seqSubst k vs e`;
+- `substAll_eq_seqSubst` — the shipped offset-0 form.
+
+**The one arithmetic subtlety.** `substAll'`'s fallback is `n - vs.length`,
+*not* `n - k - vs.length`. In the "above the value list" branch of absorption,
+the goal is therefore `.bvar (n - (rest.length + 1))` versus
+`.bvar ((n - rest.length) - 1)`, which `omega` closes only after the list
+length is exposed. The "hit in `rest`" branch uses `List.getElem_cons_succ`
+with `n - k = (n - (k + 1)) + 1`, then `subst_lifted` — the law loop 5
+declined to claim, proved in this module since loop 11.
+
+**Result.** The shipped relation (`substAll`) and the CEK machine (`subst'`)
+now agree on every arity, not only on the degenerate one-argument case.
+
 ## Remaining work, measured
 
-After forty-eight iterations the repository's specifications fall into three
+After forty-nine iterations the repository's specifications fall into three
 categories.
 
 **Closed.** Every SG gap: SG-001 (loop 7), SG-002 (loop 2), SG-003 (loop 4),

@@ -228,27 +228,24 @@ theorem subst_lifted : ∀ (k m : Nat) (w v : Expr),
         simp only [liftUnder, subst', Nat.add_assoc, ih (nodeCount e) (by omega) k m e v (by omega)]
   exact main (nodeCount w) k m w v (Nat.le_refl _)
 
-/-! ### The multi-argument case: what remains
+/-! ### The multi-argument case
 
-The multi-argument result is now *shaped* but not yet proved. The intended
-statement is
+The statement is
 
 > `substAll' k vs e = seqSubst k vs e`
 
 where `seqSubst` performs the substitutions one at a time, from the highest level
-down. The proof needs the **absorption step**
+down. It is proved in `Morph/Specs/SimultaneousSubst/Lemmas.lean`
+(`substAll'_eq_seqSubst`, and `substAll_eq_seqSubst` for the shipped offset-0
+form), by proving the **absorption step**
 
 > `substAll' k (v :: rest) e = subst' k (substAll' (k + 1) rest e) v`
 
-whose `bvar` case is where the work is: `substAll'` indexes its value list with
-a *proof-carrying* `getElem` (`vs[n - k]` under `if h : n - k < vs.length`), so
-the case analysis has to relate `n - k`, `j + 1` and `n - (k + 1)` through
-`List.getElem_cons_zero` / `List.getElem_cons_succ` and then invoke
-`subst_lifted` above.
-
-`subst_lifted` is exactly the ingredient that step needs, and it is proved here;
-what is missing is the index arithmetic that feeds it. See
-`spec/language/simultaneous_substitution_spec.md` §5. -/
+(`substAll_cons`) and inducting on the value list. The `bvar` case of absorption
+is where the work is: `substAll'` indexes its value list with a *proof-carrying*
+`getElem` (`vs[n - k]` under `if h : n - k < vs.length`), so the case analysis
+relates `n - k`, `j + 1` and `n - (k + 1)` through `List.getElem_cons_zero` /
+`List.getElem_cons_succ` and then invokes `subst_lifted` above. -/
 
 /-- **Sequential substitution** — the shape the multi-argument result must take.
 `vs[0]` replaces the variable at level `k`, `vs[1]` the one at `k+1`, and so on;
