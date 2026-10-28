@@ -185,4 +185,158 @@ theorem covered_residual_empty {σ : Type} [Inhabited σ] (h : Handler σ) (c : 
         rw [EffectSet.removeCovered, if_pos hac, ih (fun k hk => hall k (by simp [hk]))]
   exact aux (Eff.classes c) hcov
 
+/-! ### Effect typing (loop 51)
+
+Loop 6 gave the algebra but no typing. Loop 51 adds the minimal typing
+judgment alongside: purity is `classes = []`, and handling preserves it.
+
+Research: Koka (row-typed effects, Leijen 2017); OCaml 5 (one-shot
+continuations, Sirektar et al.); Bauer-Pretnar non-monotone system
+(arXiv:1306.6316); Affect (POPL'25, affine + effects, van Rooij et al.);
+refinement types for handlers (Kawamata et al. 2024). Other languages:
+Koka (rows, inferred), OCaml 5 (no effect types in the core), Unison
+abilities (structural). Morph stays structural: `isPure` is `classes = []`.
+-/
+
+/-- Purity: no effect classes. -/
+def Eff.isPure {σ : Type} [Inhabited σ] (c : Eff σ) : Prop :=
+  Eff.classes c = []
+
+/-- `pure` is pure. -/
+theorem isPure_pure {σ : Type} [Inhabited σ] (v : σ) :
+    Eff.isPure (Eff.pure v) := rfl
+
+/-- Handling a covered computation yields no residual effects. -/
+theorem handle_covered_pure {σ : Type} [Inhabited σ] (h : Handler σ) (c : Eff σ)
+    (hcov : Handler.coversComp h c) : h.residual c = [] :=
+  covered_residual_empty h c hcov
+
+/-! ### Loop 62: row typing + deep handlers
+
+Research: Koka (Leijen 2014/2017 — row-typed effects with scoped labels,
+rows extended by unification); OCaml 5 multicore (deep handlers by default,
+one-shot continuations — Sivaramakrishnan et al.); Hillerström & Lindley
+(shallow vs deep: deep handlers are folds over the free monad, shallow handle
+only the head operation); Plotkin & Pretnar (handler = model + the
+homomorphism the free model's universal property induces).
+
+Language comparison: Koka (rows inferred, handlers deep); OCaml 5 (deep
+handlers, no static rows in the core language); Unison (abilities = rows
+with deep handlers); Eff (deep handlers); Frank (multihandlers). Morph:
+`EffectSet` is the row, `hasRow` is row containment (so row polymorphism is
+weakening/extension, proved below), and `denote` is already the deep fold —
+`handle_op_deep` states its fold equation, contrasted with `shallowHead`.
+-/
+
+/-- Row typing: the computation fits in row `ρ`. Row polymorphism is free:
+a computation typed under `ρ` also types under any suprow (`hasRow_mono`,
+`hasRow_extend`). -/
+def Eff.hasRow {σ : Type} [Inhabited σ] (c : Eff σ) (ρ : EffectSet) : Prop :=
+  ∀ k ∈ Eff.classes c, k ∈ ρ
+
+/-- `pure` fits in every row. -/
+theorem hasRow_pure {σ : Type} [Inhabited σ] (v : σ) (ρ : EffectSet) :
+    (Eff.pure v).hasRow ρ := by
+  intro k hk
+  have hk' : k ∈ ([] : EffectSet) := hk
+  nomatch hk'
+
+/-- Operations fit when the head class is in the row and the continuation
+(instantiated at `default` — the row must cover every answer path, and the
+`default` path is one of them) fits. -/
+theorem hasRow_op {σ : Type} [Inhabited σ] (o : Op) (k : σ → Eff σ)
+    (ρ : EffectSet) (hhead : o.class ∈ ρ)
+    (htail : (k default).hasRow ρ) : (Eff.op o k).hasRow ρ := by
+  intro k' hk'
+  have hd : k' = o.class ∨ k' ∈ Eff.classes (k default) :=
+    List.mem_cons.mp hk'
+  rcases hd with rfl | hk'
+  · exact hhead
+  · exact htail k' hk'
+
+/-- Row weakening (subsumption): fitting in `ρ` implies fitting in any
+suprow. This is Koka's row polymorphism, structurally. -/
+theorem hasRow_mono {σ : Type} [Inhabited σ] (c : Eff σ)
+    {ρ ρ' : EffectSet} (h : c.hasRow ρ)
+    (hsub : ∀ k ∈ ρ, k ∈ ρ') : c.hasRow ρ' :=
+  fun k hk => hsub k (h k hk)
+
+/-- Row extension: a computation typed under `ρ` also types under `ρ` with
+more effects appended. -/
+theorem hasRow_extend {σ : Type} [Inhabited σ] (c : Eff σ)
+    (ρ extra : EffectSet) (h : c.hasRow ρ) : c.hasRow (ρ ++ extra) :=
+  fun k hk => List.mem_append.mpr (Or.inl (h k hk))
+
+/-- Purity is the empty row. -/
+theorem hasRow_nil_iff_isPure {σ : Type} [Inhabited σ] (c : Eff σ) :
+    c.hasRow [] ↔ c.isPure := by
+  constructor
+  · intro h
+    cases hc : Eff.classes c with
+    | nil => exact hc
+    | cons a as =>
+      have hmem : a ∈ Eff.classes c := by
+        rw [hc]
+        exact List.mem_cons_self
+      have hnil : a ∈ ([] : EffectSet) := h a hmem
+      nomatch hnil
+  · intro h k hk
+    have hc : Eff.classes c = [] := h
+    rw [hc] at hk
+    exact hk
+
+/-- Coverage is row membership: a handler covers a computation exactly when
+the computation fits in the handler's row. -/
+theorem hasRow_of_covers {σ : Type} [Inhabited σ] (h : Handler σ) (c : Eff σ)
+    (hcov : h.coversComp c) : c.hasRow h.covers := hcov
+
+/-! #### Deep handling is the fold; shallow handling drops continuations
+
+`denote` recurses into continuations, so `handle` re-handles every
+resumption — that is the deep-handler fold equation (Hillerström & Lindley;
+OCaml 5 semantics). `shallowHead` handles only the head operation and
+discards the continuation, so the two agree on `pure` and differ exactly
+where depth matters. -/
+
+/-- **The deep-handler fold equation.** Handling an operation occurrence
+interprets it and re-handles every resumption under the same handler. -/
+theorem handle_op_deep {σ : Type} (h : Handler σ) (o : Op) (k : σ → Eff σ) :
+    handle h (.op o k) =
+      (h.model.answer o).flatMap (fun v => handle h (k v)) := rfl
+
+/-- Shallow handling: interpret the head operation only; continuations are
+dropped (left for a resumption the shallow handler never performs). -/
+def shallowHead {σ : Type} (M : Model σ) : Eff σ → List σ
+  | .pure v => [v]
+  | .op o _ => M.answer o
+  | .andThen m _ => shallowHead M m
+
+/-- Shallow and deep agree on `pure`. -/
+theorem shallowHead_pure {σ : Type} (M : Model σ) (v : σ) :
+    shallowHead M (.pure v) = [v] := rfl
+
+/-- Shallow handling of an operation is just the model's answers — the
+continuation is ignored. -/
+theorem shallowHead_op {σ : Type} (M : Model σ) (o : Op) (k : σ → Eff σ) :
+    shallowHead M (.op o k) = M.answer o := rfl
+
+/-- A concrete model: `read` answers, everything else fails. -/
+def exModel : Model String where
+  answer
+    | .read _ => ["v"]
+    | _ => []
+
+/-- Deep handling runs the continuation: `read` answers `"v"`, the
+continuation ignores it and returns `"done"`. -/
+example : handle ⟨exModel, [.io]⟩
+    (.op (.read "s") (fun _ => .pure "done")) = ["done"] := rfl
+
+/-- Shallow handling stops at the head operation: the continuation never
+runs, so the answer is the raw `"v"`. This is exactly where depth matters. -/
+example : shallowHead exModel
+    (.op (.read "s") (fun _ => .pure "done")) = ["v"] := rfl
+
+/-- Row example: `pure` fits in any row, e.g. `[.io]`. -/
+example : (Eff.pure "x").hasRow [.io] := hasRow_pure _ _
+
 end Morph.Specs.EffectAlgebra
