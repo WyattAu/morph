@@ -62,6 +62,7 @@ namespace Morph.Specs.Subtyping
 
 open Morph.Core Morph.Syntax Morph.Specs.TypeSystem
 
+mutual
 /-- **Subtyping.** A preorder on types: `neverType` is the bottom, `unitType`
 the top, and the type constructors are covariant. -/
 inductive Sub : Typ → Typ → Prop where
@@ -78,7 +79,27 @@ inductive Sub : Typ → Typ → Prop where
       Sub (.resultType τ τ') (.resultType σ σ')
   /-- `arrayType` is covariant in its element; the length is exact. -/
   | array {τ σ : Typ} {n : Nat} : Sub τ σ → Sub (.arrayType τ n) (.arrayType σ n)
+  /-- `tupleType` is covariant pointwise; the length is exact. -/
+  | tuple {ts ts' : List Typ} : SubList ts ts' → Sub (.tupleType ts) (.tupleType ts')
+  /-- `structType` is covariant pointwise in field types; the struct name,
+  the field names (in order), and the field count are exact. -/
+  | struct {nm : String} {fs fs' : List (String × Typ)} :
+      SubFields fs fs' → Sub (.structType nm fs) (.structType nm fs')
 
+/-- Pointwise subtyping on tuple elements. -/
+inductive SubList : List Typ → List Typ → Prop where
+  | nil : SubList [] []
+  | cons {a b : Typ} {as bs : List Typ} :
+      Sub a b → SubList as bs → SubList (a :: as) (b :: bs)
+
+/-- Pointwise subtyping on struct fields; field names agree pairwise. -/
+inductive SubFields : List (String × Typ) → List (String × Typ) → Prop where
+  | nil : SubFields [] []
+  | cons {n : String} {a b : Typ} {fs fs' : List (String × Typ)} :
+      Sub a b → SubFields fs fs' → SubFields ((n, a) :: fs) ((n, b) :: fs')
+end
+
+mutual
 /-- The decision procedure. Total, structural, and — as the soundness and
 completeness theorems below show — exactly decides `Sub`. -/
 def isSubtype : Typ → Typ → Bool
@@ -90,9 +111,28 @@ def isSubtype : Typ → Typ → Bool
   | (.resultType _ _), _ => false
   | .arrayType a n, .arrayType b m => decide (n = m) && isSubtype a b
   | (.arrayType _ _), _ => false
+  | .tupleType ts, .tupleType ts' => isSubtypeList ts ts'
+  | (.tupleType _), _ => false
+  | .structType nm fs, .structType nm' fs' =>
+      decide (nm = nm') && isSubtypeFields fs fs'
+  | (.structType _ _), _ => false
   | .refType c a, .refType d b => decide (c = d) && Morph.Specs.TypeSystem.eqTyp a b
   | (.refType _ _), _ => false
   | t, s => Morph.Specs.TypeSystem.eqTyp t s
+
+/-- Pointwise decision for tuple elements. -/
+def isSubtypeList : List Typ → List Typ → Bool
+  | [], [] => true
+  | a :: as, b :: bs => isSubtype a b && isSubtypeList as bs
+  | _, _ => false
+
+/-- Pointwise decision for struct fields (names compared exactly). -/
+def isSubtypeFields : List (String × Typ) → List (String × Typ) → Bool
+  | [], [] => true
+  | (n, a) :: fs, (n', b) :: fs' =>
+      decide (n = n') && isSubtype a b && isSubtypeFields fs fs'
+  | _, _ => false
+end
 
 /-! ### Size facts
 
@@ -113,15 +153,24 @@ theorem tS_array (a : Typ) (n : Nat) : tS a < tS (.arrayType a n) := by
 
 /-! ### Soundness and completeness -/
 
-/-- **Soundness.** The decision procedure never accepts a non-subtype. -/
-theorem isSubtype_sound : ∀ (τ σ : Typ), isSubtype τ σ = true → Sub τ σ := by
-  have main : ∀ (fuel : Nat) (τ σ : Typ), tS τ + tS σ ≤ fuel →
-      isSubtype τ σ = true → Sub τ σ := by
-    intro fuel
-    refine Nat.strongRecOn (motive := fun fuel =>
-      ∀ (τ σ : Typ), tS τ + tS σ ≤ fuel → isSubtype τ σ = true → Sub τ σ)
-      fuel (fun fuel' ih => ?_)
-    intro τ σ hsize h
+/-- **Joint soundness** over types, tuple elements, and struct fields: the
+decision procedure never accepts a non-subtype. -/
+theorem sound_main : ∀ (fuel : Nat),
+    (∀ τ σ : Typ, tS τ + tS σ ≤ fuel → isSubtype τ σ = true → Sub τ σ) ∧
+    (∀ ts ts' : List Typ, tSl ts + tSl ts' ≤ fuel →
+      isSubtypeList ts ts' = true → SubList ts ts') ∧
+    (∀ fs fs' : List (String × Typ), tSlF fs + tSlF fs' ≤ fuel →
+      isSubtypeFields fs fs' = true → SubFields fs fs') := by
+  intro fuel
+  refine Nat.strongRecOn (motive := fun fuel =>
+    (∀ τ σ : Typ, tS τ + tS σ ≤ fuel → isSubtype τ σ = true → Sub τ σ) ∧
+    (∀ ts ts' : List Typ, tSl ts + tSl ts' ≤ fuel →
+      isSubtypeList ts ts' = true → SubList ts ts') ∧
+    (∀ fs fs' : List (String × Typ), tSlF fs + tSlF fs' ≤ fuel →
+      isSubtypeFields fs fs' = true → SubFields fs fs'))
+    fuel (fun fuel' ih => ?_)
+  refine ⟨?_, ?_, ?_⟩
+  · intro τ σ hsize h
     cases τ with
     | neverType => exact Sub.never _
     | unitType =>
@@ -192,13 +241,18 @@ theorem isSubtype_sound : ∀ (τ σ : Typ), isSubtype τ σ = true → Sub τ �
         cases σ with
         | unitType => exact Sub.unit _
         | structType name' fields' =>
-            simp [isSubtype, Morph.Specs.TypeSystem.eqTyp_iff] at h
-            cases h
-            simp_all
-            exact Sub.refl _
+            simp only [isSubtype, Bool.and_eq_true] at h
+            obtain ⟨hnm, hfields⟩ := h
+            have hnm' : name = name' := of_decide_eq_true hnm
+            subst hnm'
+            have hle : tSlF fields + tSlF fields' < fuel' := by
+              have h2 := hsize
+              have h3 : tSlF fields + 1 + (tSlF fields' + 1) ≤ fuel' := by
+                simpa [Morph.Specs.TypeSystem.tS] using h2
+              omega
+            exact Sub.struct ((ih _ hle).2.2 _ _ (by omega) hfields)
         | _ =>
-            have h2 := (Morph.Specs.TypeSystem.eqTyp_iff _ _).mp h
-            cases h2
+            simp [isSubtype] at h
     | refType c a =>
         cases σ with
         | unitType => exact Sub.unit _
@@ -215,12 +269,15 @@ theorem isSubtype_sound : ∀ (τ σ : Typ), isSubtype τ σ = true → Sub τ �
         cases σ with
         | unitType => exact Sub.unit _
         | tupleType ts' =>
-            have h2 := (Morph.Specs.TypeSystem.eqTyp_iff _ _).mp h
-            cases h2
-            exact Sub.refl _
+            simp only [isSubtype] at h
+            have hle : tSl ts + tSl ts' < fuel' := by
+              have h2 := hsize
+              have h3 : tSl ts + 1 + (tSl ts' + 1) ≤ fuel' := by
+                simpa [Morph.Specs.TypeSystem.tS] using h2
+              omega
+            exact Sub.tuple ((ih _ hle).2.1 _ _ (by omega) h)
         | _ =>
-            have h2 := (Morph.Specs.TypeSystem.eqTyp_iff _ _).mp h
-            cases h2
+            simp [isSubtype] at h
     | functionType args ret =>
         cases σ with
         | unitType => exact Sub.unit _
@@ -251,7 +308,7 @@ theorem isSubtype_sound : ∀ (τ σ : Typ), isSubtype τ σ = true → Sub τ �
               have h3 : tS a + 1 + (tS b + 1) ≤ fuel' := by
                 simpa [Morph.Specs.TypeSystem.tS] using h2
               omega
-            exact Sub.option (ih (tS a + tS b) hle a b (by omega) h)
+            exact Sub.option ((ih _ hle).1 _ _ (by omega) h)
         | _ =>
             simp [isSubtype] at h
     | resultType a b =>
@@ -271,8 +328,8 @@ theorem isSubtype_sound : ∀ (τ σ : Typ), isSubtype τ σ = true → Sub τ �
                 simpa [Morph.Specs.TypeSystem.tS] using h2'
               omega
             exact Sub.result
-              (ih (tS a + tS c) hle1 a c (by omega) h1)
-              (ih (tS b + tS d) hle2 b d (by omega) h2)
+              ((ih _ hle1).1 _ _ (by omega) h1)
+              ((ih _ hle2).1 _ _ (by omega) h2)
         | _ =>
             simp [isSubtype] at h
     | arrayType a n =>
@@ -288,11 +345,63 @@ theorem isSubtype_sound : ∀ (τ σ : Typ), isSubtype τ σ = true → Sub τ �
               have h3 : tS a + 1 + (tS b + 1) ≤ fuel' := by
                 simpa [Morph.Specs.TypeSystem.tS] using h2
               omega
-            exact Sub.array (ih (tS a + tS b) hle a b (by omega) hsub)
+            exact Sub.array ((ih _ hle).1 _ _ (by omega) hsub)
         | _ =>
             simp [isSubtype] at h
-  intro τ σ h
-  exact main (tS τ + tS σ) τ σ (Nat.le_refl _) h
+  · intro ts ts' hsize h
+    cases ts with
+    | nil =>
+        cases ts' with
+        | nil => exact SubList.nil
+        | cons _ _ => simp [isSubtypeList] at h
+    | cons a as =>
+        cases ts' with
+        | nil => simp [isSubtypeList] at h
+        | cons b bs =>
+            simp only [isSubtypeList, Bool.and_eq_true] at h
+            obtain ⟨hab, htail⟩ := h
+            have e1 : tSl (a :: as) = tS a + tSl as + 1 := tSl.eq_2 _ _
+            have e2 : tSl (b :: bs) = tS b + tSl bs + 1 := tSl.eq_2 _ _
+            have hmT : tS a + tS b < fuel' := by omega
+            have hmL : tSl as + tSl bs < fuel' := by omega
+            exact SubList.cons ((ih _ hmT).1 _ _ (by omega) hab)
+              ((ih _ hmL).2.1 _ _ (by omega) htail)
+  · intro fs fs' hsize h
+    cases fs with
+    | nil =>
+        cases fs' with
+        | nil => exact SubFields.nil
+        | cons _ _ => simp [isSubtypeFields] at h
+    | cons p ps =>
+        cases fs' with
+        | nil => simp [isSubtypeFields] at h
+        | cons q qs =>
+            obtain ⟨n, a⟩ := p
+            obtain ⟨n', b⟩ := q
+            simp only [isSubtypeFields, Bool.and_eq_true] at h
+            obtain ⟨⟨hnm, hab⟩, htail⟩ := h
+            have hnm' : n = n' := of_decide_eq_true hnm
+            subst hnm'
+            have e1 : tSlF ((n, a) :: ps) = tS a + tSlF ps + 1 := tSlF.eq_2 _ _ _
+            have e2 : tSlF ((n, b) :: qs) = tS b + tSlF qs + 1 := tSlF.eq_2 _ _ _
+            have hmT : tS a + tS b < fuel' := by omega
+            have hmL : tSlF ps + tSlF qs < fuel' := by omega
+            exact SubFields.cons ((ih _ hmT).1 _ _ (by omega) hab)
+              ((ih _ hmL).2.2 _ _ (by omega) htail)
+
+/-- **Soundness.** The decision procedure never accepts a non-subtype. -/
+theorem isSubtype_sound : ∀ (τ σ : Typ), isSubtype τ σ = true → Sub τ σ :=
+  fun τ σ h => (sound_main (tS τ + tS σ)).1 τ σ (Nat.le_refl _) h
+
+/-- **Soundness, tuple elements.** -/
+theorem isSubtypeList_sound (as bs : List Typ)
+    (h : isSubtypeList as bs = true) : SubList as bs :=
+  (sound_main (tSl as + tSl bs)).2.1 as bs (Nat.le_refl _) h
+
+/-- **Soundness, struct fields.** -/
+theorem isSubtypeFields_sound (fs fs' : List (String × Typ))
+    (h : isSubtypeFields fs fs' = true) : SubFields fs fs' :=
+  (sound_main (tSlF fs + tSlF fs')).2.2 fs fs' (Nat.le_refl _) h
 
 /-- `neverType` is below every type. -/
 theorem isSubtype_never (σ : Typ) : isSubtype .neverType σ = true := by
@@ -302,38 +411,161 @@ theorem isSubtype_never (σ : Typ) : isSubtype .neverType σ = true := by
 theorem isSubtype_unit (τ : Typ) : isSubtype τ .unitType = true := by
   cases τ <;> rfl
 
-/-- The decision procedure accepts every type against itself. -/
-theorem isSubtype_refl : ∀ (τ : Typ), isSubtype τ τ = true := by
-  intro τ
-  cases τ with
-  | neverType => simp [isSubtype]
-  | unitType => simp [isSubtype]
-  | intType => simp [isSubtype, Morph.Specs.TypeSystem.eqTyp_iff]
-  | boolType => simp [isSubtype, Morph.Specs.TypeSystem.eqTyp_iff]
-  | stringType => simp [isSubtype, Morph.Specs.TypeSystem.eqTyp_iff]
-  | pointerType => simp [isSubtype, Morph.Specs.TypeSystem.eqTyp_iff]
-  | intWidthType w => simp [isSubtype, Morph.Specs.TypeSystem.eqTyp_iff]
-  | floatType w => simp [isSubtype, Morph.Specs.TypeSystem.eqTyp_iff]
-  | typeVar n => simp [isSubtype, Morph.Specs.TypeSystem.eqTyp_iff]
-  | structType name fields => simp [isSubtype, Morph.Specs.TypeSystem.eqTyp_iff]
-  | refType c a => simp [isSubtype, Morph.Specs.TypeSystem.eqTyp_iff]
-  | optionType a => simp [isSubtype, isSubtype_refl a]
-  | resultType a b => simp [isSubtype, isSubtype_refl a, isSubtype_refl b]
-  | arrayType a n => simp [isSubtype, isSubtype_refl a]
-  | tupleType ts => simp [isSubtype, Morph.Specs.TypeSystem.eqTyp_iff]
-  | functionType args ret => simp [isSubtype, Morph.Specs.TypeSystem.eqTyp_iff]
-  | linearFunctionType args ret => simp [isSubtype, Morph.Specs.TypeSystem.eqTyp_iff]
+/-- Joint reflexivity over types, tuple elements, and struct fields. -/
+theorem refl_main : ∀ (fuel : Nat),
+    (∀ τ : Typ, tS τ ≤ fuel → isSubtype τ τ = true) ∧
+    (∀ ts : List Typ, tSl ts ≤ fuel → isSubtypeList ts ts = true) ∧
+    (∀ fs : List (String × Typ), tSlF fs ≤ fuel →
+      isSubtypeFields fs fs = true) := by
+  intro fuel
+  refine Nat.strongRecOn (motive := fun fuel =>
+    (∀ τ : Typ, tS τ ≤ fuel → isSubtype τ τ = true) ∧
+    (∀ ts : List Typ, tSl ts ≤ fuel → isSubtypeList ts ts = true) ∧
+    (∀ fs : List (String × Typ), tSlF fs ≤ fuel →
+      isSubtypeFields fs fs = true))
+    fuel (fun fuel' ih => ?_)
+  refine ⟨?_, ?_, ?_⟩
+  · intro τ hle
+    cases τ with
+    | neverType => simp only [isSubtype]
+    | unitType => simp only [isSubtype]
+    | intType => simp [isSubtype, Morph.Specs.TypeSystem.eqTyp_iff]
+    | boolType => simp [isSubtype, Morph.Specs.TypeSystem.eqTyp_iff]
+    | stringType => simp [isSubtype, Morph.Specs.TypeSystem.eqTyp_iff]
+    | pointerType => simp [isSubtype, Morph.Specs.TypeSystem.eqTyp_iff]
+    | intWidthType w => simp [isSubtype, Morph.Specs.TypeSystem.eqTyp_iff]
+    | floatType w => simp [isSubtype, Morph.Specs.TypeSystem.eqTyp_iff]
+    | typeVar n => simp [isSubtype, Morph.Specs.TypeSystem.eqTyp_iff]
+    | refType c a => simp [isSubtype, Morph.Specs.TypeSystem.eqTyp_iff]
+    | optionType a =>
+        have hm : tS a < fuel' := by
+          have h2 := hle
+          have h3 : tS a + 1 ≤ fuel' := by
+            simpa [Morph.Specs.TypeSystem.tS] using h2
+          omega
+        have e : isSubtype a a = true := (ih _ hm).1 a (Nat.le_refl _)
+        simp [isSubtype, e]
+    | resultType a b =>
+        have hm1 : tS a < fuel' := by
+          have h2 := hle
+          have h3 : tS a + tS b + 1 ≤ fuel' := by
+            simpa [Morph.Specs.TypeSystem.tS] using h2
+          omega
+        have hm2 : tS b < fuel' := by
+          have h2 := hle
+          have h3 : tS a + tS b + 1 ≤ fuel' := by
+            simpa [Morph.Specs.TypeSystem.tS] using h2
+          omega
+        have e1 : isSubtype a a = true := (ih _ hm1).1 a (Nat.le_refl _)
+        have e2 : isSubtype b b = true := (ih _ hm2).1 b (Nat.le_refl _)
+        simp [isSubtype, e1, e2]
+    | arrayType a n =>
+        have hm : tS a < fuel' := by
+          have h2 := hle
+          have h3 : tS a + 1 ≤ fuel' := by
+            simpa [Morph.Specs.TypeSystem.tS] using h2
+          omega
+        have e : isSubtype a a = true := (ih _ hm).1 a (Nat.le_refl _)
+        simp [isSubtype, e]
+    | tupleType ts =>
+        simp only [isSubtype]
+        have hm : tSl ts < fuel' := by
+          have h2 := hle
+          have h3 : tSl ts + 1 ≤ fuel' := by
+            simpa [Morph.Specs.TypeSystem.tS] using h2
+          omega
+        exact (ih _ hm).2.1 ts (Nat.le_refl _)
+    | structType name fields =>
+        have hm : tSlF fields < fuel' := by
+          have h2 := hle
+          have h3 : tSlF fields + 1 ≤ fuel' := by
+            simpa [Morph.Specs.TypeSystem.tS] using h2
+          omega
+        have e : isSubtypeFields fields fields = true :=
+          (ih _ hm).2.2 fields (Nat.le_refl _)
+        simp [isSubtype, e]
+    | functionType args ret => simp [isSubtype, Morph.Specs.TypeSystem.eqTyp_iff]
+    | linearFunctionType args ret => simp [isSubtype, Morph.Specs.TypeSystem.eqTyp_iff]
+  · intro ts hle
+    cases ts with
+    | nil => simp only [isSubtypeList]
+    | cons a as =>
+        have e : tSl (a :: as) = tS a + tSl as + 1 := tSl.eq_2 _ _
+        have hmT : tS a < fuel' := by omega
+        have hmL : tSl as < fuel' := by omega
+        have e1 : isSubtype a a = true := (ih _ hmT).1 a (Nat.le_refl _)
+        have e2 : isSubtypeList as as = true := (ih _ hmL).2.1 as (Nat.le_refl _)
+        simp [isSubtypeList, e1, e2]
+  · intro fs hle
+    cases fs with
+    | nil => simp only [isSubtypeFields]
+    | cons p ps =>
+        obtain ⟨n, a⟩ := p
+        have e : tSlF ((n, a) :: ps) = tS a + tSlF ps + 1 := tSlF.eq_2 _ _ _
+        have hmT : tS a < fuel' := by omega
+        have hmL : tSlF ps < fuel' := by omega
+        have e1 : isSubtype a a = true := (ih _ hmT).1 a (Nat.le_refl _)
+        have e2 : isSubtypeFields ps ps = true := (ih _ hmL).2.2 ps (Nat.le_refl _)
+        simp [isSubtypeFields, e1, e2]
 
-/-- **Completeness.** The decision procedure never rejects a subtype. -/
-theorem isSubtype_complete : ∀ {τ σ : Typ}, Sub τ σ → isSubtype τ σ = true := by
-  intro τ σ h
-  induction h with
-  | refl τ => exact isSubtype_refl τ
-  | never τ => exact isSubtype_never τ
-  | unit τ => exact isSubtype_unit τ
-  | option _ ih => simp [isSubtype, ih]
-  | result _ _ ih1 ih2 => simp [isSubtype, ih1, ih2]
-  | array _ ih => simp [isSubtype, ih]
+/-- The decision procedure accepts every type against itself. -/
+theorem isSubtype_refl : ∀ (τ : Typ), isSubtype τ τ = true :=
+  fun τ => (refl_main (tS τ)).1 τ (Nat.le_refl _)
+
+/-- Pointwise reflexivity, tuple elements. -/
+theorem isSubtypeList_refl : ∀ (as : List Typ), isSubtypeList as as = true :=
+  fun as => (refl_main (tSl as)).2.1 as (Nat.le_refl _)
+
+/-- Pointwise reflexivity, struct fields. -/
+theorem isSubtypeFields_refl : ∀ (fs : List (String × Typ)),
+    isSubtypeFields fs fs = true :=
+  fun fs => (refl_main (tSlF fs)).2.2 fs (Nat.le_refl _)
+
+/-- The tuple case of completeness. -/
+theorem sub_tuple_complete {ts ts' : List Typ} (_h : SubList ts ts')
+    (ih : isSubtypeList ts ts' = true) :
+    isSubtype (.tupleType ts) (.tupleType ts') = true := by
+  simp [isSubtype, ih]
+
+/-- The struct case of completeness. -/
+theorem sub_struct_complete {nm : String} {fs fs' : List (String × Typ)}
+    (_h : SubFields fs fs') (ih : isSubtypeFields fs fs' = true) :
+    isSubtype (.structType nm fs) (.structType nm fs') = true := by
+  simp [isSubtype, ih]
+
+/-- The list-cons case of completeness. -/
+theorem subList_cons_complete {a b : Typ} {as bs : List Typ}
+    (ih1 : isSubtype a b = true) (ih2 : isSubtypeList as bs = true) :
+    isSubtypeList (a :: as) (b :: bs) = true := by
+  simp [isSubtypeList, ih1, ih2]
+
+/-- The fields-cons case of completeness. -/
+theorem subFields_cons_complete {n : String} {a b : Typ}
+    {fs fs' : List (String × Typ)}
+    (ih1 : isSubtype a b = true) (ih2 : isSubtypeFields fs fs' = true) :
+    isSubtypeFields ((n, a) :: fs) ((n, b) :: fs') = true := by
+  simp [isSubtypeFields, ih1, ih2]
+
+/-- **Completeness.** The decision procedure never rejects a subtype — via
+the generated mutual recursor, as in loop 70. -/
+theorem isSubtype_complete : ∀ {τ σ : Typ}, Sub τ σ → isSubtype τ σ = true :=
+  fun {τ σ} h =>
+  Sub.rec (motive_1 := fun τ σ _ => isSubtype τ σ = true)
+    (motive_2 := fun ts ts' _ => isSubtypeList ts ts' = true)
+    (motive_3 := fun fs fs' _ => isSubtypeFields fs fs' = true)
+    (fun τ => isSubtype_refl τ)
+    (fun τ => isSubtype_never τ)
+    (fun τ => isSubtype_unit τ)
+    (fun _ ih => by simp [isSubtype, ih])
+    (fun _ _ ih1 ih2 => by simp [isSubtype, ih1, ih2])
+    (fun _ ih => by simp [isSubtype, ih])
+    (fun h ih => sub_tuple_complete h ih)
+    (fun h ih => sub_struct_complete h ih)
+    (by simp only [isSubtypeList])
+    (fun _ _ ih1 ih2 => subList_cons_complete ih1 ih2)
+    (by simp only [isSubtypeFields])
+    (fun _ _ ih1 ih2 => subFields_cons_complete ih1 ih2)
+    h
 
 /-- **Decidability.** The point of SG-005. -/
 instance instDecidableSub (τ σ : Typ) : Decidable (Sub τ σ) :=

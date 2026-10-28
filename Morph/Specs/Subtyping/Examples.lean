@@ -22,6 +22,25 @@ example (τ : Typ) : Sub τ .unitType := Sub.unit τ
 example : Sub (.optionType .neverType) (.optionType .intType) :=
   Sub.option (Sub.never _)
 
+/-- `tupleType` is covariant, pointwise, with exact length. -/
+example : Sub (.tupleType [.neverType, .intType]) (.tupleType [.intType, .intType]) :=
+  Sub.tuple (SubList.cons (Sub.never _) (SubList.cons (Sub.refl _) SubList.nil))
+
+/-- `structType` is covariant in field types, with exact names. -/
+example : Sub (.structType "Point" [("x", .neverType)])
+    (.structType "Point" [("x", .intType)]) :=
+  Sub.struct (SubFields.cons (Sub.never _) SubFields.nil)
+
+/-- The decision procedure accepts tuple covariance. -/
+example : isSubtype (.tupleType [.neverType]) (.tupleType [.intType]) = true :=
+  isSubtype_complete (Sub.tuple (SubList.cons (Sub.never _) SubList.nil))
+
+/-- And struct covariance, including nested inside `optionType`. -/
+example : isSubtype
+    (.optionType (.structType "Point" [("x", .neverType)]))
+    (.optionType (.structType "Point" [("x", .intType)])) = true :=
+  isSubtype_complete (Sub.option (Sub.struct (SubFields.cons (Sub.never _) SubFields.nil)))
+
 /-- The decision procedure agrees with the relation, in both directions. -/
 example (τ σ : Typ) (h : Sub τ σ) : isSubtype τ σ = true :=
   isSubtype_complete h
