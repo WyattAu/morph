@@ -5,6 +5,47 @@ Loop 70 closes the last `Morph/Specs` TODOs. From here the track turns toward
 valuable next iterations land their guarantees in the shipped compiler, not
 only in `Morph/Specs`.
 
+## Loop 74 — statement execution: `morph run` runs real programs (DONE, Lean)
+
+**Target.** The driver was expression-only; `Program`/`Stmt` existed in
+`Syntax.lean` with no parser and no interpreter.
+
+**Delivered.**
+- `parseStmt`/`parseExprStmt`/`parseStmts`/`parseProgram`
+  (`Morph/Frontend/Parser.lean`): declarations (`let x = e;` — the
+  `let .. in` expression form is still recognised and re-routed), assignment
+  (`x = e;`, a single `=`, not `==`), `return e;`, `break;`, `continue;`,
+  `while (c) { .. }`, `do { .. } while (c);`, and expression statements. Same
+  fuel discipline, plus `parseStmt_mono`/`parseExprStmt_mono`/
+  `parseStmts_mono` in the monotonicity block, and `peek2` for the
+  `=`-vs-`==` lookahead.
+- `Morph/Interp.lean`: `runProgram`/`runStmts`/`runWhile`/`runDoWhile` —
+  statement variables bound by name in `Context.fvs` (the representation
+  `parseStmt` targets), expression evaluation delegated to the proved-total
+  `eval`. The **environment threads through everything**: a loop body's final
+  environment is the next iteration's starting environment (the first draft
+  discarded it, so every loop was infinite; the tests caught it immediately).
+  One fuel unit per statement and per iteration; exhaustion is `Flow.stuck`.
+  Assignment updates the innermost binding and never introduces.
+- `morph run file` now runs statement programs; `morph eval` stays
+  expression-mode.
+
+**Result.** `morph run fact.morph` computes 720:
+```
+let n = 6; let acc = 1;
+while (n > 1) { let acc = acc * n; let n = n - 1; };
+acc
+```
+Also pinned by tests: the summation loop → 10, `x * x` squaring to 256,
+`do .. while` running once, `return` short-circuiting from a loop body, and a
+bare expression program under `runProgram`.
+
+**Still named.** No `if` *statement* in the `Stmt` AST (conditionals are the
+expression form; `break`/`continue` therefore have no guarded form except
+loop conditions), no `match`/`for` statements, no `??`/`|>` operators, and
+unary minus still parses-but-sticks (the reference semantics has no
+`unop .sub` rule).
+
 ## Loop 73 — tuples, arrays, indexing, and option literals (DONE, Lean)
 
 **Target.** The evaluator already handled `tuple_`, `arrayLit`,
@@ -31,11 +72,12 @@ none of them. This loop closes the syntax gap.
 the separating comma, so `[1, 2]` failed to parse while `[1]` succeeded —
 the same class of cursor bug as loop 71's `fn` keyword.
 
-**Still named.** `match`/`for` expressions (the evaluator's `match_` takes
-the first arm, so honest parser support needs the pattern language the AST
-lacks), the `??` and `|>` operators (no two-character lexer tokens), unary
-minus (the reference semantics has no `unop .sub` rule, so `-e` parses but is
-stuck), and statement-level (`Program`) execution.
+**Named here, addressed in loop 74**: statement-level execution
+(`Program` parsing and running). **Still named**: `match`/`for` expressions
+(the evaluator's `match_` takes the first arm, so honest parser support needs
+the pattern language the AST lacks), the `??` and `|>` operators (no
+two-character lexer tokens), and unary minus (the reference semantics has no
+`unop .sub` rule, so `-e` parses but is stuck).
 
 ## Verification
 

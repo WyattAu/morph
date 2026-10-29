@@ -27,6 +27,10 @@ namespace Parser
 def peek (p : Parser) : Option Token :=
   (p.tokens.drop p.pos).head?
 
+/-- Look at the token after the next one. -/
+def peek2 (p : Parser) : Option Token :=
+  (p.tokens.drop (p.pos + 1)).head?
+
 def advance (p : Parser) : Parser :=
   { p with pos := p.pos + 1 }
 
@@ -506,6 +510,168 @@ private def parseBlockBody (fuel : Nat) (scope : List String) (exprs : List Expr
           parseBlockBody fuel scope (e :: exprs) p
     | none => none
 
+/-- One statement (loop 74). Declarations (`let x = e;`), assignments
+(`x = e;` — a single `=`, not `==`), `return e;`, `break;`, `continue;`,
+`while (c) { .. }`, `do { .. } while (c);`, and expression statements.
+Statement variables are free names (the interpreter binds them in the
+`Context.fvs` environment); the expression-level binders `let .. in` and
+`fn .. ->` keep their de Bruijn scope. -/
+
+private def parseStmt (fuel : Nat) (scope : List String) (p : Parser) :
+    Option (Stmt × Parser) :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
+    match peek p with
+    | some t =>
+      match t.kind with
+      | .keyword "let" =>
+        -- `let x = e;` declares; `let x = e in ..` is the expression form
+        let p1 := advance p
+        match peek p1 with
+        | some t2 =>
+          match t2.kind with
+          | .identifier =>
+            let name := t2.lexeme
+            let p2 := advance p1
+            match expect (.operator "=") p2 with
+            | none => none
+            | some p3 =>
+              match parseExprFuel fuel scope p3 with
+              | none => none
+              | some (init, p4) =>
+                match peek p4 with
+                | some t4 =>
+                  if t4.kind == .keyword "in" then
+                    let p5 := advance p4
+                    match parseExprFuel fuel (name :: scope) p5 with
+                    | none => none
+                    | some (body, p6) =>
+                      match expect (.delimiter ";") p6 with
+                      | some p7 => some (.exprStmt (.let_ init body), p7)
+                      | none => none
+                  else if t4.kind == .delimiter ";" then
+                    some (.varDecl ⟨name⟩ .unitType init, advance p4)
+                  else
+                    none
+                | none => none
+          | _ => none
+        | none => none
+      | .keyword "while" =>
+        let p1 := advance p
+        match expect (.delimiter "(") p1 with
+        | none => none
+        | some p2 =>
+          match parseExprFuel fuel scope p2 with
+          | none => none
+          | some (cond, p3) =>
+            match expect (.delimiter ")") p3 with
+            | none => none
+            | some p4 =>
+              match expect (.delimiter "{") p4 with
+              | none => none
+              | some p5 =>
+                match parseStmts fuel scope [] p5 with
+                | none => none
+                | some (body, p6) =>
+                  match expect (.delimiter "}") p6 with
+                  | some p7 => some (.whileLoop cond body, p7)
+                  | none => none
+      | .keyword "do" =>
+        let p1 := advance p
+        match expect (.delimiter "{") p1 with
+        | none => none
+        | some p2 =>
+          match parseStmts fuel scope [] p2 with
+          | none => none
+          | some (body, p3) =>
+            match expect (.delimiter "}") p3 with
+            | none => none
+            | some p4 =>
+              match matchKeyword "while" p4 with
+              | none => none
+              | some p5 =>
+                match expect (.delimiter "(") p5 with
+                | none => none
+                | some p6 =>
+                  match parseExprFuel fuel scope p6 with
+                  | none => none
+                  | some (cond, p7) =>
+                    match expect (.delimiter ")") p7 with
+                    | none => none
+                    | some p8 =>
+                      match expect (.delimiter ";") p8 with
+                      | some p9 => some (.doWhile cond body, p9)
+                      | none => none
+      | .keyword "return" =>
+        let p1 := advance p
+        match parseExprFuel fuel scope p1 with
+        | none => none
+        | some (e, p2) =>
+          match expect (.delimiter ";") p2 with
+          | some p3 => some (.returnStmt e, p3)
+          | none => none
+      | .keyword "break" =>
+        match expect (.delimiter ";") (advance p) with
+        | some p1 => some (.break, p1)
+        | none => none
+      | .keyword "continue" =>
+        match expect (.delimiter ";") (advance p) with
+        | some p1 => some (.continue, p1)
+        | none => none
+      | .identifier =>
+        -- `x = e;` is an assignment: a single `=`, not `==`
+        match peek2 p with
+        | some t2 =>
+          if t2.kind == .operator "=" then
+            let p1 := advance (advance p)
+            match parseExprFuel fuel scope p1 with
+            | none => none
+            | some (e, p2) =>
+              match expect (.delimiter ";") p2 with
+              | some p3 => some (.assign ⟨t.lexeme⟩ e, p3)
+              | none => none
+          else
+            parseExprStmt fuel scope p
+        | none => parseExprStmt fuel scope p
+      | _ => parseExprStmt fuel scope p
+    | none => none
+
+private def parseExprStmt (fuel : Nat) (scope : List String) (p : Parser) :
+    Option (Stmt × Parser) :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
+    match parseExprFuel fuel scope p with
+    | none => none
+    | some (e, p') =>
+      -- a trailing `;` is consumed; at the very end of the program it may be
+      -- omitted
+      match peek p' with
+      | some t =>
+        if t.kind == .delimiter ";" then some (.exprStmt e, advance p')
+        else some (.exprStmt e, p')
+      | none => some (.exprStmt e, p')
+
+private def parseStmts (fuel : Nat) (scope : List String) (acc : List Stmt)
+    (p : Parser) : Option (List Stmt × Parser) :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
+    match peek p with
+    | none => some (acc.reverse, p)
+    | some t =>
+      if t.kind == .delimiter "}" then
+        -- leave the `}` for the caller
+        some (acc.reverse, p)
+      else if t.kind == .delimiter ";" then
+        -- a stray separator (e.g. after a `}` closing a loop body)
+        parseStmts fuel scope acc (advance p)
+      else
+        match parseStmt fuel scope p with
+        | none => none
+        | some (s, p') => parseStmts fuel scope (s :: acc) p'
+
 
 end
 
@@ -837,6 +1003,58 @@ private theorem parseArrayElems_mono (fuel : Nat) (scope : List String)
       | exact parseExprFuel_mono _ _ _ r h k
       | exact parseArrayElems_mono _ _ _ _ r h k
 
+private theorem parseStmt_mono (fuel : Nat) (scope : List String) (p : Parser)
+    (r : Stmt × Parser) (h : parseStmt fuel scope p = some r) (k : Nat) :
+    parseStmt (fuel + k) scope p = some r := by
+  match fuel with
+  | 0 => simp [parseStmt] at h
+  | fuel + 1 =>
+    rw [Nat.succ_add]
+    simp only [parseStmt] at h ⊢
+    repeat' split at h
+    all_goals try simp_all [parseExprFuel_mono, parseStmts_mono, parseExprStmt_mono]
+    all_goals first
+      | (intro _; assumption)
+      | (intro _; simp_all)
+      | (intro hc; exact absurd hc (by omega))
+      | exact parseExprFuel_mono _ _ _ r h k
+      | exact parseStmts_mono _ _ _ _ r h k
+      | exact parseExprStmt_mono _ _ _ r h k
+
+private theorem parseExprStmt_mono (fuel : Nat) (scope : List String)
+    (p : Parser) (r : Stmt × Parser) (h : parseExprStmt fuel scope p = some r)
+    (k : Nat) : parseExprStmt (fuel + k) scope p = some r := by
+  match fuel with
+  | 0 => simp [parseExprStmt] at h
+  | fuel + 1 =>
+    rw [Nat.succ_add]
+    simp only [parseExprStmt] at h ⊢
+    repeat' split at h
+    all_goals try simp_all [parseExprFuel_mono]
+    all_goals first
+      | (intro _; assumption)
+      | (intro _; simp_all)
+      | (intro hc; exact absurd hc (by omega))
+      | exact parseExprFuel_mono _ _ _ r h k
+
+private theorem parseStmts_mono (fuel : Nat) (scope : List String)
+    (acc : List Stmt) (p : Parser) (r : List Stmt × Parser)
+    (h : parseStmts fuel scope acc p = some r) (k : Nat) :
+    parseStmts (fuel + k) scope acc p = some r := by
+  match fuel with
+  | 0 => simp [parseStmts] at h
+  | fuel + 1 =>
+    rw [Nat.succ_add]
+    simp only [parseStmts] at h ⊢
+    repeat' split at h
+    all_goals try simp_all [parseStmt_mono, parseStmts_mono]
+    all_goals first
+      | (intro _; assumption)
+      | (intro _; simp_all)
+      | (intro hc; exact absurd hc (by omega))
+      | exact parseStmt_mono _ _ _ r h k
+      | exact parseStmts_mono _ _ _ _ r h k
+
 end
 
 
@@ -862,6 +1080,30 @@ private theorem parseExpr_seed_robust (p : Parser) (f : Nat) (r : Expr × Parser
   exact parseExprFuel_mono f [] p r h d
 
 end Parser
+
+/-- The result of parsing a statement sequence. -/
+inductive ProgramParseResult where
+  | ok : Program → ProgramParseResult
+  | error : List ParseError → ProgramParseResult
+  deriving Repr
+
+/-- Parse a whole statement sequence (loop 74). Same seeding discipline as
+`parse`: `10 * tokens + 100` fuel, robust under `parseStmts_mono`. -/
+def parseProgram (src : String) : ProgramParseResult :=
+  let tokens := tokenize src
+  let p : Parser := { tokens := tokens, pos := 0 }
+  match Parser.parseStmts (10 * tokens.length + 100) [] [] p with
+  | some (stmts, p') =>
+    if Parser.atEnd p' then
+      .ok { stmts := stmts }
+    else
+      match Parser.peek p' with
+      | some t => .error [{ message := "unexpected token", line := t.line, col := t.col }]
+      | none => .error [{ message := "unexpected end", line := 0, col := 0 }]
+  | none =>
+    match Parser.peek p with
+    | some t => .error [{ message := "failed to parse", line := t.line, col := t.col }]
+    | none => .error [{ message := "empty input", line := 0, col := 0 }]
 
 def parse (src : String) : ParseResult :=
   let tokens := tokenize src

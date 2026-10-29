@@ -113,6 +113,44 @@ example : runSource "some 5" == .value "some (5)" := by native_decide
 example : runSource "if true then ok 1 else err 2" == .value "ok (1)" := by
   native_decide
 
+/-! ## Statement programs (loop 74)
+
+`runProgram` parses a statement sequence and runs it: declarations, updates,
+assignment, `while`/`do`-`while`, `return`. The sequence's value is its last
+expression statement. -/
+
+example : runProgram "let x = 5; x * x" == .value "25" := by native_decide
+
+-- Assignment updates the innermost binding and does not introduce.
+example : runProgram "let x = 1; x = x + 10; x" == .value "11" := by
+  native_decide
+
+-- A `while` loop whose body declares; the environment threads per iteration.
+example :
+    runProgram "let a = 0; let i = 0; while (i < 5) { let a = a + i; let i = i + 1; }; a"
+      == .value "10" := by
+  native_decide
+
+example :
+    runProgram "let x = 2; while (x < 100) { let x = x * x; }; x"
+      == .value "256" := by
+  native_decide
+
+-- `do .. while` runs the body at least once.
+example :
+    runProgram "let i = 0; do { let i = i + 1; } while (i < 3); i"
+      == .value "3" := by
+  native_decide
+
+-- `return` short-circuits, even from inside a loop body.
+example : runProgram "return 42;" == .value "42" := by native_decide
+
+example : runProgram "while (true) { return 7; }" == .value "7" := by
+  native_decide
+
+-- A program that is one expression still works under `runProgram`.
+example : runProgram "1 + 2 * 3" == .value "7" := by native_decide
+
 /-! ## Failure is a value, not a crash -/
 
 -- A truncated expression fails to parse.

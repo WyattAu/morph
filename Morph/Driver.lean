@@ -4,6 +4,7 @@ SPDX-License-Identifier: Apache-2.0
 
 import Morph.Frontend.Parser
 import Morph.Executable
+import Morph.Interp
 
 /-!
 # The Morph driver
@@ -79,11 +80,25 @@ def parseSource (src : String) : Outcome :=
   | .ok e => .value (reprStr e)
   | .error errs => .parseFailed (renderErrors errs)
 
+/-- **The statement pipeline** (loop 74): parse a statement sequence, run it.
+The sequence's value is its last expression statement; `return` short-circuits.
+Total by construction, like `runSource`. -/
+def runProgram (src : String) : Outcome :=
+  match Morph.Frontend.parseProgram src with
+  | .ok prog =>
+      match Morph.Interp.runProgram prog with
+      | .value (.lit v) => .value (renderValue v)
+      | .value e => .value (reprStr e)
+      | .returned (.lit v) => .value (renderValue v)
+      | .returned e => .value (reprStr e)
+      | _ => .stuck
+  | .error errs => .parseFailed (renderErrors errs)
+
 def usage : String :=
   "usage: morph <command> [argument]\n" ++
   "  eval <expr>   parse and evaluate an expression\n" ++
   "  parse <expr>  print the parsed AST\n" ++
-  "  run <file>    evaluate the expression in a file\n"
+  "  run <file>    run the statement program in a file\n"
 
 /-- The text the CLI prints for an outcome (the exit code is `Main.lean`'s
 decision: values exit 0, everything else exits 1). -/

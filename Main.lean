@@ -23,5 +23,5 @@ def main (args : List String) : IO UInt32 := do
   match args with
   | ["eval", src] => finish (runSource src)
   | ["parse", src] => finish (parseSource src)
-  | ["run", path] => finish (runSource (← IO.FS.readFile path))
+  | ["run", path] => finish (runProgram (← IO.FS.readFile path))
   | _ => IO.println usage; return 1
