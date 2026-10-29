@@ -256,4 +256,266 @@ theorem memory_safety_invariant_holds : memory_safety_invariant := by
   · intro mem id offset value
     exact write_preserves_safety_holds mem id offset value
 
+/-! ### Aliasing + use-after-free (loop 56)
+
+Loop 26 proved safety but left aliasing and the runtime connection open.
+Loop 56 adds the minimal aliasing model alongside (no breaking change).
+
+Research: RustBelt (safety, Stacked Borrows: aliasing as a dynamic borrow
+checker); Perceus (garbage-freedom, no cycle case at type level); ORCA
+(heap bounding explicitly future work). Other languages: Rust (borrow
+checker, mechanized safety, no growth bounds); Swift/Pony/Nim (ARC, no
+proved bounds); Perceus (paper proofs only). Morph's affine discipline
+(loop 2) removes the cycle case at the type level, so the remaining
+obligation is use-after-free — proved below.
+-/
+
+/-- Two ids alias when they denote the same block. -/
+def aliases (mem : Memory) (a b : Core.BlockId) : Prop :=
+  ∃ blk, getBlock mem a = some blk ∧ getBlock mem b = some blk ∧ a = b
+
+/-- Aliasing is reflexive on live blocks. -/
+theorem aliases_refl (mem : Memory) (id : Core.BlockId) (b : Block)
+    (h : getBlock mem id = some b) : aliases mem id id :=
+  ⟨b, h, h, rfl⟩
+
+/-- **Use-after-free is impossible to observe**: a read after deallocation
+yields nothing. -/
+theorem read_after_free_none (mem : Memory) (id : Core.BlockId) (off : Nat) :
+    readByte (deallocate mem id) id off = none := by
+  have hnone : getBlock (deallocate mem id) id = none :=
+    deallocation_spec mem id
+  simp [readByte, hnone]
+
+/-- A write after free leaves the freed memory alone. -/
+theorem write_after_free_noop (mem : Memory) (id : Core.BlockId) (off : Nat) (v : UInt8) :
+    writeByte (deallocate mem id) id off v = deallocate mem id := by
+  have hnone : getBlock (deallocate mem id) id = none :=
+    deallocation_spec mem id
+  simp [writeByte, hnone]
+
+/-! ### Loop 65: the `Morph.Memory` connection + aliasing safety
+
+Research: CompCert (Leroy–Blazy block-offset model — `Morph.Memory` is an
+instance of it, with `BlockState` for allocation status and `MemByte` for
+definedness); CompCert memory injections (a projection that drops
+permission-less blocks preserves observable behavior — `project` below is
+that injection, dropping `freed` blocks); RustBelt / Stacked Borrows
+(aliasing as borrow discipline; agreement on what an id denotes);
+Perceus (reference counting without a collector).
+
+Language comparison: Rust (affine allocation — fresh ids by construction,
+proved as `allocate_fresh_present`/`allocate_noninterfering`); Pony
+(reference capabilities pin aliasing at the type level); Vale (regions make
+free observable); Swift/ARC (refcounts never consulted by free — cf.
+`non_zero_ref_count_prevents_deallocation_holds`).
+
+The connection: `Morph.Memory.free` marks a block `freed` (keeps the
+entry); `MemoryModel.deallocate` removes the entry. `project` drops `freed`
+blocks, so freeing-then-projecting is observing-then-removing
+(`project_free_none`), and a read after a `Morph.Memory.free` yields nothing
+(`read_after_morph_free_none` — the use-after-free theorem for the real
+runtime model, via the injection).
+
+Aliasing safety: allocation is fresh and non-interfering — a new id denotes
+a new block and no existing denotation changes, so allocation introduces no
+alias (`allocate_fresh_present`, `allocate_noninterfering`).
+-/
+
+/-- Project a runtime block into the model: definedness becomes `0`, the
+refcount is immaterial (free never consults it). -/
+def projectBlock (b : Morph.Block) : Block :=
+  { id := b.id, size := b.size, data := b.bytes.map Morph.MemByte.toUInt8,
+    refCount := 1 }
+
+/-- Project a block list, dropping `freed` blocks (the injection). -/
+def projectBlocks (bs : List (Core.BlockId × Morph.Block)) :
+    List (Core.BlockId × Block) :=
+  (bs.filter (fun p => p.2.isAllocated)).map
+    (fun p => (p.1, projectBlock p.2))
+
+/-- Project a runtime memory into the model. -/
+def project (m : Morph.Memory) : Memory :=
+  { blocks := projectBlocks m.blocks, nextId := m.nextBlockId }
+
+/-- Projection preserves well-formedness of well-formed blocks. -/
+theorem projectBlock_wellformed (b : Morph.Block)
+    (h : b.bytes.size = b.size) :
+    isWellFormedBlock (projectBlock b) := by
+  simp [projectBlock, isWellFormedBlock, Array.size_map, h]
+
+/-- Membership in the projected list, spelled out. -/
+theorem project_mem {bs : List (Core.BlockId × Morph.Block)}
+    {p : Core.BlockId × Block} :
+    p ∈ projectBlocks bs ↔
+      ∃ b, (p.1, b) ∈ bs ∧ b.isAllocated = true ∧ p.2 = projectBlock b := by
+  simp only [projectBlocks, List.mem_map, List.mem_filter]
+  constructor
+  · rintro ⟨a, ⟨hmem, hpred⟩, hfp⟩
+    refine ⟨a.2, ?_, hpred, ?_⟩
+    · have heq : (p.1, a.2) = a := by rw [← hfp]
+      rw [heq]; exact hmem
+    · rw [← hfp]
+  · rintro ⟨b, hmem, halloc, hpb⟩
+    refine ⟨(p.1, b), ⟨hmem, halloc⟩, ?_⟩
+    rw [← hpb]
+
+/-- Freeing marks the block, so it is no longer allocated. -/
+theorem freeBlock_not_allocated (b : Morph.Block) :
+    (Morph.Block.freeBlock b).isAllocated = false := rfl
+
+/-- No projected entry denotes the freed id. -/
+theorem project_free_fst (m : Morph.Memory) (id : Core.BlockId)
+    (p : Core.BlockId × Block)
+    (hm : p ∈ (project (Morph.Memory.free m id)).blocks) : p.1 ≠ id := by
+  have hmem : ∃ b, (p.1, b) ∈ (Morph.Memory.free m id).blocks ∧
+      b.isAllocated = true ∧ p.2 = projectBlock b := project_mem.mp hm
+  obtain ⟨b, hmem, halloc, -⟩ := hmem
+  simp only [Morph.Memory.free] at hmem
+  cases hfb : Morph.Memory.findBlock? m.blocks id with
+  | none =>
+      simp only [hfb] at hmem
+      cases hq : List.find? (fun (p : Core.BlockId × Morph.Block) => p.1 == id)
+          m.blocks with
+      | some q =>
+          have hsome : Morph.Memory.findBlock? m.blocks id = some q.2 := by
+            simp [Morph.Memory.findBlock?, hq]
+          rw [hsome] at hfb; cases hfb
+      | none =>
+          have hne := List.find?_eq_none.mp hq (p.1, b) hmem
+          cases hc : (p.1 == id) with
+          | true => simp [hc] at hne
+          | false => exact ne_of_beq_false hc
+  | some fb =>
+      simp only [hfb] at hmem
+      simp only [Morph.Memory.updateBlock] at hmem
+      obtain ⟨a, ha, heq⟩ := List.mem_map.mp hmem
+      by_cases hbeq : a.1 == id
+      · rw [if_pos hbeq] at heq
+        have hb : b = Morph.Block.freeBlock fb := (Prod.mk.inj heq).2.symm
+        rw [hb] at halloc
+        rw [freeBlock_not_allocated] at halloc
+        cases halloc
+      · rw [if_neg hbeq] at heq
+        have hfst : p.1 = a.1 := (Prod.mk.inj heq).1.symm
+        rw [hfst]
+        cases hc : (a.1 == id) with
+        | true => simp [hc] at hbeq
+        | false => exact ne_of_beq_false hc
+
+/-- Freeing-then-projecting observes nothing at the freed id: the injection
+turns `free` into removal. -/
+theorem project_free_none (m : Morph.Memory) (id : Core.BlockId) :
+    getBlock (project (Morph.Memory.free m id)) id = none := by
+  have hfind : List.find? (fun (p : Core.BlockId × Block) => decide (p.1 = id))
+      (project (Morph.Memory.free m id)).blocks = none := by
+    rw [List.find?_eq_none]
+    intro a hamem
+    have hne : a.1 ≠ id := project_free_fst m id a hamem
+    simp [hne]
+  simp [getBlock, hfind]
+
+/-- **Use-after-free for the real runtime model.** A read after
+`Morph.Memory.free` yields nothing — via the injection and the model's
+read-after-free. -/
+theorem read_after_morph_free_none (m : Morph.Memory) (id : Core.BlockId)
+    (off : Nat) :
+    readByte (project (Morph.Memory.free m id)) id off = none := by
+  have hnone := project_free_none m id
+  simp [readByte, hnone]
+
+/-- Allocation is fresh: the new id denotes a present block. -/
+theorem allocate_fresh_present (mem : Memory) (size : Nat) :
+    (getBlock (allocate mem size).1 (allocate mem size).2).isSome = true := by
+  rcases mem with ⟨blocks, nextId⟩
+  simp [allocate, getBlock]
+
+/-- Allocation is non-interfering: no existing denotation changes, so
+allocation introduces no alias. -/
+theorem allocate_noninterfering (mem : Memory) (size : Nat)
+    (a : Core.BlockId) (hne : a ≠ (allocate mem size).2) :
+    getBlock (allocate mem size).1 a = getBlock mem a := by
+  rcases mem with ⟨blocks, nextId⟩
+  simp only [allocate] at hne ⊢
+  simp only [getBlock]
+  by_cases heq : ({ id := nextId } : Core.BlockId) = a
+  · subst heq; exact absurd rfl hne
+  · simp [heq]
+
+/-- Freshness, concretely: allocating in the empty memory yields id `0`. -/
+example : (getBlock (allocate emptyMemory 4).1 { id := 0 }).isSome = true :=
+  rfl
+
+/-! ### Strong write-then-read (loop 70)
+
+The missing-id case (`write_read_consistency_holds`) is proved above. The
+strong form needs no uniqueness hypothesis: `writeByte` rewrites *every*
+entry whose key matches, so the first matching entry stays first and now
+denotes the updated block. Well-formedness (from `isMemorySafe`) aligns
+`b.size` with `b.data.size`, so the bounds check and the `set!`/`get?`
+round-trip agree. -/
+
+/-- After a successful in-bounds write, lookup denotes the updated block. -/
+theorem getBlock_writeByte (mem : Memory) (id : Core.BlockId)
+    (offset : Nat) (value : UInt8) (b : Block)
+    (hget : getBlock mem id = some b) (hb : offset < b.size) :
+    getBlock (writeByte mem id offset value) id =
+      some ({ b with data := b.data.set! offset value } : Block) := by
+  let newB : Block := { b with data := b.data.set! offset value }
+  simp only [writeByte, hget, hb, if_true]
+  simp only [getBlock]
+  have hpred : ∀ x : Core.BlockId × Block,
+      (fun y : Core.BlockId × Block => decide (y.1 = id))
+        (if decide (x.1 = id) then (id, newB) else x) =
+      decide (x.1 = id) := by
+    intro x
+    by_cases hx : decide (x.1 = id) = true
+    · simp [hx]
+    · simp [hx]
+  have hcomp : ((fun y : Core.BlockId × Block => decide (y.1 = id)) ∘
+      (fun x : Core.BlockId × Block => if decide (x.1 = id) then (id, newB) else x)) =
+      (fun x : Core.BlockId × Block => decide (x.1 = id)) :=
+    funext fun x => hpred x
+  rw [List.find?_map, hcomp]
+  rw [getBlock] at hget
+  rw [Option.map_eq_some_iff] at hget ⊢
+  obtain ⟨p, hp_find, hp_snd⟩ := hget
+  obtain ⟨pid, pb⟩ := p
+  simp only at hp_snd
+  have hp_eq : pid = id := by simpa using List.find?_some hp_find
+  have hp_find' : List.find? (fun x : Core.BlockId × Block => decide (x.1 = id))
+      mem.blocks = some (id, pb) := by
+    have h := hp_find
+    rw [hp_eq] at h
+    exact h
+  rw [hp_find']
+  simp only [Option.map_some]
+  exact ⟨(id, newB), by simp [newB], rfl⟩
+
+/-- **Strong write-then-read**: writing a byte in bounds and reading it back
+yields the written value. -/
+theorem write_read_strong (mem : Memory) (id : Core.BlockId)
+    (offset : Nat) (value : UInt8) (b : Block)
+    (hsafe : isMemorySafe mem)
+    (hget : getBlock mem id = some b) (hb : offset < b.size) :
+    readByte (writeByte mem id offset value) id offset = some value := by
+  obtain ⟨p, hp, hpb⟩ := getBlock_some_mem hget
+  have hwf : b.data.size = b.size := by
+    have h := hsafe p hp
+    rw [hpb] at h
+    exact h
+  have hget' := getBlock_writeByte mem id offset value b hget hb
+  simp only [readByte, hget']
+  have hlt : offset < ({ b with data := b.data.set! offset value } : Block).size := by
+    simpa using hb
+  simp only [hlt, if_true]
+  have hsize : (b.data.set! offset value).size = b.data.size := by
+    simp
+  have hmem : offset < (b.data.set! offset value).size := by
+    rw [hsize, hwf]; exact hb
+  have hgetv : (b.data.set! offset value)[offset]? = some value := by
+    rw [Array.getElem?_eq_getElem hmem]
+    simp
+  simpa using hgetv
+
 end Morph.Specs.MemoryModel
