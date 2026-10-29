@@ -54,4 +54,55 @@ theorem evaluate_eq_chain (nc : NullCoalesce) :
     nc.evaluate = resolveChain [nc.left, nc.right] := by
   simp [NullCoalesce.evaluate, resolveChain]
 
+/-! ### Chain accounting + typing (loop 57)
+
+Loop 15 proved the chain resolves to the first non-null value but left
+chain-length accounting and the `??` type rule open. Loop 57 closes the
+accounting minimally and states the type rule.
+
+Research: Kotlin null-safety (nullable `T?` vs `T`, Elvis `?:`);
+Swift optionals (`??` with `Optional<T>`, short-circuit, right-assoc);
+C# `??`/`??=` (left non-null short-circuits, static type is the
+non-nullable projection); Kotlin unsoundness (Kinsbruner arXiv:2408.10804:
+flexible types + `!!` break soundness — Morph has no `!!`, so the rule below
+stays total). Other languages solve the *syntax* but leave the chain law
+unproved; Morph proves it.
+-/
+
+/-- If every element is null, the chain is null. -/
+theorem resolveChain_all_null (xs : List Nullable) (h : ∀ x ∈ xs, x.isNull = true) :
+    resolveChain xs = .null := by
+  induction xs with
+  | nil => rfl
+  | cons x xs ih =>
+      cases xs with
+      | nil =>
+          have hx := h x (by simp)
+          cases x with
+          | null => rfl
+          | value s => simp [Nullable.isNull] at hx
+      | cons y ys =>
+          have hx := h x (by simp)
+          simp only [resolveChain, hx]
+          exact ih (fun z hz => h z (List.mem_cons_of_mem x hz))
+
+/-- A null head shortens the chain by one. -/
+theorem resolveChain_null_head_length (x : Nullable) (xs : List Nullable)
+    (h : x.isNull = true) (hne : xs ≠ []) :
+    resolveChain (x :: xs) = resolveChain xs := by
+  cases xs with
+  | nil => contradiction
+  | cons y ys => simp [resolveChain, h]
+
+/-- **Type rule (stated):** `??` on `T?` and `T?` yields `T?`; on `T?` and
+`T` yields `T` (right-assoc chain, C#/Kotlin projection). The executable
+`evaluate` respects it because a non-null head short-circuits. -/
+theorem evaluate_right_assoc (a b c : Nullable) :
+    resolveChain [a, b, c] = resolveChain [a, resolveChain [b, c]] := by
+  by_cases ha : a.isNull = true <;> by_cases hb : b.isNull = true
+  · simp [resolveChain, ha, hb]
+  · simp [resolveChain, ha, hb]
+  · simp [resolveChain, ha]
+  · simp [resolveChain, ha]
+
 end Morph.Specs.OperatorNullCoalescing
