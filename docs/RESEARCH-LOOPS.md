@@ -1636,3 +1636,11 @@ subtyping adoption (loop 44) completes the adoption track: `checkTypeAs` is the
 shipped checker's subtyping-aware entry point, with `checkTypeAs_sound` giving
 the actual type and the witness, and `checkTypeAs_of_checkType` guaranteeing it
 accepts everything the exact checker does.
+
+**Later batches.** Loops 50–59 (`docs/RESEARCH-LOOPS-50-59.md`) and 60–69
+(`docs/RESEARCH-LOOPS-60-69.md`) continue the same loop in two
+batch-then-verify decades: subtyping variance, effect rows, lexer `lexAll`,
+aliasing, null-coalescing chains, linker transitivity and LTO, the machine's
+control frames, reachability and weak references, computed bounds, and
+end-to-end checker soundness. Each batch is recorded in its own ledger with the
+same prove/refute/replace rule.
