@@ -61,12 +61,19 @@ def Env.lookup (e : Env) (x : String) : Option MVal :=
 
 def Env.extend (e : Env) (x : String) (v : MVal) : Env := (x, v) :: e
 
-/-- Frames of the continuation. -/
+/-- Frames of the continuation (loop 64: `letBody` and `seqRest` added so
+`let_` and `block` evaluate instead of stuttering in the catch-all). -/
 inductive Frame where
   /-- Pending argument for a closure. -/
   | arg (body : Expr) (env : Env) (x : String)
   /-- Pending branch of a conditional. -/
   | ifThenElse (t f : Expr) (env : Env)
+  /-- Pending `let_` body: the init has been evaluated to the current
+  control value; substitute it into `body`. -/
+  | letBody (body : Expr) (env : Env)
+  /-- Pending block tail: the head has been evaluated to the current control
+  value (discarded); evaluate the remaining expressions in order. -/
+  | seqRest (rest : List Expr) (env : Env)
   deriving Repr
 
 /-- The continuation: a list of frames. -/
@@ -106,26 +113,61 @@ def valueToExpr : MVal → Expr
   | .bool b => .lit (.bool b)
   | .closure body arity => .lam arity body
 
+/-- Dispatch a control value against the head control frame. Values are
+`lit`/`lam`; anything else stutters (the `fvar` case resolves first, and
+compound controls push their own frames before a control frame can surface
+— except the pre-existing `binop`-under-kont wart, documented below). -/
+def dispatchValue (v : Expr) (env : Env) (k : Kont) : State :=
+  match k with
+  | [] => { ctrl := v, env := env, kont := [] }
+  | Frame.arg _ _ _ :: _ => { ctrl := v, env := env, kont := k }
+  | Frame.ifThenElse t f env' :: rest =>
+      match v with
+      | .lit (.bool true) => { ctrl := t, env := env', kont := rest }
+      | _ => { ctrl := f, env := env', kont := rest }
+  | Frame.letBody body env' :: rest =>
+      { ctrl := subst' 0 body v, env := env', kont := rest }
+  | Frame.seqRest es env' :: rest =>
+      match es with
+      | [] => { ctrl := v, env := env', kont := rest }
+      | e :: es' =>
+          { ctrl := e, env := env', kont := Frame.seqRest es' env' :: rest }
+
 /-- **One machine step. Total: it always produces a next state.** There is no
 `Option` and no `partial`, which is the whole point — an abstract machine is a
 function, so "the evaluator has no case for this program" is a *type* error
-rather than a runtime surprise. -/
+rather than a runtime surprise.
+
+Loop 64: `ifThenElse` evaluates its condition under a pushed `ifThenElse`
+frame (the old arms produced `lit 0` stubs); `let_` evaluates its init under
+a `letBody` frame; `block` evaluates its elements in order under `seqRest`.
+Value controls dispatch through `dispatchValue`. Dispatch on a conditional
+treats `true` as then and everything else as else: a type-sound program only
+evaluates `if` at a boolean (cf. `HasType`), so the fallthrough is unreachable
+for well-typed states.
+
+Pre-existing wart, unchanged: `binop` under a non-empty continuation
+stutters (keeps control and continuation). Fixing operator evaluation is a
+separate loop. -/
 def step (s : State) : State :=
   match s.ctrl with
   | .lit v =>
-      match literalInt? v with
-      | some n => { s with ctrl := .lit (.int n) }
-      | none => { s with ctrl := .lit (.bool true) }
+      match literalInt? v, s.kont with
+      | some n, [] => { s with ctrl := .lit (.int n) }
+      | none, [] => { s with ctrl := .lit (.bool true) }
+      | _, k => dispatchValue (.lit v) s.env k
   | .fvar x =>
       match Env.lookup s.env x with
       | some v => { s with ctrl := valueToExpr v }
       | none => { s with ctrl := .lit (.int 0) }
-  | .lam n body => { s with ctrl := .lam n body }
+  | .lam n body =>
+      match s.kont with
+      | [] => { s with ctrl := .lam n body }
+      | k => dispatchValue (.lam n body) s.env k
   | .binop op e1 e2 =>
       match s.kont with
       | [] => { s with ctrl := .lit (.int 0) }
-      | Frame.arg _ _ _ :: _ => { s with ctrl := .binop op e1 e2, kont := s.kont }
-      | Frame.ifThenElse _ _ _ :: _ => { s with ctrl := .binop op e1 e2, kont := s.kont }
+      | _ :: _ => { s with ctrl := .binop op e1 e2, kont := s.kont }
   | .app fn args =>
       match args with
       | [] => { s with ctrl := .lit (.int 0) }
@@ -144,14 +186,16 @@ def step (s : State) : State :=
                   | none =>
                       { s with ctrl := .lit (.int 0), kont := rest }
               | _ => { s with ctrl := .lit (.int 0), kont := Frame.arg fn' env' x :: rest }
+          | _ :: _ => { s with ctrl := .app fn args, kont := s.kont }
   | .ifThenElse c t f =>
-      match s.kont with
-      | [] => { s with ctrl := .lit (.int 0) }
-      | Frame.arg fn env x :: rest =>
-          -- the condition evaluated; dispatch
-          { s with ctrl := .lit (.int 0), kont := Frame.ifThenElse t f env :: Frame.arg fn env x :: rest }
-      | Frame.ifThenElse t' f' env' :: rest =>
-          { s with ctrl := .lit (.int 0), kont := rest }
+      { s with ctrl := c, kont := Frame.ifThenElse t f s.env :: s.kont }
+  | .let_ init body =>
+      { s with ctrl := init, kont := Frame.letBody body s.env :: s.kont }
+  | .block exprs =>
+      match exprs with
+      | [] => { s with ctrl := .lit (.unit) }
+      | [e] => { s with ctrl := e }
+      | e :: es => { s with ctrl := e, kont := Frame.seqRest es s.env :: s.kont }
   | e => { s with ctrl := e }
 
 /-- Fuel-bounded iteration. The machine step is total, so only iteration needs a
