@@ -5,6 +5,43 @@ Loop 70 closes the last `Morph/Specs` TODOs. From here the track turns toward
 valuable next iterations land their guarantees in the shipped compiler, not
 only in `Morph/Specs`.
 
+## Loop 73 — tuples, arrays, indexing, and option literals (DONE, Lean)
+
+**Target.** The evaluator already handled `tuple_`, `arrayLit`,
+`arrayIndex`, `none_`, `some_`, `ok_` and `err_`; the parser could produce
+none of them. This loop closes the syntax gap.
+
+**Delivered** (`Morph/Frontend/Parser.lean`, `Morph/Frontend/Lexer.lean`):
+- `()` is the unit literal; `(e)` stays grouping; `(a, b, ...)` is a tuple.
+- `[a, b, ...]` is an array literal (`parseArrayLit`/`parseArrayElems`).
+- `parsePostfix` adds the tightest-binding postfix loop: indexing `a[i]`
+  (each `[`/`]` consumed) and field access `a.f`.
+- `none` is a keyword literal; `some`/`ok`/`err` are prefix wrappers over one
+  atom — all four registered as keywords (they used to lex as identifiers).
+- The fuel-monotonicity section gained `parseAtomPrimary_mono`,
+  `parsePostfix_mono`, `parseSomeLike_mono`, `parseTupleRest_mono`,
+  `parseArrayLit_mono`, `parseArrayElems_mono` — every new recursion makes
+  token progress and passes the fuel predecessor, and the lemmas hold.
+
+**Result.** `[1, 2, 3][1]` → `2`; `[[1], [2]][1]` → `[2]`;
+`let a = [10, 20] in a[1]` → `20`; `some (1 + 1)` → `some (2)`;
+`if true then ok 1 else err 2` → `ok (1)`. Driver tests pin each.
+
+**One more bug found while wiring it up**: `parseArrayElems` never consumed
+the separating comma, so `[1, 2]` failed to parse while `[1]` succeeded —
+the same class of cursor bug as loop 71's `fn` keyword.
+
+**Still named.** `match`/`for` expressions (the evaluator's `match_` takes
+the first arm, so honest parser support needs the pattern language the AST
+lacks), the `??` and `|>` operators (no two-character lexer tokens), unary
+minus (the reference semantics has no `unop .sub` rule, so `-e` parses but is
+stuck), and statement-level (`Program`) execution.
+
+## Verification
+
+- `lake build morph` ✔, `lake build Morph` ✔, `lake build Morph.Tests` ✔;
+  zero `sorry`; the full mono section holds.
+
 ## Loop 72 — parse-to-de-Bruijn lowering: parsed bindings finally run (DONE, Lean)
 
 **Target.** Loop 71 named the gap: the parser emitted `.fvar` for *every*
@@ -33,8 +70,9 @@ dropped its parameters.
 (closures over outer bindings); `morph run sq.morph` on
 `let x = 5 in x * x` → `25`. Driver tests pin each of these.
 
-**Still named.** Unit/array literals and `match`/`for` expressions are not
-parsed; statement-level (`Program`) parsing and execution do not exist yet.
+**Named here, fixed in loop 73**: unit/array literals, postfix indexing and
+the option/result prefixes. **Still named**: `match`/`for` expressions,
+`??`/`|>`, unary minus, and statement-level (`Program`) execution.
 
 ## Verification
 

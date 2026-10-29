@@ -73,6 +73,7 @@ def parseLiteral (p : Parser) : Option (Expr × Parser) :=
     | .stringLiteral => some (.lit (.string t.lexeme), advance p)
     | .keyword "true" => some (.lit (.bool true), advance p)
     | .keyword "false" => some (.lit (.bool false), advance p)
+    | .keyword "none" => some (.none_, advance p)
     | _ => none
   | none => none
 
@@ -230,7 +231,9 @@ private def parseAppArgs (fnExpr : Expr) (fuel : Nat) (scope : List String)
       | _ => some (.app fnExpr args.reverse, p)
 
 
-private def parseAtom (fuel : Nat) (scope : List String) (p : Parser) :
+/-- The atom's primary: literals, identifiers, grouping, tuples, arrays,
+control-flow atoms, and the option/result prefixes (loop 73). -/
+private def parseAtomPrimary (fuel : Nat) (scope : List String) (p : Parser) :
     Option (Expr × Parser) :=
   match fuel with
   | 0 => none
@@ -243,14 +246,33 @@ private def parseAtom (fuel : Nat) (scope : List String) (p : Parser) :
       | .stringLiteral => parseLiteral p
       | .keyword "true" => parseLiteral p
       | .keyword "false" => parseLiteral p
+      | .keyword "none" => parseLiteral p
+      | .keyword "some" => parseSomeLike .some_ fuel scope (advance p)
+      | .keyword "ok" => parseSomeLike .ok_ fuel scope (advance p)
+      | .keyword "err" => parseSomeLike .err_ fuel scope (advance p)
       | .delimiter "(" =>
         let p' := advance p
-        match parseExprFuel fuel scope p' with
-        | some (e, p'') =>
-          match expect (.delimiter ")") p'' with
-          | some p''' => some (e, p''')
-          | none => none
+        match peek p' with
+        | some t2 =>
+          if t2.kind == .delimiter ")" then
+            -- `()` is the unit literal
+            some (.lit .unit, advance p')
+          else
+            match parseExprFuel fuel scope p' with
+            | none => none
+            | some (e, p'') =>
+              match peek p'' with
+              | some t3 =>
+                if t3.kind == .delimiter "," then
+                  -- `(a, b, ...)` is a tuple; `(e)` is grouping
+                  parseTupleRest fuel scope [e] p''
+                else
+                  match expect (.delimiter ")") p'' with
+                  | some p''' => some (e, p''')
+                  | none => none
+              | none => none
         | none => none
+      | .delimiter "[" => parseArrayLit fuel scope (advance p)
       | .keyword "if" => parseIfExpr fuel scope p
       | .keyword "let" => parseLetExpr fuel scope p
       -- loop 72: consume the `fn` keyword before collecting parameters; the
@@ -260,6 +282,112 @@ private def parseAtom (fuel : Nat) (scope : List String) (p : Parser) :
       | .delimiter "{" => parseBlockExpr fuel scope p
       | _ => none
     | none => none
+
+/-- Postfix operations, tightest-binding: indexing `a[i]` and field access
+`a.f` (loop 73). Each iteration consumes at least the `[`/`.` token, so the
+recursion makes token progress. -/
+private def parsePostfix (fuel : Nat) (scope : List String) (e : Expr)
+    (p : Parser) : Option (Expr × Parser) :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
+    match peek p with
+    | some t =>
+      match t.kind with
+      | .delimiter "[" =>
+        let p' := advance p
+        match parseExprFuel fuel scope p' with
+        | none => none
+        | some (idx, p'') =>
+          match expect (.delimiter "]") p'' with
+          | none => none
+          | some p''' => parsePostfix fuel scope (.arrayIndex e idx) p'''
+      | .operator "." =>
+        let p' := advance p
+        match peek p' with
+        | some t2 =>
+          match t2.kind with
+          | .identifier =>
+            parsePostfix fuel scope (.field_ e t2.lexeme) (advance p')
+          | _ => none
+        | none => none
+      | _ => some (e, p)
+    | none => some (e, p)
+
+/-- A prefix `some`/`ok`/`err` wraps one atom. -/
+private def parseSomeLike (wrap : Expr → Expr) (fuel : Nat)
+    (scope : List String) (p : Parser) : Option (Expr × Parser) :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
+    match parseAtom fuel scope p with
+    | some (e, p') => some (wrap e, p')
+    | none => none
+
+/-- The elements after the first in `(a, b, ...)`, closing on `)`.
+`acc` is reversed. -/
+private def parseTupleRest (fuel : Nat) (scope : List String) (acc : List Expr)
+    (p : Parser) : Option (Expr × Parser) :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
+    let p := advance p
+    match parseExprFuel fuel scope p with
+    | none => none
+    | some (e, p1) =>
+      let acc' := e :: acc
+      match peek p1 with
+      | some t =>
+        if t.kind == .delimiter "," then
+          parseTupleRest fuel scope acc' p1
+        else
+          match expect (.delimiter ")") p1 with
+          | some p2 => some (.tuple_ acc'.reverse, p2)
+          | none => none
+      | none => none
+
+/-- `[a, b, ...]`, with the cursor just past the `[`. -/
+private def parseArrayLit (fuel : Nat) (scope : List String) (p : Parser) :
+    Option (Expr × Parser) :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
+    match peek p with
+    | some t =>
+      if t.kind == .delimiter "]" then
+        some (.arrayLit [], advance p)
+      else
+        parseArrayElems fuel scope [] p
+    | none => none
+
+private def parseArrayElems (fuel : Nat) (scope : List String) (acc : List Expr)
+    (p : Parser) : Option (Expr × Parser) :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
+    match parseExprFuel fuel scope p with
+    | none => none
+    | some (e, p1) =>
+      let acc' := e :: acc
+      match peek p1 with
+      | some t =>
+        if t.kind == .delimiter "," then
+          -- the cursor moves past the comma; the next element follows
+          parseArrayElems fuel scope acc' (advance p1)
+        else
+          match expect (.delimiter "]") p1 with
+          | some p2 => some (.arrayLit acc'.reverse, p2)
+          | none => none
+      | none => none
+
+private def parseAtom (fuel : Nat) (scope : List String) (p : Parser) :
+    Option (Expr × Parser) :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
+    match parseAtomPrimary fuel scope p with
+    | none => none
+    | some (e, p') => parsePostfix fuel scope e p'
 
 
 private def parseIfExpr (fuel : Nat) (scope : List String) (p : Parser) :
@@ -501,16 +629,13 @@ private theorem parseAtom_mono (n : Nat) (scope : List String) (p : Parser)
     rw [Nat.succ_add]
     simp only [parseAtom] at h ⊢
     repeat' split at h
-    all_goals try simp_all [parseExprFuel_mono, parseIfExpr_mono, parseLetExpr_mono, parseFnExpr_mono, parseBlockExpr_mono]
+    all_goals try simp_all [parseAtomPrimary_mono, parsePostfix_mono]
     all_goals first
       | (intro _; assumption)
       | (intro _; simp_all)
       | (intro hc; exact absurd hc (by omega))
-      | exact parseExprFuel_mono _ _ _ r h k
-      | exact parseIfExpr_mono _ _ _ r h k
-      | exact parseLetExpr_mono _ _ _ r h k
-      | exact parseFnExpr_mono _ _ _ r h k
-      | exact parseBlockExpr_mono _ _ _ r h k
+      | exact parseAtomPrimary_mono _ _ _ r h k
+      | exact parsePostfix_mono _ _ _ _ r h k
 
 private theorem parseIfExpr_mono (n : Nat) (scope : List String) (p : Parser)
     (r : Expr × Parser) (h : parseIfExpr n scope p = some r) (k : Nat) :
@@ -600,6 +725,117 @@ private theorem parseBlockBody_mono (n : Nat) (scope : List String)
       | (intro hc; exact absurd hc (by omega))
       | exact parseExprFuel_mono _ _ _ r h k
       | exact parseBlockBody_mono _ _ _ _ r h k
+
+private theorem parseAtomPrimary_mono (n : Nat) (scope : List String)
+    (p : Parser) (r : Expr × Parser) (h : parseAtomPrimary n scope p = some r)
+    (k : Nat) : parseAtomPrimary (n + k) scope p = some r := by
+  match n with
+  | 0 => simp [parseAtomPrimary] at h
+  | n + 1 =>
+    rw [Nat.succ_add]
+    simp only [parseAtomPrimary] at h ⊢
+    repeat' split at h
+    all_goals try simp_all [parseExprFuel_mono, parseIfExpr_mono, parseLetExpr_mono,
+      parseFnExpr_mono, parseBlockExpr_mono, parseSomeLike_mono,
+      parseTupleRest_mono, parseArrayLit_mono]
+    all_goals first
+      | (intro _; assumption)
+      | (intro _; simp_all)
+      | (intro hc; exact absurd hc (by omega))
+      | exact parseExprFuel_mono _ _ _ r h k
+      | exact parseIfExpr_mono _ _ _ r h k
+      | exact parseLetExpr_mono _ _ _ r h k
+      | exact parseFnExpr_mono _ _ _ r h k
+      | exact parseBlockExpr_mono _ _ _ r h k
+      | exact parseSomeLike_mono _ _ _ _ r h k
+      | exact parseTupleRest_mono _ _ _ _ r h k
+      | exact parseArrayLit_mono _ _ _ r h k
+
+private theorem parsePostfix_mono (n : Nat) (scope : List String) (e : Expr)
+    (p : Parser) (r : Expr × Parser) (h : parsePostfix n scope e p = some r)
+    (k : Nat) : parsePostfix (n + k) scope e p = some r := by
+  match n with
+  | 0 => simp [parsePostfix] at h
+  | n + 1 =>
+    rw [Nat.succ_add]
+    simp only [parsePostfix] at h ⊢
+    repeat' split at h
+    all_goals try simp_all [parseExprFuel_mono, parsePostfix_mono]
+    all_goals first
+      | (intro _; assumption)
+      | (intro _; simp_all)
+      | (intro hc; exact absurd hc (by omega))
+      | exact parseExprFuel_mono _ _ _ r h k
+      | exact parsePostfix_mono _ _ _ _ r h k
+
+private theorem parseSomeLike_mono (wrap : Expr → Expr) (n : Nat)
+    (scope : List String) (p : Parser) (r : Expr × Parser)
+    (h : parseSomeLike wrap n scope p = some r) (k : Nat) :
+    parseSomeLike wrap (n + k) scope p = some r := by
+  match n with
+  | 0 => simp [parseSomeLike] at h
+  | n + 1 =>
+    rw [Nat.succ_add]
+    simp only [parseSomeLike] at h ⊢
+    repeat' split at h
+    all_goals try simp_all [parseAtom_mono]
+    all_goals first
+      | (intro _; assumption)
+      | (intro _; simp_all)
+      | (intro hc; exact absurd hc (by omega))
+      | exact parseAtom_mono _ _ _ r h k
+
+private theorem parseTupleRest_mono (fuel : Nat) (scope : List String)
+    (acc : List Expr) (p : Parser) (r : Expr × Parser)
+    (h : parseTupleRest fuel scope acc p = some r) (k : Nat) :
+    parseTupleRest (fuel + k) scope acc p = some r := by
+  match fuel with
+  | 0 => simp [parseTupleRest] at h
+  | fuel + 1 =>
+    rw [Nat.succ_add]
+    simp only [parseTupleRest] at h ⊢
+    repeat' split at h
+    all_goals try simp_all [parseExprFuel_mono, parseTupleRest_mono]
+    all_goals first
+      | (intro _; assumption)
+      | (intro _; simp_all)
+      | (intro hc; exact absurd hc (by omega))
+      | exact parseExprFuel_mono _ _ _ r h k
+      | exact parseTupleRest_mono _ _ _ _ r h k
+
+private theorem parseArrayLit_mono (n : Nat) (scope : List String) (p : Parser)
+    (r : Expr × Parser) (h : parseArrayLit n scope p = some r) (k : Nat) :
+    parseArrayLit (n + k) scope p = some r := by
+  match n with
+  | 0 => simp [parseArrayLit] at h
+  | n + 1 =>
+    rw [Nat.succ_add]
+    simp only [parseArrayLit] at h ⊢
+    repeat' split at h
+    all_goals try simp_all [parseArrayElems_mono]
+    all_goals first
+      | (intro _; assumption)
+      | (intro _; simp_all)
+      | (intro hc; exact absurd hc (by omega))
+      | exact parseArrayElems_mono _ _ _ _ r h k
+
+private theorem parseArrayElems_mono (fuel : Nat) (scope : List String)
+    (acc : List Expr) (p : Parser) (r : Expr × Parser)
+    (h : parseArrayElems fuel scope acc p = some r) (k : Nat) :
+    parseArrayElems (fuel + k) scope acc p = some r := by
+  match fuel with
+  | 0 => simp [parseArrayElems] at h
+  | fuel + 1 =>
+    rw [Nat.succ_add]
+    simp only [parseArrayElems] at h ⊢
+    repeat' split at h
+    all_goals try simp_all [parseExprFuel_mono, parseArrayElems_mono]
+    all_goals first
+      | (intro _; assumption)
+      | (intro _; simp_all)
+      | (intro hc; exact absurd hc (by omega))
+      | exact parseExprFuel_mono _ _ _ r h k
+      | exact parseArrayElems_mono _ _ _ _ r h k
 
 end
 

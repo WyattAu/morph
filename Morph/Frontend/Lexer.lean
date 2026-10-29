@@ -83,7 +83,10 @@ def keywordList : List (String × TokenKind) :=
    ("break", .keyword "break"), ("continue", .keyword "continue"),
    -- loop 71: these used to lex as identifiers, so `parseLiteral`'s
    -- `.keyword "true"` / `.keyword "false"` cases were unreachable
-   ("true", .keyword "true"), ("false", .keyword "false")]
+   ("true", .keyword "true"), ("false", .keyword "false"),
+   -- loop 73: option/result literals
+   ("none", .keyword "none"), ("some", .keyword "some"),
+   ("ok", .keyword "ok"), ("err", .keyword "err")]
 
 def isKeyword (s : String) : Bool :=
   keywordList.any (fun (kw, _) => kw == s)

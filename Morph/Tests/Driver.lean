@@ -13,11 +13,12 @@ loops 9/39; the evaluator, loop 38), so these tests only have to pin down the
 *values*, which they do on the compiled evaluator (`native_decide`, the same
 style as `Morph.Tests.Executable`).
 
-The surface below is what `parseExpr` covers today: numeric/string/bool
-literals, the binary operators, `if`/`let`. Unit and array literals and
-lambda application are not yet parsed (the parsed `fn x -> e` also keeps its
-parameter as an `fvar`, which the bvar-binding evaluator cannot see) — those
-are the frontend gaps recorded in `docs/RESEARCH-LOOPS-70-79.md`.
+The surface below is what `parseExpr` covers today: numeric/string/bool/option
+literals, arrays, tuples, postfix indexing and field access, the binary
+operators, and `if`/`let`/`fn`. Unparsed or unevaluated, named in
+`docs/RESEARCH-LOOPS-70-79.md`: `match`/`for` expressions, the `??` and `|>`
+operators (the lexer has no two-character token for them), and unary minus
+(the reference semantics has no `unop .sub` rule, so `-e` parses but is stuck).
 -/
 
 namespace Morph.Tests.Driver
@@ -84,6 +85,32 @@ example : runSource "(fn x y -> y - x) 3 10" == .value "7" := by native_decide
 
 -- A lambda over an outer binding.
 example : runSource "let y = 10 in (fn x -> x + y) 5" == .value "15" := by
+  native_decide
+
+/-! ## Tuples, arrays, indexing, options (loop 73) -/
+
+example : runSource "()" == .value "()" := by native_decide
+
+example : runSource "(1, 2)" == .value "(1, 2)" := by native_decide
+
+example : runSource "[1, 2, 3]" == .value "[1, 2, 3]" := by native_decide
+
+example : runSource "[]" == .value "[]" := by native_decide
+
+example : runSource "[[1], [2]][1]" == .value "[2]" := by native_decide
+
+-- Indexing binds tighter than grouping and works on bound names.
+example : runSource "[1, 2, 3][1]" == .value "2" := by native_decide
+
+example : runSource "let a = [10, 20] in a[1]" == .value "20" := by
+  native_decide
+
+-- Option and result literals, with a prefix wrapper over an atom.
+example : runSource "none" == .value "none" := by native_decide
+
+example : runSource "some 5" == .value "some (5)" := by native_decide
+
+example : runSource "if true then ok 1 else err 2" == .value "ok (1)" := by
   native_decide
 
 /-! ## Failure is a value, not a crash -/
