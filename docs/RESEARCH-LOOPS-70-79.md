@@ -5,6 +5,49 @@ Loop 70 closes the last `Morph/Specs` TODOs. From here the track turns toward
 valuable next iterations land their guarantees in the shipped compiler, not
 only in `Morph/Specs`.
 
+## Loop 71 — the `morph` executable, and the lexer bugs it exposed (DONE, Lean)
+
+**Target.** The repository had no executable: parser, type checker and
+evaluator were libraries with no way in. The driver loop adds `morph` —
+`lake exe morph eval/parse/run` — and fixes what it surfaced.
+
+**Delivered.**
+- `Morph/Driver.lean`: the pipeline as a pure function
+  (`runSource : String → Outcome`), with `Outcome` making every failure a
+  *value* (`parseFailed`, `stuck`) — the driver cannot crash, because both
+  stages it composes are proved-total components (parser, loops 9/39;
+  evaluator, loop 38). `Main.lean` is an IO shell; `lakefile.lean` gains
+  `lean_exe morph`.
+- `Morph/Tests/Driver.lean`: end-to-end checks — precedence, comparisons,
+  boolean operators, string concatenation, `if`, and the
+  failure-is-a-value cases.
+- **Lexer fix 1 — string literals.** `scanStringFuel` examined the character
+  *after* the cursor and recursed past it, so it looked at one character in
+  every two: `"hi"` lexed as `h`, `"abc"` produced *no token at all*, and two
+  literals in a row produced nothing (the quirk `Morph/Tests/Lexer.lean` had
+  pinned "so the bug is visible to whoever fixes it"). The scanner now
+  examines the character under the cursor; the pinned tests are replaced with
+  the correct behaviour, including escapes.
+- **Lexer fix 2 — booleans.** `true`/`false` were missing from
+  `keywordList`, so they lexed as identifiers and `parseLiteral`'s
+  `.keyword "true"` cases were unreachable. `if true then 1 else 2` now
+  evaluates.
+
+**Named, not fixed here (the next implementation loops).**
+- The parser emits `fvar` for bound names but the evaluator binds `bvar`
+  (`Context.pushBv`), so a parsed `let x = 5 in x + 1` is *stuck*, not `6` —
+  the parse-to-de Bruijn lowering is missing.
+- `fn`-application does not parse, and `parseFnParams` drops its parameters
+  (`.lam n body` keeps the body's `fvar`s), so lambdas cannot round-trip.
+- No unit/array literal parsing.
+
+## Verification
+
+- `lake build morph` ✔ (the executable), `lake build Morph` ✔ (389 jobs),
+  `lake build Morph.Tests` ✔ (223 jobs); zero `sorry`.
+- Smoke test: `morph eval "1 + 2 * 3"` → `7`; `morph run bad.morph` exits 1
+  with the parse error; `morph` with no arguments prints usage and exits 1.
+
 ## Loop 70 — ModuleSystem: link tables, workspaces, mangling (DONE, Lean)
 
 **Target.** `Morph/Specs/ModuleSystem/Spec.lean`'s four TODOs: module ID

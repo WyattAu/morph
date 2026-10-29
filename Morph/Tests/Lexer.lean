@@ -51,19 +51,33 @@ section Strings
 
 example : kinds "\"hi\"" = [.stringLiteral] := by decide
 
+/-- The lexeme is the *content*. (Loop 71 fixed an off-by-one: the old scanner
+examined one character in every two, so even-length contents were truncated —
+`"hi"` used to lex as `"h"` — and odd-length literals vanished.) -/
+example : lexemes "\"hi\"" = ["hi"] := by decide
+
+example : lexemes "\"abc\"" = ["abc"] := by decide
+
 /-- An unterminated string literal yields no token — the scanner stops at the end
 of the input rather than looping. This is the case the `partial` version could
 not state, and the reason the fuel bound exists. -/
 example : kinds "\"unterminated" = [] := by decide
 
-/-- **A known pre-existing quirk, pinned.** Two string literals in a row produce
-*no* tokens: the scanner's escape-handling path consumes the closing quote of the
-first literal along with the opening quote of the second, and the second literal
-is then swallowed. This behaviour is unchanged by the fuel bound — the original
-`partial` lexer produced exactly the same empty list — and it is recorded here so
-that the change to a total scanner cannot be blamed for it, and so that the bug
-is visible to whoever fixes it. -/
-example : kinds "\"a\" \"b\"" = [] := by decide
+/-- **The pre-existing quirk, fixed (loop 71).** Two string literals used to
+produce *no* tokens: the scanner's off-by-one consumed the closing quote of the
+first literal and swallowed everything after it. The pinned behaviour was kept
+through the fuel-bound change on purpose — so the fuel rewrite could not be
+blamed for it — and the driver loop finally fixed the scanner itself. -/
+example : kinds "\"a\" \"b\"" = [.stringLiteral, .stringLiteral] := by decide
+
+example : lexemes "\"a\" \"b\"" = ["a", "b"] := by decide
+
+/-- Escapes work, including an escaped quote. -/
+example : lexemes "\"a\\n\\\"b\"" = ["a\n\"b"] := by decide
+
+/-- Booleans are keywords (loop 71), not identifiers. -/
+example : kinds "true && false" =
+    [.keyword "true", .operator "&&", .keyword "false"] := by decide
 
 end Strings
 

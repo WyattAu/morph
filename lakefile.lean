@@ -20,6 +20,12 @@ lean_lib Morph.Tests {
 -- Test executables are verified at compile time via lean_lib.
 -- The Morph.Tests library already includes all test modules.
 
+-- The Morph driver: source text in, evaluated result out, over the
+-- verified pipeline (total parser + total evaluator).
+lean_exe morph {
+  root := `Main
+}
+
 -- Dependencies - using v4.27.0-compatible versions
 require mathlib from git "https://github.com/leanprover-community/mathlib4" @ "a3a10db0e9d66acbebf76c5e6a135066525ac900"
 require batteries from git "https://github.com/leanprover-community/batteries" @ "b25b36a7caf8e237e7d1e6121543078a06777c8a"

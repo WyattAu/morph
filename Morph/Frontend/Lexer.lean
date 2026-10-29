@@ -80,7 +80,10 @@ def keywordList : List (String × TokenKind) :=
    ("type", .keyword "type"), ("module", .keyword "module"),
    ("import", .keyword "import"), ("export", .keyword "export"),
    ("do", .keyword "do"), ("then", .keyword "then"),
-   ("break", .keyword "break"), ("continue", .keyword "continue")]
+   ("break", .keyword "break"), ("continue", .keyword "continue"),
+   -- loop 71: these used to lex as identifiers, so `parseLiteral`'s
+   -- `.keyword "true"` / `.keyword "false"` cases were unreachable
+   ("true", .keyword "true"), ("false", .keyword "false")]
 
 def isKeyword (s : String) : Bool :=
   keywordList.any (fun (kw, _) => kw == s)
@@ -114,38 +117,49 @@ def skipWhitespaceAndComments (l : Lexer) : Lexer :=
 
 /-- Scan a string literal, with an explicit fuel.
 
-An unterminated string runs to the end of the input, so the scan is bounded by
-the number of characters remaining — and with the fuel passed explicitly, the
-function is total. -/
+The scanner examines the character *under* the cursor: the closing quote
+terminates the literal, a backslash escapes the next character, and anything
+else is accumulated in order. An unterminated string runs to the end of the
+input, so the scan is bounded by the number of characters remaining — and with
+the fuel passed explicitly, the function is total.
+
+(Loop 71 fixed an off-by-one here: the old scanner examined the character
+*after* the cursor and recursed past it, so it looked at every second
+character — truncating even-length contents and swallowing odd-length
+literals whole.) -/
 def scanStringFuel : Nat → Lexer → Lexer × Option Token
   | 0, l => (l, none)
   | n + 1, l =>
-      let l1 := l.advanceChar
-      let c := l1.currentChar
-      if l1.atEnd then (l1, none)
-      else if c == '"' then
-        (l1.advanceChar, some { kind := .stringLiteral, lexeme := "", line := l.line, col := l.col })
-      else if c == '\\' then
-        let l2 := l1.advanceChar
-        if l2.atEnd then (l2, none)
-        else
-          let esc := l2.currentChar
-          let escapedChar :=
-            match esc with
-            | 'n' => '\n'
-            | 't' => '\t'
-            | '\\' => '\\'
-            | '"' => '"'
-            | _ => esc
-          let (l3, restOpt) := scanStringFuel n l2.advanceChar
-          match restOpt with
-          | none => (l3, none)
-          | some restTok => (l3, some { restTok with lexeme := escapedChar.toString ++ restTok.lexeme })
+      if l.atEnd then
+        -- unterminated: the scan stops at the end of the input
+        (l, none)
       else
-        let (l2, restOpt) := scanStringFuel n l1.advanceChar
-        match restOpt with
-        | none => (l2, none)
-        | some restTok => (l2, some { restTok with lexeme := c.toString ++ restTok.lexeme })
+        let c := l.currentChar
+        if c == '"' then
+          -- the closing quote: consume it; callers have built the lexeme
+          (l.advanceChar,
+            some { kind := .stringLiteral, lexeme := "", line := l.line, col := l.col })
+        else if c == '\\' then
+          let l1 := l.advanceChar
+          if l1.atEnd then (l1, none)
+          else
+            let esc := l1.currentChar
+            let escapedChar :=
+              match esc with
+              | 'n' => '\n'
+              | 't' => '\t'
+              | '\\' => '\\'
+              | '"' => '"'
+              | _ => esc
+            let (l2, restOpt) := scanStringFuel n l1.advanceChar
+            match restOpt with
+            | none => (l2, none)
+            | some restTok => (l2, some { restTok with lexeme := escapedChar.toString ++ restTok.lexeme })
+        else
+          let (l2, restOpt) := scanStringFuel n l.advanceChar
+          match restOpt with
+          | none => (l2, none)
+          | some restTok => (l2, some { restTok with lexeme := c.toString ++ restTok.lexeme })
 
 /-- Scan a string literal. -/
 def scanString (l : Lexer) : Lexer × Option Token :=
@@ -208,7 +222,8 @@ def nextToken (l : Lexer) : Lexer × Option Token :=
   else
     let c := l.currentChar
     if c == '"' then
-      match scanString l with
+      -- skip the opening quote; the scanner stops at the closing one
+      match scanString l.advanceChar with
       | (l', some tok) => (l', some tok)
       | (l', none) => (l', none)
     else if c.isDigit then
