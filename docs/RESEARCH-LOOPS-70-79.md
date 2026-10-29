@@ -5,6 +5,43 @@ Loop 70 closes the last `Morph/Specs` TODOs. From here the track turns toward
 valuable next iterations land their guarantees in the shipped compiler, not
 only in `Morph/Specs`.
 
+## Loop 72 — parse-to-de-Bruijn lowering: parsed bindings finally run (DONE, Lean)
+
+**Target.** Loop 71 named the gap: the parser emitted `.fvar` for *every*
+identifier while the evaluator binds `bvar` (`Context.pushBv`), so a parsed
+`let x = 5 in x + 1` evaluated to `stuck`, not `6`; `fn` could not parse at
+all (the cursor was never advanced past the keyword); and `parseFnParams`
+dropped its parameters.
+
+**Delivered** (`Morph/Frontend/Parser.lean`):
+- `resolveIdent (scope) (name)` — the innermost binder for `name` becomes its
+  de Bruijn index; unbound names stay `.fvar` (and so stay `stuck`, which is
+  the correct semantics for a free name).
+- Every parser function threads a `scope : List String` (innermost first).
+  `let` parses its initialiser in the outer scope and its body in
+  `name :: scope`; `fn` parses its body in `params ++ scope` — the
+  accumulated parameter list is already innermost-first, and the outer
+  bindings shift by `params.length`, which is exactly what `.lam`'s
+  substitution performs.
+- `parseAtom` now consumes the `fn` keyword before collecting parameters.
+- The fuel-monotonicity section was restated over the threaded scope: every
+  `parseX_mono` keeps its statement (more fuel never hurts) with `scope`
+  fixed, and `parseExpr_seed_robust` seeds the empty scope.
+
+**Result.** `let x = 5 in x + 1` → `6`; shadowing picks the innermost binder;
+`(fn x y -> y - x) 3 10` → `7`; `let y = 10 in (fn x -> x + y) 5` → `15`
+(closures over outer bindings); `morph run sq.morph` on
+`let x = 5 in x * x` → `25`. Driver tests pin each of these.
+
+**Still named.** Unit/array literals and `match`/`for` expressions are not
+parsed; statement-level (`Program`) parsing and execution do not exist yet.
+
+## Verification
+
+- `lake build morph` ✔ (the executable), `lake build Morph` ✔,
+  `lake build Morph.Tests` ✔; zero `sorry`; the fuel-monotonicity lemmas hold
+  unchanged in statement.
+
 ## Loop 71 — the `morph` executable, and the lexer bugs it exposed (DONE, Lean)
 
 **Target.** The repository had no executable: parser, type checker and
@@ -33,13 +70,10 @@ evaluator were libraries with no way in. The driver loop adds `morph` —
   `.keyword "true"` cases were unreachable. `if true then 1 else 2` now
   evaluates.
 
-**Named, not fixed here (the next implementation loops).**
-- The parser emits `fvar` for bound names but the evaluator binds `bvar`
-  (`Context.pushBv`), so a parsed `let x = 5 in x + 1` is *stuck*, not `6` —
-  the parse-to-de Bruijn lowering is missing.
-- `fn`-application does not parse, and `parseFnParams` drops its parameters
-  (`.lam n body` keeps the body's `fvar`s), so lambdas cannot round-trip.
-- No unit/array literal parsing.
+**Named here, fixed in loop 72**: the parser emitted `fvar` for bound names
+while the evaluator binds `bvar`, `fn` did not parse at all, and
+`parseFnParams` dropped its parameters. **Still named**: unit/array literal
+parsing and statement-level (`Program`) execution.
 
 ## Verification
 

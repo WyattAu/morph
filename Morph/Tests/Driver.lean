@@ -57,6 +57,35 @@ example : runSource "\"abc\" + \"def\"" == .value "abcdef" := by native_decide
 
 example : runSource "\"hi\"" == .value "hi" := by native_decide
 
+/-! ## Bindings: `let` and `fn` (loop 72)
+
+The parser now resolves identifiers against the enclosing binders and emits de
+Bruijn indices, so parsed bindings are visible to the bvar-binding evaluator. -/
+
+example : runSource "let x = 5 in x + 1" == .value "6" := by native_decide
+
+-- Shadowing: the innermost binder wins.
+example : runSource "let x = 1 in let x = 2 in x" == .value "2" := by
+  native_decide
+
+example : runSource "let x = 1 in let y = 2 in x + y" == .value "3" := by
+  native_decide
+
+-- The initialiser is in the outer scope.
+example : runSource "let x = 1 in let x = x + 1 in x" == .value "2" := by
+  native_decide
+
+-- Lambdas parse and apply, with parameters in source order.
+example : runSource "(fn x -> x) 5" == .value "5" := by native_decide
+
+example : runSource "(fn x y -> x) 1 2" == .value "1" := by native_decide
+
+example : runSource "(fn x y -> y - x) 3 10" == .value "7" := by native_decide
+
+-- A lambda over an outer binding.
+example : runSource "let y = 10 in (fn x -> x + y) 5" == .value "15" := by
+  native_decide
+
 /-! ## Failure is a value, not a crash -/
 
 -- A truncated expression fails to parse.

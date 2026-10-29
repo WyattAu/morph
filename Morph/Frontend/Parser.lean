@@ -41,11 +41,24 @@ def expect (tk : TokenKind) (p : Parser) : Option Parser :=
 def matchKeyword (kw : String) (p : Parser) : Option Parser :=
   expect (.keyword kw) p
 
-def parseIdentifier (p : Parser) : Option (Expr × Parser) :=
+/-- Resolve an identifier against the scope (innermost binder first): a bound
+name becomes its de Bruijn index, an unbound name stays free.
+
+Loop 72: the parser used to emit `.fvar` for *every* identifier, but the
+evaluator binds `bvar`s (`Context.pushBv`), so a parsed `let` or `fn` binding
+could never be seen by the body that references it — `let x = 5 in x + 1`
+evaluated to `stuck`, not `6`. -/
+
+def resolveIdent (scope : List String) (name : String) : Expr :=
+  match scope.findIdx? (· == name) with
+  | some i => .bvar i
+  | none => .fvar name
+
+def parseIdentifier (scope : List String) (p : Parser) : Option (Expr × Parser) :=
   match peek p with
   | some t =>
     match t.kind with
-    | .identifier => some (.fvar t.lexeme, advance p)
+    | .identifier => some (resolveIdent scope t.lexeme, advance p)
     | _ => none
   | none => none
 
@@ -122,26 +135,27 @@ def precedenceOf (opStr : String) : Option (Nat × Operator) :=
   | _ => none
 
 mutual
-private def parseExprFuel (fuel : Nat) (p : Parser) : Option (Expr × Parser) :=
+private def parseExprFuel (fuel : Nat) (scope : List String) (p : Parser) :
+    Option (Expr × Parser) :=
   match fuel with
   | 0 => none
-  | fuel + 1 => parseBinaryPrec fuel 1 p
+  | fuel + 1 => parseBinaryPrec fuel 1 scope p
 
 
 /-- Parse a binary expression whose operators must have precedence at least
 `minPrec` (precedence climbing). -/
-private def parseBinaryPrec (fuel : Nat) (minPrec : Nat) (p : Parser) :
-    Option (Expr × Parser) :=
+private def parseBinaryPrec (fuel : Nat) (minPrec : Nat) (scope : List String)
+    (p : Parser) : Option (Expr × Parser) :=
   match fuel with
   | 0 => none
   | fuel + 1 =>
-    match parseUnary fuel p with
+    match parseUnary fuel scope p with
     | none => none
-    | some (left, p) => parseBinaryRest left fuel minPrec p
+    | some (left, p) => parseBinaryRest left fuel minPrec scope p
 
 
 private def parseBinaryRest (left : Expr) (fuel : Nat) (minPrec : Nat)
-    (p : Parser) : Option (Expr × Parser) :=
+    (scope : List String) (p : Parser) : Option (Expr × Parser) :=
   match fuel with
   | 0 => none
   | fuel + 1 =>
@@ -154,16 +168,17 @@ private def parseBinaryRest (left : Expr) (fuel : Nat) (minPrec : Nat)
           if prec < minPrec then some (left, p)
           else
             let p := advance p
-            match parseBinaryPrec fuel (prec + 1) p with
+            match parseBinaryPrec fuel (prec + 1) scope p with
             | none => none
             | some (right, p) =>
-              parseBinaryRest (.binop op left right) fuel minPrec p
+              parseBinaryRest (.binop op left right) fuel minPrec scope p
         | none => some (left, p)
       | _ => some (left, p)
     | none => some (left, p)
 
 
-private def parseUnary (fuel : Nat) (p : Parser) : Option (Expr × Parser) :=
+private def parseUnary (fuel : Nat) (scope : List String) (p : Parser) :
+    Option (Expr × Parser) :=
   match fuel with
   | 0 => none
   | fuel + 1 =>
@@ -172,38 +187,39 @@ private def parseUnary (fuel : Nat) (p : Parser) : Option (Expr × Parser) :=
       match t.kind with
       | .operator "!" =>
         let p := advance p
-        match parseUnary fuel p with
+        match parseUnary fuel scope p with
         | none => none
         | some (e, p) => some (.unop .not e, p)
       | .operator "-" =>
         let p := advance p
-        match parseUnary fuel p with
+        match parseUnary fuel scope p with
         | none => none
         | some (e, p) => some (.unop .sub e, p)
-      | _ => parseApplication fuel p
+      | _ => parseApplication fuel scope p
     | none => none
 
 
-private def parseApplication (fuel : Nat) (p : Parser) : Option (Expr × Parser) :=
+private def parseApplication (fuel : Nat) (scope : List String)
+    (p : Parser) : Option (Expr × Parser) :=
   match fuel with
   | 0 => none
   | fuel + 1 =>
-    match parseAtom fuel p with
+    match parseAtom fuel scope p with
     | none => none
-    | some (fnExpr, p) => parseAppArgs fnExpr fuel [] p
+    | some (fnExpr, p) => parseAppArgs fnExpr fuel scope [] p
 
 
-private def parseAppArgs (fnExpr : Expr) (fuel : Nat) (args : List Expr)
-    (p : Parser) : Option (Expr × Parser) :=
+private def parseAppArgs (fnExpr : Expr) (fuel : Nat) (scope : List String)
+    (args : List Expr) (p : Parser) : Option (Expr × Parser) :=
   match fuel with
   | 0 => none
   | fuel + 1 =>
     match peek p with
     | some t =>
       if isAtomStart t.kind then
-        match parseAtom fuel p with
+        match parseAtom fuel scope p with
         | none => none
-        | some (arg, p) => parseAppArgs fnExpr fuel (arg :: args) p
+        | some (arg, p) => parseAppArgs fnExpr fuel scope (arg :: args) p
       else
         match args with
         | [] => some (fnExpr, p)
@@ -214,59 +230,65 @@ private def parseAppArgs (fnExpr : Expr) (fuel : Nat) (args : List Expr)
       | _ => some (.app fnExpr args.reverse, p)
 
 
-private def parseAtom (fuel : Nat) (p : Parser) : Option (Expr × Parser) :=
+private def parseAtom (fuel : Nat) (scope : List String) (p : Parser) :
+    Option (Expr × Parser) :=
   match fuel with
   | 0 => none
   | fuel + 1 =>
     match peek p with
     | some t =>
       match t.kind with
-      | .identifier => parseIdentifier p
+      | .identifier => parseIdentifier scope p
       | .intLiteral => parseLiteral p
       | .stringLiteral => parseLiteral p
       | .keyword "true" => parseLiteral p
       | .keyword "false" => parseLiteral p
       | .delimiter "(" =>
         let p' := advance p
-        match parseExprFuel fuel p' with
+        match parseExprFuel fuel scope p' with
         | some (e, p'') =>
           match expect (.delimiter ")") p'' with
           | some p''' => some (e, p''')
           | none => none
         | none => none
-      | .keyword "if" => parseIfExpr fuel p
-      | .keyword "let" => parseLetExpr fuel p
-      | .keyword "fn" => parseFnExpr fuel p
-      | .delimiter "{" => parseBlockExpr fuel p
+      | .keyword "if" => parseIfExpr fuel scope p
+      | .keyword "let" => parseLetExpr fuel scope p
+      -- loop 72: consume the `fn` keyword before collecting parameters; the
+      -- old code left the cursor on `fn`, so `parseFnParams` saw a keyword
+      -- where it wanted an identifier and every lambda failed to parse
+      | .keyword "fn" => parseFnExpr fuel scope (advance p)
+      | .delimiter "{" => parseBlockExpr fuel scope p
       | _ => none
     | none => none
 
 
-private def parseIfExpr (fuel : Nat) (p : Parser) : Option (Expr × Parser) :=
+private def parseIfExpr (fuel : Nat) (scope : List String) (p : Parser) :
+    Option (Expr × Parser) :=
   match fuel with
   | 0 => none
   | fuel + 1 =>
     match matchKeyword "if" p with
     | none => none
     | some p =>
-      match parseExprFuel fuel p with
+      match parseExprFuel fuel scope p with
       | none => none
       | some (cond, p) =>
         match matchKeyword "then" p with
         | none => none
         | some p =>
-          match parseExprFuel fuel p with
+          match parseExprFuel fuel scope p with
           | none => none
           | some (thenE, p) =>
             match matchKeyword "else" p with
             | none => none
             | some p =>
-              match parseExprFuel fuel p with
+              match parseExprFuel fuel scope p with
               | none => none
               | some (elseE, p) => some (.ifThenElse cond thenE elseE, p)
 
 
-private def parseLetExpr (fuel : Nat) (p : Parser) : Option (Expr × Parser) :=
+private def parseLetExpr (fuel : Nat) (scope : List String) (p : Parser) :
+    Option (Expr × Parser) :=
   match fuel with
   | 0 => none
   | fuel + 1 =>
@@ -277,31 +299,35 @@ private def parseLetExpr (fuel : Nat) (p : Parser) : Option (Expr × Parser) :=
       | some t =>
         match t.kind with
         | .identifier =>
+          -- the initialiser is parsed in the outer scope; only the body sees
+          -- the new binder
+          let name := t.lexeme
           let p := advance p
           match expect (.operator "=") p with
           | none => none
           | some p =>
-            match parseExprFuel fuel p with
+            match parseExprFuel fuel scope p with
             | none => none
             | some (init, p) =>
               match matchKeyword "in" p with
               | none => none
               | some p =>
-                match parseExprFuel fuel p with
+                match parseExprFuel fuel (name :: scope) p with
                 | none => none
                 | some (body, p) => some (.let_ init body, p)
         | _ => none
       | none => none
 
 
-private def parseFnExpr (fuel : Nat) (p : Parser) : Option (Expr × Parser) :=
+private def parseFnExpr (fuel : Nat) (scope : List String)
+    (p : Parser) : Option (Expr × Parser) :=
   match fuel with
   | 0 => none
-  | fuel + 1 => parseFnParams fuel [] p
+  | fuel + 1 => parseFnParams fuel [] scope p
 
 
 private def parseFnParams (fuel : Nat) (params : List String)
-    (p : Parser) : Option (Expr × Parser) :=
+    (scope : List String) (p : Parser) : Option (Expr × Parser) :=
   match fuel with
   | 0 => none
   | fuel + 1 =>
@@ -310,26 +336,30 @@ private def parseFnParams (fuel : Nat) (params : List String)
       match t.kind with
       | .identifier =>
         let p := advance p
-        parseFnParams fuel (t.lexeme :: params) p
+        parseFnParams fuel (t.lexeme :: params) scope p
       | .operator "->" =>
         let p := advance p
-        match parseExprFuel fuel p with
+        -- `params` accumulated innermost-first, so it is already the body's
+        -- de Bruijn scope; outer bindings shift by `params.length`, which is
+        -- exactly what `.lam`'s substitution performs
+        match parseExprFuel fuel (params ++ scope) p with
         | none => none
         | some (body, p) => some (.lam params.length body, p)
       | _ => none
     | none => none
 
 
-private def parseBlockExpr (fuel : Nat) (p : Parser) : Option (Expr × Parser) :=
+private def parseBlockExpr (fuel : Nat) (scope : List String)
+    (p : Parser) : Option (Expr × Parser) :=
   match fuel with
   | 0 => none
   | fuel + 1 =>
     match expect (.delimiter "{") p with
     | none => none
-    | some p => parseBlockBody fuel [] p
+    | some p => parseBlockBody fuel scope [] p
 
 
-private def parseBlockBody (fuel : Nat) (exprs : List Expr)
+private def parseBlockBody (fuel : Nat) (scope : List String) (exprs : List Expr)
     (p : Parser) : Option (Expr × Parser) :=
   match fuel with
   | 0 => none
@@ -339,13 +369,13 @@ private def parseBlockBody (fuel : Nat) (exprs : List Expr)
       if t.kind == .delimiter "}" then
         some (.block exprs.reverse, advance p)
       else
-        match parseExprFuel fuel p with
+        match parseExprFuel fuel scope p with
         | none => none
         | some (e, p) =>
           let p := match expect (.delimiter ";") p with
             | some p => p
             | none => p
-          parseBlockBody fuel (e :: exprs) p
+          parseBlockBody fuel scope (e :: exprs) p
     | none => none
 
 
@@ -365,18 +395,19 @@ in the module docstring); the machine-checked part is that no well-formed input
 that fits under any smaller budget is lost by the larger one. -/
 mutual
 
-private theorem parseExprFuel_mono (n : Nat) (p : Parser) (r : Expr × Parser)
-    (h : parseExprFuel n p = some r) (k : Nat) :
-    parseExprFuel (n + k) p = some r := by
+private theorem parseExprFuel_mono (n : Nat) (scope : List String) (p : Parser)
+    (r : Expr × Parser) (h : parseExprFuel n scope p = some r) (k : Nat) :
+    parseExprFuel (n + k) scope p = some r := by
   match n with
   | 0 => simp [parseExprFuel] at h
   | n + 1 =>
     rw [Nat.succ_add]
-    exact parseBinaryPrec_mono n 1 p r h k
+    exact parseBinaryPrec_mono n 1 scope p r h k
 
-private theorem parseBinaryPrec_mono (n : Nat) (minPrec : Nat) (p : Parser)
-    (r : Expr × Parser) (h : parseBinaryPrec n minPrec p = some r) (k : Nat) :
-    parseBinaryPrec (n + k) minPrec p = some r := by
+private theorem parseBinaryPrec_mono (n : Nat) (minPrec : Nat)
+    (scope : List String) (p : Parser) (r : Expr × Parser)
+    (h : parseBinaryPrec n minPrec scope p = some r) (k : Nat) :
+    parseBinaryPrec (n + k) minPrec scope p = some r := by
   match n with
   | 0 => simp [parseBinaryPrec] at h
   | n + 1 =>
@@ -388,13 +419,13 @@ private theorem parseBinaryPrec_mono (n : Nat) (minPrec : Nat) (p : Parser)
       | (intro _; assumption)
       | (intro _; simp_all)
       | (intro hc; exact absurd hc (by omega))
-      | exact parseUnary_mono _ _ r h k
-      | exact parseBinaryRest_mono _ _ _ _ r h k
+      | exact parseUnary_mono _ _ _ r h k
+      | exact parseBinaryRest_mono _ _ _ _ _ r h k
 
 private theorem parseBinaryRest_mono (left : Expr) (n : Nat) (minPrec : Nat)
-    (p : Parser) (r : Expr × Parser)
-    (h : parseBinaryRest left n minPrec p = some r) (k : Nat) :
-    parseBinaryRest left (n + k) minPrec p = some r := by
+    (scope : List String) (p : Parser) (r : Expr × Parser)
+    (h : parseBinaryRest left n minPrec scope p = some r) (k : Nat) :
+    parseBinaryRest left (n + k) minPrec scope p = some r := by
   match n with
   | 0 => simp [parseBinaryRest] at h
   | n + 1 =>
@@ -406,12 +437,12 @@ private theorem parseBinaryRest_mono (left : Expr) (n : Nat) (minPrec : Nat)
       | (intro _; assumption)
       | (intro _; simp_all)
       | (intro hc; exact absurd hc (by omega))
-      | exact parseBinaryPrec_mono _ _ _ r h k
-      | exact parseBinaryRest_mono _ _ _ _ r h k
+      | exact parseBinaryPrec_mono _ _ _ _ r h k
+      | exact parseBinaryRest_mono _ _ _ _ _ r h k
 
-private theorem parseUnary_mono (n : Nat) (p : Parser) (r : Expr × Parser)
-    (h : parseUnary n p = some r) (k : Nat) :
-    parseUnary (n + k) p = some r := by
+private theorem parseUnary_mono (n : Nat) (scope : List String) (p : Parser)
+    (r : Expr × Parser) (h : parseUnary n scope p = some r) (k : Nat) :
+    parseUnary (n + k) scope p = some r := by
   match n with
   | 0 => simp [parseUnary] at h
   | n + 1 =>
@@ -423,12 +454,12 @@ private theorem parseUnary_mono (n : Nat) (p : Parser) (r : Expr × Parser)
       | (intro _; assumption)
       | (intro _; simp_all)
       | (intro hc; exact absurd hc (by omega))
-      | exact parseUnary_mono _ _ r h k
-      | exact parseApplication_mono _ _ r h k
+      | exact parseUnary_mono _ _ _ r h k
+      | exact parseApplication_mono _ _ _ r h k
 
-private theorem parseApplication_mono (n : Nat) (p : Parser) (r : Expr × Parser)
-    (h : parseApplication n p = some r) (k : Nat) :
-    parseApplication (n + k) p = some r := by
+private theorem parseApplication_mono (n : Nat) (scope : List String)
+    (p : Parser) (r : Expr × Parser) (h : parseApplication n scope p = some r)
+    (k : Nat) : parseApplication (n + k) scope p = some r := by
   match n with
   | 0 => simp [parseApplication] at h
   | n + 1 =>
@@ -440,13 +471,13 @@ private theorem parseApplication_mono (n : Nat) (p : Parser) (r : Expr × Parser
       | (intro _; assumption)
       | (intro _; simp_all)
       | (intro hc; exact absurd hc (by omega))
-      | exact parseAtom_mono _ _ r h k
-      | exact parseAppArgs_mono _ _ _ _ r h k
+      | exact parseAtom_mono _ _ _ r h k
+      | exact parseAppArgs_mono _ _ _ _ _ r h k
 
-private theorem parseAppArgs_mono (fnExpr : Expr) (n : Nat) (args : List Expr)
-    (p : Parser) (r : Expr × Parser)
-    (h : parseAppArgs fnExpr n args p = some r) (k : Nat) :
-    parseAppArgs fnExpr (n + k) args p = some r := by
+private theorem parseAppArgs_mono (fnExpr : Expr) (n : Nat) (scope : List String)
+    (args : List Expr) (p : Parser) (r : Expr × Parser)
+    (h : parseAppArgs fnExpr n scope args p = some r) (k : Nat) :
+    parseAppArgs fnExpr (n + k) scope args p = some r := by
   match n with
   | 0 => simp [parseAppArgs] at h
   | n + 1 =>
@@ -458,12 +489,12 @@ private theorem parseAppArgs_mono (fnExpr : Expr) (n : Nat) (args : List Expr)
       | (intro _; assumption)
       | (intro _; simp_all)
       | (intro hc; exact absurd hc (by omega))
-      | exact parseAtom_mono _ _ r h k
-      | exact parseAppArgs_mono _ _ _ _ r h k
+      | exact parseAtom_mono _ _ _ r h k
+      | exact parseAppArgs_mono _ _ _ _ _ r h k
 
-private theorem parseAtom_mono (n : Nat) (p : Parser) (r : Expr × Parser)
-    (h : parseAtom n p = some r) (k : Nat) :
-    parseAtom (n + k) p = some r := by
+private theorem parseAtom_mono (n : Nat) (scope : List String) (p : Parser)
+    (r : Expr × Parser) (h : parseAtom n scope p = some r) (k : Nat) :
+    parseAtom (n + k) scope p = some r := by
   match n with
   | 0 => simp [parseAtom] at h
   | n + 1 =>
@@ -475,15 +506,15 @@ private theorem parseAtom_mono (n : Nat) (p : Parser) (r : Expr × Parser)
       | (intro _; assumption)
       | (intro _; simp_all)
       | (intro hc; exact absurd hc (by omega))
-      | exact parseExprFuel_mono _ _ r h k
-      | exact parseIfExpr_mono _ _ r h k
-      | exact parseLetExpr_mono _ _ r h k
-      | exact parseFnExpr_mono _ _ r h k
-      | exact parseBlockExpr_mono _ _ r h k
+      | exact parseExprFuel_mono _ _ _ r h k
+      | exact parseIfExpr_mono _ _ _ r h k
+      | exact parseLetExpr_mono _ _ _ r h k
+      | exact parseFnExpr_mono _ _ _ r h k
+      | exact parseBlockExpr_mono _ _ _ r h k
 
-private theorem parseIfExpr_mono (n : Nat) (p : Parser) (r : Expr × Parser)
-    (h : parseIfExpr n p = some r) (k : Nat) :
-    parseIfExpr (n + k) p = some r := by
+private theorem parseIfExpr_mono (n : Nat) (scope : List String) (p : Parser)
+    (r : Expr × Parser) (h : parseIfExpr n scope p = some r) (k : Nat) :
+    parseIfExpr (n + k) scope p = some r := by
   match n with
   | 0 => simp [parseIfExpr] at h
   | n + 1 =>
@@ -495,11 +526,11 @@ private theorem parseIfExpr_mono (n : Nat) (p : Parser) (r : Expr × Parser)
       | (intro _; assumption)
       | (intro _; simp_all)
       | (intro hc; exact absurd hc (by omega))
-      | exact parseExprFuel_mono _ _ r h k
+      | exact parseExprFuel_mono _ _ _ r h k
 
-private theorem parseLetExpr_mono (n : Nat) (p : Parser) (r : Expr × Parser)
-    (h : parseLetExpr n p = some r) (k : Nat) :
-    parseLetExpr (n + k) p = some r := by
+private theorem parseLetExpr_mono (n : Nat) (scope : List String) (p : Parser)
+    (r : Expr × Parser) (h : parseLetExpr n scope p = some r) (k : Nat) :
+    parseLetExpr (n + k) scope p = some r := by
   match n with
   | 0 => simp [parseLetExpr] at h
   | n + 1 =>
@@ -513,18 +544,19 @@ private theorem parseLetExpr_mono (n : Nat) (p : Parser) (r : Expr × Parser)
       | (intro hc; exact absurd hc (by omega))
       | exact parseExprFuel_mono _ _ r h k
 
-private theorem parseFnExpr_mono (n : Nat) (p : Parser) (r : Expr × Parser)
-    (h : parseFnExpr n p = some r) (k : Nat) :
-    parseFnExpr (n + k) p = some r := by
+private theorem parseFnExpr_mono (n : Nat) (scope : List String) (p : Parser)
+    (r : Expr × Parser) (h : parseFnExpr n scope p = some r) (k : Nat) :
+    parseFnExpr (n + k) scope p = some r := by
   match n with
   | 0 => simp [parseFnExpr] at h
   | n + 1 =>
     rw [Nat.succ_add]
-    exact parseFnParams_mono n [] p r h k
+    exact parseFnParams_mono n [] scope p r h k
 
-private theorem parseFnParams_mono (n : Nat) (params : List String) (p : Parser)
-    (r : Expr × Parser) (h : parseFnParams n params p = some r) (k : Nat) :
-    parseFnParams (n + k) params p = some r := by
+private theorem parseFnParams_mono (n : Nat) (params : List String)
+    (scope : List String) (p : Parser) (r : Expr × Parser)
+    (h : parseFnParams n params scope p = some r) (k : Nat) :
+    parseFnParams (n + k) params scope p = some r := by
   match n with
   | 0 => simp [parseFnParams] at h
   | n + 1 =>
@@ -536,12 +568,12 @@ private theorem parseFnParams_mono (n : Nat) (params : List String) (p : Parser)
       | (intro _; assumption)
       | (intro _; simp_all)
       | (intro hc; exact absurd hc (by omega))
-      | exact parseFnParams_mono _ _ _ r h k
-      | exact parseExprFuel_mono _ _ r h k
+      | exact parseFnParams_mono _ _ _ _ r h k
+      | exact parseExprFuel_mono _ _ _ r h k
 
-private theorem parseBlockExpr_mono (n : Nat) (p : Parser) (r : Expr × Parser)
-    (h : parseBlockExpr n p = some r) (k : Nat) :
-    parseBlockExpr (n + k) p = some r := by
+private theorem parseBlockExpr_mono (n : Nat) (scope : List String) (p : Parser)
+    (r : Expr × Parser) (h : parseBlockExpr n scope p = some r) (k : Nat) :
+    parseBlockExpr (n + k) scope p = some r := by
   match n with
   | 0 => simp [parseBlockExpr] at h
   | n + 1 =>
@@ -549,11 +581,12 @@ private theorem parseBlockExpr_mono (n : Nat) (p : Parser) (r : Expr × Parser)
     simp only [parseBlockExpr] at h ⊢
     repeat' split at h
     all_goals try simp_all [parseBlockBody_mono]
-    all_goals exact parseBlockBody_mono _ _ _ r h k
+    all_goals exact parseBlockBody_mono _ _ _ _ r h k
 
-private theorem parseBlockBody_mono (n : Nat) (exprs : List Expr) (p : Parser)
-    (r : Expr × Parser) (h : parseBlockBody n exprs p = some r) (k : Nat) :
-    parseBlockBody (n + k) exprs p = some r := by
+private theorem parseBlockBody_mono (n : Nat) (scope : List String)
+    (exprs : List Expr) (p : Parser) (r : Expr × Parser)
+    (h : parseBlockBody n scope exprs p = some r) (k : Nat) :
+    parseBlockBody (n + k) scope exprs p = some r := by
   match n with
   | 0 => simp [parseBlockBody] at h
   | n + 1 =>
@@ -565,8 +598,8 @@ private theorem parseBlockBody_mono (n : Nat) (exprs : List Expr) (p : Parser)
       | (intro _; assumption)
       | (intro _; simp_all)
       | (intro hc; exact absurd hc (by omega))
-      | exact parseExprFuel_mono _ _ r h k
-      | exact parseBlockBody_mono _ _ _ r h k
+      | exact parseExprFuel_mono _ _ _ r h k
+      | exact parseBlockBody_mono _ _ _ _ r h k
 
 end
 
@@ -576,7 +609,7 @@ end
 the grammar nests at most seven descent levels per token, so this bounds any
 well-formed input. -/
 def parseExpr (p : Parser) : Option (Expr × Parser) :=
-  parseExprFuel (10 * p.tokens.length + 100) p
+  parseExprFuel (10 * p.tokens.length + 100) [] p
 
 /-- **The seed is robust.** If a parse succeeds at any budget `f` that does not
 exceed the seeded budget, it succeeds at the seeded budget with the same result.
@@ -585,12 +618,12 @@ This is the machine-checked half of the fixed-seed argument: the constant in
 no input that fits under a smaller budget is lost. -/
 private theorem parseExpr_seed_robust (p : Parser) (f : Nat) (r : Expr × Parser)
     (hf : f ≤ 10 * p.tokens.length + 100)
-    (h : parseExprFuel f p = some r) :
+    (h : parseExprFuel f [] p = some r) :
     parseExpr p = some r := by
   unfold parseExpr
   obtain ⟨d, hd⟩ := Nat.exists_eq_add_of_le hf
   rw [hd]
-  exact parseExprFuel_mono f p r h d
+  exact parseExprFuel_mono f [] p r h d
 
 end Parser
 
