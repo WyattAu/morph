@@ -3,6 +3,7 @@ SPDX-License-Identifier: Apache-2.0
 -/
 
 import Morph.Specs.MemoryAcyclicity.Spec
+import Morph.Specs.MemoryBounds.Spec
 
 /-!
 # MemoryAcyclicity: the cycle characterisation, proved
@@ -97,5 +98,177 @@ theorem reference_count_consistency_holds (G : ReferenceGraph) :
     reference_count_consistency G := by
   intro o _
   rfl
+
+/-! ### Loop 67: reachability bridge, weak refs, and collection
+
+Research: Jones & Lins (GC handbook — reachability *is* retention, weak
+references are precisely the edges the collector does not follow); Java
+`WeakReference` + `ReferenceQueue` (weak edges cleared when the referent is
+swept); OCaml `Ephemeron` (key–value weak binding); Swift `weak` (nil-ed on
+deallocation — `sweepWeak_drops_deallocated` is exactly that, proved);
+Baker (treadmill — collection as a reachability filter, which is what
+`Collected` states).
+
+Language comparison: Java (weak refs cleared, no proof); OCaml (ephemerons,
+prose semantics); Swift (weak→nil, runtime-checked); Rust
+(`Weak::upgrade → Option`, no collector at all). Morph: weak edges as data
+(`WGraph`), sweep as a function, nil-ing proved.
+
+What is proved:
+- the bridge: the module's one-step `hasPath` embeds into multi-step
+  `SReach` (`hasPath_to_SReach`), which is transitive (`SReach_trans`);
+- the cross-model bridge: `MemoryBounds.Reach` (heap reachability) implies
+  `SReach` in the projected graph (`reach_to_SReach`) — loop 59's named
+  item, with vertices covering exactly the live heap;
+- weak references as data: `weakCount` really counts, `sweepWeak` drops
+  edges to swept vertices with no dangling survivors
+  (`sweepWeak_no_dangling`, `sweepWeak_drops_deallocated` — the Swift
+  nil-ing theorem).
+
+Boundary: `weakReferences _ _ := 0` is untouched (that model has no
+weak-edge marker — loop 40 pinned it); weak edges live in `WGraph`.
+-/
+
+/-- Multi-step strong reachability: the transitive closure `hasPath` lacks.
+`refl` covers the `src = dst` case, `step` extends along an edge. -/
+inductive SReach (G : ReferenceGraph) : ObjectId → ObjectId → Prop where
+  | refl (o : ObjectId) : SReach G o o
+  | step {a b c : ObjectId} : (a, b) ∈ G.edges → SReach G b c → SReach G a c
+
+/-- The bridge: the module's one-step `hasPath` embeds into `SReach`. -/
+theorem hasPath_to_SReach {G : ReferenceGraph} {src dst : ObjectId}
+    (h : hasPath src dst G) : SReach G src dst := by
+  rcases h with rfl | ⟨e, hmem, h1, h2⟩
+  · exact .refl _
+  · obtain ⟨s, d⟩ := e
+    simp only at h1 h2
+    subst h1; subst h2
+    exact .step hmem (.refl _)
+
+/-- `SReach` is transitive — the closure property `hasPath` lacks. -/
+theorem SReach_trans {G : ReferenceGraph} {a b c : ObjectId}
+    (h1 : SReach G a b) (h2 : SReach G b c) : SReach G a c := by
+  induction h1 with
+  | refl _ => exact h2
+  | step he _ ih => exact .step he (ih h2)
+
+/-- A single edge reaches. -/
+theorem SReach_of_edge {G : ReferenceGraph} {a b : ObjectId}
+    (h : (a, b) ∈ G.edges) : SReach G a b :=
+  .step h (.refl _)
+
+/-- Bridge example: the edge reaches, in two steps and one. -/
+def exGraph : ReferenceGraph :=
+  { vertices := [{ id := 0 }, { id := 1 }],
+    edges := [({ id := 0 }, { id := 1 })] }
+
+example : SReach exGraph { id := 0 } { id := 1 } :=
+  .step ((List.mem_cons).mpr (Or.inl rfl)) (.refl _)
+
+/-- Project a bounds-model heap into a reference graph over exactly the
+live addresses. -/
+def heapGraph (h : Morph.Specs.MemoryBounds.Heap)
+    (live : List Morph.Specs.MemoryBounds.Addr) : ReferenceGraph :=
+  { vertices := live.map (fun a => ({ id := a } : ObjectId)),
+    edges := live.flatMap (fun a => match h a with
+      | none => []
+      | some fs => fs.map (fun f => (({ id := a }, { id := f }) :
+          ObjectId × ObjectId))) }
+
+/-- **Cross-model bridge.** Heap reachability implies graph reachability in
+the projection: every `Reach` derivation witnesses an `SReach` path from one
+of its base addresses. Vertices cover exactly the live heap (`hlive`). -/
+theorem reach_to_SReach (h : Morph.Specs.MemoryBounds.Heap)
+    (base live : List Morph.Specs.MemoryBounds.Addr)
+    (a : Morph.Specs.MemoryBounds.Addr)
+    (hlive : ∀ x fs, h x = some fs → x ∈ live)
+    (hr : Morph.Specs.MemoryBounds.Reach h base a) :
+    ∃ b, b ∈ base ∧ SReach (heapGraph h live) { id := b } { id := a } := by
+  induction hr with
+  | base_ a hb => exact ⟨a, hb, .refl _⟩
+  | edge_ x f fs hlook hfin _ ih =>
+      obtain ⟨b, hb, hreach⟩ := ih
+      have hx : x ∈ live := hlive x fs hlook
+      have hedge : (({ id := x }, { id := f }) : ObjectId × ObjectId) ∈
+          (heapGraph h live).edges := by
+        simp only [heapGraph, List.mem_flatMap]
+        refine ⟨x, hx, ?_⟩
+        simp only [hlook]
+        exact List.mem_map.mpr ⟨f, hfin, rfl⟩
+      exact ⟨b, hb, SReach_trans hreach (.step hedge (.refl _))⟩
+
+/-! #### Weak references as data
+
+The `ReferenceGraph` model has no weak-edge marker (loop 40), so weak edges
+live alongside it in `WGraph` rather than inside it. -/
+
+/-- A graph with a separate weak-edge list: weak edges never retain. -/
+structure WGraph where
+  strong : ReferenceGraph
+  weak : List (ObjectId × ObjectId)
+
+/-- Weak references really counted (contrast `weakReferences _ _ := 0`). -/
+def weakCount (W : WGraph) (o : ObjectId) : Nat :=
+  (W.weak.filter (fun e => e.2 == o)).length
+
+/-- No weak edges, no weak count. -/
+theorem weakCount_nil (G : ReferenceGraph) (o : ObjectId) :
+    weakCount ⟨G, []⟩ o = 0 := rfl
+
+/-- Decidable equality for `ObjectId` from the underlying `Nat`. Kept as a
+plain definition (not an instance), so it can never conflict with the
+`LawfulBEq ObjectId` instance in `ASTGraph`. -/
+def objDecEq (a b : ObjectId) : Decidable (a = b) :=
+  if h : a.id = b.id then
+    isTrue (by cases a with | mk x => cases b with | mk y => simp_all)
+  else
+    isFalse (fun heq => h (congrArg ObjectId.id heq))
+
+/-- Decidable list membership, explicitly — no instance resolution involved. -/
+def memDec (x : ObjectId) : (l : List ObjectId) → Decidable (x ∈ l)
+  | [] => isFalse (fun h => by cases h)
+  | hd :: tl =>
+      match objDecEq x hd with
+      | isTrue heq =>
+          isTrue (by rw [heq]; exact (List.mem_cons).mpr (Or.inl rfl))
+      | isFalse hne =>
+          match memDec x tl with
+          | isTrue hmem => isTrue (List.mem_cons_of_mem _ hmem)
+          | isFalse hntl =>
+              isFalse (by
+                intro hcon
+                rw [List.mem_cons] at hcon
+                rcases hcon with rfl | hmem
+                · exact hne rfl
+                · exact hntl hmem)
+
+/-- Sweep weak edges against the live set: drop every edge whose target was
+collected. This is Java's clearing / Swift's nil-ing, as a function. -/
+def sweepWeak (live : List ObjectId)
+    (w : List (ObjectId × ObjectId)) : List (ObjectId × ObjectId) :=
+  w.filter (fun e => match memDec e.2 live with
+    | isTrue _ => true
+    | isFalse _ => false)
+
+/-- No surviving weak edge dangles: every survivor points into `live`. -/
+theorem sweepWeak_no_dangling (live : List ObjectId)
+    (w : List (ObjectId × ObjectId)) (e : ObjectId × ObjectId)
+    (h : e ∈ sweepWeak live w) : e.2 ∈ live := by
+  have h2 := (List.mem_filter.mp h).2
+  cases hm : memDec e.2 live with
+  | isTrue hmem => exact hmem
+  | isFalse _ => simp [hm] at h2
+
+/-- **Swift nil-ing, proved.** A weak edge to a deallocated object does not
+survive the sweep against the survivors' vertices: collection nils it. -/
+theorem sweepWeak_drops_deallocated (G G' : ReferenceGraph)
+    (roots : List ObjectId) (w : List (ObjectId × ObjectId))
+    (o : ObjectId) (hdead : eventuallyDeallocated o G G' roots)
+    (e : ObjectId × ObjectId) (hmem : e ∈ sweepWeak G'.vertices w) :
+    e.2 ≠ o := by
+  have hlive := sweepWeak_no_dangling G'.vertices w e hmem
+  intro hcon
+  rw [hcon] at hlive
+  exact hdead.2 hlive
 
 end Morph.Specs.MemoryAcyclicity
