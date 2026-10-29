@@ -4,6 +4,7 @@ SPDX-License-Identifier: Apache-2.0 -/
 import Morph.Store
 import Morph.Semantics
 import Morph.Specs.TypeSystem.Spec
+import Morph.Specs.TypeSystem.InferenceSound
 import Morph.Proofs.TypeSoundness.Progress
 import Morph.Proofs.TypeSoundness.Preservation
 
@@ -808,5 +809,73 @@ theorem safety_frozen_not_writable {σ σ' : Store} {Δ : StoreTyp} {e' : Expr} 
       injection hΔ' with h1
       injection h1 with h2 _
       exact hc h2.symm
+
+/-! ## End-to-end soundness (loop 69)
+
+The checker is sound (`checkType_sound_true`, proved in `InferenceSound.lean`)
+and well-typed programs enjoy progress and preservation (proved in
+`Morph.Proofs.TypeSoundness`). Composing them gives the end-to-end guarantee
+for the store-free fragment: **a program the shipped checker accepts never
+gets stuck, and every state it steps to is still well-typed.** The store-aware
+counterparts are `progressS` / `preservationS` above; bridging `HasType` to
+`HasTypeS` needs a store typing for the locations the program mentions and is
+left to the safety corollaries' hypotheses. -/
+
+/-- A checked program is a value or it steps. -/
+theorem checked_progress {σ : Store} {e : Expr} {τ : Typ}
+    (h : Morph.TypeChecker.checkType [] [] e τ = true) :
+    IsValue e ∨ ∃ e', Step σ e σ e' :=
+  Morph.Proofs.TypeSoundness.progress (checkType_sound_true [] [] e τ h)
+
+/-- A checked program's step result is still well-typed. -/
+theorem checked_preservation {σ σ' : Store} {e e' : Expr} {τ : Typ}
+    (h : Morph.TypeChecker.checkType [] [] e τ = true)
+    (hs : Step σ e σ' e') :
+    HasType [] [] e' τ :=
+  Morph.Proofs.TypeSoundness.preservation (checkType_sound_true [] [] e τ h) hs
+
+/-- A run: the reflexive-transitive closure of `Step`, stated directly so the
+end-to-end theorem needs no extra imports. -/
+inductive Run : Store → Expr → Store → Expr → Prop where
+  | refl : Run σ e σ e
+  | tail : Run σ e σ₁ e₁ → Step σ₁ e₁ σ₂ e₂ → Run σ e σ₂ e₂
+
+/-- A checked program stays well-typed along any run: induction on `Run`,
+stepping through `preservation` at each step. -/
+theorem checked_multistep_sound {σ σ' : Store} {e e' : Expr} {τ : Typ}
+    (h : Morph.TypeChecker.checkType [] [] e τ = true)
+    (hr : Run σ e σ' e') :
+    HasType [] [] e' τ := by
+  induction hr with
+  | refl => exact checkType_sound_true [] [] e τ h
+  | tail _ hstep ih =>
+      exact Morph.Proofs.TypeSoundness.preservation ih hstep
+
+/-! ## Store bridge (loop 70)
+
+`HasTypeS.lift` embeds ordinary typing into store-aware typing at *any* store
+typing; instantiating it at the empty store typing and pairing it with
+`Morph.storeInv_empty` routes every checker-accepted closed program through
+the store-aware `progressS` / `preservationS`. -/
+
+/-- Ordinary typing embeds into store-aware typing at the empty store typing. -/
+theorem hasType_to_hasTypeS_empty {e : Expr} {τ : Typ}
+    (h : HasType [] [] e τ) : HasTypeS (fun _ => none) [] [] e τ :=
+  HasTypeS.lift _ [] [] e τ h
+
+/-- A checked program never gets stuck starting from the empty store. -/
+theorem checked_progressS {e : Expr} {τ : Typ}
+    (h : Morph.TypeChecker.checkType [] [] e τ = true) :
+    IsValue e ∨ ∃ σ' e', Step Morph.Store.empty e σ' e' :=
+  progressS Morph.storeInv_empty
+    (hasType_to_hasTypeS_empty (checkType_sound_true [] [] e τ h))
+
+/-- A checked program's step from the empty store lands in a well-typed state. -/
+theorem checked_preservationS {σ' : Store} {e e' : Expr} {τ : Typ}
+    (h : Morph.TypeChecker.checkType [] [] e τ = true)
+    (hs : Step Morph.Store.empty e σ' e') :
+    ∃ Δ', StoreInv σ' Δ' ∧ HasTypeS Δ' [] [] e' τ :=
+  preservationS Morph.storeInv_empty
+    (hasType_to_hasTypeS_empty (checkType_sound_true [] [] e τ h)) hs
 
 end Morph.Specs.TypeSystem
