@@ -2,7 +2,7 @@
 SPDX-License-Identifier: Apache-2.0
 -/
 
-import Morph.Specs.ModuleSystem.Spec
+import Morph.Specs.ModuleSystem.Lemmas
 
 namespace Morph.Specs.ModuleSystem
 
@@ -79,5 +79,84 @@ example : searchRegistryByName [] "anything" = [] := rfl
 
 /-- Searching an empty registry by tag returns an empty list. -/
 example : searchRegistryByTag [] "anything" = [] := rfl
+
+/-! ## Loop 70: well-formed tables, workspaces, and mangling
+
+A concrete two-module workspace (`core` with no dependencies, `utils`
+depending on `core`), built and verified with the loop-70 theorems. -/
+
+/-- `core` alone: a one-entry table is well formed. -/
+def table1 : LinkTable := addToLinkTable [] mod_core
+
+theorem table1_wf : WellFormed table1 := by
+  refine wellFormed_add [] mod_core ?_ ?_ ?_
+  · simp
+  · simp [mod_core]
+  · exact ⟨by simp [keysMatch], by simp [keyNodup], by simp [depsResolved]⟩
+
+/-- Adding `utils`, which depends on `core`, keeps the table well formed. -/
+def table2 : LinkTable := addToLinkTable table1 mod_utils
+
+theorem id_utils_ne_id_core : id_utils ≠ id_core := by decide
+
+theorem table2_wf : WellFormed table2 := by
+  refine wellFormed_add table1 mod_utils ?_ ?_ table1_wf
+  · intro hmem
+    unfold table1 addToLinkTable at hmem
+    simp only [List.map_cons, List.mem_cons, List.map_nil, List.not_mem_nil,
+      or_false] at hmem
+    exact id_utils_ne_id_core hmem
+  · intro d hd
+    simp [mod_utils] at hd
+    subst hd
+    simp [moduleInLinkTable, addToLinkTable, table1, id_core]
+    decide
+
+/-- `utils` is in the table, so its dependency on `core` resolves. -/
+theorem mem_table2_utils : mod_utils ∈ table2.map Prod.snd := by
+  unfold table2 addToLinkTable
+  exact List.mem_cons_self
+
+example : (resolveModule table2 id_core).isSome = true :=
+  wellFormed_deps_resolve table2_wf (m := mod_utils) mem_table2_utils
+    (by simp [mod_utils])
+
+/-- `core` is a member of the table, under its own id. -/
+theorem mem_table2_core : (id_core, mod_core) ∈ table2 := by
+  unfold table2 table1 addToLinkTable
+  exact List.mem_cons_of_mem _ List.mem_cons_self
+
+/-- `core` resolves to exactly the module that was stored. -/
+example : resolveModule table2 id_core = some mod_core :=
+  resolveModule_eq_some_of_mem_of_keyNodup table2_wf.2.1 mem_table2_core
+
+/-- Name resolution finds the stored module. -/
+def wsConfig : WorkspaceConfig :=
+  { searchPaths := ["."], excludePatterns := [], maxDepth := 8 }
+
+def ws : Workspace :=
+  { root := "/home/dev/app", modules := table2, config := wsConfig }
+
+theorem ws_namesNodup : namesNodup ws.modules := by
+  unfold namesNodup ws table2
+  simp [mod_utils]
+  decide
+
+theorem ws_wf : workspaceWellFormed ws :=
+  ⟨by decide, by decide, table2_wf, ws_namesNodup⟩
+
+example : resolveModuleByName ws "core" = some mod_core :=
+  resolveModuleByName_eq_some_of_mem_of_namesNodup (w := ws) (m := mod_core)
+    table2_wf.1 (workspace_namesNodup ws_wf) mem_table2_core
+
+/-- Mangling the structured way: the components stay recoverable. -/
+example : mangleName id_core "f" = { hash := "abc123", version := 1, symbol := "f" } := rfl
+
+example : renderMangled (mangleName id_core "f") = "abc123_v1_f" := rfl
+
+/-- But the textual form collides: these two `(hash, version, symbol)` triples
+render to the same string. -/
+example : mangleSymbol { hash := "a", version := 1 } "b_v2_c" =
+    mangleSymbol { hash := "a_v1_b", version := 2 } "c" := by native_decide
 
 end Morph.Specs.ModuleSystem

@@ -22,6 +22,13 @@ content-addressable linking, workspace resolution, and registry protocol.
 
 None identified. All specification points are clear and unambiguous.
 
+The link-table/workspace/mangling correctness questions formerly marked TODO
+are closed in `Lemmas.lean` (loop 70): a well-formed link table has unique
+module ids and resolvable dependencies, a well-formed workspace has a non-empty
+root and resolves by name, and mangling is injective *structurally*
+(`mangleName`) — the textual form is a rendering whose general injectivity is
+refuted (`mangleSymbol_not_injective`).
+
 -/
 namespace Morph.Specs.ModuleSystem
 
@@ -82,6 +89,22 @@ def addToLinkTable (table : LinkTable) (module : Module) : LinkTable :=
 def moduleInLinkTable (table : LinkTable) (id : ModuleId) : Bool :=
   table.any (fun (mid, _) => decide (mid = id))
 
+/-- A link table's keys match the module ids they store. -/
+def keysMatch (t : LinkTable) : Prop :=
+  ∀ (id : ModuleId) (m : Module), (id, m) ∈ t → m.id = id
+
+/-- No two entries share a module id. -/
+def keyNodup (t : LinkTable) : Prop := (t.map Prod.fst).Nodup
+
+/-- Every dependency named by a stored module exists in the table. -/
+def depsResolved (t : LinkTable) : Prop :=
+  ∀ m ∈ t.map Prod.snd, ∀ d ∈ m.dependencies, moduleInLinkTable t d = true
+
+/-- A well-formed link table: keys match, ids are unique, and every dependency
+resolves. -/
+def WellFormed (t : LinkTable) : Prop :=
+  keysMatch t ∧ keyNodup t ∧ depsResolved t
+
 /-!
 ## Workspace Resolution
 -/
@@ -100,6 +123,14 @@ structure Workspace where
 
 def resolveModuleByName (workspace : Workspace) (name : String) : Option Module :=
   workspace.modules.find? (fun (_, m) => m.name == name) |>.map Prod.snd
+
+/-- No two modules in a table share a name. -/
+def namesNodup (t : LinkTable) : Prop := (t.map (fun p => p.2.name)).Nodup
+
+/-- A workspace is well-formed when its root is non-empty, its depth budget is
+positive, its link table is well-formed, and module names are unique. -/
+def workspaceWellFormed (w : Workspace) : Prop :=
+  w.root ≠ "" ∧ 0 < w.config.maxDepth ∧ WellFormed w.modules ∧ namesNodup w.modules
 
 /-!
 ## Registry Protocol
@@ -169,6 +200,22 @@ def satisfiesConstraint (version : Nat) (constraint : VersionConstraint) : Bool 
 def mangleSymbol (moduleId : ModuleId) (symbol : String) : String :=
   s!"{moduleId.hash}_v{moduleId.version}_{symbol}"
 
+/-- The structured content of a mangled symbol. Unlike the textual form, this
+carries the three components separately, so it can be injective. -/
+structure MangledName where
+  hash : String
+  version : Nat
+  symbol : String
+  deriving Repr, BEq, DecidableEq
+
+/-- The structured mangling of a symbol. -/
+def mangleName (mid : ModuleId) (symbol : String) : MangledName :=
+  { hash := mid.hash, version := mid.version, symbol := symbol }
+
+/-- Render a structured name in the shipped textual format. -/
+def renderMangled (n : MangledName) : String :=
+  s!"{n.hash}_v{n.version}_{n.symbol}"
+
 /-!
 ## Module Loading
 -/
@@ -185,17 +232,10 @@ def loadModuleFromWorkspace (workspace : Workspace) (name : String) : Option Mod
 theorem moduleHashDeterministic (content : String) :
   computeModuleHash content = computeModuleHash content := rfl
 
--- TODO: Prove module ID uniqueness in well-formed link tables
--- Requires: ∀ (t : LinkTable), wellFormed t → (m1 m2 : Module) →
---   (m1.id, m1) ∈ t → (m2.id, m2) ∈ t → m1.id = m2.id → m1 = m2
-
--- TODO: Prove link table consistency (all referenced dependencies exist)
--- Requires: ∀ (t : LinkTable), wellFormed t →
---   ∀ (m : Module), m ∈ t.map Prod.snd →
---     m.dependencies.all (fun dep => t.any (fun (id, _) => id = dep))
-
--- TODO: Prove workspace root validity
--- Requires proper Workspace.wellFormed definition
+-- Module ID uniqueness, link consistency, and workspace validity are closed in
+-- `Lemmas.lean` against the `WellFormed` / `workspaceWellFormed` predicates
+-- above: `wellFormed_key_unique`, `wellFormed_deps_resolve`,
+-- `workspace_root_nonempty`, `resolveModuleByName_eq_some_of_mem_of_namesNodup`.
 
 /-- Registry search by name is definitional equality with filter. -/
 theorem registrySearchCorrect (registry : Registry) (name : String) :
@@ -213,9 +253,13 @@ theorem versionConstraintSatisfactionCorrect (version : Nat) (constraint : Versi
   | VersionConstraint.range lo hi => lo <= version && version <= hi := by
   cases constraint <;> rfl
 
--- TODO: Prove symbol mangling injectivity
+-- Symbol mangling injectivity is closed in `Lemmas.lean`: the *structured*
+-- name is injective (`mangleName_injective`), while the general textual claim
+-- as suggested below is **false** and is recorded as its refutation
+-- (`mangleSymbol_not_injective`) — `renderMangled` erases the boundary between
+-- a hash and a symbol that itself contains the separator.
 -- Requires: ∀ (mid1 mid2 : ModuleId) (s1 s2 : String),
 --   mangleSymbol mid1 s1 = mangleSymbol mid2 s2 → mid1 = mid2 ∧ s1 = s2
--- Blocked on: String reasoning in Lean 4 (string concatenation injectivity)
+-- (refuted; see `mangleSymbol_not_injective`)
 
 end Morph.Specs.ModuleSystem

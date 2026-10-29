@@ -4,6 +4,7 @@
 - `Version:* 1.0.0
 - `Context:* Layer 2 (Compilation) & Layer 1 (Infrastructure)
 - `Formalism:* Content-Addressable, Graph-Based, Hermetic
+- `Machine-checked in:* `Morph/Specs/ModuleSystem/`
 
 - -
 
@@ -189,3 +190,14 @@ Morph solves "DLL Hell" via symbol mangling based on hash.
 | **MorphIR Dist**          | Solves ABI Incompatibility.              | REQ-17.3    |
 
 This Module System is designed to be **invisible** to the Agent during the happy path (Workspace Resolution) but **rigidly precise** during the deployment path (Registry Resolution), ensuring that if code works once, it works forever.
+
+## 8. Machine-Checked Model
+
+The guarantees above are realized in `Morph/Specs/ModuleSystem/`:
+
+| Requirement | Lean model | Theorem |
+|---|---|---|
+| §1.1 Identity by hash | `computeModuleHash`, `createModuleId` | `moduleHashDeterministic` |
+| §2.1 Content-addressable linking | `LinkTable`, `WellFormed` (keys match, ids unique, deps resolve) | `wellFormed_key_unique`, `wellFormed_deps_resolve`, `wellFormed_add` (preserved by `addToLinkTable`) |
+| §1.3 Workspace resolution | `workspaceWellFormed`, `resolveModuleByName` | `workspace_root_nonempty`, `resolveModuleByName_eq_some_of_mem_of_namesNodup`, `resolveModuleByName_deps_resolve` |
+| §5.2 Multi-version linking (mangling) | `mangleName` (structured), `renderMangled` (textual) | `mangleName_injective`; the textual form's general injectivity is **false** and recorded as `mangleSymbol_not_injective` — the rendering erases the separator boundary between a hash and a symbol containing `_v` |
