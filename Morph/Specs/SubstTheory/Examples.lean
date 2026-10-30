@@ -44,11 +44,12 @@ example : subst' 1 (.lam 2 (.bvar 1)) (.bvar 0) = .lam 2 (.bvar 1) := by
 example : subst' 0 (.let_ (.bvar 0) (.bvar 1)) (.bvar 0) = .let_ (.bvar 0) (.bvar 1) := by
   simp [subst', liftUnder, lift]
 
-/-- A `match` pattern binds two variables, so an arm body is substituted two
-levels below the scrutinee; a reference to the enclosing context is arm index 2
-and is left alone. -/
-example : substArms 0 (.bvar 0) [(["x", "y"], .bvar 2)] = [(["x", "y"], .bvar 2)] := by
-  simp [substArms, subst', liftUnder, lift]
+/-- A `match` pattern binds one variable, so an arm body is substituted one
+level below the scrutinee; a reference to the enclosing context is arm index 1.
+Here the substitute (lifted past the binder) coincides with the original. -/
+example : substArms 0 (.bvar 0) [((.some_ (.var_ "x")), .bvar 1)] =
+    [((.some_ (.var_ "x")), .bvar 1)] := by
+  simp [substArms, subst', liftUnder, lift, patBindCount]
 
 /-- Substitution never touches a scoped term, whatever the substitute: the
 scoping hypothesis is the whole content of `subst_above`. -/

@@ -212,16 +212,31 @@ private theorem HasType_subst_depth (pfx : List Typ) (bvs : List Typ) (Γ : TypE
    | .lit_pointer _ _ _ => simp only [subst']; exact HasType.lit_pointer _ _ _
    | .lit_float _ _ _ _ => simp only [subst']; exact HasType.lit_float _ _ _ _
    | .lit_int_width _ _ _ _ => simp only [subst']; exact HasType.lit_int_width _ _ _ _
-   | .lit_some _ _ _ τ => simp only [subst']; exact HasType.lit_some _ _ _ τ
+   | .lit_some _ _ w τ hW =>
+     simp only [subst']
+     have hW' := HasType_subst_depth pfx bvs Γ (.lit w) v τ1 τ hW hV
+     simp only [subst'] at hW'
+     exact HasType.lit_some _ _ _ _ hW'
    | .lit_none _ _ τ => simp only [subst']; exact HasType.lit_none _ _ τ
-   | .lit_ok _ _ _ τ_ok τ_err => simp only [subst']; exact HasType.lit_ok _ _ _ τ_ok τ_err
-   | .lit_err _ _ _ τ_err τ_ok => simp only [subst']; exact HasType.lit_err _ _ _ τ_err τ_ok
+   | .lit_ok _ _ w τ_ok τ_err hW =>
+     simp only [subst']
+     have hW' := HasType_subst_depth pfx bvs Γ (.lit w) v τ1 τ_ok hW hV
+     simp only [subst'] at hW'
+     exact HasType.lit_ok _ _ _ _ _ hW'
+   | .lit_err _ _ w τ_err τ_ok hW =>
+     simp only [subst']
+     have hW' := HasType_subst_depth pfx bvs Γ (.lit w) v τ1 τ_err hW hV
+     simp only [subst'] at hW'
+     exact HasType.lit_err _ _ _ _ _ hW'
    | .unop_not _ _ e' hE' =>
     simp only [subst']
     exact HasType.unop_not _ _ _ (HasType_subst_depth pfx bvs Γ e' v τ1 .boolType hE' hV)
   | .unop_notb _ _ e' hE' =>
     simp only [subst']
     exact HasType.unop_notb _ _ _ (HasType_subst_depth pfx bvs Γ e' v τ1 .intType hE' hV)
+  | .unop_neg _ _ e' hE' =>
+    simp only [subst']
+    exact HasType.unop_neg _ _ _ (HasType_subst_depth pfx bvs Γ e' v τ1 .intType hE' hV)
   | .binop_arith _ _ op e1 e2 hArith hE1 hE2 =>
     simp only [subst']
     exact HasType.binop_arith _ _ op _ _ hArith
@@ -402,24 +417,26 @@ private theorem HasType_subst_depth (pfx : List Typ) (bvs : List Typ) (Γ : TypE
      exact HasType.refFree_type _ _ _ τ (HasType_subst_depth pfx bvs Γ e v τ1 (.refType .iso τ) hE hV)
 
 private theorem ArmsTyped_subst_depth (pfx : List Typ) (bvs : List Typ) (Γ : TypEnv)
-    (arms : List (List String × Expr)) (v : Expr) (τ1 ts tr : Typ)
+    (arms : List (Pattern × Expr)) (v : Expr) (τ1 ts tr : Typ)
     (hArms : ArmsTyped (pfx ++ τ1 :: bvs) Γ ts arms tr)
     (hV : HasType bvs Γ v τ1) :
     ArmsTyped (pfx ++ bvs) Γ ts (substArms pfx.length v arms) tr := by
   cases hArms with
   | nil => simp only [substArms]; constructor
-  | cons bvs Γ vars body rest ts tr hBody hRest =>
+  | cons bvs Γ pat body rest ts tr tys hPat hBody hRest =>
     simp only [substArms]
-    constructor
-    · have hBody' : HasType ((List.replicate vars.length ts ++ pfx) ++ τ1 :: bvs) Γ body tr := by
-        show HasType ((List.replicate vars.length ts ++ pfx) ++ τ1 :: bvs) Γ body tr
-        rw [List.append_assoc]; exact hBody
-      have hResult := HasType_subst_depth (List.replicate vars.length ts ++ pfx) bvs Γ body v τ1 tr hBody' hV
-      simp only [List.length_append, List.length_replicate] at hResult
-      show HasType (List.replicate vars.length ts ++ (pfx ++ bvs)) Γ
-          (subst' (pfx.length + vars.length) body v) tr
-      rw [← List.append_assoc, Nat.add_comm]; exact hResult
-    · exact ArmsTyped_subst_depth pfx bvs Γ rest v τ1 ts tr hRest hV
+    refine ArmsTyped.cons _ _ _ _ _ _ _ _ hPat ?_
+      (ArmsTyped_subst_depth pfx bvs Γ rest v τ1 ts tr hRest hV)
+    have hlen : tys.length = patBindCount pat := patTyped_length hPat
+    have hBody' : HasType ((tys ++ pfx) ++ τ1 :: bvs) Γ body tr := by
+      show HasType ((tys ++ pfx) ++ τ1 :: bvs) Γ body tr
+      rw [List.append_assoc]; exact hBody
+    have hResult := HasType_subst_depth (tys ++ pfx) bvs Γ body v τ1 tr hBody' hV
+    simp only [List.length_append] at hResult
+    rw [hlen] at hResult
+    show HasType (tys ++ (pfx ++ bvs)) Γ
+        (subst' (pfx.length + patBindCount pat) body v) tr
+    rw [← List.append_assoc, Nat.add_comm]; exact hResult
 
 end
 
@@ -557,16 +574,31 @@ private theorem HasType_substAll (pfx σs : List Typ) (bvs : List Typ) (Γ : Typ
   | .lit_pointer _ _ _ => unfold substAll'; exact HasType.lit_pointer _ _ _
   | .lit_float _ _ _ _ => unfold substAll'; exact HasType.lit_float _ _ _ _
   | .lit_int_width _ _ _ _ => unfold substAll'; exact HasType.lit_int_width _ _ _ _
-  | .lit_some _ _ _ τ => unfold substAll'; exact HasType.lit_some _ _ _ τ
+  | .lit_some _ _ w τ hW =>
+      unfold substAll'
+      have hW' := HasType_substAll pfx σs bvs Γ vs (.lit w) τ hW hVs hLen
+      simp only [substAll'] at hW'
+      exact HasType.lit_some _ _ _ _ hW'
   | .lit_none _ _ τ => unfold substAll'; exact HasType.lit_none _ _ τ
-  | .lit_ok _ _ _ τ_ok τ_err => unfold substAll'; exact HasType.lit_ok _ _ _ τ_ok τ_err
-  | .lit_err _ _ _ τ_err τ_ok => unfold substAll'; exact HasType.lit_err _ _ _ τ_err τ_ok
+  | .lit_ok _ _ w τ_ok τ_err hW =>
+      unfold substAll'
+      have hW' := HasType_substAll pfx σs bvs Γ vs (.lit w) τ_ok hW hVs hLen
+      simp only [substAll'] at hW'
+      exact HasType.lit_ok _ _ _ _ _ hW'
+  | .lit_err _ _ w τ_err τ_ok hW =>
+      unfold substAll'
+      have hW' := HasType_substAll pfx σs bvs Γ vs (.lit w) τ_err hW hVs hLen
+      simp only [substAll'] at hW'
+      exact HasType.lit_err _ _ _ _ _ hW'
   | .unop_not _ _ e' hE' =>
     unfold substAll'
     exact HasType.unop_not _ _ _ (HasType_substAll pfx σs bvs Γ vs e' .boolType hE' hVs hLen)
   | .unop_notb _ _ e' hE' =>
     unfold substAll'
     exact HasType.unop_notb _ _ _ (HasType_substAll pfx σs bvs Γ vs e' .intType hE' hVs hLen)
+  | .unop_neg _ _ e' hE' =>
+    unfold substAll'
+    exact HasType.unop_neg _ _ _ (HasType_substAll pfx σs bvs Γ vs e' .intType hE' hVs hLen)
   | .binop_arith _ _ op e1 e2 hArith hE1 hE2 =>
     unfold substAll'
     exact HasType.binop_arith _ _ op _ _ hArith
@@ -781,25 +813,27 @@ private theorem HasType_substAll (pfx σs : List Typ) (bvs : List Typ) (Γ : Typ
        exact HasType.refFree_type _ _ _ τ (HasType_substAll pfx σs bvs Γ vs e (.refType .iso τ) hE hVs hLen)
 
 private theorem ArmsTyped_substAll (pfx σs : List Typ) (bvs : List Typ) (Γ : TypEnv)
-    (vs : List Expr) (arms : List (List String × Expr)) (ts tr : Typ)
+    (vs : List Expr) (arms : List (Pattern × Expr)) (ts tr : Typ)
     (hArms : ArmsTyped (pfx ++ σs ++ bvs) Γ ts arms tr)
     (hVs : HasTypeAll bvs Γ vs σs.reverse)
     (hLen : vs.length = σs.length) :
     ArmsTyped (pfx ++ bvs) Γ ts (substAllArms pfx.length vs.reverse arms) tr := by
   cases hArms with
   | nil => simp only [substAllArms]; constructor
-  | cons bvs Γ vars body rest ts tr hBody hRest =>
+  | cons bvs Γ pat body rest ts tr tys hPat hBody hRest =>
     simp only [substAllArms]
-    constructor
-    · have hBody' : HasType ((List.replicate vars.length ts ++ pfx) ++ σs ++ bvs) Γ body tr := by
-        simp only [List.append_assoc] at hBody ⊢
-        exact hBody
-      have hResult := HasType_substAll (List.replicate vars.length ts ++ pfx) σs bvs Γ vs body tr hBody' hVs hLen
-      simp only [List.length_append, List.length_replicate] at hResult
-      show HasType (List.replicate vars.length ts ++ (pfx ++ bvs)) Γ
-          (substAll' (pfx.length + vars.length) vs.reverse body) tr
-      rw [← List.append_assoc, Nat.add_comm]; exact hResult
-    · exact ArmsTyped_substAll pfx σs bvs Γ vs rest ts tr hRest hVs hLen
+    refine ArmsTyped.cons _ _ _ _ _ _ _ _ hPat ?_
+      (ArmsTyped_substAll pfx σs bvs Γ vs rest ts tr hRest hVs hLen)
+    have hlen : tys.length = patBindCount pat := patTyped_length hPat
+    have hBody' : HasType ((tys ++ pfx) ++ σs ++ bvs) Γ body tr := by
+      simp only [List.append_assoc] at hBody ⊢
+      exact hBody
+    have hResult := HasType_substAll (tys ++ pfx) σs bvs Γ vs body tr hBody' hVs hLen
+    simp only [List.length_append] at hResult
+    rw [hlen] at hResult
+    show HasType (tys ++ (pfx ++ bvs)) Γ
+        (substAll' (pfx.length + patBindCount pat) vs.reverse body) tr
+    rw [← List.append_assoc, Nat.add_comm]; exact hResult
 
 end
 
@@ -822,6 +856,99 @@ private theorem HasType_tuple_inv {bvs : List Typ} {Γ : TypEnv} {rest : List Ex
   cases h with
   | tuple_type _ _ _ _ hAll => exact hAll
   | _ => contradiction
+
+/-- A successful pattern match produces bindings at exactly the pattern's
+    bound types (loop 76). The `lit_some`/`lit_ok`/`lit_err` rules carry
+    payload typings, so deconstruction preserves types; `lit_`/`none_`
+    bind nothing and need no inversion. -/
+private theorem matchPat_sound {bvs : List Typ} {Γ : TypEnv} {τ : Typ}
+    {pat : Pattern} {tys : List Typ}
+    (hP : PatTyped τ pat tys) :
+    ∀ (e : Expr) (vs : List Expr),
+      HasType bvs Γ e τ → IsValue e → matchPat pat e = some vs →
+      HasTypeAll bvs Γ vs tys := by
+  induction hP with
+  | wild τ =>
+    intro e vs hE hv hmp
+    simp only [matchPat] at hmp
+    have hvs : vs = [] := Option.some_inj.mp hmp.symm
+    subst hvs
+    exact HasTypeAll.nil _ _
+  | var_ τ x =>
+    intro e vs hE hv hmp
+    simp only [matchPat] at hmp
+    have hvs : vs = [e] := Option.some_inj.mp hmp.symm
+    subst hvs
+    exact HasTypeAll.cons _ _ _ _ _ _ hE (HasTypeAll.nil _ _)
+  | lit_ l τ hlit =>
+    intro e vs hE hv hmp
+    cases e <;> try simp_all [matchPat]
+    obtain ⟨_, hvs⟩ := hmp
+    subst hvs
+    exact HasTypeAll.nil _ _
+  | none_ τ =>
+    intro e vs hE hv hmp
+    cases e <;> try simp_all [matchPat]
+    case lit v =>
+      cases v <;> try simp_all [matchPat]
+      have hvs : vs = [] := hmp
+      subst hvs
+      exact HasTypeAll.nil _ _
+    case none_ =>
+      have hvs : vs = [] := hmp
+      subst hvs
+      exact HasTypeAll.nil _ _
+  | some_ τ p tys hP' ih =>
+    intro e vs hE hv hmp
+    cases e <;> try simp_all [matchPat]
+    case lit v =>
+      cases v <;> try simp_all [matchPat]
+      cases hE with
+      | lit_some _ _ _ _ hW => exact ih _ _ hW (IsValue.lit _) hmp
+      | _ => contradiction
+    case some_ e' =>
+      cases hE with
+      | some_type _ _ _ _ hW =>
+        have hv' : IsValue e' := by
+          cases hv with
+          | some_ _ h => exact h
+          | _ => contradiction
+        exact ih _ _ hW hv' hmp
+      | _ => contradiction
+  | ok_ τ ε p tys hP' ih =>
+    intro e vs hE hv hmp
+    cases e <;> try simp_all [matchPat]
+    case lit v =>
+      cases v <;> try simp_all [matchPat]
+      cases hE with
+      | lit_ok _ _ _ _ _ hW => exact ih _ _ hW (IsValue.lit _) hmp
+      | _ => contradiction
+    case ok_ e' =>
+      cases hE with
+      | ok_type _ _ _ _ _ hW =>
+        have hv' : IsValue e' := by
+          cases hv with
+          | ok_ _ h => exact h
+          | _ => contradiction
+        exact ih _ _ hW hv' hmp
+      | _ => contradiction
+  | err_ τ ε p tys hP' ih =>
+    intro e vs hE hv hmp
+    cases e <;> try simp_all [matchPat]
+    case lit v =>
+      cases v <;> try simp_all [matchPat]
+      cases hE with
+      | lit_err _ _ _ _ _ hW => exact ih _ _ hW (IsValue.lit _) hmp
+      | _ => contradiction
+    case err_ e' =>
+      cases hE with
+      | err_type _ _ _ _ _ hW =>
+        have hv' : IsValue e' := by
+          cases hv with
+          | err_ _ h => exact h
+          | _ => contradiction
+        exact ih _ _ hW hv' hmp
+      | _ => contradiction
 
 set_option maxHeartbeats 1000000 in
 mutual
@@ -914,6 +1041,7 @@ theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {bvs : L
     cases hType with
     | unop_not _ _ _ hSub => exact HasType.unop_not _ _ _ (preservation hSub hStep1)
     | unop_notb _ _ _ hSub => exact HasType.unop_notb _ _ _ (preservation hSub hStep1)
+    | unop_neg _ _ _ hSub => exact HasType.unop_neg _ _ _ (preservation hSub hStep1)
     | _ => contradiction
   | unop_not b =>
     cases hType with
@@ -922,6 +1050,10 @@ theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {bvs : L
   | unop_notb n =>
     cases hType with
     | unop_notb => exact HasType.lit_int _ _ (-n - 1)
+    | _ => contradiction
+  | unop_neg n =>
+    cases hType with
+    | unop_neg => exact HasType.lit_int _ _ (-n)
     | _ => contradiction
   | if_cond c c' t f hStep1 =>
     cases hType with
@@ -1187,21 +1319,27 @@ theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {bvs : L
     | match_type _ _ _ _ _ _ hScrut hArms =>
       exact HasType.match_type _ _ scrut' arms _ _ (preservation hScrut hStep1) hArms
     | _ => contradiction
-  | match_arm e vars body rest hIsVal =>
-    cases hType with
-    | match_type _ _ _ _ τ_scrut τ_result hScrut hArms =>
+  | match_hit e pat body rest vs hIsVal hmp =>
+    match hType with
+    | .match_type _ _ _ _ tScrut tRes hScrut hArms =>
       match hArms with
-      | .cons _ _ _ body2 _ ts tr hBody2 _ =>
-        have hRepLen : (List.replicate vars.length e).length = (List.replicate vars.length ts).length := by
-          simp [List.length_replicate]
-        have hRepVs : HasTypeAll bvs Γ (List.replicate vars.length e) (List.replicate vars.length ts).reverse := by
-          rw [list_reverse_replicate]
-          exact HasTypeAll_replicate bvs Γ e ts hScrut vars.length
-        have hResult := HasType_iterSubst (List.replicate vars.length ts) bvs Γ
-          (List.replicate vars.length e) body2 tr hBody2 hRepVs hRepLen
-        show HasType bvs Γ (substAll' 0 (List.replicate vars.length e) body2) tr
-        rw [list_reverse_replicate] at hResult
-        exact hResult
+      | .cons _ _ _ _ _ _ _ tys hPat hBody _ =>
+        have hVs : HasTypeAll bvs Γ vs tys := matchPat_sound hPat e vs hScrut hIsVal hmp
+        have hlen : vs.length = tys.length := by
+          have h1 := matchPat_length pat e vs hmp
+          have h2 := patTyped_length hPat
+          omega
+        have hR := HasType_iterSubst tys bvs Γ vs.reverse body tRes hBody
+          (HasTypeAll_reverse bvs Γ vs tys hVs)
+          (by rw [List.length_reverse]; exact hlen)
+        rw [List.reverse_reverse] at hR
+        exact hR
+  | match_miss e pat body rest hIsVal hmp =>
+    cases hType with
+    | match_type _ _ _ _ _ _ hScrut hArms =>
+      match hArms with
+      | .cons _ _ _ _ _ _ _ _ _ _ hRest =>
+        exact HasType.match_type _ _ _ _ _ _ hScrut hRest
     | _ => contradiction
   | match_empty e hIsVal =>
     cases hType with
@@ -1216,11 +1354,15 @@ theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {bvs : L
     | _ => contradiction
   | some_done v =>
     cases hType with
-    | some_type _ _ _ τ_inner hE => exact HasType.lit_some _ _ v τ_inner
+    | some_type _ _ _ τ_inner hE => exact HasType.lit_some _ _ v τ_inner hE
     | _ => contradiction
   | some_none_done =>
     cases hType with
-    | some_type bvs Γ _ τ_inner hE => exact HasType.lit_some bvs Γ Value.none τ_inner
+    | some_type bvs Γ _ τ_inner hE =>
+      cases hE with
+      | none_type _ _ τ₀ =>
+        exact HasType.lit_some _ _ _ (τ₀.optionType) (HasType.lit_none _ _ τ₀)
+      | _ => contradiction
     | _ => contradiction
   | none_step =>
     cases hType with
@@ -1233,11 +1375,15 @@ theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {bvs : L
     | _ => contradiction
   | ok_done v =>
     cases hType with
-    | ok_type _ _ _ τ_ok τ_err hE => exact HasType.lit_ok _ _ v τ_ok τ_err
+    | ok_type _ _ _ τ_ok τ_err hE => exact HasType.lit_ok _ _ v τ_ok τ_err hE
     | _ => contradiction
   | ok_none_done =>
     cases hType with
-    | ok_type bvs Γ _ τ_ok τ_err hE => exact HasType.lit_ok bvs Γ Value.none τ_ok τ_err
+    | ok_type bvs Γ _ τ_ok τ_err hE =>
+      cases hE with
+      | none_type _ _ τ₀ =>
+        exact HasType.lit_ok _ _ _ (τ₀.optionType) τ_err (HasType.lit_none _ _ τ₀)
+      | _ => contradiction
     | _ => contradiction
   | err_step e e' hStep1 =>
     cases hType with
@@ -1246,11 +1392,15 @@ theorem preservation : forall {σ σ' : Store} {e e' : Expr} {τ : Typ} {bvs : L
     | _ => contradiction
   | err_done v =>
     cases hType with
-    | err_type _ _ _ τ_err τ_ok hE => exact HasType.lit_err _ _ v τ_err τ_ok
+    | err_type _ _ _ τ_err τ_ok hE => exact HasType.lit_err _ _ v τ_err τ_ok hE
     | _ => contradiction
   | err_none_done =>
     cases hType with
-    | err_type bvs Γ _ τ_err τ_ok hE => exact HasType.lit_err bvs Γ Value.none τ_err τ_ok
+    | err_type bvs Γ _ τ_err τ_ok hE =>
+      cases hE with
+      | none_type _ _ τ₀ =>
+        exact HasType.lit_err _ _ _ (τ₀.optionType) τ_ok (HasType.lit_none _ _ τ₀)
+      | _ => contradiction
     | _ => contradiction
   | null_coalesce_step_e1 e1 e1' e2 hStep1 =>
     cases hType with

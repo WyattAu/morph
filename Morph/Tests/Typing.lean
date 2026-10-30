@@ -53,6 +53,11 @@ section InferTypeTests
 
   example : inferType [] [] (.unop .notb (.lit (.bool true))) = none := by simp [inferType]
 
+  -- loop 78c: unary minus infers (prefix `-` elaborates to `.unop .sub`).
+  example : inferType [] [] (.unop .sub (.lit (.int 5))) = some .intType := by simp [inferType]
+
+  example : inferType [] [] (.unop .sub (.lit (.bool true))) = none := by simp [inferType]
+
   -- Binary arithmetic operator inference
 
   example : inferType [] [] (.binop .add (.lit (.int 1)) (.lit (.int 2))) = some .intType := by
@@ -187,6 +192,10 @@ section HasTypeConstructorTests
   -- HT-09: unop_notb
   example : HasType [] [] (.unop .notb (.lit (.int 5))) .intType :=
     HasType.unop_notb [] [] (.lit (.int 5)) (HasType.lit_int [] [] 5)
+
+  -- HT-09b (loop 78c): unop_neg
+  example : HasType [] [] (.unop .sub (.lit (.int 5))) .intType :=
+    HasType.unop_neg [] [] (.lit (.int 5)) (HasType.lit_int [] [] 5)
 
   -- HT-10: binop_arith (add)
   example : HasType [] [] (.binop .add (.lit (.int 1)) (.lit (.int 2))) Typ.intType :=
@@ -462,6 +471,9 @@ section HasTypeConstructorTests
   example (h : HasType [] [] (.unop .notb e) τ) : τ = .intType := by
     exact HasType_unop_notb_inv [] [] e τ h
 
+  example (h : HasType [] [] (.unop .sub e) τ) : τ = .intType := by
+    exact HasType_unop_neg_inv [] [] e τ h
+
   -- WellTyped tests
 
   example : WellTyped [] .intType := WellTyped.intType_wf []
@@ -528,20 +540,36 @@ section CheckingModeTests
   -- an arm list that does not end in `unitType` is rejected.
   example :
       checkType [] []
-        (.match_ (.lit (.int 1)) [(["a"], .lit (.unit))])
+        (.match_ (.lit (.int 1)) [(.var_ "a", .lit (.unit))])
         .unitType = true := by
     native_decide
 
   example :
       checkType [] []
-        (.match_ (.lit (.int 1)) [(["a"], .binop .add (.bvar 0) (.lit (.int 2)))])
+        (.match_ (.lit (.int 1)) [(.var_ "a", .binop .add (.bvar 0) (.lit (.int 2)))])
         .intType = false := by
     native_decide
 
   example :
       checkType [] []
-        (.match_ (.lit (.int 1)) [(["a"], .binop .add (.bvar 0) (.lit (.int 2)))])
+        (.match_ (.lit (.int 1)) [(.var_ "a", .binop .add (.bvar 0) (.lit (.int 2)))])
         .boolType = false := by
+    native_decide
+
+  -- A `some` pattern against an option scrutinee is accepted (payload
+  -- binding is witnessed by `patTypes_sound`; all matches yield `unitType`).
+  example :
+      checkType [] []
+        (.match_ (.some_ (.lit (.int 1)))
+          [((.some_ (.var_ "x")), .lit (.unit))])
+        .unitType = true := by
+    native_decide
+
+  -- A shape mismatch (`some_` against `intType`) is rejected.
+  example :
+      checkType [] []
+        (.match_ (.lit (.int 1)) [((.some_ (.var_ "x")), .lit (.unit))])
+        .unitType = false := by
     native_decide
 
   -- Soundness round-trip for a checking-mode case (via the proven contract).
@@ -551,8 +579,8 @@ section CheckingModeTests
       (by native_decide)
 
   example :
-      ArmsTyped [] [] .intType [(["a"], .lit (.unit))] .unitType :=
-    checkArms_sound_true [] [] .intType .unitType [(["a"], .lit (.unit))]
+      ArmsTyped [] [] .intType [(.var_ "a", .lit (.unit))] .unitType :=
+    checkArms_sound_true [] [] .intType .unitType [(.var_ "a", .lit (.unit))]
       (by native_decide)
 
   -- Subtyping-aware acceptance (loop 44). `unitType` is the top type, so an int

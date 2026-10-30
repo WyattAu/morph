@@ -158,6 +158,10 @@ inductive Step : Store → Expr → Store → Expr → Prop where
   | unop_notb : ∀ σ n,
       Step σ (.unop .notb (.lit (.int n))) σ (.lit (.int (-n - 1)))
 
+  -- loop 78c: unary minus. The parser elaborates prefix `-` to `.unop .sub`.
+  | unop_neg : ∀ σ n,
+      Step σ (.unop .sub (.lit (.int n))) σ (.lit (.int (-n)))
+
   /- ## Conditionals -/
 
   | if_cond : ∀ σ c c' t f,
@@ -350,10 +354,14 @@ inductive Step : Store → Expr → Store → Expr → Prop where
       Step σ scrut σ scrut' →
       Step σ (.match_ scrut arms) σ (.match_ scrut' arms)
 
-  | match_arm : ∀ σ e vars body rest,
-      IsValue e →
-      Step σ (.match_ e ((vars, body) :: rest))
-        σ (substAll (List.replicate vars.length e) body)
+  | match_hit : ∀ σ e pat body rest vs,
+      IsValue e → matchPat pat e = some vs →
+      Step σ (.match_ e ((pat, body) :: rest))
+        σ (substAll vs body)
+  | match_miss : ∀ σ e pat body rest,
+      IsValue e → matchPat pat e = none →
+      Step σ (.match_ e ((pat, body) :: rest))
+        σ (.match_ e rest)
 
   | match_empty : ∀ σ e,
       IsValue e →

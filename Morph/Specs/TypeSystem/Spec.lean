@@ -538,6 +538,11 @@ def inferType (bvs : List Morph.Core.Typ) (env : TypEnv) : Morph.Syntax.Expr -> 
       match inferType bvs env e with
       | some .intType => some .intType
       | _ => none
+    -- loop 78c: unary minus; the parser elaborates prefix `-` to `.unop .sub`.
+    | .sub =>
+      match inferType bvs env e with
+      | some .intType => some .intType
+      | _ => none
     | _ => none
   | .binop op e1 e2 =>
     match inferType bvs env e1 with
@@ -729,6 +734,49 @@ lives on arrows: `lam_linear_type` discharges the exactly-once obligation of a
 arrangement), while a plain `functionType` binder carries no obligation.
 -/
 
+/-- Literal type for `lit_` patterns (loop 76): mirrors the `inferType` lit
+    cases that have types. `.none`/`.ok`/`.err` value literals have no
+    `inferType` case (no `HasType` rule), so they are not valid patterns;
+    use `none_`/`ok_`/`err_` instead. -/
+def litPatType : Morph.Core.Value → Option Morph.Core.Typ
+  | .int _ => some .intType
+  | .bool _ => some .boolType
+  | .string _ => some .stringType
+  | .unit => some .unitType
+  | .pointer _ => some .pointerType
+  | .float _ => some (.floatType .f64)
+  | .some v => (litPatType v).map .optionType
+  | _ => none
+
+/-- `PatTyped τ_scrut pat tys`: pattern `pat` is well-shaped against
+    scrutinee type `τ_scrut`, binding types `tys` left-to-right (loop 76).
+    Shape mismatches (e.g. `some_` against `intType`) are ill-typed: dead
+    arms are rejected rather than silently skipped. -/
+inductive PatTyped : Morph.Core.Typ → Morph.Syntax.Pattern → List Morph.Core.Typ → Prop where
+  | wild : ∀ τ, PatTyped τ .wild []
+  | var_ : ∀ τ x, PatTyped τ (.var_ x) [τ]
+  | lit_ : ∀ (l : Morph.Core.Value) (τ : Morph.Core.Typ),
+      litPatType l = some τ → PatTyped τ (.lit_ l) []
+  | none_ : ∀ τ, PatTyped (.optionType τ) .none_ []
+  | some_ : ∀ τ p tys, PatTyped τ p tys → PatTyped (.optionType τ) (.some_ p) tys
+  | ok_ : ∀ τ ε p tys, PatTyped τ p tys →
+      PatTyped (.resultType τ ε) (.ok_ p) tys
+  | err_ : ∀ τ ε p tys, PatTyped ε p tys →
+      PatTyped (.resultType τ ε) (.err_ p) tys
+
+/-- A well-typed pattern binds exactly its binder count. -/
+theorem patTyped_length {τ : Morph.Core.Typ} {p : Morph.Syntax.Pattern}
+    {tys : List Morph.Core.Typ} (h : PatTyped τ p tys) :
+    tys.length = Morph.Syntax.patBindCount p := by
+  induction h with
+  | wild τ => rfl
+  | var_ τ x => rfl
+  | lit_ l τ _ => rfl
+  | none_ τ => rfl
+  | some_ τ p tys _ ih => exact ih
+  | ok_ τ ε p tys _ ih => exact ih
+  | err_ τ ε p tys _ ih => exact ih
+
 mutual
 
 inductive HasType : List Morph.Core.Typ → TypEnv → Morph.Syntax.Expr → Morph.Core.Typ → Prop where
@@ -745,16 +793,23 @@ inductive HasType : List Morph.Core.Typ → TypEnv → Morph.Syntax.Expr → Mor
   | lit_pointer : ∀ bvs Γ p, HasType bvs Γ (.lit (.pointer p)) .pointerType
   | lit_float : ∀ bvs Γ w f, HasType bvs Γ (.lit (.float f)) (.floatType w)
   | lit_int_width : ∀ bvs Γ w n, HasType bvs Γ (.lit (.int n)) (.intWidthType w)
-  | lit_some : ∀ bvs Γ v τ, HasType bvs Γ (.lit (.some v)) (.optionType τ)
+  | lit_some : ∀ bvs Γ v τ, HasType bvs Γ (.lit v) τ →
+      HasType bvs Γ (.lit (.some v)) (.optionType τ)
   | lit_none : ∀ bvs Γ τ, HasType bvs Γ (.lit .none) (.optionType τ)
-  | lit_ok : ∀ bvs Γ v τ_ok τ_err, HasType bvs Γ (.lit (.ok v)) (.resultType τ_ok τ_err)
-  | lit_err : ∀ bvs Γ v τ_err τ_ok, HasType bvs Γ (.lit (.err v)) (.resultType τ_ok τ_err)
+  | lit_ok : ∀ bvs Γ v τ_ok τ_err, HasType bvs Γ (.lit v) τ_ok →
+      HasType bvs Γ (.lit (.ok v)) (.resultType τ_ok τ_err)
+  | lit_err : ∀ bvs Γ v τ_err τ_ok, HasType bvs Γ (.lit v) τ_err →
+      HasType bvs Γ (.lit (.err v)) (.resultType τ_ok τ_err)
   | unop_not : ∀ bvs Γ e,
       HasType bvs Γ e .boolType →
       HasType bvs Γ (.unop .not e) .boolType
   | unop_notb : ∀ bvs Γ e,
       HasType bvs Γ e .intType →
       HasType bvs Γ (.unop .notb e) .intType
+  -- loop 78c: unary minus; the parser elaborates prefix `-` to `.unop .sub`.
+  | unop_neg : ∀ bvs Γ e,
+      HasType bvs Γ e .intType →
+      HasType bvs Γ (.unop .sub e) .intType
   | binop_arith : ∀ bvs Γ op e1 e2,
       isArithOp op →
       HasType bvs Γ e1 .intType → HasType bvs Γ e2 .intType →
@@ -887,15 +942,16 @@ inductive HasTypeAll : List Morph.Core.Typ → TypEnv → List Morph.Syntax.Expr
       HasTypeAll bvs Γ (e :: es) (τ :: τs)
 
 /-- `ArmsTyped bvs Γ τ_scrut arms τ_result`: every arm body is typable in the
-    scrutinee context extended with its pattern variables. Arms share the same
+    scrutinee context extended with its pattern's bound types. Arms share the same
     context — there is no merge operator (ADR-014). -/
-inductive ArmsTyped : List Morph.Core.Typ → TypEnv → Morph.Core.Typ → List (List String × Morph.Syntax.Expr) → Morph.Core.Typ → Prop where
+inductive ArmsTyped : List Morph.Core.Typ → TypEnv → Morph.Core.Typ → List (Morph.Syntax.Pattern × Morph.Syntax.Expr) → Morph.Core.Typ → Prop where
   | nil : ∀ bvs Γ τ_scrut,
       ArmsTyped bvs Γ τ_scrut [] .unitType
-  | cons : ∀ bvs Γ vars body rest τ_scrut τ_result,
-      HasType (List.replicate vars.length τ_scrut ++ bvs) Γ body τ_result →
+  | cons : ∀ bvs Γ pat body rest τ_scrut τ_result tys,
+      PatTyped τ_scrut pat tys →
+      HasType (tys ++ bvs) Γ body τ_result →
       ArmsTyped bvs Γ τ_scrut rest τ_result →
-      ArmsTyped bvs Γ τ_scrut ((vars, body) :: rest) τ_result
+      ArmsTyped bvs Γ τ_scrut ((pat, body) :: rest) τ_result
 
 end
 

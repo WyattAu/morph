@@ -91,10 +91,10 @@ def boundCountList : List Expr → Nat
   | [] => 0
   | e :: es => boundCount e + boundCountList es
 
-/-- `boundCount` over a list of match arms (pattern variables count). -/
-def boundCountArms : List (List String × Expr) → Nat
+/-- `boundCount` over a list of match arms (pattern binders count). -/
+def boundCountArms : List (Pattern × Expr) → Nat
   | [] => 0
-  | (vars, body) :: rest => vars.length + boundCount body + boundCountArms rest
+  | (pat, body) :: rest => patBindCount pat + boundCount body + boundCountArms rest
 end
 
 end Morph.Specs.SubstTheory

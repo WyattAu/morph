@@ -85,10 +85,21 @@ def mL : List Expr → Nat
   | e :: es => 1 + mE e + mL es
 termination_by es => sizeOf es
 
-/-- Arm-list size companion of `mE` (for `match_`, loop 11). -/
-def mArms : List (List String × Expr) → Nat
+/-- Pattern size companion of `mE` (loop 76). -/
+def mPat : Pattern → Nat
+  | .wild => 1
+  | .var_ _ => 1
+  | .lit_ l => 1 + mLit l
+  | .none_ => 1
+  | .some_ p => 1 + mPat p
+  | .ok_ p => 1 + mPat p
+  | .err_ p => 1 + mPat p
+termination_by p => sizeOf p
+
+/-- Arm-list size companion of `mE` (for `match_`, loop 11; patterns, loop 76). -/
+def mArms : List (Pattern × Expr) → Nat
   | [] => 0
-  | (vars, body) :: rest => 1 + vars.length + mE body + mArms rest
+  | (pat, body) :: rest => 1 + mPat pat + mE body + mArms rest
 termination_by arms => sizeOf arms
 
 /-- Literal size companion of `mE`. -/
@@ -236,19 +247,70 @@ theorem mL_cons_r  (e : Expr) (es : List Expr) :
     mL es < mL (e :: es) := by
   simp only [mL]; omega
 
-theorem mArms_body (vars : List String) (body : Expr)
-    (rest : List (List String × Expr)) :
-    mE body < mArms ((vars, body) :: rest) := by
+theorem mArms_body (pat : Pattern) (body : Expr)
+    (rest : List (Pattern × Expr)) :
+    mE body < mArms ((pat, body) :: rest) := by
   simp only [mArms]; omega
 
-theorem mArms_rest (vars : List String) (body : Expr)
-    (rest : List (List String × Expr)) :
-    mArms rest < mArms ((vars, body) :: rest) := by
+theorem mArms_rest (pat : Pattern) (body : Expr)
+    (rest : List (Pattern × Expr)) :
+    mArms rest < mArms ((pat, body) :: rest) := by
   simp only [mArms]; omega
 
-theorem mE_match_arms (scrut : Expr) (arms : List (List String × Expr)) :
+theorem mE_match_arms (scrut : Expr) (arms : List (Pattern × Expr)) :
     mArms arms < mE (.match_ scrut arms) := by
   simp only [mE]; omega
+
+/-- `patTypes` is sound: accepted bound types are `PatTyped` (loop 76). -/
+theorem patTypes_sound (tyScrut : Morph.Core.Typ) (pat : Pattern)
+    (tys : List Morph.Core.Typ)
+    (h : Morph.TypeChecker.patTypes tyScrut pat = some tys) :
+    PatTyped tyScrut pat tys := by
+  induction pat generalizing tyScrut tys with
+  | wild =>
+    simp only [Morph.TypeChecker.patTypes] at h
+    simp at h; subst h; exact PatTyped.wild _
+  | var_ x =>
+    simp only [Morph.TypeChecker.patTypes] at h
+    simp at h; subst h; exact PatTyped.var_ _ _
+  | lit_ l =>
+    simp only [Morph.TypeChecker.patTypes] at h
+    cases hlit : litPatType l with
+    | none => simp [hlit] at h
+    | some τ =>
+      simp only [hlit] at h
+      cases hdec : decide (τ = tyScrut) with
+      | true =>
+        simp [hdec] at h
+        subst h
+        simp only [decide_eq_true_eq] at hdec
+        subst hdec
+        exact PatTyped.lit_ l _ hlit
+      | false => simp [hdec] at h
+  | none_ =>
+    cases tyScrut with
+    | optionType τ =>
+      simp only [Morph.TypeChecker.patTypes] at h
+      simp at h; subst h; exact PatTyped.none_ _
+    | _ => simp [Morph.TypeChecker.patTypes] at h
+  | some_ p ih =>
+    cases tyScrut with
+    | optionType τ =>
+      simp only [Morph.TypeChecker.patTypes] at h
+      exact PatTyped.some_ _ _ _ (ih _ _ h)
+    | _ => simp [Morph.TypeChecker.patTypes] at h
+  | ok_ p ih =>
+    cases tyScrut with
+    | resultType τ ε =>
+      simp only [Morph.TypeChecker.patTypes] at h
+      exact PatTyped.ok_ _ _ _ _ (ih _ _ h)
+    | _ => simp [Morph.TypeChecker.patTypes] at h
+  | err_ p ih =>
+    cases tyScrut with
+    | resultType τ ε =>
+      simp only [Morph.TypeChecker.patTypes] at h
+      exact PatTyped.err_ _ _ _ _ (ih _ _ h)
+    | _ => simp [Morph.TypeChecker.patTypes] at h
 /-! ## Helper lemmas -/
 
 /-- `inferTypes` produces exactly one type per list element. -/
@@ -617,6 +679,8 @@ theorem sound_mutual (n : Nat) :
             simp at h
             subst h
             exact HasType.lit_some bvs Γ v' t
+              (ihE (.lit v') bvs Γ t
+                (Nat.lt_of_lt_of_le (mE_lit_some v') (Nat.le_of_lt_succ hn)) hin)
           · simp at h
         | none => simp only [inferType] at h; simp at h
         | undef => simp only [inferType] at h; simp at h
@@ -647,6 +711,17 @@ theorem sound_mutual (n : Nat) :
             exact HasType.unop_notb bvs Γ e
               (ihE e bvs Γ .intType
                 (Nat.lt_of_lt_of_le (mE_unop .notb e) (Nat.le_of_lt_succ hn)) hin)
+          · simp at h
+        -- loop 78c: unary minus elaborates to `.unop .sub`.
+        | sub =>
+          simp only [inferType] at h
+          split at h
+          · rename_i t hin
+            simp at h
+            subst h
+            exact HasType.unop_neg bvs Γ e
+              (ihE e bvs Γ .intType
+                (Nat.lt_of_lt_of_le (mE_unop .sub e) (Nat.le_of_lt_succ hn)) hin)
           · simp at h
         | _ => simp only [inferType] at h; simp at h
       | binop op e1 e2 =>
@@ -1049,7 +1124,8 @@ theorem checkType_lam_lin (k : Nat) (body : Expr) (bvs : List Morph.Core.Typ) (�
   · simp at h
 
 /-- The bidirectional checker is sound: `checkType bvs Γ e expected = true`
-implies `HasType bvs Γ e expected` (P13, with the ADR-014 linear-arrow case). -/
+implies `HasType bvs Γ e expected` (P13, with the ADR-014 linear-arrow case).
+The `match_` case routes each arm's bound types through `patTypes_sound`. -/
 theorem checkType_sound (n : Nat) :
     ∀ (e : Expr) (bvs : List Morph.Core.Typ) (Γ : TypEnv) (expected : Morph.Core.Typ),
       mE e < n → Morph.TypeChecker.checkType bvs Γ e expected = true →
@@ -1134,17 +1210,22 @@ theorem checkType_sound (n : Nat) :
               exact ArmsTyped.nil bvs Γ tyScrut
           | cons arm rest iharm =>
               cases arm with
-              | mk vars body =>
+              | mk pat body =>
                   intro hty hn'
                   rw [Morph.TypeChecker.checkArms.eq_2] at hty
-                  rw [Bool.and_eq_true] at hty
-                  obtain ⟨hbody, hrest⟩ := hty
-                  refine ArmsTyped.cons bvs Γ vars body rest tyScrut expected ?_ ?_
-                  · refine ih body (List.replicate vars.length tyScrut ++ bvs) Γ expected
-                      ?_ hbody
-                    exact Nat.lt_trans (mArms_body vars body rest) hn'
-                  · exact iharm hrest hrest
-                      (Nat.lt_trans (mArms_rest vars body rest) hn')
+                  cases hpt : Morph.TypeChecker.patTypes tyScrut pat with
+                  | none => simp [hpt] at hty
+                  | some tys =>
+                    simp only [hpt] at hty
+                    rw [Bool.and_eq_true] at hty
+                    obtain ⟨hbody, hrest⟩ := hty
+                    refine ArmsTyped.cons bvs Γ pat body rest tyScrut expected tys
+                      (patTypes_sound tyScrut pat tys hpt) ?_ ?_
+                    · refine ih body (tys ++ bvs) Γ expected
+                        ?_ hbody
+                      exact Nat.lt_trans (mArms_body pat body rest) hn'
+                    · exact iharm hrest hrest
+                        (Nat.lt_trans (mArms_rest pat body rest) hn')
         exact HasType.match_type bvs Γ scrut arms tyScrut expected
           (inferType_sound bvs Γ scrut tyScrut hin) hmain
       · simp at h
@@ -1169,7 +1250,7 @@ theorem checkType_sound_true (bvs : List Morph.Core.Typ) (Γ : TypEnv) (e : Expr
     The body sub-checks use `checkType_sound` at a fixed measure `n` that
     dominates every arm body, because `mE` counts arms (`mArms`). -/
 theorem checkArms_sound (n : Nat) :
-    ∀ (arms : List (List String × Expr)) (bvs : List Morph.Core.Typ) (Γ : TypEnv)
+    ∀ (arms : List (Pattern × Expr)) (bvs : List Morph.Core.Typ) (Γ : TypEnv)
       (tyScrut expected : Morph.Core.Typ),
       mArms arms < n →
       Morph.TypeChecker.checkArms bvs Γ tyScrut arms expected = true →
@@ -1184,17 +1265,22 @@ theorem checkArms_sound (n : Nat) :
     exact ArmsTyped.nil bvs Γ tyScrut
   | cons arm rest iharm =>
     cases arm with
-    | mk vars body =>
+    | mk pat body =>
       intro bvs Γ tyScrut expected hn h
       rw [Morph.TypeChecker.checkArms.eq_2] at h
-      rw [Bool.and_eq_true] at h
-      obtain ⟨hbody, hrest⟩ := h
-      refine ArmsTyped.cons bvs Γ vars body rest tyScrut expected ?_
-        (iharm bvs Γ tyScrut expected (by simp only [mArms] at hn; omega) hrest)
-      refine checkType_sound n _ (List.replicate vars.length tyScrut ++ bvs) Γ expected ?_ hbody
-      have h1 := mArms_body vars body rest
-      simp only [mArms] at hn
-      omega
+      cases hpt : Morph.TypeChecker.patTypes tyScrut pat with
+      | none => simp [hpt] at h
+      | some tys =>
+        simp only [hpt] at h
+        rw [Bool.and_eq_true] at h
+        obtain ⟨hbody, hrest⟩ := h
+        refine ArmsTyped.cons bvs Γ pat body rest tyScrut expected tys
+          (patTypes_sound tyScrut pat tys hpt) ?_
+          (iharm bvs Γ tyScrut expected (by simp only [mArms] at hn; omega) hrest)
+        refine checkType_sound n _ (tys ++ bvs) Γ expected ?_ hbody
+        have h1 := mArms_body pat body rest
+        simp only [mArms] at hn
+        omega
 
 /-- **Non-completeness witness (formal).** `.none_` is derivable in the
     declarative judgment for *every* `.optionType τ`, but synthesis returns
@@ -1208,7 +1294,7 @@ theorem infer_not_complete (bvs : List Morph.Core.Typ) (Γ : TypEnv) (τ : Morph
 /-- Contract-level corollary of `checkArms_sound` without the measure
 bookkeeping. -/
 theorem checkArms_sound_true (bvs : List Morph.Core.Typ) (Γ : TypEnv)
-    (tyScrut expected : Morph.Core.Typ) (arms : List (List String × Expr))
+    (tyScrut expected : Morph.Core.Typ) (arms : List (Pattern × Expr))
     (h : Morph.TypeChecker.checkArms bvs Γ tyScrut arms expected = true) :
     ArmsTyped bvs Γ tyScrut arms expected :=
   checkArms_sound (mArms arms + 1) arms bvs Γ tyScrut expected (Nat.lt_succ_self _) h

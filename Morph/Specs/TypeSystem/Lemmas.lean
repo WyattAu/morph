@@ -62,6 +62,11 @@ theorem HasType_unop_notb_inv (bvs : List Typ) (Γ : TypEnv) (e : Expr) (τ : Ty
     HasType bvs Γ (.unop .notb e) τ → τ = .intType := by
   intro h; cases h with | unop_notb => rfl
 
+-- loop 78c: inversion for unary minus.
+theorem HasType_unop_neg_inv (bvs : List Typ) (Γ : TypEnv) (e : Expr) (τ : Typ) :
+    HasType bvs Γ (.unop .sub e) τ → τ = .intType := by
+  intro h; cases h with | unop_neg => rfl
+
 /-! ## Lift Simplification Lemmas
 
 `liftUnder` is defined by well-founded recursion on a nested inductive type,
@@ -189,11 +194,11 @@ theorem liftUnder_zero_eq_list : forall (bound : Nat) (es : List Expr),
   | bound, head :: tail => by
     simp [List.map, liftUnder_zero_eq bound head, liftUnder_zero_eq_list bound tail]
 
-theorem liftUnder_zero_eq_arms : forall (bound : Nat) (arms : List (List String × Expr)),
+theorem liftUnder_zero_eq_arms : forall (bound : Nat) (arms : List (Pattern × Expr)),
     liftUnderArms bound 0 arms = arms
   | _, [] => by simp only [liftUnderArms]
-  | bound, (vars, body) :: rest => by
-    simp only [liftUnderArms, liftUnder_zero_eq (bound + vars.length) body,
+  | bound, (pat, body) :: rest => by
+    simp only [liftUnderArms, liftUnder_zero_eq (bound + patBindCount pat) body,
                liftUnder_zero_eq_arms bound rest]
 
 theorem liftUnder_zero_eq : forall (bound : Nat) (e : Expr), liftUnder bound 0 e = e
@@ -252,12 +257,12 @@ theorem liftUnder_comp_list : forall (bound k1 k2 : Nat) (es : List Expr),
   | bound, k1, k2, head :: tail => by
     simp [List.map, liftUnder_comp bound k1 k2 head, liftUnder_comp_list bound k1 k2 tail]
 
-theorem liftUnder_comp_arms : forall (bound k1 k2 : Nat) (arms : List (List String × Expr)),
+theorem liftUnder_comp_arms : forall (bound k1 k2 : Nat) (arms : List (Pattern × Expr)),
     liftUnderArms bound k1 (liftUnderArms bound k2 arms) =
     liftUnderArms bound (k1 + k2) arms
   | _, _, _, [] => by simp only [liftUnderArms]
-  | bound, k1, k2, (vars, body) :: rest => by
-    simp only [liftUnderArms, liftUnder_comp (bound + vars.length) k1 k2 body,
+  | bound, k1, k2, (pat, body) :: rest => by
+    simp only [liftUnderArms, liftUnder_comp (bound + patBindCount pat) k1 k2 body,
                liftUnder_comp_arms bound k1 k2 rest]
 
 theorem liftUnder_comp : forall (bound k1 k2 : Nat) (e : Expr),
@@ -414,13 +419,13 @@ theorem countUsesList_liftUnder_below : ∀ (bound k i : Nat) (es : List Expr), 
     simp only [List.map_cons, countUsesList]
     rw [countUses_liftUnder_below bound k i e h, countUsesList_liftUnder_below bound k i rest h]
 
-theorem countUsesArms_liftUnder_below : ∀ (bound k i : Nat) (arms : List (List String × Expr)),
+theorem countUsesArms_liftUnder_below : ∀ (bound k i : Nat) (arms : List (Pattern × Expr)),
     i < bound →
     countUsesArms i (liftUnderArms bound k arms) = countUsesArms i arms
   | bound, k, i, [], _ => by simp [liftUnderArms, countUsesArms]
-  | bound, k, i, (vars, body) :: rest, h => by
+  | bound, k, i, (pat, body) :: rest, h => by
     simp only [liftUnderArms, countUsesArms]
-    rw [countUses_liftUnder_below (bound + vars.length) k (i + vars.length) body (by omega),
+    rw [countUses_liftUnder_below (bound + patBindCount pat) k (i + patBindCount pat) body (by omega),
         countUsesArms_liftUnder_below bound k i rest h]
 
 theorem countUses_liftUnder_above : ∀ (bound k i : Nat) (e : Expr), bound ≤ i → i < bound + k →
@@ -514,13 +519,13 @@ theorem countUsesList_liftUnder_above : ∀ (bound k i : Nat) (es : List Expr),
     rw [countUses_liftUnder_above bound k i e h1 h2,
         countUsesList_liftUnder_above bound k i rest h1 h2]
 
-theorem countUsesArms_liftUnder_above : ∀ (bound k i : Nat) (arms : List (List String × Expr)),
+theorem countUsesArms_liftUnder_above : ∀ (bound k i : Nat) (arms : List (Pattern × Expr)),
     bound ≤ i → i < bound + k →
     countUsesArms i (liftUnderArms bound k arms) = 0
   | bound, k, i, [], _, _ => by simp [liftUnderArms, countUsesArms]
-  | bound, k, i, (vars, body) :: rest, h1, h2 => by
+  | bound, k, i, (pat, body) :: rest, h1, h2 => by
     simp only [liftUnderArms, countUsesArms]
-    rw [countUses_liftUnder_above (bound + vars.length) k (i + vars.length) body (by omega) (by omega),
+    rw [countUses_liftUnder_above (bound + patBindCount pat) k (i + patBindCount pat) body (by omega) (by omega),
         countUsesArms_liftUnder_above bound k i rest h1 h2]
 
 end
@@ -629,12 +634,12 @@ theorem countUsesList_substAll'_below : ∀ (k i : Nat) (vs : List Expr) (es : L
     rw [countUses_substAll'_below k i vs e h, countUsesList_substAll'_below k i vs rest h]
 
 theorem countUsesArms_substAll'_below : ∀ (k i : Nat) (vs : List Expr)
-    (arms : List (List String × Expr)), i < k →
+    (arms : List (Pattern × Expr)), i < k →
     countUsesArms i (substAllArms k vs arms) = countUsesArms i arms
   | k, i, vs, [], _ => by simp [substAllArms, countUsesArms]
-  | k, i, vs, (vars, body) :: rest, h => by
+  | k, i, vs, (pat, body) :: rest, h => by
     simp only [substAllArms, countUsesArms]
-    rw [countUses_substAll'_below (k + vars.length) (i + vars.length) vs body (by omega),
+    rw [countUses_substAll'_below (k + patBindCount pat) (i + patBindCount pat) vs body (by omega),
         countUsesArms_substAll'_below k i vs rest h]
 
 end
@@ -717,12 +722,12 @@ theorem substAllList_singleton : ∀ (k : Nat) (v : Expr) (es : List Expr),
     simp only [List.map_cons]
     rw [substAll'_singleton k v e, substAllList_singleton k v rest]
 
-theorem substAllArms_singleton : ∀ (k : Nat) (v : Expr) (arms : List (List String × Expr)),
+theorem substAllArms_singleton : ∀ (k : Nat) (v : Expr) (arms : List (Pattern × Expr)),
     substAllArms k [v] arms = substArms k v arms
   | k, v, [] => by simp [substAllArms, substArms]
-  | k, v, (vars, body) :: rest => by
+  | k, v, (pat, body) :: rest => by
     simp only [substAllArms, substArms]
-    rw [substAll'_singleton (k + vars.length) v body, substAllArms_singleton k v rest]
+    rw [substAll'_singleton (k + patBindCount pat) v body, substAllArms_singleton k v rest]
 
 end
 
@@ -757,7 +762,7 @@ private theorem omega_list_len_succ (as bs : List Typ) (n : Nat) (σ : Typ)
   have h4 := h2.trans (congrArg (as.length + ·) h3)
   omega
 
-set_option maxHeartbeats 500000 in
+set_option maxHeartbeats 1000000 in
 mutual
 
 theorem weakening_at_depth (xs : List Typ) (bvs : List Typ) (Γ : TypEnv)
@@ -809,6 +814,10 @@ theorem weakening_at_depth (xs : List Typ) (bvs : List Typ) (Γ : TypEnv)
   | unop_notb _ _ e' hE' =>
     simp only [liftUnder]
     exact HasType.unop_notb (xs ++ σ :: bvs) Γ (liftUnder xs.length 1 e')
+      (weakening_at_depth xs bvs Γ e' .intType σ hE')
+  | unop_neg _ _ e' hE' =>
+    simp only [liftUnder]
+    exact HasType.unop_neg (xs ++ σ :: bvs) Γ (liftUnder xs.length 1 e')
       (weakening_at_depth xs bvs Γ e' .intType σ hE')
   | binop_arith _ _ op e1 e2 hArith hE1 hE2 =>
     simp only [liftUnder]
@@ -931,10 +940,22 @@ theorem weakening_at_depth (xs : List Typ) (bvs : List Typ) (Γ : TypEnv)
       (weakening_at_depth_all xs bvs Γ exprs (τs ++ [τ]) σ hExprs)
   | lit_float _ _ w f => simp only [liftUnder]; exact HasType.lit_float (xs ++ σ :: bvs) Γ w f
   | lit_int_width _ _ w n => simp only [liftUnder]; exact HasType.lit_int_width (xs ++ σ :: bvs) Γ w n
-  | lit_some _ _ v τ => simp only [liftUnder]; exact HasType.lit_some (xs ++ σ :: bvs) Γ v τ
+  | lit_some _ _ v τ hV =>
+    simp only [liftUnder]
+    have hVw := weakening_at_depth xs bvs Γ (.lit v) τ σ hV
+    simp only [liftUnder] at hVw
+    exact HasType.lit_some _ _ _ _ hVw
   | lit_none _ _ τ => simp only [liftUnder]; exact HasType.lit_none (xs ++ σ :: bvs) Γ τ
-  | lit_ok _ _ v τ_ok τ_err => simp only [liftUnder]; exact HasType.lit_ok (xs ++ σ :: bvs) Γ v τ_ok τ_err
-  | lit_err _ _ v τ_err τ_ok => simp only [liftUnder]; exact HasType.lit_err (xs ++ σ :: bvs) Γ v τ_err τ_ok
+  | lit_ok _ _ v τ_ok τ_err hV =>
+    simp only [liftUnder]
+    have hVw := weakening_at_depth xs bvs Γ (.lit v) τ_ok σ hV
+    simp only [liftUnder] at hVw
+    exact HasType.lit_ok _ _ _ _ _ hVw
+  | lit_err _ _ v τ_err τ_ok hV =>
+    simp only [liftUnder]
+    have hVw := weakening_at_depth xs bvs Γ (.lit v) τ_err σ hV
+    simp only [liftUnder] at hVw
+    exact HasType.lit_err _ _ _ _ _ hVw
   | pipe_type _ _ e f τ_arg τ hE hF =>
     simp only [liftUnder]
     exact HasType.pipe_type (xs ++ σ :: bvs) Γ (liftUnder xs.length 1 e) (liftUnder xs.length 1 f) τ_arg τ
@@ -1011,23 +1032,25 @@ theorem weakening_at_depth (xs : List Typ) (bvs : List Typ) (Γ : TypEnv)
 
 theorem ArmsTyped_weakening_at_depth (xs : List Typ) (σ : Typ)
     {bvs : List Typ} {Γ : TypEnv} {τ_scrut : Typ}
-    {arms : List (List String × Expr)} {τ_result : Typ}
+    {arms : List (Pattern × Expr)} {τ_result : Typ}
     (h : ArmsTyped (xs ++ bvs) Γ τ_scrut arms τ_result) :
     ArmsTyped (xs ++ σ :: bvs) Γ τ_scrut (liftUnderArms xs.length 1 arms) τ_result := by
   cases h with
   | nil => simp only [liftUnderArms]; constructor
-  | cons bvs Γ vars body rest τ_scrut τ_result hBody hRest =>
+  | cons bvs Γ pat body rest τ_scrut τ_result tys hPat hBody hRest =>
     simp only [liftUnderArms]
-    constructor
-    · have hBody' := weakening_at_depth (List.replicate vars.length τ_scrut ++ xs) bvs Γ body τ_result σ
-        (by show HasType ((List.replicate vars.length τ_scrut ++ xs) ++ bvs) Γ body τ_result
-            rw [List.append_assoc]; exact hBody)
-      simp only [List.length_append, List.length_replicate] at hBody'
-      rw [Nat.add_comm] at hBody'
-      show HasType (List.replicate vars.length τ_scrut ++ (xs ++ σ :: bvs)) Γ
-          (liftUnder (xs.length + vars.length) 1 body) τ_result
-      rw [← List.append_assoc]; exact hBody'
-    · exact ArmsTyped_weakening_at_depth xs σ hRest
+    refine ArmsTyped.cons _ _ _ _ _ _ _ _ hPat ?_
+      (ArmsTyped_weakening_at_depth xs σ hRest)
+    have hlen : tys.length = patBindCount pat := patTyped_length hPat
+    have hB : HasType ((tys ++ xs) ++ bvs) Γ body τ_result := by
+      rw [List.append_assoc]; exact hBody
+    have hBody' := weakening_at_depth (tys ++ xs) bvs Γ body τ_result σ hB
+    simp only [List.length_append] at hBody'
+    rw [hlen, Nat.add_comm] at hBody'
+    have hEq : ((tys ++ xs) ++ σ :: bvs) = tys ++ (xs ++ σ :: bvs) :=
+      List.append_assoc _ _ _
+    rw [hEq] at hBody'
+    exact hBody'
 
  theorem weakening_at_depth_all (xs : List Typ) (bvs : List Typ) (Γ : TypEnv)
     (es : List Expr) (τs : List Typ) (σ : Typ)
@@ -1076,7 +1099,7 @@ theorem weaken_many_at_depth (pfx xs bvs : List Typ) (Γ : TypEnv)
 
 theorem ArmsTyped_weakening (σ : Typ)
     {bvs : List Typ} {Γ : TypEnv} {τ_scrut : Typ}
-    {arms : List (List String × Expr)} {τ_result : Typ}
+    {arms : List (Pattern × Expr)} {τ_result : Typ}
     (h : ArmsTyped bvs Γ τ_scrut arms τ_result) :
     ArmsTyped (σ :: bvs) Γ τ_scrut (liftUnderArms 0 1 arms) τ_result := by
   have h := ArmsTyped_weakening_at_depth [] σ h
@@ -1119,6 +1142,9 @@ theorem weakening (bvs : List Typ) (Γ : TypEnv) (e : Expr) (τ : Typ) (σ : Typ
   | HasType.unop_notb bvs Γ e hE =>
     rw [lift_unop]
     exact HasType.unop_notb (σ :: bvs) Γ (lift 1 e) (weakening _ _ _ _ σ hE)
+  | HasType.unop_neg bvs Γ e hE =>
+    rw [lift_unop]
+    exact HasType.unop_neg (σ :: bvs) Γ (lift 1 e) (weakening _ _ _ _ σ hE)
   | HasType.binop_arith bvs Γ op e1 e2 hArith hE1 hE2 =>
     rw [lift_binop]
     exact HasType.binop_arith (σ :: bvs) Γ op (lift 1 e1) (lift 1 e2) hArith
@@ -1205,18 +1231,24 @@ theorem weakening (bvs : List Typ) (Γ : TypEnv) (e : Expr) (τ : Typ) (σ : Typ
   | HasType.lit_int_width bvs Γ w n =>
     rw [lift_lit]
     exact HasType.lit_int_width (σ :: bvs) Γ w n
-  | HasType.lit_some bvs Γ v τ =>
+  | HasType.lit_some _ _ _ _ hW =>
     rw [lift_lit]
-    exact HasType.lit_some (σ :: bvs) Γ v τ
+    have hW' := weakening _ _ _ _ σ hW
+    rw [lift_lit] at hW'
+    exact HasType.lit_some _ _ _ _ hW'
   | HasType.lit_none bvs Γ τ =>
     rw [lift_lit]
     exact HasType.lit_none (σ :: bvs) Γ τ
-  | HasType.lit_ok bvs Γ v τ_ok τ_err =>
+  | HasType.lit_ok _ _ _ _ _ hW =>
     rw [lift_lit]
-    exact HasType.lit_ok (σ :: bvs) Γ v τ_ok τ_err
-   | HasType.lit_err bvs Γ v τ_err τ_ok =>
+    have hW' := weakening _ _ _ _ σ hW
+    rw [lift_lit] at hW'
+    exact HasType.lit_ok _ _ _ _ _ hW'
+   | HasType.lit_err _ _ _ _ _ hW =>
      rw [lift_lit]
-     exact HasType.lit_err (σ :: bvs) Γ v τ_err τ_ok
+     have hW' := weakening _ _ _ _ σ hW
+     rw [lift_lit] at hW'
+     exact HasType.lit_err _ _ _ _ _ hW'
    | HasType.pipe_type bvs Γ e f τ_arg τ hE hF =>
     rw [lift_pipe]
     exact HasType.pipe_type (σ :: bvs) Γ (lift 1 e) (lift 1 f) τ_arg τ

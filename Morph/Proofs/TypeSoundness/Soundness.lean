@@ -165,16 +165,16 @@ theorem value_is_well_typed : forall {e : Expr} {τ : Typ},
       -- rule for a closure literal, so this case is vacuous.
       | _ => contradiction
     | some v' => cases ht with
-      | lit_some _ _ _ τ_inner => exact WellTypedValue.lit_some v' τ_inner
+      | lit_some _ _ _ τ_inner _ => exact WellTypedValue.lit_some v' τ_inner
       | _ => contradiction
     | none => cases ht with
       | lit_none _ _ τ_inner => exact WellTypedValue.lit_none τ_inner
       | _ => contradiction
     | ok v' => cases ht with
-      | lit_ok _ _ _ τ_ok τ_err => exact WellTypedValue.lit_ok v' τ_ok τ_err
+      | lit_ok _ _ _ τ_ok τ_err _ => exact WellTypedValue.lit_ok v' τ_ok τ_err
       | _ => contradiction
      | err v' => cases ht with
-       | lit_err _ _ _ τ_err τ_ok => exact WellTypedValue.lit_err v' τ_ok τ_err
+       | lit_err _ _ _ τ_err τ_ok _ => exact WellTypedValue.lit_err v' τ_ok τ_err
        | _ => contradiction
      | tuple_ vs => contradiction
     | array_ vs => contradiction

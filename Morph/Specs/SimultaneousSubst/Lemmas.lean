@@ -65,8 +65,8 @@ private theorem substAll_cons_list (k : Nat) (v : Expr) (rest : List Expr)
         ih (fun e' he' => step e' (List.mem_cons_of_mem _ he'))]
 
 private theorem substAll_cons_arms (k : Nat) (v : Expr) (rest : List Expr)
-    (arms : List (List String × Expr))
-    (step : ∀ (vars : List String) (body : Expr), (vars, body) ∈ arms →
+    (arms : List (Pattern × Expr))
+    (step : ∀ (pat : Pattern) (body : Expr), (pat, body) ∈ arms →
       ∀ (k : Nat) (v : Expr) (rest : List Expr),
         substAll' k (v :: rest) body = subst' k (substAll' (k + 1) rest body) v) :
     substAllArms k (v :: rest) arms =
@@ -74,12 +74,12 @@ private theorem substAll_cons_arms (k : Nat) (v : Expr) (rest : List Expr)
   induction arms with
   | nil => simp [substAllArms, substArms]
   | cons hd rest' ih =>
-      rcases hd with ⟨vars, body⟩
+      rcases hd with ⟨pat, body⟩
       simp only [substAllArms, substArms]
-      rw [step vars body (List.mem_cons_self) (k + vars.length) v rest]
-      have hk : (k + vars.length) + 1 = k + 1 + vars.length := by omega
+      rw [step pat body (List.mem_cons_self) (k + patBindCount pat) v rest]
+      have hk : (k + patBindCount pat) + 1 = k + 1 + patBindCount pat := by omega
       rw [hk]
-      rw [ih (fun vars body he => step vars body (List.mem_cons_of_mem _ he))]
+      rw [ih (fun pat body he => step pat body (List.mem_cons_of_mem _ he))]
 
 /-! ### Absorption -/
 
@@ -197,11 +197,11 @@ theorem substAll_cons : ∀ (k : Nat) (v : Expr) (rest : List Expr) (e : Expr),
           ih (nodeCount scrut) (by omega) k v rest scrut (by omega)]
         congr 1
         exact substAll_cons_arms k v rest arms
-          (fun vars body he => fun k' v' rest' =>
+          (fun pat body he => fun k' v' rest' =>
             ih (nodeCount body) (by
-              have hm := mem_nodeCountArms vars body arms he
+              have hm := mem_nodeCountArms pat body arms he
               omega) k' v' rest' body (by
-              have hm := mem_nodeCountArms vars body arms he
+              have hm := mem_nodeCountArms pat body arms he
               omega))
     | field_ e nm =>
         simp only [nodeCount] at hnode
@@ -294,17 +294,17 @@ private theorem substAll_nil_list (k : Nat) (es : List Expr)
       rw [step e (List.mem_cons_self) k,
         ih (fun e' he' => step e' (List.mem_cons_of_mem _ he'))]
 
-private theorem substAllArms_nil (k : Nat) (arms : List (List String × Expr))
-    (step : ∀ (vars : List String) (body : Expr), (vars, body) ∈ arms →
+private theorem substAllArms_nil (k : Nat) (arms : List (Pattern × Expr))
+    (step : ∀ (pat : Pattern) (body : Expr), (pat, body) ∈ arms →
       ∀ (k : Nat), substAll' k [] body = body) :
     substAllArms k [] arms = arms := by
   induction arms with
   | nil => simp [substAllArms]
   | cons hd rest ih =>
-      rcases hd with ⟨vars, body⟩
+      rcases hd with ⟨pat, body⟩
       simp only [substAllArms]
-      rw [step vars body (List.mem_cons_self) (k + vars.length),
-        ih (fun vars body he => step vars body (List.mem_cons_of_mem _ he))]
+      rw [step pat body (List.mem_cons_self) (k + patBindCount pat),
+        ih (fun pat body he => step pat body (List.mem_cons_of_mem _ he))]
 
 /-- Empty simultaneous substitution leaves every term unchanged. -/
 theorem substAll'_nil : ∀ (k : Nat) (e : Expr), substAll' k [] e = e := by

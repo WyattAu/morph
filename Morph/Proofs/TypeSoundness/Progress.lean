@@ -177,7 +177,7 @@ private theorem depth_field {e : Expr} {name : String} :
     exprDepth e < exprDepth (.field_ e name) := by
   simp only [exprDepth]; exact Nat.lt_succ_self _
 
-private theorem depth_match_scrut {scrut : Expr} {arms : List (List String × Expr)} :
+private theorem depth_match_scrut {scrut : Expr} {arms : List (Pattern × Expr)} :
     exprDepth scrut < exprDepth (.match_ scrut arms) := by
   simp only [exprDepth]; exact Nat.lt_succ_self _
 
@@ -442,6 +442,16 @@ private theorem progress_strong :
       | inr hStep =>
         obtain ⟨e', hs⟩ := hStep
         right; exact ⟨.unop .notb e', Step.unop_step σ .notb eSub e' hs⟩
+    -- loop 78c: unary minus steps by `Step.unop_neg` on an int literal.
+    | unop_neg _ _ eSub hSub =>
+      have hRes := ih eSub (Nat.lt_of_lt_of_le (depth_unop .sub) (Nat.le_of_lt_succ hDepth)) .intType hSub
+      cases hRes with
+      | inl hv =>
+        obtain ⟨k, hk⟩ := canonical_int hv hSub
+        rw [hk]; right; exact ⟨.lit (.int (-k)), Step.unop_neg σ k⟩
+      | inr hStep =>
+        obtain ⟨e', hs⟩ := hStep
+        right; exact ⟨.unop .sub e', Step.unop_step σ .sub eSub e' hs⟩
     | binop_arith _ _ op e1 e2 hArith hSub1 hSub2 =>
       have h1 := ih e1 (Nat.lt_of_lt_of_le (depth_binop_l op) (Nat.le_of_lt_succ hDepth)) .intType hSub1
       have h2 := ih e2 (Nat.lt_of_lt_of_le (depth_binop_r op) (Nat.le_of_lt_succ hDepth)) .intType hSub2
@@ -902,10 +912,10 @@ private theorem progress_strong :
        | inr hStep =>
          obtain ⟨e', hs⟩ := hStep
          right; exact ⟨.err_ e', Step.err_step σ eErr e' hs⟩
-    | lit_some _ _ _ _ => left; exact IsValue.lit _
+    | lit_some _ _ _ _ _ => left; exact IsValue.lit _
     | lit_none _ _ _ => left; exact IsValue.lit _
-    | lit_ok _ _ _ τ_ok _ => left; exact IsValue.lit _
-    | lit_err _ _ _ τ_err _ => left; exact IsValue.lit _
+    | lit_ok _ _ _ τ_ok _ _ => left; exact IsValue.lit _
+    | lit_err _ _ _ τ_err _ _ => left; exact IsValue.lit _
     | null_coalesce_type _ _ e1 e2 τ hE1 hE2 =>
       have hRes := ih e1 (Nat.lt_of_lt_of_le depth_null_coalesce_e1 (Nat.le_of_lt_succ hDepth)) (.optionType τ) hE1
       cases hRes with
@@ -1008,7 +1018,12 @@ private theorem progress_strong :
         right
         match arms with
         | [] => exact ⟨.lit .unit, Step.match_empty σ scrut hv⟩
-        | (vars, body) :: rest => exact ⟨substAll (List.replicate vars.length scrut) body, Step.match_arm σ scrut vars body rest hv⟩
+        | (pat, body) :: rest =>
+          cases hmp : matchPat pat scrut with
+          | some vs =>
+            exact ⟨substAll vs body, Step.match_hit σ scrut pat body rest vs hv hmp⟩
+          | none =>
+            exact ⟨.match_ scrut rest, Step.match_miss σ scrut pat body rest hv hmp⟩
     | refCreate_type _ _ e cap τ hE =>
       have hRes := ih e (Nat.lt_of_lt_of_le depth_refCreate (Nat.le_of_lt_succ hDepth)) τ hE
       cases hRes with

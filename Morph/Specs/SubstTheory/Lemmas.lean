@@ -29,7 +29,7 @@ def nodeCountList : List Expr → Nat
   | e :: es => nodeCount e + nodeCountList es
 
 /-- `nodeCount` over match arms. -/
-def nodeCountArmsSize : List (List String × Expr) → Nat
+def nodeCountArmsSize : List (Pattern × Expr) → Nat
   | [] => 0
   | (_, body) :: rest => nodeCount body + nodeCountArmsSize rest
 
@@ -79,8 +79,8 @@ theorem mem_nodeCountList (e : Expr) (es : List Expr) (h : e ∈ es) :
       · exact Nat.le_trans (ih h) (Nat.le_add_left _ _)
 
 /-- An arm's body accounts for at most the arms' total size. -/
-theorem mem_nodeCountArms (vars : List String) (body : Expr)
-    (arms : List (List String × Expr)) (h : (vars, body) ∈ arms) :
+theorem mem_nodeCountArms (pat : Pattern) (body : Expr)
+    (arms : List (Pattern × Expr)) (h : (pat, body) ∈ arms) :
     nodeCount body ≤ nodeCountArmsSize arms := by
   induction arms with
   | nil => cases h
@@ -152,10 +152,10 @@ def ScopedList (i : Nat) : List Expr → Prop
   | [] => True
   | e :: es => Scoped i e ∧ ScopedList i es
 
-/-- `Scoped` over match arms; a pattern binds `vars.length` variables. -/
-def ScopedArms (i : Nat) : List (List String × Expr) → Prop
+/-- `Scoped` over match arms; a pattern binds `patBindCount pat` variables. -/
+def ScopedArms (i : Nat) : List (Pattern × Expr) → Prop
   | [] => True
-  | (vars, body) :: rest => Scoped (i + vars.length) body ∧ ScopedArms i rest
+  | (pat, body) :: rest => Scoped (i + patBindCount pat) body ∧ ScopedArms i rest
 
 /-- `Scoped i e` holds when every de Bruijn index occurring in `e` is below `i`.
 `bvar` is the only judgement that constrains the index; every binder raises the
@@ -203,16 +203,16 @@ private theorem scoped_list_gen (i : Nat) (v : Expr) (es : List Expr)
 
 /-- `match_` version of the no-capture law: an arm body is substituted below its
 own pattern variables. -/
-private theorem scoped_arms_gen (i : Nat) (v : Expr) (arms : List (List String × Expr))
-    (step : ∀ (vars : List String) (body : Expr), (vars, body) ∈ arms →
-      Scoped (i + vars.length) body → subst' (i + vars.length) body v = body)
+private theorem scoped_arms_gen (i : Nat) (v : Expr) (arms : List (Pattern × Expr))
+    (step : ∀ (pat : Pattern) (body : Expr), (pat, body) ∈ arms →
+      Scoped (i + patBindCount pat) body → subst' (i + patBindCount pat) body v = body)
     (hs : ScopedArms i arms) : substArms i v arms = arms := by
   induction arms with
   | nil => simp [substArms]
   | cons hd rest ih =>
-      rcases hd with ⟨vars, body⟩
-      simp [ScopedArms, substArms, step vars body (by simp) hs.1,
-        ih (fun vars body he hj => step vars body (by simp [he]) hj) hs.2]
+      rcases hd with ⟨pat, body⟩
+      simp [ScopedArms, substArms, step pat body (by simp) hs.1,
+        ih (fun pat body he hj => step pat body (by simp [he]) hj) hs.2]
 
 /-! ### No capture
 
@@ -283,8 +283,8 @@ theorem subst_above (i : Nat) (e : Expr) (v : Expr) (hs : Scoped i e) :
         simp only [nodeCount] at hnode
         simp [subst', ih (nodeCount scrut) (by omega) i scrut v (Nat.le_refl (nodeCount scrut)) hs.1,
           scoped_arms_gen i v arms
-            (fun vars body he hj => ih (nodeCountArmsSize arms) (by omega) (i + vars.length) body
-              v (mem_nodeCountArms vars body _ he) hj) hs.2]
+            (fun pat body he hj => ih (nodeCountArmsSize arms) (by omega) (i + patBindCount pat) body
+              v (mem_nodeCountArms pat body _ he) hj) hs.2]
     | field_ e nm =>
         simp only [Scoped] at hs
         simp only [nodeCount] at hnode

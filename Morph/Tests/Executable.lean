@@ -67,6 +67,11 @@ example : eval Context.empty (.unop .not (.lit (.bool false))) == some (.lit (.b
 
 example : eval Context.empty (.unop .notb (.lit (.int 0))) == some (.lit (.int (-1))) := by native_decide
 
+-- loop 78c: unary minus evaluates (prefix `-` elaborates to `.unop .sub`).
+example : eval Context.empty (.unop .sub (.lit (.int 5))) == some (.lit (.int (-5))) := by native_decide
+
+example : eval Context.empty (.unop .sub (.lit (.bool true))) == none := by native_decide
+
 /-! ## Binary Arithmetic -/
 
 example : eval Context.empty (.binop .add (.lit (.int 3)) (.lit (.int 4))) == some (.lit (.int 7)) := by native_decide
@@ -157,12 +162,24 @@ example : eval Context.empty (.forLoop (.lit (.int 0)) (.lit (.int 1)) [.lit .un
 /-! ## Pattern Matching -/
 
 -- match 42 with | x => x  =  42
-example : eval Context.empty (.match_ (.lit (.int 42)) [(["x"], .bvar 0)])
+example : eval Context.empty (.match_ (.lit (.int 42)) [(.var_ "x", .bvar 0)])
     == some (.lit (.int 42)) := by native_decide
 
--- match 1 with | x y => x  =  1 (both bound to scrutinee)
-example : eval Context.empty (.match_ (.lit (.int 1)) [(["x", "y"], .bvar 1)])
+-- match _ with | _ => 7  =  7 (wildcard binds nothing)
+example : eval Context.empty (.match_ (.lit (.int 1)) [(.wild, .lit (.int 7))])
+    == some (.lit (.int 7)) := by native_decide
+
+-- first-match-wins: `none` misses `some 1`, `some x` binds the payload
+example : eval Context.empty
+    (.match_ (.some_ (.lit (.int 1)))
+      [(.none_, .lit (.int 0)), ((.some_ (.var_ "x")), .bvar 0)])
     == some (.lit (.int 1)) := by native_decide
+
+-- literal patterns discriminate: 1 misses `2`, falls to `_` = 20
+example : eval Context.empty
+    (.match_ (.lit (.int 1))
+      [((.lit_ (.int 2)), .lit (.int 10)), (.wild, .lit (.int 20))])
+    == some (.lit (.int 20)) := by native_decide
 
 -- Empty match returns none
 example : eval Context.empty (.match_ (.lit (.int 42)) []) == none := by native_decide

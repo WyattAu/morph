@@ -47,19 +47,19 @@ like loop 5's; this helper takes the element-level step as a hypothesis, which i
 all a list induction can justify. -/
 
 private theorem substAllArms_single (k : Nat) (v : Expr) :
-    ∀ (arms : List (List String × Expr)),
-      (∀ (vars : List String) (body : Expr), (vars, body) ∈ arms →
-        substAll' (k + vars.length) [v] body = subst' (k + vars.length) body v) →
+    ∀ (arms : List (Pattern × Expr)),
+      (∀ (pat : Pattern) (body : Expr), (pat, body) ∈ arms →
+        substAll' (k + patBindCount pat) [v] body = subst' (k + patBindCount pat) body v) →
       substAllArms k [v] arms = substArms k v arms := by
   intro arms
   induction arms with
   | nil => intro _; simp [substAllArms, substArms]
   | cons hd rest ih =>
-      rcases hd with ⟨vars, body⟩
+      rcases hd with ⟨pat, body⟩
       intro step
       simp only [substAllArms, substArms]
-      rw [step vars body (List.mem_cons_self),
-        ih (fun vars body he => step vars body (List.mem_cons_of_mem _ he))]
+      rw [step pat body (List.mem_cons_self),
+        ih (fun pat body he => step pat body (List.mem_cons_of_mem _ he))]
 
 /-- List-shaped subterms: the step is restricted to members, which is all a
 list induction can justify. -/
@@ -166,11 +166,11 @@ theorem substAll_single : ∀ (k : Nat) (v : Expr) (e : Expr),
     | match_ scrut arms =>
         simp only [nodeCount] at hnode
         simp only [substAll', subst', ih (nodeCount scrut) (by omega) k scrut (by omega)]
-        have hstep : ∀ (vars : List String) (body : Expr), (vars, body) ∈ arms ->
-            substAll' (k + vars.length) [v] body = subst' (k + vars.length) body v := by
-          intro vars body hmem
-          refine ih (nodeCount body) ?_ (k + vars.length) body ?_
-          · have hm := mem_nodeCountArms vars body arms hmem; omega
+        have hstep : ∀ (pat : Pattern) (body : Expr), (pat, body) ∈ arms ->
+            substAll' (k + patBindCount pat) [v] body = subst' (k + patBindCount pat) body v := by
+          intro pat body hmem
+          refine ih (nodeCount body) ?_ (k + patBindCount pat) body ?_
+          · have hm := mem_nodeCountArms pat body arms hmem; omega
           · omega
         rw [substAllArms_single k v arms hstep]
     | field_ e nm =>

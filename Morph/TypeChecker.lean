@@ -107,16 +107,35 @@ def checkType (bvs : List Typ) (env : TypEnv) (e : Expr) (expected : Typ) : Bool
     | none => false
 termination_by sizeOf e
 
+/-- Executable pattern typing (loop 76): the bound types a pattern
+    introduces against a scrutinee type, or `none` on a shape mismatch —
+    the executable mirror of `PatTyped`. -/
+def patTypes : Typ → Pattern → Option (List Typ)
+  | _, .wild => some []
+  | tyScrut, .var_ _ => some [tyScrut]
+  | tyScrut, .lit_ l =>
+    match litPatType l with
+    | some τ => if decide (τ = tyScrut) then some [] else none
+    | none => none
+  | .optionType _, .none_ => some []
+  | .optionType τ, .some_ p => patTypes τ p
+  | .resultType τ _, .ok_ p => patTypes τ p
+  | .resultType _ ε, .err_ p => patTypes ε p
+  | _, _ => none
+
 /-- Check every `match_` arm against the expected result type, with the arm's
-    pattern variables bound to the scrutinee type — the executable mirror of
+    pattern-bound types in context — the executable mirror of
     `ArmsTyped`. An empty arm list yields `unitType` (rule `ArmsTyped.nil`). -/
 def checkArms (bvs : List Typ) (env : TypEnv) (tyScrut : Typ)
-    (arms : List (List String × Expr)) (expected : Typ) : Bool :=
+    (arms : List (Pattern × Expr)) (expected : Typ) : Bool :=
   match arms with
   | [] => decide (expected = .unitType)
-  | (vars, body) :: rest =>
-    checkType (List.replicate vars.length tyScrut ++ bvs) env body expected &&
-    checkArms bvs env tyScrut rest expected
+  | (pat, body) :: rest =>
+    match patTypes tyScrut pat with
+    | some tys =>
+      checkType (tys ++ bvs) env body expected &&
+      checkArms bvs env tyScrut rest expected
+    | none => false
 termination_by sizeOf arms
 end
 

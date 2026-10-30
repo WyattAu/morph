@@ -67,6 +67,8 @@ def evalUnop (op : Operator) (v : Expr) : Option Expr :=
   match op, v with
   | .not, .lit (.bool b) => some (.lit (.bool (!b)))
   | .notb, .lit (.int n) => some (.lit (.int (-n - 1)))
+  -- loop 78c: unary minus (the parser elaborates prefix `-` to `.unop .sub`).
+  | .sub, .lit (.int n) => some (.lit (.int (-n)))
   | _, _ => none
 
 /-- Evaluate binary operations on values.
@@ -193,8 +195,10 @@ def evalWithFuel : Nat → Context → Expr → Option Expr
       let sv ← evalWithFuel fuel ctx scrut
       match branches with
       | [] => none
-      | (vars, body) :: _ =>
-        evalWithFuel fuel (ctx.pushBvs (List.replicate vars.length sv)) body
+      | (pat, body) :: rest =>
+        match matchPat pat sv with
+        | some vs => evalWithFuel fuel (ctx.pushBvs vs) body
+        | none => evalWithFuel fuel ctx (.match_ sv rest)
     | .field_ a _ => evalWithFuel fuel ctx a
     | .pipe a f => do
       let v ← evalWithFuel fuel ctx a

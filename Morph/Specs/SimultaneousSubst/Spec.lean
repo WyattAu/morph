@@ -56,17 +56,17 @@ private theorem subst_lifted_list (k m : Nat) (es : List Expr) (v : Expr)
       simp only [List.map_cons]
       rw [step e (List.mem_cons_self) k m v, ih (fun e' he' => step e' (List.mem_cons_of_mem _ he'))]
 
-private theorem subst_lifted_arms (k m : Nat) (arms : List (List String × Expr)) (v : Expr)
-    (step : ∀ (vars : List String) (body : Expr), (vars, body) ∈ arms → ∀ (k m : Nat) (v : Expr),
+private theorem subst_lifted_arms (k m : Nat) (arms : List (Pattern × Expr)) (v : Expr)
+    (step : ∀ (pat : Pattern) (body : Expr), (pat, body) ∈ arms → ∀ (k m : Nat) (v : Expr),
       subst' (k + m) (liftUnder m (k + 1) body) v = liftUnder m k body) :
     substArms (k + m) v (liftUnderArms m (k + 1) arms) = liftUnderArms m k arms := by
   induction arms with
   | nil => simp [substArms, liftUnderArms]
   | cons hd rest ih =>
-      rcases hd with ⟨vars, body⟩
+      rcases hd with ⟨pat, body⟩
       simp only [liftUnderArms, substArms, Nat.add_assoc]
-      rw [step vars body (List.mem_cons_self) k (m + vars.length) v]
-      rw [ih (fun vars body he => step vars body (List.mem_cons_of_mem _ he))]
+      rw [step pat body (List.mem_cons_self) k (m + patBindCount pat) v]
+      rw [ih (fun pat body he => step pat body (List.mem_cons_of_mem _ he))]
 
 /-- **The lifting law.** Substituting into a term whose indices are all above the
 substitution point merely shifts them down; and the shift is exactly the one the
@@ -98,7 +98,7 @@ theorem subst_lifted : ∀ (k m : Nat) (w v : Expr),
         simp only [liftUnder, subst']
     | unop op e1 =>
         simp only [nodeCount] at hnode
-        simp only [liftUnder, subst', Nat.add_assoc, ih (nodeCount e1) (by omega) k m e1 v (by omega)]
+        simp only [liftUnder, subst', ih (nodeCount e1) (by omega) k m e1 v (by omega)]
     | binop op e1 e2 =>
         simp only [nodeCount] at hnode
         simp only [liftUnder, subst', Nat.add_assoc, ih (nodeCount e1) (by omega) k m e1 v (by omega),

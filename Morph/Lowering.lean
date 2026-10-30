@@ -85,10 +85,13 @@ def evalFuel : Nat → Context → Expr → Option Expr
         let sv ← evalFuel fuel ctx scrut
         match arms with
         | [] => some (Expr.lit Value.unit)
-        | (vars, body) :: rest =>
-            let ctx' := ctx.pushBvs (List.replicate vars.length sv)
-            match evalFuel fuel ctx' body with
-            | some r => some r
+        | (pat, body) :: rest =>
+            match matchPat pat sv with
+            | some vs =>
+              let ctx' := ctx.pushBvs vs
+              match evalFuel fuel ctx' body with
+              | some r => some r
+              | none => evalFuel fuel ctx (Expr.match_ sv rest)
             | none => evalFuel fuel ctx (Expr.match_ sv rest)
     | .field_ e _ => evalFuel fuel ctx e
     | .pipe e f => do

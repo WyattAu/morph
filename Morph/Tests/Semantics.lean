@@ -451,6 +451,15 @@ section StepUnopTests
     Step σ (.unop .notb (.lit (.int (-3)))) σ (.lit (.int 2)) := by
     exact Step.unop_notb σ (-3)
 
+  -- loop 78c: unary minus steps (prefix `-` elaborates to `.unop .sub`).
+  theorem step_unop_neg_pos :
+    Step σ (.unop .sub (.lit (.int 5))) σ (.lit (.int (-5))) := by
+    exact Step.unop_neg σ 5
+
+  theorem step_unop_neg_neg :
+    Step σ (.unop .sub (.lit (.int (-3)))) σ (.lit (.int 3)) := by
+    exact Step.unop_neg σ (-3)
+
 end StepUnopTests
 
 /-!
