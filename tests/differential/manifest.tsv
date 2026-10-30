@@ -1,0 +1,15 @@
+# Differential verdict manifest: Lean `morph` vs Rust `morph`.
+# Columns: file lean_cmd lean_want rust_cmd rust_want
+# Verdicts are accept (ok, exit 0) or reject (fail, exit nonzero).
+# Value comparison is future work: today the file-level intersect is empty
+# (Lean top-level = statements/expressions, Rust top-level = items), and the
+# Rust `run` does not execute (no interpreter yet), so only verdicts compare.
+# If a case ever becomes ok/ok, extend the harness with value normalization.
+corpus/lean/match_stmt.morph	run	ok	check	fail
+corpus/lean/for_expr.morph	run	ok	check	fail
+corpus/lean/unary_minus.morph	run	ok	check	fail
+corpus/lean/pipe_coalesce.morph	run	ok	check	fail
+../../cli/tests/fixtures/hello.morph	run	fail	check	ok
+../../cli/tests/fixtures/types.morph	run	fail	check	ok
+../../cli/tests/fixtures/actor.morph	run	fail	check	ok
+../../cli/tests/fixtures/match.morph	run	fail	check	ok
