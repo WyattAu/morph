@@ -18,10 +18,12 @@ private def finish (out : Outcome) : IO UInt32 := do
   | .value s => IO.println s; return 0
   | .parseFailed s => IO.eprintln s; return 1
   | .stuck => IO.eprintln (report .stuck); return 1
+  | .typeError s => IO.eprintln s; return 1
 
 def main (args : List String) : IO UInt32 := do
   match args with
   | ["eval", src] => finish (runSource src)
   | ["parse", src] => finish (parseSource src)
+  | ["check", src] => finish (checkSource src)
   | ["run", path] => finish (runProgram (← IO.FS.readFile path))
   | _ => IO.println usage; return 1

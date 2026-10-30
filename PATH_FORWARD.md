@@ -1,5 +1,9 @@
 # Morph: Path Forward and Detailed Roadmap
 
+> Companion to `ROADMAP.md` (status view) — this file is the execution
+> view. Live progress lands in `docs/RESEARCH-LOOPS-*.md`; generated
+> proof counts in `.reports/spec-status.md` (CI-checked for drift).
+
 Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 
 ---
@@ -27,7 +31,10 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 The table above predates the implementation track. Verified current values:
 `lake build Morph Morph.Tests morph` green, **0 `sorry`**, **0 stubs**,
 **209 `.lean` files / ~42k lines**, **58 spec modules**,
-**1116 theorems/lemmas**, **14 `Morph/Tests/` files**. Consequences:
+**1116 theorems/lemmas**, **14 `Morph/Tests/` files**
+(loop 81: zero-warning gate; loop 82: name-resolution pass, HIR lowering,
+`morph check`, spec-status CI — now **213 files / ~43k lines**,
+**1160 theorems/lemmas**, **16 test files**, **0 warnings**). Consequences:
 
 - §1.1 is done: no Preservation sorries remain, so the sorry-free and
   zero-warning CI gates (§2.1/§2.2, pre-commit hardening §2.4) are unblocked.
@@ -89,7 +96,11 @@ All `example : True := trivial` stubs have been eliminated (0 remaining). This s
 
 ## Phase 2: Proof Infrastructure Hardening [P0 -- 1-2 weeks]
 
-### 2.1 Zero-warning CI gate
+> Loop 81 status: §2.1 done (warning + stub gates now blocking in
+> `lean-build.yml`; stub check blocking in `.githooks/pre-commit`). §2.2
+> was already blocking before loop 81. CI itself still blocked on billing.
+
+### 2.1 Zero-warning CI gate — DONE (loop 81: 89 linter warnings cleared, gate flipped to `exit 1`)
 
 Once 1.1 resolves the 6 sorries, the remaining sorry warnings disappear. Update `lean-build.yml` to fail on any warning:
 
@@ -131,9 +142,15 @@ Update `.githooks/pre-commit` step 2: change from warning to `exit 1` once all s
 
 ## Phase 3: Testing Infrastructure [P1 -- 2-3 weeks]
 
-### 3.1 Lean property-based testing (SlimCheck)
+### 3.1 Lean property-based testing (Plausible, not SlimCheck) — DELIVERED (loop 80)
 
-Add SlimCheck dependency to `lakefile.lean`. Write property tests for:
+No lakefile change was needed: `Plausible` resolves through the existing
+mathlib/batteries/aesop closure. Property tests live in
+`Morph/Tests/Property.lean` (sampling: `Arbitrary`/`Shrinkable` for
+`Phase`/`BlockId`/`ProvenanceId`/`Pointer`/`Value`/`Typ`/`Operator`;
+universal eval-laws + `native_decide` parse round-trip pins as theorems).
+The per-target files below were the original plan; coverage lands in
+`Property.lean`/`Typing.lean`/`Semantics.lean` instead:
 
 | Target | Properties | File |
 |--------|-----------|------|
@@ -142,7 +159,7 @@ Add SlimCheck dependency to `lakefile.lean`. Write property tests for:
 | Semantics | Evaluation is deterministic for pure expressions | `Morph/Tests/Semantics.lean` |
 | ConcurrencyProcessAlgebra | Process algebra equivalences hold | `Morph/Tests/Concurrency.lean` |
 
-**Effort:** 2-3 weeks | **Deps:** SlimCheck added to lakefile
+**Effort:** 2-3 weeks (spent as loop 80) | **Deps:** none (Plausible, already in closure)
 
 ### 3.2 Regression test snapshots
 
@@ -269,8 +286,8 @@ Script to verify:
 |-----------|-------------|--------|
 | Lexer | Tokenize Morph source into token stream | 2-3 weeks |
 | Parser | Recursive descent parser producing AST | 3-4 weeks |
-| Name resolution | Resolve identifiers, build symbol table | 2-3 weeks |
-| HIR lowering | AST to High-level IR | 1-2 weeks |
+| Name resolution | Resolve identifiers, build symbol table | 2-3 weeks | **delivered as its own pass (loop 82)** |
+| HIR lowering | AST to High-level IR | 1-2 weeks | **delivered for the HIR-representable fragment (loop 82)** |
 
 **Total:** 8-12 weeks | **Deps:** Phase 1 complete
 
@@ -283,7 +300,7 @@ Extract type checking rules from the Lean 4 proof layer into a certified executa
 | Type synthesis | `synthType : Expr -> TypEnv -> Option Typ` | 2-3 weeks |
 | Type checking | `checkType : Expr -> TypEnv -> Typ -> Bool` | 1-2 weeks |
 | Unification | Pattern unification for type variables | 2-3 weeks |
-| Error reporting | Human-readable type error messages | 1 week |
+| Error reporting | Human-readable type error messages | 1 week | **delivered at the CLI via `morph check` (loop 82)** |
 
 **Total:** 6-9 weeks | **Deps:** 6.1
 

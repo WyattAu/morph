@@ -1,4 +1,5 @@
 import Morph.Frontend.Lexer
+import Morph.Frontend.NameResolution
 import Morph.Syntax
 
 namespace Morph.Frontend
@@ -58,24 +59,19 @@ def matchHead (p : Parser) : Parser :=
     else p
   | none => p
 
-/-- Resolve an identifier against the scope (innermost binder first): a bound
-name becomes its de Bruijn index, an unbound name stays free.
+/-- Identifier occurrence: resolved by `NameResolution.resolveIdent` (loop 82
+moved the occurrence decision and the scope discipline there, with proofs;
+the parser just threads the scope).
 
 Loop 72: the parser used to emit `.fvar` for *every* identifier, but the
 evaluator binds `bvar`s (`Context.pushBv`), so a parsed `let` or `fn` binding
 could never be seen by the body that references it — `let x = 5 in x + 1`
 evaluated to `stuck`, not `6`. -/
-
-def resolveIdent (scope : List String) (name : String) : Expr :=
-  match scope.findIdx? (· == name) with
-  | some i => .bvar i
-  | none => .fvar name
-
 def parseIdentifier (scope : List String) (p : Parser) : Option (Expr × Parser) :=
   match peek p with
   | some t =>
     match t.kind with
-    | .identifier => some (resolveIdent scope t.lexeme, advance p)
+    | .identifier => some (NameResolution.resolveIdent scope t.lexeme, advance p)
     | _ => none
   | none => none
 

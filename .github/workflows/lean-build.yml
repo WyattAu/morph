@@ -99,6 +99,16 @@ jobs:
         fi
         echo "No spec stubs found."
 
+    - name: Check spec status freshness
+      run: |
+        cp .reports/spec-status.md /tmp/spec-status-committed.md
+        bash scripts/gen-spec-status.sh > /dev/null
+        if ! diff <(grep -v '^Generated:' /tmp/spec-status-committed.md) <(grep -v '^Generated:' .reports/spec-status.md); then
+          echo "::error::.reports/spec-status.md is stale -- run scripts/gen-spec-status.sh and commit"
+          exit 1
+        fi
+        echo "Spec status report is fresh."
+
     - name: Upload build log
       uses: actions/upload-artifact@v4
       if: always()

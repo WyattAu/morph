@@ -1,5 +1,9 @@
 # Morph Roadmap
 
+> Companion to `PATH_FORWARD.md` (execution view) — this file is the
+> status view. Live progress lands in `docs/RESEARCH-LOOPS-*.md`;
+> generated proof counts in `.reports/spec-status.md` (CI-checked for drift).
+
 Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 
 ---
@@ -147,7 +151,11 @@ Unblocks §2.1/§2.3 (zero-warning gate, pre-commit hardening).
 
 ## 2. Proof Infrastructure [P0]
 
-### 2.1 Zero-warning CI gate
+> Loop 81 status: §2.1 done (89 warnings cleared, gate blocking), §2.2
+> already blocking, §2.3 sorry-check already blocking (stub check flipped
+> to blocking in loop 81). CI itself still blocked on billing (§2.4).
+
+### 2.1 Zero-warning CI gate — DONE (loop 81)
 
 Once 1.1 resolves, change `lean-build.yml` warning check from advisory to error:
 
@@ -224,9 +232,10 @@ CI/CD workflows are correct but not executing due to GitHub account spending lim
 
 **Effort:** 1-2 days | **Deps:** none
 
-### 3.3 Lean property-based testing (SlimCheck)
+### 3.3 Lean property-based testing (Plausible, not SlimCheck) — DELIVERED (loop 80)
 
-Add SlimCheck dependency and write property tests:
+No lakefile change was needed (`Plausible` arrives via the mathlib
+closure); see `Morph/Tests/Property.lean`. The original per-target plan:
 
 | Target | Properties | File |
 |---|---|---|
@@ -343,8 +352,8 @@ done
 |---|---|---|---|
 | **Lexer** | Tokenize Morph source into `Morph.Syntax.Token` | 2-3 weeks | `Morph/Frontend/Lexer.lean` — **delivered (total, proven)** |
 | **Parser** | Recursive descent producing `Morph.Syntax.AST` | 3-4 weeks | `Morph/Frontend/Parser.lean` — **delivered (fuel-monotone, full surface)** |
-| **Name resolution** | Resolve identifiers, build symbol table | 2-3 weeks | `Morph/Frontend/NameResolution.lean` — still open as its own pass |
-| **HIR lowering** | AST to `Morph.HIR.Expr` | 1-2 weeks | `Morph/Frontend/HIR.lean` — still open |
+| **Name resolution** | Resolve identifiers, build symbol table | 2-3 weeks | `Morph/Frontend/NameResolution.lean` — **delivered as its own pass (loop 82: `resolveIdent` + `resolveExpr`, idempotence + fixed-point proofs; parser calls it)** |
+| **HIR lowering** | AST to `Morph.HIR.Expr` | 1-2 weeks | `Morph/Frontend/HIRLower.lean` — **delivered for the HIR-representable fragment (loop 82: `toHIR`, supported↔`some`/rejected↔`none` contract; semantic preservation awaits HIR evaluation semantics)** |
 
 **Total:** 8-12 weeks | **Deps:** 1.2 (Tier 1), 2.1
 
@@ -357,7 +366,7 @@ Extract type checking rules from proof layer into certified executable:
 | Type synthesis | `synthType : Expr -> TypEnv -> Option Typ` | 2-3 weeks | **delivered with soundness proof** |
 | Type checking | `checkType : Expr -> TypEnv -> Typ -> Bool` | 1-2 weeks | **delivered with soundness proof** |
 | Unification | Pattern unification for type variables | 2-3 weeks | **delivered (`unify`/`unifyFuel`)** |
-| Error reporting | Human-readable type error messages | 1 week | still open |
+| Error reporting | Human-readable type error messages | 1 week | **delivered at the CLI (loop 82: `morph check` surfaces `formatTypeError`; `Driver.checkSource` + `Outcome.typeError`)** |
 
 **Total:** 6-9 weeks | **Deps:** 1.2, 6.1
 

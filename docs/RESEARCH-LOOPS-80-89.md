@@ -105,3 +105,71 @@ and the 26 broken-link / numbering items are separate tracks.
 - Gate behavior reviewed by reading the workflow/pre-commit text (CI
   itself is blocked on billing, so the `exit 1` paths are verified by
   inspection, not by a live run).
+
+## Loop 82 — name resolution, HIR lowering, `morph check`, spec-status CI (DONE, Lean)
+
+**Target.** The roadmap's open implementation spine (§6.1 remainders,
+§6.2 error reporting, §5.2 status automation) plus the doc staleness
+called out in discussion: both roadmaps still prescribed SlimCheck and
+an advisory warning gate, and carried May tables with October patches
+bolted on.
+
+**Delivered.**
+- `Frontend/NameResolution.lean` (new): the occurrence decision moved
+  out of the parser unchanged, plus the structural `resolveExpr` pass
+  whose scope extensions mirror the parser exactly (`match_` arms see
+  `patVars`; anonymous `lam`/`let_`/`forLoop` slots pass the scope
+  through). Proved: `resolveIdent` fires exactly on membership
+  (`resolveIdent_self/of_mem/of_not_mem` over `findIdx?`), the pass is
+  a projection (`resolveExpr_idem`), name-free trees are fixed points
+  (`resolveExpr_closed` via `hasFVar`). `Expr` is nested inductive, so
+  definitions and proofs use the codebase's `mutual` pattern (à la
+  `liftUnder`), not the `induction` tactic. `Parser.parseIdentifier`
+  now calls it; behavior identical (all driver tests untouched and
+  green). Tests: `Morph/Tests/NameResolution.lean` (occurrence pins,
+  arm-extension pin, projection/fixed-point instantiations, parse-then-
+  resolve end-to-end).
+- `Frontend/HIRLower.lean` (new): `toHIR : Expr → Option HIR.Expr`
+  in the `lowerIn` partial-lowering discipline. De Bruijn slots map to
+  `Id ⟨n, "bv"⟩` (binders agree by index); free names map to
+  `⟨0, "free:" ++ x⟩`. Supported: variables, literals, unop/binop,
+  variable-applied `app`, `lam`/`let_`/`ifThenElse`/`block`, `match_`
+  over `wild`/`lit_`/`var_` patterns. Rejected (`none`): `field_`/`pipe`/
+  `typeAsc`, all option/result constructors, tuples/arrays/indexing, all
+  `ref*`, `forLoop`, non-variable application, complex patterns. Pinned
+  as equation theorems per constructor plus `Morph/Tests/HIRLower.lean`
+  (structural pins + parse-to-HIR end-to-end both ways). Semantic
+  preservation is named future work: HIR has no evaluator yet.
+- `morph check` (new CLI command): `Driver.checkSource` parses then
+  synthesizes (`synthType [] []`); success prints the inferred type, failure
+  prints `formatTypeError`'s message via a new `Outcome.typeError`
+  (exit 1). The `formatTypeError` dummy expectation never surfaces —
+  without an annotation only the cannot-infer branch is reachable.
+  `eval`/`parse`/`run` behavior unchanged. Tests in `Tests/Driver.lean`;
+  smoke-tested (`check "1 + 2"` → `intType`, `check "1 + true"` →
+  cannot-infer, exit 1).
+- Spec-status CI: `lean-build.yml` runs `gen-spec-status.sh` and fails
+  on drift vs the committed `.reports/spec-status.md` (date line
+  excluded); the committed report was genuinely stale (ModuleSystem /
+  TypeSystem / MorphLanguage growth) and is refreshed here.
+- Docs: SlimCheck → Plausible corrected in both roadmaps (loop 80
+  used Plausible via the mathlib closure, no lakefile change); warning/
+  stub gates marked done (loop 81); §6.1/§6.2 rows marked delivered;
+  cross-pointers added (`PATH_FORWARD` = execution view, `ROADMAP` =
+  status view, live progress in `RESEARCH-LOOPS`, counts in
+  `.reports/spec-status.md`).
+
+**Still named.** Statement-level resolution (statements thread the scope
+but never extend it — one observation, no pass needed yet); HIR
+`Stmt`/`Program` lowering; `check` against an expected type (needs type
+syntax parsing); the 26 broken links / numbering lint (noise, not risk);
+Rust/C++ runtime (separate track).
+
+## Verification
+
+- `lake build Morph Morph.Tests morph` ✔ 416 jobs, **0 warnings,
+  0 errors**; 0 `sorry`, 0 stubs repo-wide.
+- `tests/differential/diff.sh` ✔ 8/8 cases match the manifest.
+- `spec-tools` pytest ✔ 803 passed, 96.04% coverage.
+- Counts at commit: 213 `.lean` files / ~43k lines, 1160
+  `theorem`/`lemma` declarations, 16 `Morph/Tests/` files.

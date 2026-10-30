@@ -5,6 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 import Morph.Frontend.Parser
 import Morph.Executable
 import Morph.Interp
+import Morph.TypeChecker
 
 /-!
 # The Morph driver
@@ -52,11 +53,13 @@ inductive Outcome where
   | value : String → Outcome
   | parseFailed : String → Outcome
   | stuck : Outcome
+  | typeError : String → Outcome
   deriving Repr, BEq
 
 def isValue : Outcome → Bool | .value _ => true | _ => false
 def isParseFailed : Outcome → Bool | .parseFailed _ => true | _ => false
 def isStuck : Outcome → Bool | .stuck => true | _ => false
+def isTypeError : Outcome → Bool | .typeError _ => true | _ => false
 
 /-- Render parse errors as `line l, col c: message` lines. -/
 def renderErrors (errs : List Morph.Frontend.ParseError) : String :=
@@ -80,6 +83,19 @@ def parseSource (src : String) : Outcome :=
   | .ok e => .value (reprStr e)
   | .error errs => .parseFailed (renderErrors errs)
 
+/-- **The typecheck pipeline** (loop 82): parse, then synthesize a type.
+A success reports the inferred type; a failure reports the checker's
+message (`formatTypeError`). The dummy `.unitType` expectation never
+surfaces: without an annotation, only the cannot-infer branch (which
+ignores it) is reachable. For `morph check`. -/
+def checkSource (src : String) : Outcome :=
+  match Morph.Frontend.parse src with
+  | .ok e =>
+    match Morph.TypeChecker.synthType [] [] e with
+    | some τ => .value (reprStr τ)
+    | none => .typeError (Morph.TypeChecker.formatTypeError [] [] e .unitType)
+  | .error errs => .parseFailed (renderErrors errs)
+
 /-- **The statement pipeline** (loop 74): parse a statement sequence, run it.
 The sequence's value is its last expression statement; `return` short-circuits.
 Total by construction, like `runSource`. -/
@@ -98,6 +114,7 @@ def usage : String :=
   "usage: morph <command> [argument]\n" ++
   "  eval <expr>   parse and evaluate an expression\n" ++
   "  parse <expr>  print the parsed AST\n" ++
+  "  check <expr>  print the inferred type or the type error\n" ++
   "  run <file>    run the statement program in a file\n"
 
 /-- The text the CLI prints for an outcome (the exit code is `Main.lean`'s
@@ -107,5 +124,6 @@ def report (out : Outcome) : String :=
   | .value s => s
   | .parseFailed s => s
   | .stuck => "stuck: evaluation got stuck or exhausted its fuel"
+  | .typeError s => s
 
 end Morph.Driver

@@ -361,4 +361,19 @@ example : runProgram "let y = 0; fix some 1 { case some(x) => { y = x + 10; } ca
     == .value "11" := by
   native_decide
 
+/-! ## `check`: synthesized types and the checker's message (loop 82)
+
+`checkSource` parses, then synthesizes. Success prints the inferred
+type; failure prints `formatTypeError`'s cannot-infer message (exit 1
+at the CLI). -/
+
+example : checkSource "1 + 2" == .value "Morph.Core.Typ.intType" := by
+  native_decide
+
+example : isTypeError (checkSource "1 + true") = true := by
+  native_decide
+
+example : isValue (checkSource "let x = 5 in x + 1") = true := by
+  native_decide
+
 end Morph.Tests.Driver
