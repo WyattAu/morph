@@ -6,14 +6,19 @@ import Plausible
 import Morph.Core
 import Morph.Syntax
 import Morph.Semantics
+import Morph.Executable
+import Morph.Frontend.Parser
 import Morph.Specs.TypeSystem.Spec
 import Morph.Specs.TypeSystem.Lemmas
+import Morph.Specs.MorphLanguage.Spec
 
 namespace Tests.Property
 
 open Morph.Core
 open Morph.Syntax
 open Morph.Semantics
+open Morph.Executable
+open Morph.Frontend
 open Morph.Specs.TypeSystem
 open Plausible
 
@@ -253,5 +258,110 @@ example : substAll' 0 [] (.bvar 0) = .bvar 0 := by simp [substAll']
 example : substAll' 5 [] (.bvar 3) = .bvar 3 := by simp [substAll']
 
 end LiftSubstProperties
+
+/-! # Property Tests: Executable evaluator laws (loop 80)
+
+Universal statements over the shipped evaluator — stronger than sampling.
+Fuel is stated with an explicit `+ n` shape so the equation lemmas fire;
+fuel `0` evaluates nothing, so the statements need positive fuel. -/
+
+section EvalLawProperties
+
+/-- Literals evaluate at any positive fuel. -/
+theorem evalWithFuel_succ_lit (f : Nat) (v : Morph.Core.Value) :
+    evalWithFuel (f + 1) Context.empty (.lit v) = some (.lit v) := by
+  simp [evalWithFuel]
+
+/-- Negation is involutive, at any fuel that reaches the literals (two `unop`
+layers plus the literal: `k + 3`). -/
+theorem neg_involutive (k : Nat) (n : Int) :
+    evalWithFuel (k + 3) Context.empty
+      (.unop .sub (.unop .sub (.lit (.int n)))) =
+      some (.lit (.int n)) := by
+  have hneg : (- -n : Int) = n := by omega
+  simp [evalWithFuel, evalUnop, hneg]
+
+/-- Addition commutes on evaluated literals, at any fuel that reaches them. -/
+theorem add_comm_eval (k : Nat) (n m : Int) :
+    evalWithFuel (k + 2) Context.empty
+      (.binop .add (.lit (.int n)) (.lit (.int m))) =
+    evalWithFuel (k + 2) Context.empty
+      (.binop .add (.lit (.int m)) (.lit (.int n))) := by
+  simp [evalWithFuel, evalBinop]
+  omega
+
+/-- A loop whose bounds already meet runs zero iterations: the body is never
+evaluated, whatever it is (even a stuck one). -/
+theorem forLoop_refl_unit (k : Nat) (n : Int) (body : List Expr) :
+    evalWithFuel (k + 2) Context.empty
+      (.forLoop (.lit (.int n)) (.lit (.int n)) body) =
+      some (.lit .unit) := by
+  simp [evalWithFuel]
+
+/-- `none ?? e` is `e` up to one fuel unit for the dispatch. -/
+theorem nullCoalesce_none (k : Nat) (e : Expr) :
+    evalWithFuel (k + 2) Context.empty (.nullCoalesce .none_ e) =
+    evalWithFuel (k + 1) Context.empty e := by
+  simp [evalWithFuel]
+
+end EvalLawProperties
+
+/-! # Property Tests: parse/pretty-print round trip (loop 80)
+
+`exprStr` parenthesises so the output re-associates like the tree; these pin
+that the seeded parser agrees, shape by shape, in the `native_decide` style
+of `Morph.Tests.Driver`. -/
+
+section RoundTripProperties
+
+/-- Nested mixed-precedence operators reparse to the same tree. -/
+example : (match parse (Morph.Specs.MorphLanguage.exprStr false
+    (.binop .add (.lit (.int 3)) (.binop .mul (.lit (.int 4)) (.lit (.int 2)))))
+  with
+  | .ok e' => e' == .binop .add (.lit (.int 3)) (.binop .mul (.lit (.int 4)) (.lit (.int 2)))
+  | .error _ => false) = true := by
+  native_decide
+
+/-- Unary minus round-trips through its parentheses. -/
+example : (match parse (Morph.Specs.MorphLanguage.exprStr false
+    (.unop .sub (.binop .add (.lit (.int 3)) (.lit (.int 4)))))
+  with
+  | .ok e' => e' == .unop .sub (.binop .add (.lit (.int 3)) (.lit (.int 4)))
+  | .error _ => false) = true := by
+  native_decide
+
+/-- `if` round-trips. -/
+example : (match parse (Morph.Specs.MorphLanguage.exprStr false
+    (.ifThenElse (.lit (.bool true)) (.lit (.int 1)) (.lit (.int 2))))
+  with
+  | .ok e' => e' == .ifThenElse (.lit (.bool true)) (.lit (.int 1)) (.lit (.int 2))
+  | .error _ => false) = true := by
+  native_decide
+
+/-- `for` round-trips through its bare surface (loop 78b). -/
+example : (match parse (Morph.Specs.MorphLanguage.exprStr false
+    (.forLoop (.lit (.int 0)) (.lit (.int 3)) [.lit (.int 42)]))
+  with
+  | .ok e' => e' == .forLoop (.lit (.int 0)) (.lit (.int 3)) [.lit (.int 42)]
+  | .error _ => false) = true := by
+  native_decide
+
+/-- `??` round-trips at a single level. -/
+example : (match parse (Morph.Specs.MorphLanguage.exprStr false
+    (.nullCoalesce (.some_ (.lit (.int 1))) .none_))
+  with
+  | .ok e' => e' == .nullCoalesce (.some_ (.lit (.int 1))) .none_
+  | .error _ => false) = true := by
+  native_decide
+
+/-- `|>` round-trips at a single level. -/
+example : (match parse (Morph.Specs.MorphLanguage.exprStr false
+    (.pipe (.fvar "x") (.fvar "f")))
+  with
+  | .ok e' => e' == .pipe (.fvar "x") (.fvar "f")
+  | .error _ => false) = true := by
+  native_decide
+
+end RoundTripProperties
 
 end Tests.Property
