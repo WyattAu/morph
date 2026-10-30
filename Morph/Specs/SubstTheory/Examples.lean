@@ -24,7 +24,7 @@ open Morph.Syntax Morph.Core
 /-- `fun x -> x` applied to its own parameter index: the hitting case fires at
 body index 0 and the substitute is lifted by the binder depth (0 here). -/
 example : subst' 0 (.lam 1 (.bvar 0)) (.bvar 0) = .lam 1 (.bvar 0) := by
-  simp [subst', liftUnder, lift]
+  simp [subst']
 
 /-- A reference to the enclosing context inside a two-parameter arrow is body
 index 3 (`k + n` with `k = 1`, `n = 2`). Substituting the outer variable lifts
@@ -37,7 +37,7 @@ example : subst' 1 (.lam 2 (.bvar 3)) (.bvar 0) = .lam 2 (.bvar 3) := by
 1) rather than the enclosing context: substitution at the outer index leaves it
 alone. -/
 example : subst' 1 (.lam 2 (.bvar 1)) (.bvar 0) = .lam 2 (.bvar 1) := by
-  simp [subst', liftUnder, lift]
+  simp [subst']
 
 /-- A `let` binds one variable, so its body sees the enclosing context at index
 1. Substituting index 0 lifts the substitute by 1. -/

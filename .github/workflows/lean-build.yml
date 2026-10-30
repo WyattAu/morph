@@ -69,9 +69,11 @@ jobs:
       run: |
         MORPH_WARNINGS=$(grep "Morph/.*warning:" build.log | grep -v "warning: declaration uses 'sorry'" || true)
         if [ -n "$MORPH_WARNINGS" ]; then
-          echo "::warning::Build contains warnings in Morph source"
+          echo "::error::Build contains warnings in Morph source -- blocking (loop 81 zero-warning gate)"
           echo "$MORPH_WARNINGS"
+          exit 1
         fi
+        echo "No warnings in Morph source."
 
     - name: Check for sorry declarations
       run: |
@@ -91,7 +93,11 @@ jobs:
       run: |
         STUB_COUNT=$(grep -r "example : True := trivial" Morph/Specs/ --include="*.lean" | wc -l)
         echo "stub_count=$STUB_COUNT" >> $GITHUB_OUTPUT
-        echo "::notice::Spec stubs: $STUB_COUNT"
+        if [ "$STUB_COUNT" -gt 0 ]; then
+          echo "::error::$STUB_COUNT spec stub(s) found in Morph/Specs -- blocking (loop 81 stub gate)"
+          exit 1
+        fi
+        echo "No spec stubs found."
 
     - name: Upload build log
       uses: actions/upload-artifact@v4

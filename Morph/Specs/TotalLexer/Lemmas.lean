@@ -69,7 +69,7 @@ theorem takeWhile_all (p : Char → Bool) (l : List Char) :
         · assumption
         · exact ih c hc
       · intro c hc
-        simp [takeWhile] at hc
+        simp at hc
 
 /-! ### Every scanner that succeeds consumed characters
 
@@ -94,10 +94,10 @@ theorem isIdentStart_rest (c : Char) (h : isIdentStart c = true) : isIdentRest c
   unfold isIdentStart at h
   unfold isIdentRest
   cases ha : c.isAlpha with
-  | true => simp [ha]
+  | true => simp
   | false =>
       have hx : (c == '_') = true := by simpa [isIdentStart, ha] using h
-      simp [ha, hx]
+      simp [hx]
 
 theorem scanIdent_consumes' : ∀ (c : Char) (r : List Char) (s : String) (r' : List Char),
     scanIdent (c :: r) = some (s, r') → r'.length < (c :: r).length := by
@@ -164,7 +164,7 @@ theorem nextToken_progress (cs : List Char) :
       simp only [nextToken]
       generalize hsk : skipWs (c :: cs) = rest
       cases rest with
-      | nil => exact Or.inl (by simp [hsk])
+      | nil => exact Or.inl (by simp)
       | cons c' r =>
           have hrest : (c' :: r).length ≤ (c :: cs).length := by
             rw [hsk] at hskip
@@ -173,24 +173,24 @@ theorem nextToken_progress (cs : List Char) :
           | some v =>
               obtain ⟨n, r'⟩ := v
               have hlt := scanNum_consumes' c' r n r' hnum
-              simp only [hnum]
+              simp only []
               omega
           | none =>
               cases hid : scanIdent (c' :: r) with
               | some v =>
                   obtain ⟨nm, r'⟩ := v
                   have hlt := scanIdent_consumes' c' r nm r' hid
-                  simp only [hnum, hid]
+                  simp only []
                   omega
               | none =>
                   cases hop : scanOp (c' :: r) with
                   | some v =>
                       obtain ⟨o, r'⟩ := v
                       have hopf := scanOp_consumes' c' r o r' hop
-                      simp only [hnum, hid, hop]
+                      simp only []
                       omega
                   | none =>
-                      simp only [hnum, hid, hop]
+                      simp only []
                       have hrest' : (c' :: r).tail.length < (c :: cs).length := by
                         simp only [List.tail_cons, List.length_cons] at hrest ⊢
                         omega

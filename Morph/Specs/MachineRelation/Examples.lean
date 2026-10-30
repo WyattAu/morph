@@ -28,7 +28,7 @@ example : subst' 0 (.bvar 0) (.lit (.int 3)) = .lit (.int 3) := by
 
 /-- The theorem, applied at offset 0. -/
 example : substAll [(.lit (.int 3))] (.bvar 0) = .lit (.int 3) := by
-  simp [substAll', subst', liftUnder, lift]
+  simp [substAll', liftUnder, lift]
 
 /-- And at a non-zero offset, which is what happens under a binder — the case a
 weaker "offset 0 only" statement would miss. -/

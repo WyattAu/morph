@@ -1410,7 +1410,7 @@ private theorem parseMatchStmtArms_mono (n : Nat) (scope : List String)
     rw [Nat.succ_add]
     simp only [parseMatchStmtArms] at h ⊢
     repeat' split at h
-    all_goals try simp_all [parseExprFuel_mono, parsePattern_mono,
+    all_goals try simp_all [parsePattern_mono,
       parseStmts_mono, parseMatchStmtArms_mono]
     all_goals first
       | (intro _; assumption)

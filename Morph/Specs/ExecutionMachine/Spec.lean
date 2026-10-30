@@ -171,14 +171,14 @@ def step (s : State) : State :=
   | .app fn args =>
       match args with
       | [] => { s with ctrl := .lit (.int 0) }
-      | arg :: _ =>
+      | _arg :: _ =>
           match s.kont with
           | [] => { s with ctrl := .app fn args, kont := Frame.arg fn s.env "" :: s.kont }
-          | Frame.ifThenElse _ _ _ :: rest =>
+          | Frame.ifThenElse _ _ _ :: _rest =>
               { s with ctrl := .app fn args, kont := s.kont }
           | Frame.arg fn' env' x :: rest =>
               match fn' with
-              | .lam n body =>
+              | .lam _n body =>
                   -- β: capture-avoiding substitution, justified by loop 5
                   match Env.lookup env' x with
                   | some v =>

@@ -44,7 +44,7 @@ discipline needs, and the reason a thief's retry loop terminates. -/
 example : Deque.steal Deque.empty = some (Deque.empty, 0) ↔ False := by
   constructor
   · intro h; exact steal_from_empty_is_none Deque.empty 0 h
-  · intro h; exact absurd h (by simp [Deque.steal])
+  · intro h; exact absurd h (by simp)
 
 /-! ### The scheduler: conservation and termination, computed -/
 

@@ -199,7 +199,7 @@ private theorem scoped_list_gen (i : Nat) (v : Expr) (es : List Expr)
   induction es with
   | nil => rfl
   | cons e es ih =>
-      simp [ScopedList, step e (by simp) hs.1, ih (fun e he hj => step e (by simp [he]) hj) hs.2]
+      simp [step e (by simp) hs.1, ih (fun e he hj => step e (by simp [he]) hj) hs.2]
 
 /-- `match_` version of the no-capture law: an arm body is substituted below its
 own pattern variables. -/
@@ -211,7 +211,7 @@ private theorem scoped_arms_gen (i : Nat) (v : Expr) (arms : List (Pattern × Ex
   | nil => simp [substArms]
   | cons hd rest ih =>
       rcases hd with ⟨pat, body⟩
-      simp [ScopedArms, substArms, step pat body (by simp) hs.1,
+      simp [substArms, step pat body (by simp) hs.1,
         ih (fun pat body he hj => step pat body (by simp [he]) hj) hs.2]
 
 /-! ### No capture

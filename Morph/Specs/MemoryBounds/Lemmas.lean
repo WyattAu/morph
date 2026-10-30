@@ -107,7 +107,7 @@ as a prefix extension.
 -/
 
 theorem reach_store (h : Heap) (a f : Addr) (roots pending : List Addr)
-    (har : a ∈ roots) (hfr : f ∈ roots) (haf : a ≠ f)
+    (har : a ∈ roots) (_hfr : f ∈ roots) (haf : a ≠ f)
     (ha : h a ≠ none)
     (x : Addr) (hx : Reach h (roots ++ pending) x) :
     Reach (hAdd h a f) (roots.erase f ++ pending) x := by
@@ -158,7 +158,7 @@ theorem reach_alloc (h : Heap) (a : Addr) (v : Option (List Addr))
 reachability of every other live address survives. -/
 theorem reach_del (h h' : Heap) (base base' : List Addr) (a : Addr)
     (fsa : List Addr) (hfa : h a = some fsa)
-    (hnone : h' a = none)
+    (_hnone : h' a = none)
     (hothers : ∀ y, y ≠ a → h' y = h y)
     (hbase : ∀ z, z ∈ base → z ≠ a → z ∈ base')
     (hchildren : ∀ g, g ∈ fsa → g ∈ base')
@@ -576,7 +576,7 @@ every other step keeps it. In particular none of `store`, `dropRoot` or
 `collect` can grow the heap. -/
 theorem allocs_step (c c' : Config) (hstep : Step c c') :
     c'.allocs ≤ c.allocs + 1 := by
-  cases hstep <;> simp [Config.allocs] <;> omega
+  cases hstep <;> simp <;> omega
 
 /-- **Allocation bound (SG-002).** After any `n`-step execution the allocation
 counter has advanced by at most `n`; growth is paid for by allocation and

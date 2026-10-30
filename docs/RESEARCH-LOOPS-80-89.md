@@ -62,3 +62,46 @@ still does not execute, so verdicts — not values — compare.
 - `spec-tools` pytest ✔ 803 passed, 96.04% coverage.
 - Counts at commit: 209 `.lean` files / ~42.3k lines, 1130
   `theorem`/`lemma` declarations.
+
+## Loop 81 — zero-warning gate (DONE, Lean + CI)
+
+**Target.** PATH_FORWARD §2.1 / ROADMAP §2.1: the sorry gate was already
+blocking, but the warning gate was advisory (`::warning::`), and 89
+linter warnings stood between the repo and a hard zero-warning CI.
+This loop clears them and flips the gate.
+
+**Delivered.**
+- Fixed all 89 `warning: Morph/` linter hits, mechanically and without
+  changing any statement: 20 unused-variable binders prefixed with `_`
+  (`Serve._q`, `progress_invariant._hp`, `progress_not_deadlock._rank`,
+  `NonInterference._high`, `gcd._h` with its `decreasing_by` updated,
+  `tokenizeLoop._l`, `Interp._fuel`/`_acc`, `LoweringLemmas._v`/`_s`, plus
+  seven more in `MemoryBounds`/`TaintFlow`/`DialectSemantics`/
+  `ExecutionMachine`/`SimultaneousSubst`); 69 unused `simp` arguments
+  omitted exactly as the linter hinted (`Nat.add_assoc` × 17 in
+  `SimultaneousSubst/Spec`, `hnum`/`hid`/`hop` in `TotalLexer`,
+  `hA`/`Option.some.injEq` in `LoweringLemmas`, and the rest across
+  `LexicalStructureSyntax`, `MorphLanguage`, `TaintFlow`, `SubstTheory`,
+  `DialectSemantics`, `EffectAlgebra`, `MachineRelation`,
+  `ActorDeadlock`, `MemoryBounds`, `StealingFairness`, and
+  `Frontend/Parser`). Residual `simp []` normalized to `simp`.
+- Hardened `.github/workflows/lean-build.yml`: the warning step now
+  fails the build (`::error::` + `exit 1`); the stub step now fails on
+  any `example : True := trivial` (count is 0, so any regression
+  blocks). `.githooks/pre-commit` stub check flipped from warn to
+  block, matching its sorry check.
+
+**Still named.** `Morph/Tests` build info lines (`Unable to find a
+counter-example` — Plausible success reports, not linter warnings)
+are untouched; the gate greps `warning: Morph/` only. Nightly/billing
+and the 26 broken-link / numbering items are separate tracks.
+
+## Verification
+
+- `lake build Morph` ✔ 394 jobs, **0 warnings, 0 errors** (forced
+  recompile of all touched files, full log captured).
+- `lake build Morph.Tests` ✔ 229 jobs; 0 `sorry`, 0 stubs repo-wide.
+- `tests/differential/diff.sh` ✔ 8/8 cases match the manifest.
+- Gate behavior reviewed by reading the workflow/pre-commit text (CI
+  itself is blocked on billing, so the `exit 1` paths are verified by
+  inspection, not by a live run).

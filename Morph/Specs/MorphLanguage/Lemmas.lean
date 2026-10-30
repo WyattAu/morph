@@ -208,8 +208,8 @@ theorem parseCode_isSome_iff (code : String) :
     (parseCode code).isSome = true ↔ ∃ e, Morph.Frontend.parse code = .ok e := by
   unfold parseCode
   cases h : Morph.Frontend.parse code with
-  | ok e => simp [h]
-  | error err => simp [h]
+  | ok e => simp
+  | error err => simp
 
 /-- **On an accepted input the result is the wrapped expression.** -/
 theorem parseCode_ok (code : String) (e : Expr)

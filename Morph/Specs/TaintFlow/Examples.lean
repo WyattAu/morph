@@ -58,7 +58,7 @@ either returns the same expression or rejects it — it never silently
 downgrades. -/
 example : ∀ e', translate .strict .pub (.var "secret") = some e' →
     taint ρ₀ e' = taint ρ₀ (.var "secret") :=
-  fun e' h => taint_preserved ρ₀ .strict .pub _ _ h
+  fun _e' h => taint_preserved ρ₀ .strict .pub _ _ h
 
 /-- **Robust declassification.** An untrusted program counter cannot carry a
 declassification into the strict dialect. -/

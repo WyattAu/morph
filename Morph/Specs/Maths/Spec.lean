@@ -111,11 +111,11 @@ Total by well-founded recursion on the second argument: the Euclidean step
 replaces `(m, n)` with `(n, m % n)`, and `m % n < n` when `n ≠ 0`. (This was a
 `partial def`; the descent is on `n`, not structural.) -/
 def gcd (m n : Nat) : Nat :=
-  if h : n = 0 then m
+  if _h : n = 0 then m
   else gcd n (m % n)
 termination_by n
 decreasing_by
-  exact Nat.mod_lt _ (Nat.pos_of_ne_zero h)
+  exact Nat.mod_lt _ (Nat.pos_of_ne_zero _h)
 
 /-- Check if two natural numbers are coprime -/
 def coprime (m n : Nat) : Bool :=

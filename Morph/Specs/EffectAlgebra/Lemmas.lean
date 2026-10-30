@@ -70,7 +70,7 @@ theorem pure_bind_denote {σ : Type} (M : Model σ) (v : σ) (f : σ → Eff σ)
 /-- `pure` is a right unit in the model. -/
 theorem bind_pure_denote {σ : Type} (M : Model σ) (m : Eff σ) :
     denote M (Eff.bind m (fun v => Eff.pure v)) = denote M m := by
-  simp only [Eff.bind, denote, List.flatMap_cons, List.flatMap_nil, List.append_nil]
+  simp only [Eff.bind, denote]
   exact flatMap_singleton _
 
 /-- **An unhandled operation yields no answers.** With `answer o = []` the

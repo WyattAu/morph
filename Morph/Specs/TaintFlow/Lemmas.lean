@@ -136,11 +136,11 @@ theorem no_decl_after_translation (pc : Label) (e e' : TExpr)
   | decl e ih =>
       by_cases hpc : pc = .sec
       · exact Or.inr hpc
-      · simp only [translate, hpc, Ne.symm hpc, and_false] at h
+      · simp only [translate] at h
         generalize hde : translate .strict pc e = ode at h
         cases ode with
-        | none => simp [hde] at h
-        | some e₁ => simp [hde] at h; exact Or.inr h.1
+        | none => simp at h
+        | some e₁ => simp at h; exact Or.inr h.1
 
 theorem flows_translation (ρ : TEnv) (to : Dialect) (pc : Label)
     (e e' : TExpr) (l : Label) (hflow : Flows ρ pc e l)

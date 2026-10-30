@@ -39,10 +39,10 @@ theorem isIdentStart_implies_continue (c : Char) (h : isIdentStart c = true) :
   unfold isIdentStart at h
   unfold isIdentContinue
   cases hc : c.isAlpha with
-  | true => simp [hc]
+  | true => simp
   | false =>
       have h2 : (c == '_') = true := by simpa [hc] using h
-      simp [hc, h2]
+      simp [h2]
 
 /-- **The classification agrees with the identifier rules on letters.** -/
 theorem classifyChar_alpha (c : Char) (h : c.isAlpha = true) :

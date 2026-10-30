@@ -102,7 +102,7 @@ theorem substAll_single : ∀ (k : Nat) (v : Expr) (e : Expr),
           · have heq : n = k := by omega
             subst heq
             rw [subst_bvar_hit n v]
-            simp [substAll', hlt, hle]
+            simp [substAll', hlt]
           · have hgt : k < n := by omega
             rw [subst_bvar_above n k v hgt]
             simp [substAll', hlt, hle]

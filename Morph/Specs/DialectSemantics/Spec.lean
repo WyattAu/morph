@@ -127,7 +127,7 @@ the target may not perform. Refusal is what makes the preservation theorem
 below say something: there is no path that smuggles a forbidden operation into a
 permissive-looking term. -/
 def translate (target : Dialect) : Term → Option Term
-  | .val r d => some (.val r target)
+  | .val r _d => some (.val r target)
   | .add a b =>
       match translate target a, translate target b with
       | some a', some b' => some (.add a' b')

@@ -62,9 +62,11 @@ echo "[3/7] Checking for spec stubs (example : True := trivial)..."
 STUB_COUNT=$(grep -r "example : True := trivial" Morph/Specs/ --include="*.lean" 2>/dev/null | wc -l || true)
 
 if [ "$STUB_COUNT" -gt 0 ]; then
-    echo "[3/7] WARNING: Found ${STUB_COUNT} spec stubs in Morph/Specs/."
+    echo "[3/7] FAILED: Found ${STUB_COUNT} spec stubs in Morph/Specs/."
     echo "       These should be replaced with real proofs."
-    echo "       Commit allowed (warnings only)."
+    echo ""
+    echo "Commit blocked. Replace stubs with real proofs."
+    exit 1
 else
     echo "[3/7] No spec stubs found."
 fi

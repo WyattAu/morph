@@ -98,7 +98,7 @@ The real statement lives in `Morph.Specs.TaintFlow` (ADR-019, research
 loop 4): an allowed program cannot move a secret into a public variable, and
 that property is preserved across dialect translation. This definition now
 records the transfer obligation instead of asserting it. -/
-def NonInterference (L : SecurityLattice) (high _low : SecurityLevel L) : Prop :=
+def NonInterference (L : SecurityLattice) (_high _low : SecurityLevel L) : Prop :=
   True
 
 /-- The formalized noninterference statement, for a two-point lattice: an

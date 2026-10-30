@@ -251,7 +251,7 @@ def nextToken (l : Lexer) : Lexer × Option Token :=
 Every token consumes at least one character, so the number of tokens is bounded
 by the length of the input; the fuel is that bound. -/
 def tokenizeLoop : Nat → Lexer → List Token → List Token
-  | 0, l, acc => acc.reverse
+  | 0, _l, acc => acc.reverse
   | n + 1, l, acc =>
       let (l', tokOpt) := nextToken l
       match tokOpt with

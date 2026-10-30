@@ -55,7 +55,7 @@ example : substAll' 0 [.lit (.int 1), .lit (.int 2)] (.bvar 1) =
 fallback is `n - vs.length`, not `n - k - vs.length`. -/
 example : substAll' 0 [.lit (.int 1), .lit (.int 2)] (.bvar 2) =
     .bvar 0 := by
-  simp [substAll', lift, liftUnder]
+  simp [substAll']
 
 /-- A term with two holes and a free variable. -/
 example : substAll' 0 [.lit (.int 1), .lit (.int 2)]

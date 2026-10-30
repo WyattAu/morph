@@ -68,7 +68,7 @@ theorem translate_preserves_eval {target : Dialect} {e e' : Term}
         | some a' =>
             have he' : e' = .rawptr a' := by simpa [translate, hp, ha] using h.symm
             subst he'
-            simp only [eval, iha ha]
+            simp only [eval]
       · simp [translate, hp] at h
   | inlineAsm a iha =>
       by_cases hp : permits target (.inlineAsm a) = true
@@ -77,7 +77,7 @@ theorem translate_preserves_eval {target : Dialect} {e e' : Term}
         | some a' =>
             have he' : e' = .inlineAsm a' := by simpa [translate, hp, ha] using h.symm
             subst he'
-            simp only [eval, iha ha]
+            simp only [eval]
       · simp [translate, hp] at h
 
 /-- **An accepted translation is entirely in the target dialect.** -/

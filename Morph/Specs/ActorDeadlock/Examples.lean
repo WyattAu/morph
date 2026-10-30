@@ -40,7 +40,7 @@ example : afterServe.run = [0, 1] := by
   decide
 
 example : ¬ Blocked afterServe 0 := by
-  simp [Blocked, afterServe, Serve, Ask, bothRunning]
+  simp [Blocked, afterServe, Serve]
 
 /-- A wait-for graph with a cycle: 0 waits for 1, 1 waits for 0, nobody runs.
 This is exactly the deadlock the rank condition rules out, and it shows the

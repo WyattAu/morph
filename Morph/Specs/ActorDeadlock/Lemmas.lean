@@ -277,7 +277,7 @@ theorem Ranked_preserved (rank : Actor → Nat) (s s' : Sys)
       exact ranked_step _ _ rank (ih h) hstep
 
 theorem progress_invariant (s s' : Sys) (rank : Actor → Nat)
-    (hwf : WF s) (hr : Ranked s rank) (hp : p ∈ s.actors)
+    (hwf : WF s) (hr : Ranked s rank) (_hp : p ∈ s.actors)
     (hrun : Steps rank s s') (hmem : p ∈ s'.actors) : s'.run ≠ [] :=
   ranked_implies_progress s' rank (WF_preserved rank s s' hrun hwf)
     (Ranked_preserved rank s s' hrun hr) hmem
@@ -292,7 +292,7 @@ theorem deadlock_is_stuck (s s' : Sys) (rank : Actor → Nat) (hd : Deadlock s) 
   | serve q p hq hw => rw [hd] at hq; simp at hq
 
 /-- Conversely, a state with a runnable actor is never a deadlock. -/
-theorem progress_not_deadlock (s : Sys) (rank : Actor → Nat) (p : Actor)
+theorem progress_not_deadlock (s : Sys) (_rank : Actor → Nat) (p : Actor)
     (hp : p ∈ s.run) : ¬ Deadlock s := by
   intro hd
   rw [hd] at hp

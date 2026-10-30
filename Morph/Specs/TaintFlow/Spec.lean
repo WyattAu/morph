@@ -133,7 +133,7 @@ def taint (ρ : TEnv) : TExpr → Label
   | .var x => ρ x
   | .add a b => Label.join (taint ρ a) (taint ρ b)
   | .ite c t f => Label.join (Label.join (taint ρ c) (taint ρ t)) (taint ρ f)
-  | .decl e => .pub
+  | .decl _e => .pub
 
 /-- `NoDecl e`: the expression contains no declassification anywhere. -/
 inductive NoDecl : TExpr → Prop where

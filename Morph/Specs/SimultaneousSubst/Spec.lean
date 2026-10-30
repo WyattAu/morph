@@ -101,11 +101,11 @@ theorem subst_lifted : ∀ (k m : Nat) (w v : Expr),
         simp only [liftUnder, subst', ih (nodeCount e1) (by omega) k m e1 v (by omega)]
     | binop op e1 e2 =>
         simp only [nodeCount] at hnode
-        simp only [liftUnder, subst', Nat.add_assoc, ih (nodeCount e1) (by omega) k m e1 v (by omega),
+        simp only [liftUnder, subst', ih (nodeCount e1) (by omega) k m e1 v (by omega),
           ih (nodeCount e2) (by omega) k m e2 v (by omega)]
     | app fn args =>
         simp only [nodeCount] at hnode
-        simp only [liftUnder, subst', Nat.add_assoc, ih (nodeCount fn) (by omega) k m fn v (by omega)]
+        simp only [liftUnder, subst', ih (nodeCount fn) (by omega) k m fn v (by omega)]
         congr 1
         exact subst_lifted_list k m args v (fun e he => fun k' m' v' =>
           ih (nodeCount e) (by
@@ -122,7 +122,7 @@ theorem subst_lifted : ∀ (k m : Nat) (w v : Expr),
           ih (nodeCount e2) (by omega) k (m + 1) e2 v (by omega)]
     | ifThenElse c t f =>
         simp only [nodeCount] at hnode
-        simp only [liftUnder, subst', Nat.add_assoc, ih (nodeCount c) (by omega) k m c v (by omega),
+        simp only [liftUnder, subst', ih (nodeCount c) (by omega) k m c v (by omega),
           ih (nodeCount t) (by omega) k m t v (by omega),
           ih (nodeCount f) (by omega) k m f v (by omega)]
     | forLoop s e body =>
@@ -150,7 +150,7 @@ theorem subst_lifted : ∀ (k m : Nat) (w v : Expr),
               omega))
     | match_ scrut arms =>
         simp only [nodeCount] at hnode
-        simp only [liftUnder, subst', Nat.add_assoc, ih (nodeCount scrut) (by omega) k m scrut v (by omega)]
+        simp only [liftUnder, subst', ih (nodeCount scrut) (by omega) k m scrut v (by omega)]
         congr 1
         exact subst_lifted_arms k m arms v
           (fun vars body he => fun k' m' v' =>
@@ -161,28 +161,28 @@ theorem subst_lifted : ∀ (k m : Nat) (w v : Expr),
               omega))
     | field_ e nm =>
         simp only [nodeCount] at hnode
-        simp only [liftUnder, subst', Nat.add_assoc, ih (nodeCount e) (by omega) k m e v (by omega)]
+        simp only [liftUnder, subst', ih (nodeCount e) (by omega) k m e v (by omega)]
     | pipe e f =>
         simp only [nodeCount] at hnode
-        simp only [liftUnder, subst', Nat.add_assoc, ih (nodeCount e) (by omega) k m e v (by omega),
+        simp only [liftUnder, subst', ih (nodeCount e) (by omega) k m e v (by omega),
           ih (nodeCount f) (by omega) k m f v (by omega)]
     | typeAsc e ty =>
         simp only [nodeCount] at hnode
-        simp only [liftUnder, subst', Nat.add_assoc, ih (nodeCount e) (by omega) k m e v (by omega)]
+        simp only [liftUnder, subst', ih (nodeCount e) (by omega) k m e v (by omega)]
     | some_ e =>
         simp only [nodeCount] at hnode
-        simp only [liftUnder, subst', Nat.add_assoc, ih (nodeCount e) (by omega) k m e v (by omega)]
+        simp only [liftUnder, subst', ih (nodeCount e) (by omega) k m e v (by omega)]
     | none_ =>
         simp only [liftUnder, subst']
     | ok_ e =>
         simp only [nodeCount] at hnode
-        simp only [liftUnder, subst', Nat.add_assoc, ih (nodeCount e) (by omega) k m e v (by omega)]
+        simp only [liftUnder, subst', ih (nodeCount e) (by omega) k m e v (by omega)]
     | err_ e =>
         simp only [nodeCount] at hnode
-        simp only [liftUnder, subst', Nat.add_assoc, ih (nodeCount e) (by omega) k m e v (by omega)]
+        simp only [liftUnder, subst', ih (nodeCount e) (by omega) k m e v (by omega)]
     | nullCoalesce e1 e2 =>
         simp only [nodeCount] at hnode
-        simp only [liftUnder, subst', Nat.add_assoc, ih (nodeCount e1) (by omega) k m e1 v (by omega),
+        simp only [liftUnder, subst', ih (nodeCount e1) (by omega) k m e1 v (by omega),
           ih (nodeCount e2) (by omega) k m e2 v (by omega)]
     | tuple_ es =>
         simp only [nodeCount] at hnode
@@ -208,24 +208,24 @@ theorem subst_lifted : ∀ (k m : Nat) (w v : Expr),
               omega))
     | arrayIndex a ix =>
         simp only [nodeCount] at hnode
-        simp only [liftUnder, subst', Nat.add_assoc, ih (nodeCount a) (by omega) k m a v (by omega),
+        simp only [liftUnder, subst', ih (nodeCount a) (by omega) k m a v (by omega),
           ih (nodeCount ix) (by omega) k m ix v (by omega)]
     | refCreate e cap ty =>
         simp only [nodeCount] at hnode
-        simp only [liftUnder, subst', Nat.add_assoc, ih (nodeCount e) (by omega) k m e v (by omega)]
+        simp only [liftUnder, subst', ih (nodeCount e) (by omega) k m e v (by omega)]
     | refLoad e =>
         simp only [nodeCount] at hnode
-        simp only [liftUnder, subst', Nat.add_assoc, ih (nodeCount e) (by omega) k m e v (by omega)]
+        simp only [liftUnder, subst', ih (nodeCount e) (by omega) k m e v (by omega)]
     | refStore e w ty =>
         simp only [nodeCount] at hnode
-        simp only [liftUnder, subst', Nat.add_assoc, ih (nodeCount e) (by omega) k m e v (by omega),
+        simp only [liftUnder, subst', ih (nodeCount e) (by omega) k m e v (by omega),
           ih (nodeCount w) (by omega) k m w v (by omega)]
     | refFree e =>
         simp only [nodeCount] at hnode
-        simp only [liftUnder, subst', Nat.add_assoc, ih (nodeCount e) (by omega) k m e v (by omega)]
+        simp only [liftUnder, subst', ih (nodeCount e) (by omega) k m e v (by omega)]
     | refCast e cap =>
         simp only [nodeCount] at hnode
-        simp only [liftUnder, subst', Nat.add_assoc, ih (nodeCount e) (by omega) k m e v (by omega)]
+        simp only [liftUnder, subst', ih (nodeCount e) (by omega) k m e v (by omega)]
   exact main (nodeCount w) k m w v (Nat.le_refl _)
 
 /-! ### The multi-argument case
@@ -252,7 +252,7 @@ relates `n - k`, `j + 1` and `n - (k + 1)` through `List.getElem_cons_zero` /
 the applications are performed from the *highest* level down, which is the order
 in which each inserted value is lifted exactly once. -/
 def seqSubst : Nat → List Expr → Expr → Expr
-  | k, [], e => e
+  | _k, [], e => e
   | k, v :: rest, e => subst' k (seqSubst (k + 1) rest e) v
 
 end Morph.Specs.SimultaneousSubst

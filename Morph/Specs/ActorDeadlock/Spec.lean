@@ -133,7 +133,7 @@ def Ask (s : Sys) (p q : Actor) : Sys where
 
 /-- `q` serves the outstanding request of `p`; `p` becomes runnable and `q`
 stays runnable (it may have further requests to serve). -/
-def Serve (s : Sys) (q p : Actor) : Sys where
+def Serve (s : Sys) (_q p : Actor) : Sys where
   actors := s.actors
   run := p :: s.run
   waitOn := fun x => if x = p then none else s.waitOn x

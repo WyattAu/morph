@@ -82,12 +82,12 @@ private def runStmts : Nat → List (String × Expr) → List Stmt → Flow → 
       match eval (ctxOf env) e with
       | none => (.stuck, env)
       | some v => runStmts fuel (updateBinding env x.name v) rest acc
-  | fuel + 1, env, .returnStmt e :: _, _ =>
+  | _fuel + 1, env, .returnStmt e :: _, _ =>
       match eval (ctxOf env) e with
       | none => (.stuck, env)
       | some v => (.returned v, env)
-  | _ + 1, env, .break :: _, acc => (.broke, env)
-  | _ + 1, env, .continue :: _, acc => (.continued, env)
+  | _ + 1, env, .break :: _, _acc => (.broke, env)
+  | _ + 1, env, .continue :: _, _acc => (.continued, env)
   | fuel + 1, env, .whileLoop cond body :: rest, acc =>
       match runWhile fuel env cond body with
       | (.value u, env') => runStmts fuel env' rest (acc.replace u)
