@@ -96,6 +96,31 @@ private def runStmts : Nat → List (String × Expr) → List Stmt → Flow → 
       match runDoWhile fuel env cond body with
       | (.value u, env') => runStmts fuel env' rest (acc.replace u)
       | (f, env') => (f, env')
+  | fuel + 1, env, .ifStmt cond th el :: rest, acc =>
+      -- `break`/`continue`/`return` in a branch propagate to the enclosing
+      -- loop or function; only a completed branch falls through
+      match eval (ctxOf env) cond with
+      | some (.lit (.bool true)) =>
+        match runStmts fuel env th (.value (.lit .unit)) with
+        | (.value u, env') => runStmts fuel env' rest (acc.replace u)
+        | (f, env') => (f, env')
+      | some (.lit (.bool false)) =>
+        match runStmts fuel env el (.value (.lit .unit)) with
+        | (.value u, env') => runStmts fuel env' rest (acc.replace u)
+        | (f, env') => (f, env')
+      | _ => (.stuck, env)
+  | fuel + 1, env, .matchStmt scrut arms :: rest, acc =>
+      -- loop 78d: first-match-wins over statement arms. Pattern-bound names
+      -- (`patVars`) are bound in the arm's environment, positionally from
+      -- `matchPat` (the same convention as expression-`match_`); the taken
+      -- arm runs like an `if` branch (control effects propagate, a completed
+      -- arm falls through). No arm matches: unit, like `match_empty`.
+      match eval (ctxOf env) scrut with
+      | none => (.stuck, env)
+      | some v =>
+        match runMatchArms fuel env v arms with
+        | (.value u, env') => runStmts fuel env' rest (acc.replace u)
+        | (f, env') => (f, env')
 
 /-- `while (cond) body`: one fuel unit per iteration; the body's final
 environment is the next iteration's starting environment. `break` exits the
@@ -131,6 +156,23 @@ private def runDoWhile (fuel : Nat) (env : List (String × Expr)) (cond : Expr)
         | some (.lit (.bool false)) => (.value (.lit .unit), env')
         | _ => (.stuck, env')
     | (f, env') => (f, env')
+
+/-- First-match-wins over statement-match arms (loop 78d). `v` is the
+scrutinee's evaluated value; a hit runs the arm body in the environment
+extended with the pattern's bindings. Fuel-bounded like the other runners:
+the body runs at the predecessor fuel, so one unit covers the dispatch. -/
+private def runMatchArms (fuel : Nat) (env : List (String × Expr)) (v : Expr)
+    (arms : List (Pattern × List Stmt)) : Ran :=
+  match fuel with
+  | 0 => (.stuck, env)
+  | fuel + 1 =>
+    match arms with
+    | [] => (.value (.lit .unit), env)
+    | (pat, body) :: rest =>
+      match matchPat pat v with
+      | some vs =>
+        runStmts fuel ((patVars pat).zip vs ++ env) body (.value (.lit .unit))
+      | none => runMatchArms fuel env v rest
 
 end
 

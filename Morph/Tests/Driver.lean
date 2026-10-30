@@ -15,10 +15,11 @@ style as `Morph.Tests.Executable`).
 
 The surface below is what `parseExpr` covers today: numeric/string/bool/option
 literals, arrays, tuples, postfix indexing and field access, the binary
-operators, and `if`/`let`/`fn`. Unparsed or unevaluated, named in
-`docs/RESEARCH-LOOPS-70-79.md`: `match`/`for` expressions, the `??` and `|>`
-operators (the lexer has no two-character token for them), and unary minus
-(the reference semantics has no `unop .sub` rule, so `-e` parses but is stuck).
+operators, `??`/`|>` (loop 78a), `if`/`let`/`fn`/`match` (loop 77), `for`
+expressions (loop 78b), unary minus (loop 78c: prefix `-` elaborates to
+`.unop .sub`, now stepped by `Step.unop_neg`), `match` statements (loop 78d),
+and min-dialect `fix` wherever `match` goes (loop 79: `matchHead`
+normalization plus the token-level `Dialect.projectMinToHum` map).
 -/
 
 namespace Morph.Tests.Driver
@@ -36,6 +37,18 @@ example : runSource "10 / 3" == .value "3" := by native_decide
 example : runSource "10 % 3" == .value "1" := by native_decide
 
 example : runSource "2 - 5" == .value "-3" := by native_decide
+
+/-! ## Unary minus (loop 78c: prefix `-` elaborates to `.unop .sub`) -/
+
+example : runSource "-5" == .value "-5" := by native_decide
+
+example : runSource "--5" == .value "5" := by native_decide
+
+example : runSource "-2 * 3" == .value "-6" := by native_decide
+
+example : runSource "-(2 + 3)" == .value "-5" := by native_decide
+
+example : runSource "-true" == .stuck := by native_decide
 
 /-! ## Comparisons and logic -/
 
@@ -113,6 +126,39 @@ example : runSource "some 5" == .value "some (5)" := by native_decide
 example : runSource "if true then ok 1 else err 2" == .value "ok (1)" := by
   native_decide
 
+/-! ## `??` and `|>` (loop 78a) -/
+
+-- `??` yields the left side when present, the right side when null.
+example : runSource "none ?? some 1" == .value "some (1)" := by
+  native_decide
+
+example : runSource "some 5 ?? some 6" == .value "some (5)" := by
+  native_decide
+
+example : runSource "none ?? none" == .value "none" := by native_decide
+
+-- `|>` applies the left value to the right function.
+example : runSource "5 |> fn x -> x + 10" == .value "15" := by
+  native_decide
+
+-- `|>` folds left.
+example : runSource "1 |> fn x -> x + 1 |> fn y -> y * 10" == .value "20" := by
+  native_decide
+
+-- `|>` binds tighter than `??`: the pipe is the fallback's operand.
+example : runSource "none ?? some 1 |> fn x -> x" == .value "some (1)" := by
+  native_decide
+
+/-! ## `for` expressions (loop 78b) -/
+
+-- The body runs start..stop times; the value is unit (the AST binds the
+-- iterator anonymously, so surface names cannot reach it yet).
+example : runSource "for 0 in 3 { 42 }" == .value "()" := by
+  native_decide
+
+example : runSource "for 0 in 0 { 42 }" == .value "()" := by
+  native_decide
+
 /-! ## Statement programs (loop 74)
 
 `runProgram` parses a statement sequence and runs it: declarations, updates,
@@ -140,6 +186,53 @@ example :
 example :
     runProgram "let i = 0; do { let i = i + 1; } while (i < 3); i"
       == .value "3" := by
+  native_decide
+
+-- The statement conditional: `(` commits to `if (c) { .. } [else ..]`.
+example : runProgram "if (true) { 1; } else { 2; }" == .value "1" := by
+  native_decide
+
+example : runProgram "if (false) { 1; } else { 2; }" == .value "2" := by
+  native_decide
+
+-- `else if` chains and a bare `if` that falls through to later statements.
+example :
+    runProgram "if (false) { 1; } else if (true) { 3; } else { 2; }"
+      == .value "3" := by
+  native_decide
+
+example :
+    runProgram "let x = 0; if (false) { let x = 99; }; x" == .value "0" := by
+  native_decide
+
+-- An expression-`if` with a parenthesised condition still parses in
+-- statement position: the dispatch scans past the group and sees `then`.
+example : runProgram "if (1 == 1) then 10 else 20" == .value "10" := by
+  native_decide
+
+-- Nested parens balance correctly on both sides of the dispatch.
+example : runProgram "if ((1 == 1)) then 10 else 20" == .value "10" := by
+  native_decide
+
+example : runProgram "if ((true)) { 1; } else { 2; }" == .value "1" := by
+  native_decide
+
+-- A paren inside a string literal is one token, not a group: the scan sees
+-- past `"("` to `then` and takes the expression branch (parse-level: the
+-- condition is a string, so it would be stuck at runtime).
+example : (match Morph.Frontend.parseProgram "if (\"(\") then 1 else 2" with
+  | .ok _ => true | .error _ => false) = true := by
+  native_decide
+
+-- Guarded loop control: `if` gives `break`/`continue` a condition.
+example :
+    runProgram "let i = 0; while (true) { let i = i + 1; if (i == 3) { break; }; }; i"
+      == .value "3" := by
+  native_decide
+
+example :
+    runProgram "let i = 0; let s = 0; while (i < 5) { let i = i + 1; if (i == 3) { continue; }; let s = s + i; }; s"
+      == .value "12" := by
   native_decide
 
 -- `return` short-circuits, even from inside a loop body.
@@ -175,5 +268,97 @@ example : isStuck (runSource "noSuchVariable + 1") := by
 
 -- And `morph parse` reports the AST without evaluating.
 example : isValue (parseSource "1 + 2") := by native_decide
+
+/-! ## `match` expressions (loop 77) -/
+
+-- Through the expression pipeline (`runSource` = `parse` + `Executable.run`),
+-- plus one statement-pipeline check (`runProgram` evaluates expression
+-- statements through the same evaluator).
+
+-- Payload binding through a wrapper pattern.
+example : runSource "match (some 1) { case some(x) => x, case none => 0 }"
+    == .value "1" := by
+  native_decide
+
+-- A miss falls through to the next arm.
+example : runSource "match (none) { case some(x) => x, case none => 0 }"
+    == .value "0" := by
+  native_decide
+
+-- First match wins.
+example :
+    runSource "match (ok 5) { case ok(x) => x + 1, case ok(y) => y + 100 }"
+      == .value "6" := by
+  native_decide
+
+-- Literal patterns match by equality.
+example : runSource "match (2) { case 1 => 10, case 2 => 20, case _ => 30 }"
+    == .value "20" := by
+  native_decide
+
+-- `_` catches what earlier arms miss.
+example : runSource "match (none) { case some(x) => x, case _ => 99 }"
+    == .value "99" := by
+  native_decide
+
+-- Nested wrapper patterns.
+example :
+    runSource "match (some(ok 3)) { case some(ok(y)) => y * 2, case _ => 0 }"
+      == .value "6" := by
+  native_decide
+
+-- Statement position works too: the arm body sees the payload binder.
+example : runProgram "match (some 1) { case some(x) => x + 10, case none => 0 }"
+    == .value "11" := by
+  native_decide
+
+/-! ## `match` statements (loop 78d)
+
+The statement form drops the scrutinee parens (`match s { ... }`); arm
+bodies are brace-wrapped statement sequences, so arms can assign, break,
+and bind pattern variables. -/
+
+-- First-match-wins over statement arms, with assignment in the body.
+example : runProgram "let y = 0; match some 1 { case some(x) => { y = x + 10; } case none => { y = 99; } } y"
+    == .value "11" := by
+  native_decide
+
+-- A miss falls to the next arm.
+example : runProgram "let y = 0; match none { case some(x) => { y = 1; } case none => { y = 2; } } y"
+    == .value "2" := by
+  native_decide
+
+-- Literal patterns match by equality; `_` catches the rest.
+example : runProgram "let y = 0; match 2 { case 1 => { y = 10; } case 2 => { y = 20; } case _ => { y = 30; } } y"
+    == .value "20" := by
+  native_decide
+
+-- No arm matches: unit, and the program falls through.
+example : runProgram "match 5 { case 1 => { 10; } } 42"
+    == .value "42" := by
+  native_decide
+
+-- `break` inside an arm exits the enclosing loop.
+example : runProgram "let i = 0; while (true) { let i = i + 1; match i { case 3 => { break; } case _ => { i; } } }; i"
+    == .value "3" := by
+  native_decide
+
+/-! ## `fix`: the min-dialect `match` (loop 79)
+
+`fix` is accepted everywhere `match` is — expression and statement forms —
+via `matchHead` normalization, so these evaluate exactly like their `match`
+counterparts above. -/
+
+example : runSource "fix (some 1) { case some(x) => x + 10, case none => 0 }"
+    == .value "11" := by
+  native_decide
+
+example : runSource "fix (2) { case 1 => 10, case 2 => 20, case _ => 30 }"
+    == .value "20" := by
+  native_decide
+
+example : runProgram "let y = 0; fix some 1 { case some(x) => { y = x + 10; } case none => { y = 99; } } y"
+    == .value "11" := by
+  native_decide
 
 end Morph.Tests.Driver
