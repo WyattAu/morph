@@ -46,6 +46,46 @@ def getName (id : Id) : String := id.name
 end Id
 
 /-!
+## Patterns (loop 76)
+
+First-match-wins patterns for `match_` (and the `match` statement). Arm
+bodies use de Bruijn indices positionally: `patBindCount p` binders, bound
+left-to-right as collected by `patVars`, substituted via `substAll`.
+Surface names in `var_` are documentation (like the old `List String` arm
+binders); only the count matters semantically. No tuple/array patterns yet:
+`wild`/`var_` cover those positions.
+-/
+inductive Pattern where
+  | wild : Pattern
+  | var_ : String → Pattern
+  | lit_ : Morph.Core.Value → Pattern
+  | none_ : Pattern
+  | some_ : Pattern → Pattern
+  | ok_ : Pattern → Pattern
+  | err_ : Pattern → Pattern
+  deriving Repr, BEq
+
+/-- Number of binders a pattern introduces. -/
+def patBindCount : Pattern → Nat
+  | .wild => 0
+  | .var_ _ => 1
+  | .lit_ _ => 0
+  | .none_ => 0
+  | .some_ p => patBindCount p
+  | .ok_ p => patBindCount p
+  | .err_ p => patBindCount p
+
+/-- Binder names left-to-right (surface documentation; semantics is positional). -/
+def patVars : Pattern → List String
+  | .wild => []
+  | .var_ x => [x]
+  | .lit_ _ => []
+  | .none_ => []
+  | .some_ p => patVars p
+  | .ok_ p => patVars p
+  | .err_ p => patVars p
+
+/-!
 ## Expr (de Bruijn representation)
 
 Expression language using de Bruijn indices for bound variables:
@@ -86,7 +126,7 @@ inductive Expr : Type where
   | ifThenElse : Expr → Expr → Expr → Expr
   | forLoop : Expr → Expr → List Expr → Expr
   | block : List Expr → Expr
-  | match_ : Expr → List (List String × Expr) → Expr
+  | match_ : Expr → List (Pattern × Expr) → Expr
   | field_ : Expr → String → Expr
   | pipe : Expr → Expr → Expr
   | typeAsc : Expr → Typ → Expr
@@ -121,6 +161,12 @@ inductive Stmt : Type where
   | continue : Stmt
   | whileLoop : Expr → List Stmt → Stmt
   | doWhile : Expr → List Stmt → Stmt
+  | ifStmt : Expr → List Stmt → List Stmt → Stmt
+  -- loop 78d: `match scrut { case pat => stmts ... }`. Arms carry statement
+  -- bodies (assignments, `break`/`continue`/`return` — things expression-
+  -- `match_` arms cannot do). Patterns bind positionally like `match_`:
+  -- `patVars pat` names the `matchPat` values left-to-right.
+  | matchStmt : Expr → List (Pattern × List Stmt) → Stmt
   | nop : Stmt
   deriving Repr
 /-!
@@ -149,9 +195,9 @@ that have been crossed (internal references) and are left unchanged.
 This is the standard de Bruijn lifting operation.
 -/
 mutual
-def liftUnderArms (bound k : Nat) : List (List String × Expr) → List (List String × Expr)
+def liftUnderArms (bound k : Nat) : List (Pattern × Expr) → List (Pattern × Expr)
   | [] => []
-  | (vars, body) :: rest => (vars, liftUnder (bound + vars.length) k body) :: liftUnderArms bound k rest
+  | (pat, body) :: rest => (pat, liftUnder (bound + patBindCount pat) k body) :: liftUnderArms bound k rest
 
 def liftUnder (bound : Nat) (k : Nat) : Expr → Expr
   | .bvar n =>
@@ -191,6 +237,81 @@ end
 abbrev lift (k : Nat) (e : Expr) : Expr := liftUnder 0 k e
 
 /-!
+## Pattern matching (loop 76)
+
+`matchPat p v = some vs`: value `v` matches `p`, binding `vs` positionally.
+`none`: no match, try the next arm. Matches both evaluated `.lit` values
+and raw constructor forms (a small-step scrutinee can be `IsValue` without
+being fully normalized, e.g. `.some_ e`).
+-/
+def matchPat : Pattern → Expr → Option (List Expr)
+  | .wild, _ => some []
+  | .var_ _, v => some [v]
+  | .lit_ l, .lit l' => if l == l' then some [] else none
+  | .lit_ _, _ => none
+  | .none_, .lit .none => some []
+  | .none_, .none_ => some []
+  | .none_, _ => none
+  | .some_ p, .lit (.some v) => matchPat p (.lit v)
+  | .some_ p, .some_ e => matchPat p e
+  | .some_ _, _ => none
+  | .ok_ p, .lit (.ok v) => matchPat p (.lit v)
+  | .ok_ p, .ok_ e => matchPat p e
+  | .ok_ _, _ => none
+  | .err_ p, .lit (.err v) => matchPat p (.lit v)
+  | .err_ p, .err_ e => matchPat p e
+  | .err_ _, _ => none
+
+/-- A successful match binds exactly the pattern's binder count. -/
+theorem matchPat_length (p : Pattern) (e : Expr) (vs : List Expr)
+    (h : matchPat p e = some vs) : vs.length = patBindCount p := by
+  induction p generalizing e vs with
+  | wild => simp [matchPat] at h; subst h; rfl
+  | var_ x => simp [matchPat] at h; subst h; rfl
+  | lit_ l =>
+    cases e with
+    | lit l' =>
+      simp only [matchPat] at h
+      split at h
+      · cases vs with
+        | nil => rfl
+        | cons _ _ => simp at h
+      · simp at h
+    | _ => simp [matchPat] at h
+  | none_ =>
+    cases e with
+    | lit v =>
+      cases v with
+      | none => simp [matchPat] at h; subst h; rfl
+      | _ => simp [matchPat] at h
+    | none_ => simp [matchPat] at h; subst h; rfl
+    | _ => simp [matchPat] at h
+  | some_ p ih =>
+    cases e with
+    | lit v =>
+      cases v with
+      | some w => exact ih _ _ h
+      | _ => simp [matchPat] at h
+    | some_ e' => exact ih _ _ h
+    | _ => simp [matchPat] at h
+  | ok_ p ih =>
+    cases e with
+    | lit v =>
+      cases v with
+      | ok w => exact ih _ _ h
+      | _ => simp [matchPat] at h
+    | ok_ e' => exact ih _ _ h
+    | _ => simp [matchPat] at h
+  | err_ p ih =>
+    cases e with
+    | lit v =>
+      cases v with
+      | err w => exact ih _ _ h
+      | _ => simp [matchPat] at h
+    | err_ e' => exact ih _ _ h
+    | _ => simp [matchPat] at h
+
+/-!
 ## Substitution (de Bruijn)
 
 `subst' bound e v`: Substitute the bound variable at index `bound` with `v`.
@@ -200,9 +321,9 @@ we're under) and the substitute `v` is lifted.
 This is capture-avoiding by construction with de Bruijn indices.
 -/
 mutual
-def substArms (bound : Nat) (v : Expr) : List (List String × Expr) → List (List String × Expr)
+def substArms (bound : Nat) (v : Expr) : List (Pattern × Expr) → List (Pattern × Expr)
   | [] => []
-  | (vars, body) :: rest => (vars, subst' (bound + vars.length) body v) :: substArms bound v rest
+  | (pat, body) :: rest => (pat, subst' (bound + patBindCount pat) body v) :: substArms bound v rest
 
 def subst' (bound : Nat) (e : Expr) (v : Expr) : Expr :=
   match e with
@@ -260,9 +381,9 @@ Logic for `.bvar n`:
 - Else: `.bvar (n - vs.length)` (free variable, shifted down)
 -/
 mutual
-def substAllArms (k : Nat) (vs : List Expr) : List (List String × Expr) → List (List String × Expr)
+def substAllArms (k : Nat) (vs : List Expr) : List (Pattern × Expr) → List (Pattern × Expr)
   | [] => []
-  | (vars, body) :: rest => (vars, substAll' (k + vars.length) vs body) :: substAllArms k vs rest
+  | (pat, body) :: rest => (pat, substAll' (k + patBindCount pat) vs body) :: substAllArms k vs rest
 
 def substAll' (k : Nat) (vs : List Expr) (e : Expr) : Expr :=
   match e with
@@ -318,9 +439,9 @@ The linear arrow's typing rule (ADR-014 stage 1) uses `countUses` to enforce,
 syntactically, that every parameter of a `linearFunctionType` is used exactly
 once in the body. -/
 mutual
-def countUsesArms (n : Nat) : List (List String × Expr) → Nat
+def countUsesArms (n : Nat) : List (Pattern × Expr) → Nat
   | [] => 0
-  | (vars, body) :: rest => countUses body (n + vars.length) + countUsesArms n rest
+  | (pat, body) :: rest => countUses body (n + patBindCount pat) + countUsesArms n rest
 
 def countUsesList : List Expr → Nat → Nat
   | [], _ => 0
@@ -365,7 +486,7 @@ With de Bruijn indices, there is no concept of "truly free" vs "mentioned in bin
 — free variables are simply the `fvar` nodes.
 -/
 mutual
-def freeVarsMatchArms : List (List String × Expr) → List String
+def freeVarsMatchArms : List (Pattern × Expr) → List String
   | [] => []
   | (_, body) :: rest => freeVars body ++ freeVarsMatchArms rest
 

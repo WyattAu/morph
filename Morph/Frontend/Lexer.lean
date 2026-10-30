@@ -77,6 +77,10 @@ def keywordList : List (String × TokenKind) :=
    ("if", .keyword "if"), ("else", .keyword "else"),
    ("for", .keyword "for"), ("while", .keyword "while"),
    ("return", .keyword "return"), ("match", .keyword "match"),
+   -- loop 77: match-arm introducer for the executable surface
+   ("case", .keyword "case"),
+   -- loop 79: the min-dialect `match` keyword (translation table: fix→match)
+   ("fix", .keyword "fix"),
    ("type", .keyword "type"), ("module", .keyword "module"),
    ("import", .keyword "import"), ("export", .keyword "export"),
    ("do", .keyword "do"), ("then", .keyword "then"),
@@ -198,7 +202,10 @@ def scanOperatorOrDelimiter (l : Lexer) : Lexer × Token :=
     ('<', '=', .operator "<="),
     ('>', '=', .operator ">="),
     ('&', '&', .operator "&&"),
-    ('|', '|', .operator "||")
+    ('|', '|', .operator "||"),
+    -- loop 78a: the pipe and null-coalescing operators
+    ('|', '>', .operator "|>"),
+    ('?', '?', .operator "??")
   ]
   let rec tryTwos (attempts : List (Char × Char × TokenKind)) : Option (Lexer × Token) :=
     match attempts with

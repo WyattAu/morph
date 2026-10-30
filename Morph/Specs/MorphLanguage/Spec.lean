@@ -241,11 +241,28 @@ def exprListStr (spaced : Bool) (sep : String) : List Expr → String
   | [e] => exprStr spaced e
   | e :: f :: rest => exprStr spaced e ++ sep ++ exprListStr spaced sep (f :: rest)
 
-def armListStr (spaced : Bool) : List (List String × Expr) → String
+/-- Render a pattern; non-atomic subpatterns parenthesise. -/
+def patStr : Pattern → String
+  | .wild => "_"
+  | .var_ x => x
+  | .lit_ l => valueStr l
+  | .none_ => "none"
+  | .some_ p => "some " ++ patStrAtom p
+  | .ok_ p => "ok " ++ patStrAtom p
+  | .err_ p => "err " ++ patStrAtom p
+
+def patStrAtom : Pattern → String
+  | .wild => "_"
+  | .var_ x => x
+  | .lit_ l => valueStr l
+  | .none_ => "none"
+  | p => "(" ++ patStr p ++ ")"
+
+def armListStr (spaced : Bool) : List (Pattern × Expr) → String
   | [] => ""
-  | [(vars, body)] => joinSep ", " vars ++ " => " ++ exprStr spaced body
-  | (vars, body) :: rest@(_ :: _) =>
-    joinSep ", " vars ++ " => " ++ exprStr spaced body ++ " | " ++ armListStr spaced rest
+  | [(pat, body)] => patStr pat ++ " => " ++ exprStr spaced body
+  | (pat, body) :: rest@(_ :: _) =>
+    patStr pat ++ " => " ++ exprStr spaced body ++ " | " ++ armListStr spaced rest
 end
 
 /-! Render a statement. -/
@@ -262,12 +279,31 @@ def stmtStr (spaced : Bool) : Stmt → String
     "while " ++ exprStr spaced c ++ " { " ++ stmtListStr spaced body ++ " }"
   | .doWhile c body =>
     "do { " ++ stmtListStr spaced body ++ " } while " ++ exprStr spaced c
+  | .ifStmt c th el =>
+    "if " ++ exprStr spaced c ++ " { " ++ stmtListStr spaced th ++ " }" ++
+      match el with
+      | [] => ""
+      | _ => " else { " ++ stmtListStr spaced el ++ " }"
+  -- loop 78d: the statement form inverts without parens around the scrutinee
+  -- (the expression form needs them so the scrutinee stops before `{`).
+  | .matchStmt scrut arms =>
+    "match " ++ exprStr spaced scrut ++ " { " ++ stmtArmListStr spaced arms ++ " }"
   | .nop => ""
 
 def stmtListStr (spaced : Bool) : List Stmt → String
   | [] => ""
   | [s] => stmtStr spaced s
   | s :: t :: rest => stmtStr spaced s ++ "; " ++ stmtListStr spaced (t :: rest)
+
+/-- Render statement-match arms (loop 78d): `case` introducer, `;`-joined
+statement bodies. -/
+def stmtArmListStr (spaced : Bool) : List (Pattern × List Stmt) → String
+  | [] => ""
+  | (pat, body) :: rest =>
+    "case " ++ patStr pat ++ " => " ++ stmtListStr spaced body ++
+      match rest with
+      | [] => ""
+      | _ :: _ => " | " ++ stmtArmListStr spaced rest
 end
 
 /-!
