@@ -173,3 +173,40 @@ Rust/C++ runtime (separate track).
 - `spec-tools` pytest ✔ 803 passed, 96.04% coverage.
 - Counts at commit: 213 `.lean` files / ~43k lines, 1160
   `theorem`/`lemma` declarations, 16 `Morph/Tests/` files.
+
+## Loop 83 — HIR statement/program lowering (DONE, Lean)
+
+**Target.** Loop 82 lowered expressions but left the §6.1 row half-open:
+`HIR.Stmt`/`HIR.Program` had no map into them. This loop closes the row
+(the remaining §6.1 item is now only runtime-adjacent work, out of scope
+for the Lean track).
+
+**Delivered.**
+- `toHIRStmt`/`toHIRStmtList`/`toHIRProgram` in
+  `Morph/Frontend/HIRLower.lean`, same `Option` discipline as the
+  expression pass. Surface statements are name-based (`Syntax.Id` is
+  just a name; they never entered the de Bruijn system), so lowering is
+  scope-free: embedded expressions go through `toHIR`, identifiers map
+  to `Id ⟨0, name⟩`. `whileLoop` lowers; `doWhile` (at-least-once
+  semantics has no HIR counterpart, and desugaring would change
+  meaning), `ifStmt`, and `matchStmt` (HIR statements have no
+  conditional or match) are `none`. The scope-extending `matchStmt`
+  arms need no scope threading precisely because the statement rejects.
+- Contract theorems per statement class (`break`/`nop` identity,
+  `doWhile`/`ifStmt`/`matchStmt` rejection, `varDecl` name mapping,
+  empty-program identity) plus test pins in `Morph/Tests/HIRLower.lean`,
+  including parse end-to-end both ways (`let y = 5; y` lowers, a `match`
+  statement program does not).
+
+**Still named.** HIR evaluation semantics (preservation proofs await
+it); `check` against an expected type (needs type-syntax parsing); the
+26 broken links / numbering lint; the Rust/C++ runtime track.
+
+## Verification
+
+- `lake build Morph Morph.Tests morph` ✔ 416 jobs, **0 warnings,
+  0 errors**; 0 `sorry`, 0 stubs repo-wide.
+- `tests/differential/diff.sh` ✔ 8/8 cases match the manifest.
+- `spec-tools` pytest ✔ 803 passed, 96.04% coverage.
+- Counts at commit: 213 `.lean` files / ~43k lines, 1167
+  `theorem`/`lemma` declarations, 16 `Morph/Tests/` files.

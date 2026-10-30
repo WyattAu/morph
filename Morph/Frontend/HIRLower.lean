@@ -183,6 +183,80 @@ theorem toHIR_app_lam_none (n : Nat) (body : Syntax.Expr) (args : List Syntax.Ex
 /-- `some`-patterns have no HIR counterpart. -/
 theorem toHIRPat_some_none (p : Syntax.Pattern) : toHIRPat (.some_ p) = none := rfl
 
+/-! ## Statement and program lowering (loop 83)
+
+Surface statements are name-based (`Syntax.Id` is just a name; they never
+entered the de Bruijn system), so lowering is scope-free: embedded
+expressions go through `toHIR`, identifiers map to `Id ⟨0, name⟩`.
+`whileLoop` is the only control statement HIR shares; `doWhile` (executes
+at least once — no HIR counterpart, and desugaring would change
+semantics), `ifStmt`, and `matchStmt` (HIR statements have no
+conditional or match) are rejected. The scope-extending `matchStmt` arms
+need no scope threading precisely because the whole statement is `none`.
+-/
+
+mutual
+
+/-- Lower a surface statement; `none` where HIR statements stop. -/
+def toHIRStmt : Syntax.Stmt → Option HIR.Stmt
+  | .exprStmt e => toHIR e |>.map .exprStmt
+  | .varDecl id ty init => toHIR init |>.map (.varDecl ⟨0, id.name⟩ ty ·)
+  | .assign id e => toHIR e |>.map (.assign ⟨0, id.name⟩ ·)
+  | .returnStmt e => toHIR e |>.map .returnStmt
+  | .break => some .break
+  | .continue => some .continue
+  | .whileLoop cond body =>
+    match toHIR cond, toHIRStmtList body with
+    | some c, some b => some (.whileLoop c b)
+    | _, _ => none
+  | .doWhile _ _ => none
+  | .ifStmt _ _ _ => none
+  | .matchStmt _ _ => none
+  | .nop => some .nop
+
+/-- `toHIRStmt` over a statement list; one rejection fails the list. -/
+def toHIRStmtList : List Syntax.Stmt → Option (List HIR.Stmt)
+  | [] => some []
+  | s :: ss =>
+    match toHIRStmt s, toHIRStmtList ss with
+    | some s', some ss' => some (s' :: ss')
+    | _, _ => none
+
+end
+
+/-- Lower a surface program; `none` if any statement leaves the fragment. -/
+def toHIRProgram : Syntax.Program → Option HIR.Program
+  | ⟨stmts⟩ => toHIRStmtList stmts |>.map HIR.Program.mk
+
+/-! ## The statement contract, pinned -/
+
+/-- `break` lowers to itself. -/
+theorem toHIRStmt_break : toHIRStmt .break = some .break := rfl
+
+/-- `nop` lowers to itself. -/
+theorem toHIRStmt_nop : toHIRStmt .nop = some .nop := rfl
+
+/-- `doWhile` has no HIR counterpart (at-least-once vs HIR's `whileLoop`). -/
+theorem toHIRStmt_doWhile_none (cond : Syntax.Expr) (body : List Syntax.Stmt) :
+    toHIRStmt (.doWhile cond body) = none := rfl
+
+/-- `ifStmt` has no HIR counterpart (HIR statements have no conditional). -/
+theorem toHIRStmt_ifStmt_none (cond : Syntax.Expr) (th el : List Syntax.Stmt) :
+    toHIRStmt (.ifStmt cond th el) = none := rfl
+
+/-- `matchStmt` has no HIR counterpart (HIR statements have no match). -/
+theorem toHIRStmt_matchStmt_none (scrut : Syntax.Expr)
+    (arms : List (Syntax.Pattern × List Syntax.Stmt)) :
+    toHIRStmt (.matchStmt scrut arms) = none := rfl
+
+/-- Variable declarations keep their name at index 0. -/
+theorem toHIRStmt_varDecl (init : Syntax.Expr) :
+    toHIRStmt (.varDecl ⟨"y"⟩ .unitType init) =
+      (toHIR init).map (fun e' => HIR.Stmt.varDecl ⟨0, "y"⟩ .unitType e') := rfl
+
+/-- The empty program lowers to itself. -/
+theorem toHIRProgram_empty : toHIRProgram ⟨[]⟩ = some ⟨[]⟩ := rfl
+
 /-- Applying a variable function lowers structurally. -/
 theorem toHIR_app_var (x : String) :
     toHIR (.app (.fvar x) []) = some (.app ⟨0, "free:" ++ x⟩ []) := rfl

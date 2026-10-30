@@ -54,4 +54,32 @@ example : (match Morph.Frontend.parse "for 0 in 3 { 42 }" with
   | .error _ => some (.lit (.int 0))).isSome = false := by
   native_decide
 
+/-! ## Statements and programs (loop 83) -/
+
+/-- `break` lowers to itself. -/
+example : toHIRStmt .break = some .break := by rfl
+
+/-- Declarations keep the name at index 0. -/
+example : toHIRStmt (.varDecl ⟨"y"⟩ .unitType (.lit (.int 5))) =
+    some (.varDecl ⟨0, "y"⟩ .unitType (.lit (.int 5))) := by rfl
+
+/-- `doWhile` is rejected (at-least-once has no HIR counterpart). -/
+example : toHIRStmt (.doWhile (.lit (.bool true)) []) = none := by rfl
+
+/-- `ifStmt` is rejected (HIR statements have no conditional). -/
+example : toHIRStmt (.ifStmt (.lit (.bool true)) [] []) = none := by rfl
+
+/-- End-to-end: `let y = 5; y` parses and lowers as a program. -/
+example : (match Morph.Frontend.parseProgram "let y = 5; y" with
+  | .ok p => toHIRProgram p
+  | .error _ => none).isSome = true := by
+  native_decide
+
+/-- End-to-end: a `match` statement parses but leaves the HIR fragment. -/
+example : (match Morph.Frontend.parseProgram
+    "let y = 0; match none { case none => { y = 1; } }" with
+  | .ok p => toHIRProgram p
+  | .error _ => some ⟨[]⟩).isSome = false := by
+  native_decide
+
 end Morph.Tests.HIRLower
