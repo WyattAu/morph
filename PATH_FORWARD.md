@@ -21,6 +21,27 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 | Real theorems/lemmas (Specs/) | 550+ | -- |
 | `sorry` declarations | 6 (all in Preservation.lean, 0 in Lemmas.lean) | KNOWN |
 | `example : True := trivial` stubs | 0 | PASS |
+
+### Reconciliation (2026-10-30, research loops 60–79)
+
+The table above predates the implementation track. Verified current values:
+`lake build Morph Morph.Tests morph` green, **0 `sorry`**, **0 stubs**,
+**209 `.lean` files / ~42k lines**, **58 spec modules**,
+**1116 theorems/lemmas**, **14 `Morph/Tests/` files**. Consequences:
+
+- §1.1 is done: no Preservation sorries remain, so the sorry-free and
+  zero-warning CI gates (§2.1/§2.2, pre-commit hardening §2.4) are unblocked.
+- §5.1's "16 modules with no content" is spent: every listed module now
+  ships `Spec`/`Lemmas`/`Examples`. What remains is a *depth* re-audit
+  (are the lemmas real?), not fresh module creation.
+- §6.1/§6.2 are substantially delivered in Lean, ahead of plan: total lexer
+  (`Frontend/Lexer.lean`), fuel-monotone parser (literals, binops, `??`/`|>`,
+  `if`/`let`/`fn`/`match`/`for`, statements, `fix` alias),
+  `inferType`/`checkType`/`synthType`/`unify` with soundness proofs, and the
+  `morph` CLI (`eval`/`parse`/`run`). Remaining: name resolution as its own
+  pass, HIR lowering, and human-readable type errors. See
+  `docs/RESEARCH-LOOPS-60-79.md` and `docs/RESEARCH-LOOPS-70-79.md` for what
+  each loop actually shipped.
 | Lean test files | 6 (`Morph/Tests/`) | -- |
 | ADRs | 11 | -- |
 | CI workflows | 4 GitHub Actions + GitLab CI + Jenkins | -- |
@@ -32,9 +53,9 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 
 ## Phase 1: Formal Verification Completion [P0 -- 4-6 weeks]
 
-### 1.1 Eliminate 6 sorries in Preservation.lean
+### 1.1 Eliminate 6 sorries in Preservation.lean — DONE (verified 2026-10-30, 0 `sorry` in `Morph/`)
 
-**Preservation.lean (6 sorries):**
+**Preservation.lean (6 sorries, all resolved):**
 
 | Line | Location | Required Lemma | Status |
 |------|----------|----------------|--------|

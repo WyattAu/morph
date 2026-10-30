@@ -11,11 +11,11 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 | `lake build Morph` | 328 jobs, 0 errors, 2 sorry warnings |
 | `lake build Morph.Tests` | 186 jobs, 0 errors |
 | Python spec-tools | 735 tests, 93.29% coverage |
-| `.lean` files | 155 |
-| Lines of Lean | ~16,165 |
-| Spec modules | 43 |
-| Real theorems/lemmas (Specs/) | 787 |
-| `sorry` declarations | 6 (all Preservation.lean) |
+| `.lean` files | 155 (209 as of 2026-10-30) |
+| Lines of Lean | ~16,165 (~42k as of 2026-10-30) |
+| Spec modules | 43 (58 as of 2026-10-30) |
+| Real theorems/lemmas (Specs/) | 787 (1116 total as of 2026-10-30) |
+| `sorry` declarations | 6 (all Preservation.lean) — **0 as of 2026-10-30, §1.1 done** |
 | `example : True := trivial` stubs | 0 |
 | Pre-commit hook | 7-step gate (lake build, sorry scan, stub detect, pytest, ruff, mypy, spec-tools lint) |
 | CI/CD | 4 GitHub Actions + GitLab CI + Jenkins |
@@ -48,9 +48,11 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 
 ## 1. Formal Verification Completion [P0]
 
-### 1.1 Fix 6 sorries in Preservation.lean
+### 1.1 Fix 6 sorries in Preservation.lean — DONE (0 `sorry` verified 2026-10-30)
 
-**Preservation.lean (6 sorries):**
+Unblocks §2.1/§2.3 (zero-warning gate, pre-commit hardening).
+
+**Preservation.lean (6 sorries, all resolved):**
 
 | Line | Location | Required Lemma | Status |
 |---|---|---|---|
@@ -339,10 +341,10 @@ done
 
 | Component | Description | Effort | File(s) |
 |---|---|---|---|
-| **Lexer** | Tokenize Morph source into `Morph.Syntax.Token` | 2-3 weeks | `Morph/Frontend/Lexer.lean` |
-| **Parser** | Recursive descent producing `Morph.Syntax.AST` | 3-4 weeks | `Morph/Frontend/Parser.lean` |
-| **Name resolution** | Resolve identifiers, build symbol table | 2-3 weeks | `Morph/Frontend/NameResolution.lean` |
-| **HIR lowering** | AST to `Morph.HIR.Expr` | 1-2 weeks | `Morph/Frontend/HIR.lean` |
+| **Lexer** | Tokenize Morph source into `Morph.Syntax.Token` | 2-3 weeks | `Morph/Frontend/Lexer.lean` — **delivered (total, proven)** |
+| **Parser** | Recursive descent producing `Morph.Syntax.AST` | 3-4 weeks | `Morph/Frontend/Parser.lean` — **delivered (fuel-monotone, full surface)** |
+| **Name resolution** | Resolve identifiers, build symbol table | 2-3 weeks | `Morph/Frontend/NameResolution.lean` — still open as its own pass |
+| **HIR lowering** | AST to `Morph.HIR.Expr` | 1-2 weeks | `Morph/Frontend/HIR.lean` — still open |
 
 **Total:** 8-12 weeks | **Deps:** 1.2 (Tier 1), 2.1
 
@@ -352,10 +354,10 @@ Extract type checking rules from proof layer into certified executable:
 
 | Step | Description | Effort |
 |---|---|---|
-| Type synthesis | `synthType : Expr -> TypEnv -> Option Typ` | 2-3 weeks |
-| Type checking | `checkType : Expr -> TypEnv -> Typ -> Bool` | 1-2 weeks |
-| Unification | Pattern unification for type variables | 2-3 weeks |
-| Error reporting | Human-readable type error messages | 1 week |
+| Type synthesis | `synthType : Expr -> TypEnv -> Option Typ` | 2-3 weeks | **delivered with soundness proof** |
+| Type checking | `checkType : Expr -> TypEnv -> Typ -> Bool` | 1-2 weeks | **delivered with soundness proof** |
+| Unification | Pattern unification for type variables | 2-3 weeks | **delivered (`unify`/`unifyFuel`)** |
+| Error reporting | Human-readable type error messages | 1 week | still open |
 
 **Total:** 6-9 weeks | **Deps:** 1.2, 6.1
 
@@ -445,7 +447,7 @@ Ongoing:   [7.x]                               -- research directions
 |---|---|---|
 | `lake build Morph` errors | 0 | 0 |
 | `lake build Morph` warnings | 0 | 2 (sorry-related) |
-| `sorry` in `Morph/` | 0 | 6 |
+| `sorry` in `Morph/` | 0 | 0 (was 6 at audit; resolved by 2026-10-30) |
 | `example : True := trivial` stubs | 0 | 0 |
 | Broken cross-references | 0 | 26 (nonexistent targets) |
 | CI passes on every push | Yes | Blocked by billing |
