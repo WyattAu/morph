@@ -1,7 +1,7 @@
 # Existential Type Specification (Module Hashing)
 
 * File:* `module_existential_spec.md`
-* Version:* 1.0.0
+* Version:* 1.1.0
 * Context:* Layer 1 (Infrastructure) - Dual Hashing
 * Formalism:* Existential Quantification ($\exists$)
 * Status:* Active
@@ -524,8 +524,52 @@ module ModuleB {
 
 - -
 
+## 7. Sealing and Abstraction Safety (loop 97)
+
+Research basis: Rossberg, *1ML — Core and Modules United* (JFP 2018) and
+Dreyer, *Understanding and Evolving the ML Module System*: **sealing**
+(`E :> T`) is *the* abstraction mechanism — it erases everything the interface
+does not name — and a functor's sealing site is its generative identity: two
+applications at different sites yield incompatible abstract types even for
+identical arguments.
+
+Before loop 97 this specification *named* existential types
+(`ExistentialType`, `ExistentialValue`) without giving them any semantics —
+there was no packing, no sealing, and no abstraction theorem. Loop 97 supplies
+the model, machine-checked in `Morph/Specs/ModuleExistential/Spec.lean`:
+
+| Concept | Definition | Property (machine-checked) |
+|---|---|---|
+| Package | implementation + interface | `Package` |
+| Well sealed | every private name is exported by the interface | `Package.WellSealed` |
+| Sealing | `seal iface impl` succeeds iff well-sealed; idempotent | `seal_idempotent` |
+| Client resolution | through the interface only | `resolveClient` |
+| Abstraction safety | private names are unresolvable by clients | `resolveSealed_private` |
+| Interface fidelity | declared types resolve to their interface spelling | `resolveSealed_exported` |
+| Generativity | sealed type identity = (sealing site, type) | `SealedType`, `sealed_generative` |
+
+The abstraction theorem is the **name-level form** of representation
+independence: through a sealed package a client cannot resolve a private
+name, so the representation is unobservable *by construction of the client
+environment*, not by discipline. Full relational parametricity (two
+implementations of one interface are indistinguishable in *all* client
+contexts) remains future work — it requires a client language model beyond
+this specification's scope.
+
+**Non-adoptions** (recorded with reasons):
+
+1. **Applicative functors** (1ML §"Applicative vs Generative"): Morph's
+   modules are linker-keyed and content-hashed; functor application happens
+   at link time, so generative semantics is the only honest one. Applicative
+   semantics would require type-level functor application, which the type
+   system (§9 of the subtyping spec: no equirecursive types) does not have.
+2. **Translucent singleton signatures** (`=E` types in 1ML): Morph's
+   subtyping (v1.1.0 §10) deliberately has no singleton types; sharing is
+   expressed by exact names at the link level instead.
+
 ## Change Log
 
 | Version | Date       | Author      | Changes                                                                 |
 |---------|------------|-------------|-------------------------------------------------------------------------|
+| 1.1.0   | 2026-10-31 | Research loop 97 | **Sealing semantics and abstraction safety (papers → spec → Lean):**<br>1. New §7: `Package` = implementation sealed by an interface; `seal` succeeds only when the interface covers every private name (`WellSealed`)<br>2. **Abstraction safety, name-level form:** clients resolve through the interface only — a private name of a sealed package is unresolvable (`resolveSealed_private`), and interface-declared types resolve to exactly their interface spelling (`resolveSealed_exported`)<br>3. **Sealing idempotent:** re-sealing changes nothing (`seal_idempotent`)<br>4. **Generativity:** a sealed type is identified by its sealing site (`SealedType`), so two applications of the same functor at different sites are different types by construction (1ML §"Applicative vs Generative")<br>5. Non-adoptions recorded: applicative functors, translucent singleton signatures |
 | 1.0.0   | 2026-01-01 | Kilo Code    | Initial version                                                        |

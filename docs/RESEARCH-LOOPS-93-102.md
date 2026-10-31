@@ -225,6 +225,44 @@ inversion over `Sub_trans`), `SubX_trans` (lifts through the loop-61
 extension; corner cases: an exact-`Sub` target can only be `refl` or `unit`).
 Snapshot ✔ no regressions — total theorems **1545 → 1553** (+8).
 
+---
+
+## Loop 97 — Modules: sealing semantics and abstraction safety (DONE)
+
+**Research** (papers pulled and analyzed):
+- Rossberg, *1ML — Core and Modules United* (JFP 2018): sealing (`:>`) as the
+  abstraction mechanism; opaque vs transparent ascription; translucency via
+  singleton types; applicative vs generative functors — sealing inside a
+  functor body makes it generative.
+- Dreyer, *Understanding and Evolving the ML Module System*: abstraction as
+  relational parametricity; generativity as a proof technique.
+
+**Analysis.** Morph's `ExistentialType`/`ExistentialValue` *named*
+existentials but had no semantics: no packing, no sealing, no abstraction
+theorem — the spec promised encapsulation guarantees nothing could check.
+Against 1ML's design space: adopt sealing + generativity (provable at
+Morph's model level); reject applicative functors (linker-keyed modules are
+generative by nature; applicative semantics needs type-level functor
+application the type system deliberately lacks) and translucent singleton
+signatures (no singleton types, per the subtyping spec §10 decision).
+Full relational parametricity recorded as future work (needs a client
+language model).
+
+**Spec** (`spec/module_existential_spec.md` → v1.1.0): new §7 — the
+Package/WellSealed/seal model table, abstraction safety, generativity, and
+the two non-adoptions with reasons. Lint ✔.
+
+**Lean** (`Morph/Specs/ModuleExistential/Spec.lean`): `Package`,
+`Package.WellSealed`, `sealPackage` (Bool-guarded), `resolveClient`,
+`resolveSealed_private` (a private name of a sealed package is unresolvable —
+the name-level abstraction theorem), `resolveSealed_exported` (declared
+types resolve to exactly their interface spelling, under key-Nodup),
+`seal_idempotent`, `SealedType` + `sealed_generative` (sealed identity =
+(sealing site, type); `M1.map int ≠ M2.map int` pinned by example).
+Support lemmas `lookup_none_of_not_mem_fst`/`lookup_eq_some_of_mem` written
+by hand — core Lean has no `List.lookup` membership lemmas.
+Snapshot ✔ no regressions — total theorems **1553 → 1557** (+4).
+
 ## Release-track entries (not part of the 93–102 research plan)
 
 Roadmap follow-ups after Sprint 10, done in one pass at maintainer
