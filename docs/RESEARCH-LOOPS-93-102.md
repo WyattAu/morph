@@ -132,6 +132,53 @@ which is required: `erase` drops only the first occurrence — restores
 naming; core Lean has no general `not_mem_erase`, only `Nodup.not_mem_erase`.
 Snapshot ✔ no regressions — total theorems **1539 → 1543**.
 
+---
+
+## Loop 95 — Error handling: errors as the `raise` operation (DONE)
+
+**Research** (sources pulled and analyzed):
+- matklad, *The Second Great Error Model Convergence* (Dec 2025): the
+  Go/Rust/Swift/Zig consensus — fallibility marked at the call side, a
+  separate panic path, results as first-class values; "midpoint" error-set
+  inference (Zig) poorly served; sum types win exhaustiveness.
+- Leroy, *The practice of effects: from exceptions to effect handlers*
+  (Collège de France 2023–24): exceptions = the algebraic theory with one
+  operation `raise` and no equations; `try` = the induced handler.
+- JAPL, *Failures Are Normal and Typed* (2025): the dual model — domain
+  errors as `Result` + `Fail` effect; process failures as crash + supervision
+  — with the explicit comparison table row "effect tracking for errors:
+  Rust ✗".
+- *Value-Based Errors Improve Software Reliability* (Revista PPC 14.8,
+  2025): empirical sentiment study — value-based error handling positive,
+  exception-based negative despite dominance.
+
+**Analysis.** Morph's §15 was a conventional Rust-shaped error story
+(`Result`, `From` conversion, panics) **disconnected from its own effect
+algebra** — the one thing that would differentiate it. The `raise` operation
+already existed in `EffectAlgebra` (loop 6, classed under `net` as
+partiality) but no spec text connected errors to it, and the 2025 convergence
+(Errors-as-effects + dual model) is exactly Morph's architecture. Adopt: the
+exception laws (abort/recover) as normative semantics; the handler
+elimination rule (loop 93's §4.3.7) as the meaning of `try`; the dual error
+model (domain vs process failures) as normative. Reject: Zig-style inferred
+error sets (requires closed-world cross-function inference — against Morph's
+explicit rows).
+
+**Spec**:
+- `spec/language/morph_language_spec.md` → v2.1.0: new §15.2.4 states the
+  `raise` operational reading, the abort/recover laws with their
+  machine-checked names, `try` = handler elimination, and makes the dual
+  error model normative (domain errors never cross handlers as panics;
+  panics never become `Result` values).
+- `spec/language/effect_algebra_spec.md` → v1.1.0: new §7 "The exception
+  laws" — the algebraic statement (after Leroy) with the Lean anchors.
+  Both lint ✔.
+
+**Lean** (`Morph/Specs/EffectAlgebra/`): `raise_aborts` (an unanswered
+`raise` kills the continuation — instance of `denote_unanswered`) and
+`raise_recovers` (answering `raise` with `r` resumes at `k r`), each pinned
+by an example. Snapshot ✔ no regressions — total theorems **1543 → 1545**.
+
 ## Release-track entries (not part of the 93–102 research plan)
 
 Roadmap follow-ups after Sprint 10, done in one pass at maintainer

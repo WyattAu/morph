@@ -1,10 +1,10 @@
 # Morph Language Specification
 
 - File: `morph_language_spec.md`
-- Version: 2.0.0
+- Version: 2.1.0
 - Context: Layer 2 (Compiler) - Formalism
 - Status: Active
-- Last Modified: 2026-01-03
+- Last Modified: 2026-10-31
 - Author: Morph Language Team
 - Reviewers: [Pending Review]
 
@@ -1327,6 +1327,51 @@ impl From<IOError> for ConfigError {
 **Dependencies:** LANG-REQ-074
 **Traceability:** Section 15.2.3 (Error Conversion)
 
+#### 15.2.4 Errors as the `raise` Operation (loop 95)
+
+The propagation rules above are the surface syntax of one underlying operation.
+In the effect algebra
+([`spec/language/effect_algebra_spec.md`](./effect_algebra_spec.md),
+`Morph/Specs/EffectAlgebra/`), raising an error is the operation
+
+$$
+\text{raise} : \text{Message} \to \text{Op}
+$$
+
+and propagation is the free-model monad's sequencing: an unanswered `raise`
+**aborts the continuation** (the answer set is empty — machine-checked as
+`raise_aborts`, an instance of `denote_unanswered`), and a handler that maps
+`raise` to a recovery value **resumes at the handler**
+(`raise_recovers`: `denote M (op (raise m) k) = denote M (k r)` when the model
+answers `raise` with `r`). `try`/handler constructs are therefore exactly the
+handler elimination rule of the effect system (§4.3.7 of
+[`spec/type/effect_system_spec.md`](../type/effect_system_spec.md)): handling
+deletes the raised effect from the row, which is what lets a fallible callee be
+called from an infallible caller.
+
+This gives Morph the convergence the major systems reached in 2024–2025
+(Rust `?`, Zig `try`, Swift `throws`, Go `(value, error)`) while keeping what
+Rust lacks (see the effect-tracking row of any modern comparison): the effect
+row *tracks* fallibility statically, and the handler rule *proves* the error
+cannot escape its scope. The dual error model is normative:
+
+1. **Domain errors** — expected, recoverable: `Result<T, E>` values
+   (LANG-REQ-080), propagated by the marker at the call side, represented
+   operationally by `raise`, eliminated by a handler. Error sets are closed
+   enums; matching is exhaustive (15.4.2).
+2. **Process failures** — unexpected, non-recoverable in place: `panic`
+   (15.3) crashes the enclosing actor, and the actor layer's supervision
+   restarts it (15.8, and the concurrency specs). A panic is never a value in
+   `Result` and never crosses a handler.
+
+**Priority:** High
+**Verification Method:** Inspection (formal: `EffectAlgebra.raise_aborts`,
+`raise_recovers`)
+**Rationale:** Unifies §15 with the effect algebra; statically guarantees
+errors cannot escape their handler
+**Dependencies:** LANG-REQ-074, LANG-REQ-080
+**Traceability:** Section 15.2.4 (Errors as the raise Operation)
+
 ### 15.3 Panic vs Error Return
 
 #### 15.3.1 Panic Semantics
@@ -2212,7 +2257,7 @@ fn operation_with_timeout(ctx: Context) -> Result<Data, OperationError> performs
 
 | Version | Date | Author | Changes |
 |---------|------|---------|---------|
-| 2.0.0 | 2025-12-31 | Morph Language Team | Initial specification with Projectional Only Mandate |
+| 2.1.0 | 2026-10-31 | Research loop 95 | **§15.2.4 Errors as the `raise` operation:** unified error propagation with the effect algebra — `raise` is the failure operation of the free-model monad (abort law, recover law machine-checked in `EffectAlgebra`); `try` is the handler elimination rule (§4.3.7 of the effect-system spec); dual error model made normative (domain errors = `Result` values eliminated by handlers; process failures = `panic` → actor crash → supervision) |
 | 2.0.1 | 2026-01-03 | Kilo Code | Standardized header format to match convention v2.0.0 |
 | 2.0.1 | 2026-01-03 | Kilo Code | Added missing mandatory sections (Examples, Cross-References, Verification/Validation Plan, Risk Assessment, Change Log) |
 | 2.0.1 | 2026-01-03 | Kilo Code | Fixed EARS requirement ID prefixes to standard format |

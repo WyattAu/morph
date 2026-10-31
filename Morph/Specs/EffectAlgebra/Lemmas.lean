@@ -320,6 +320,36 @@ continuation is ignored. -/
 theorem shallowHead_op {σ : Type} (M : Model σ) (o : Op) (k : σ → Eff σ) :
     shallowHead M (.op o k) = M.answer o := rfl
 
+/-! ### The exception laws (loop 95)
+
+`raise` is the failure operation of the theory; these two laws are the
+operational content of error handling, stated algebraically after Leroy's
+2023–24 Collège de France lectures (exceptions = the theory with one
+operation `raise` and no equations; `try` = the induced handler). The type
+level is the handler elimination rule of the effect-system spec (§4.3.7):
+handling deletes the raised effect from the row, so a handled error cannot
+escape its scope. -/
+
+/-- **Abort law.** A `raise` the model does not answer kills the
+continuation: the computation denotes no answers, so no downstream effect can
+occur. -/
+theorem raise_aborts {σ : Type} (M : Model σ) (m : String) (k : σ → Eff σ)
+    (h : M.answer (.raise m) = []) :
+    denote M (.op (.raise m) k) = [] := by
+  simp only [denote]
+  rw [h]
+  simp
+
+/-- **Recover law.** A handler that answers `raise` with a value `r` resumes
+the continuation at `r` — the failure point disappears from the answer shape,
+which is OCaml's `try … with` semantics stated algebraically. -/
+theorem raise_recovers {σ : Type} (M : Model σ) (m : String) (r : σ)
+    (k : σ → Eff σ) (h : M.answer (.raise m) = [r]) :
+    denote M (.op (.raise m) k) = denote M (k r) := by
+  simp only [denote]
+  rw [h]
+  simp
+
 /-- A concrete model: `read` answers, everything else fails. -/
 def exModel : Model String where
   answer

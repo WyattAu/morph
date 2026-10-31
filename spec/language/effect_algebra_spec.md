@@ -1,7 +1,7 @@
 # Effect Algebra Specification
 
 * File:* `language/effect_algebra_spec.md`
-* Version:* 1.0.0
+* Version:* 1.1.0
 * Context:* Core semantics — effects and handlers
 * Formalism:* Algebraic effects, free-model monad
 * Status:* Active
@@ -186,6 +186,31 @@ handler-containing programs.
 |---|---|
 | Signature, free monad, models, handlers | `Morph/Specs/EffectAlgebra/Spec.lean` |
 | Homomorphism, laws, effect sets, monotonicity | `Morph/Specs/EffectAlgebra/Lemmas.lean` |
+| Exception laws (`raise_aborts`, `raise_recovers`, loop 95) | `Morph/Specs/EffectAlgebra/Lemmas.lean` |
 | One model per effect class | `Morph/Specs/EffectAlgebra/Examples.lean` |
 | Superseded module (defects listed in §1.1) | `Morph/Specs/MonadicEffect/` |
-| Loop log | `docs/RESEARCH-LOOPS.md` |
+| Loop log | `docs/RESEARCH-LOOPS.md`, `docs/RESEARCH-LOOPS-93-102.md` |
+
+## 7. The exception laws (loop 95)
+
+`raise` is the failure operation of the theory. Its two semantic laws are the
+operational content of error handling, machine-checked in
+`Morph/Specs/EffectAlgebra/Lemmas.lean`:
+
+1. **Abort** — a `raise` the model does not answer kills the continuation:
+   every downstream operation, including further effects, becomes
+   unreachable. `raise_aborts M m k : M.answer (.raise m) = [] →
+   denote M (.op (.raise m) k) = []` (an instance of `denote_unanswered`).
+2. **Recover** — a handler that answers `raise` with a value `r` resumes the
+   continuation at `r`; the failure point disappears from the answer set
+   shape: `raise_recovers M m r k : M.answer (.raise m) = [r] →
+   denote M (.op (.raise m) k) = denote M (k r)`.
+
+These are exactly OCaml's `raise`/`try … with` semantics (Leroy, 2023–24
+lectures) stated algebraically: exceptions are the algebraic theory with one
+operation `raise` and no equations, and `try` is the induced handler. At the
+type level, the handler elimination rule (§4.3.7 of
+`spec/type/effect_system_spec.md`) deletes the raised effect from the row, so
+a handled error cannot escape its scope — the guarantee checked-exception
+systems attempt and sum-type systems get by exhaustiveness, here stated as a
+theorem about the model.

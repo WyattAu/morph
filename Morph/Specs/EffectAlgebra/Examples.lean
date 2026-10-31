@@ -87,4 +87,13 @@ example : ¬ classLE .time .net := by simp only [classLE, classRank]; omega
 example : EffectClass.time ∈ namedRow .system := by simp [namedRow]
 example : ¬ (EffectClass.time ∈ namedRow .net) := by simp [namedRow]
 
+/-- Loop 95 pins for the exception laws (effect_algebra_spec §7). -/
+example (M : Model String) (m : String) (k : String → Eff String)
+    (h : M.answer (.raise m) = []) :
+    denote M (.op (.raise m) k) = [] := raise_aborts M m k h
+
+example (M : Model String) (m r : String) (k : String → Eff String)
+    (h : M.answer (.raise m) = [r]) :
+    denote M (.op (.raise m) k) = denote M (k r) := raise_recovers M m r k h
+
 end Morph.Specs.EffectAlgebra
