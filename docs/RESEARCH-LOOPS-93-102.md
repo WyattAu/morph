@@ -297,6 +297,44 @@ Lint ✔.
 `DecidableEq` (needed for id comparison; additive). Snapshot ✔ no
 regressions — total theorems **1557 → 1561** (+4).
 
+---
+
+## Loop 99 — Substitution: the split law (Autosubst composition) (DONE)
+
+**Research** (papers pulled):
+- Schäfer, Tebbi & Smolka, *Autosubst: Reasoning with de Bruijn Terms and
+  Parallel Substitutions* (ITP 2015): substitutions as infinite streams,
+  σ-calculus (cons `s·σ`, shift `↑`, composition `(σ∘τ)(x) = σ(x)[τ]`),
+  central lemma `subst_comp : s[σ][τ] = s[σ∘τ]`, decision procedure for
+  equational substitution lemmas.
+- Schäfer & Smolka & Tebbi (CPP 2015): the σ-calgebra is complete — axiomatic
+  equivalence coincides with semantic equivalence, with a separating-
+  assignment decision procedure.
+
+**Analysis.** Morph's β-rule substitutes with a finite value list
+(`substAll`), not a stream — so Autosubst's composition takes the **split**
+form: `substAll' k (vs ++ ws) e = substAll' k vs (substAll' (k + |vs|) ws e)`.
+The absorption step (`substAll_cons`, proved earlier) is Morph's cons axiom;
+the split law follows from it by the same induction Autosubst uses for
+`subst_comp`. Adopt. Reject: porting the full σ-calculus decision procedure —
+Morph's substitutions are finite lists consumed by one β-rule; the split +
+lifting + absorption laws cover every interaction that arises (recorded as
+spec non-claim).
+
+**Spec** (`spec/language/simultaneous_substitution_spec.md` → v1.1.0): new
+§8 — the σ-calculus research basis, the split-law equation, the derivation
+note, the application (splicing/partial application), and the decision-
+procedure non-claim. Lint ✔.
+
+**Lean** (`Morph/Specs/SimultaneousSubst/Lemmas.lean`): `substAll'_split`
+and `substAll_split`. Proof notes: the `nil` case needs `substAll'_nil`
+(`simp` alone cannot reduce the value-list match); the cons case rewrites
+through absorption, IH, absorption-reverse, then normalizes
+`(k+1)+len = k+(len+1)`. Snapshot ✔ no regressions (one earlier "regression"
+was an invocation artifact — snapshot run from `scripts/` made `lake build`
+fail on a missing lakefile; clean re-run from the root is green) — total
+theorems **1561 → 1563** (+2).
+
 ## Release-track entries (not part of the 93–102 research plan)
 
 Roadmap follow-ups after Sprint 10, done in one pass at maintainer

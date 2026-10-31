@@ -1,7 +1,7 @@
 # Simultaneous Substitution Specification
 
 * File:* `language/simultaneous_substitution_spec.md`
-* Version:* 1.0.0
+* Version:* 1.1.0
 * Context:* Core semantics — the two substitution operations
 * Formalism:* De Bruijn substitution, simultaneous and sequential
 * Status:* Active (both laws proved)
@@ -101,3 +101,41 @@ two holes and a free variable, a substitution under a binder, and the generic
 | The laws, computed | `Morph/Specs/SimultaneousSubst/Examples.lean` |
 | Single-argument correspondence | `Morph/Specs/MachineRelation/` (loop 10) |
 | The two operations | `Morph/Syntax.lean` |
+
+## 8. The split law — substitution composition (loop 99)
+
+Research basis: Schäfer, Tebbi & Smolka, *Autosubst: Reasoning with de
+Bruijn Terms and Parallel Substitutions* (ITP 2015) and *Completeness and
+Decidability of de Bruijn Substitution Algebra in Coq* (CPP 2015). Autosubst
+works in Abadi et al.'s σ-calculus — substitutions as infinite streams with
+cons (`s · σ`), shift (`↑`), and composition (`σ ∘ τ`, defined by
+`(σ ∘ τ)(x) = σ(x)[τ]`) — and its central lemma is
+`subst_comp : s[σ][τ] = s[σ ∘ τ]`, with `σ ∘ (s · τ) = σ τ ∘ (s[↑] · (σ ∘ ↑))`
+as the cons-composition interaction. Those two laws are what make substitution
+reasoning scale: every β-step's substitution can be decomposed, commuted, and
+re-associated by rewriting, with a decision procedure for the equational
+theory.
+
+Morph's β-rule substitutes with a *finite* value list (`substAll`, the
+simultaneous operation `Morph/Semantics.lean` uses), so composition takes the
+**split** form, machine-checked in `Morph/Specs/SimultaneousSubst/Lemmas.lean`
+(loop 99):
+
+$$
+\text{substAll}'\, k\, (vs \mathbin{+{+}} ws)\; e
+\;=\;
+\text{substAll}'\, k\, vs\;\bigl(\text{substAll}'\, (k + |vs|)\, ws\; e\bigr)
+$$
+
+with the offset-0 corollary `substAll_split` for the shipped operation. The
+proof is induction on `vs` through the absorption step (`substAll_cons`,
+§4) — the same derivation shape by which Autosubst gets `subst_comp` from the
+cons axiom. Application: when an argument list is assembled from parts
+(splicing, partial application), the β-rule's substitution decomposes without
+re-deriving anything.
+
+Non-claim: full σ-calculus decision procedure (normalizing arbitrary
+substitution *expressions* — streams, not finite lists) is out of scope;
+Morph's substitutions are finite lists consumed by one β-rule, and the split
+law plus the lifting law (§2) and absorption (§4) cover the interactions that
+arise there.

@@ -472,4 +472,39 @@ theorem substAll_eq_seqSubst (vs : List Expr) (e : Expr) :
     substAll vs e = seqSubst 0 vs e :=
   substAll'_eq_seqSubst 0 vs e
 
+/-! ### The split law (loop 99) — Autosubst-style composition
+
+Research basis: Schäfer, Tebbi & Smolka, *Autosubst: Reasoning with de
+Bruijn Terms and Parallel Substitutions* (ITP 2015) and *Completeness and
+Decidability of de Bruijn Substitution Algebra* (CPP 2015). Autosubst's
+central lemma is `subst_comp : s[σ][τ] = s[σ >> τ]` — applying two
+substitutions in sequence equals applying their composition — derived from
+Abadi et al.'s σ-calculus, whose cons/composition/shift operations form a
+confluent rewriting system with a decision procedure for substitution
+equations.
+
+Morph's β-rule substitutes with a finite value list (`substAll`), so the
+composition law takes the **split** form: substituting with the
+concatenation `vs ++ ws` is substituting with `vs` and then with `ws` at
+offset `vs.length`. It follows from the absorption step (`substAll_cons`,
+already proved) by induction — exactly as `subst_comp` follows from the
+σ-calculus's cons axiom in Autosubst. This is what lets the β-rule's
+substitution be decomposed when the argument list is assembled from parts
+(splicing, partial application). -/
+
+/-- **The split law**: a concatenated substitution composes as head-block
+then tail-block at the shifted offset. -/
+theorem substAll'_split (k : Nat) (vs ws : List Expr) (e : Expr) :
+    substAll' k (vs ++ ws) e = substAll' k vs (substAll' (k + vs.length) ws e) := by
+  induction vs generalizing k e with
+  | nil => simp [substAll'_nil]
+  | cons v rest ih =>
+      rw [List.cons_append, substAll_cons, ih, ← substAll_cons, List.length_cons]
+      rw [Nat.add_assoc, Nat.add_comm 1 rest.length]
+
+/-- The split law at the shipped offset-0 operation. -/
+theorem substAll_split (vs ws : List Expr) (e : Expr) :
+    substAll (vs ++ ws) e = substAll vs (substAll' vs.length ws e) := by
+  simp only [substAll, substAll'_split, Nat.zero_add]
+
 end Morph.Specs.SimultaneousSubst
