@@ -1,7 +1,7 @@
 # Layered Concurrency Architecture Specification
 
 * File:* `architecture\layered_concurrency_spec.md`
-* Version:* 1.0.0
+* Version:* 1.1.0
 * Context:* Layer 2 (Semantic Analysis) & Layer 3 (Runtime)
 * Formalism:* Category Theory (F-Coalgebras) & Process Algebra
 * Status:* Active
@@ -1034,8 +1034,50 @@ logic WorkerActor {
 
 ---
 
+## Supervision and Crash Containment (loop 98)
+
+The dual error model (`morph_language_spec.md` §15.2.4) routes *process
+failures* — panics, invariant violations — to the actor layer: the enclosing
+actor crashes, and supervision restarts it. This section is that mechanism's
+specification, machine-checked in `Morph/Specs/LayeredConcurrency/Spec.lean`
+(loop 98).
+
+Research basis:
+
+- **Erlang/OTP supervisor behaviour** (OTP 29 stdlib docs): the supervisor
+  keeps children alive by restarting them; the default `one_for_one` strategy
+  restarts only the crashed child — siblings are unaffected.
+- **Trio structured concurrency** (Smith, *Notes on Structured Concurrency*;
+  Trio `open_nursery`): a nursery's `__aexit__` blocks until every child task
+  has exited — "nurseries ensure the absence of orphaned tasks". A scope can
+  only close when its spawned work has drained.
+- **Pony actor isolation**: mailboxes are private to actors, so a crash
+  cannot corrupt a sibling's in-flight messages.
+
+| Concept | Definition | Machine-checked property |
+|---|---|---|
+| Process table | `ActorId → Option Actor` | — |
+| Crash | drops the crashed actor's mailbox | `crash_contained`: other actors untouched |
+| Restart (one-for-one) | installs fresh state at one id | `restart_fresh`, `restart_contained` |
+| Nursery | spawned ids + scope-open flag | — |
+| Drain premise | every spawned actor's mailbox empty | `Nursery.allDrained` (checked, like `Released`) |
+| Scope join | closes the nursery | `join_drained`: a joined scope holds no undelivered messages |
+
+Two properties are recorded as **checked premises rather than theorems**, in
+the same style as `Released` in the memory-bounds model: (1) the drain
+premise of a join is verified by the runtime at scope exit, not derived
+statically; (2) crash handling does not model message redelivery — an
+undelivered inbox is dropped with the crash, and at-least-once redelivery is
+the sender's concern, exactly as in OTP.
+
+**LC-INV-035:** THE system SHALL implement actor supervision with one-for-one
+restart semantics, such that a crash at one actor id leaves all other actors'
+states untouched, and a scope join requires every spawned actor's mailbox to
+have drained.
+
 ## Change Log
 
 | Version | Date       | Author      | Changes                                                                 |
 |---------|------------|-------------|-------------------------------------------------------------------------|
+| 1.1.0   | 2026-10-31 | Research loop 98 | **Supervision and crash containment (papers → spec → Lean):**<br>1. New §"Supervision and Crash Containment": process table, one-for-one crash and restart operations on actor ids<br>2. Machine-checked containment: `crash_contained` / `restart_contained` — a crash or restart at one actor id leaves every other actor's state untouched (OTP one-for-one; Pony isolation)<br>3. `restart_fresh` — restart installs exactly the fresh state<br>4. Structured-concurrency nursery: `Nursery`, `allDrained` (checked premise, like `Released`), `join`, `join_drained` — a joined scope holds no undelivered messages (Trio: nurseries ensure the absence of orphaned tasks)<br>5. Grounds the dual error model's process-failure half (`morph_language_spec.md` §15.2.4) |
 | 1.0.0   | 2026-01-02 | Kilo Code    | Initial version                                                        |

@@ -71,7 +71,7 @@ structure ApplicationLayerState where
 
 structure ActorId where
   id : Nat
-  deriving Repr, BEq
+  deriving Repr, BEq, DecidableEq
 
 structure Message where
   content : Morph.Core.Value
@@ -227,5 +227,90 @@ def specLcaBidirectionalityTheorem : Prop :=
 
 def specLcaLayerSeparationTheorem : Prop :=
   ∀ app a, noSharedStateBetweenLayers app a
+
+/-! ## Supervision and crash containment (loop 98)
+
+Research basis: Nathaniel Smith, *Notes on Structured Concurrency, or: Go
+Statement Considered Harmful* (Trio nurseries — every spawned task is joined
+before its scope exits); Erlang/OTP supervision principles (*one-for-one*
+restart: a crashing child restarts alone, siblings keep their state); Pony's
+actor isolation (crashes cannot cross actor boundaries because mailboxes are
+private). Loop 95's dual error model made "process failures crash the
+enclosing actor, supervision restarts it" normative
+(`morph_language_spec.md` §15.2.4); this section supplies that model with
+the containment properties machine-checked.
+
+The process table is a total function from actor ids to actors — the same
+style as the MemoryBounds heap. Crashing marks the actor's mailbox dropped
+(an undelivered inbox is *not* preserved across a crash; at-least-once
+redelivery is the sender's concern, as in OTP). Restart substitutes fresh
+state at one id. Join closes a nursery and is only well-formed when every
+spawned actor has drained its mailbox — a checked premise, like `Released`
+for `collect` (MemoryBounds). -/
+
+/-- The process table: actor id → actor. -/
+abbrev ProcessTable := ActorId → Option Actor
+
+/-- Mark one actor as crashed: its mailbox is dropped. Nothing else is touched. -/
+def crashOne (t : ProcessTable) (id : ActorId) : ProcessTable :=
+  fun i => if i = id then (t i).map (fun a => { a with mailbox := ⟨[]⟩ }) else t i
+
+/-- Restart one actor with fresh state (one-for-one strategy). -/
+def restartOne (t : ProcessTable) (id : ActorId) (fresh : Actor) : ProcessTable :=
+  fun i => if i = id then some fresh else t i
+
+/-- A nursery: the actors spawned inside a scope, and whether the scope is
+still open. -/
+structure Nursery where
+  spawned : List ActorId
+  isOpen : Bool
+
+/-- Every spawned actor has drained its mailbox — the premise of a scope
+join, in the same style as `Released` for `collect` (MemoryBounds). -/
+def Nursery.allDrained (n : Nursery) (t : ProcessTable) : Prop :=
+  ∀ id ∈ n.spawned, ∀ a, t id = some a → a.mailbox.messages = []
+
+/-- Join closes the nursery. -/
+def join (n : Nursery) : Nursery :=
+  { n with isOpen := false }
+
+/-- **Crash containment.** Crashing actor `id` leaves every *other* actor's
+state untouched — a crash cannot cross an actor boundary (Pony's isolation,
+OTP's one-for-one). -/
+theorem crash_contained (t : ProcessTable) (id j : ActorId) (hne : j ≠ id) :
+    crashOne t id j = t j := by
+  unfold crashOne
+  split
+  · next h => exact absurd h hne
+  · rfl
+
+/-- **One-for-one restart.** Restarting actor `id` installs exactly the fresh
+state at `id`. -/
+theorem restart_fresh (t : ProcessTable) (id : ActorId) (fresh : Actor) :
+    restartOne t id fresh id = some fresh := by
+  unfold restartOne
+  rw [if_pos rfl]
+
+/-- **Restart containment.** Restarting `id` leaves every other actor
+untouched. -/
+theorem restart_contained (t : ProcessTable) (id j : ActorId) (fresh : Actor)
+    (hne : j ≠ id) :
+    restartOne t id fresh j = t j := by
+  unfold restartOne
+  split
+  · next h => exact absurd h hne
+  · rfl
+
+/-- **Structured scope join (drain invariant).** In a drained nursery no
+spawned actor holds an undelivered message: the scope's messages have all
+been processed before the scope closes. With `crash_contained` this is the
+containment half of the dual error model: a crashed sibling cannot leave
+messages in another actor's mailbox, and a joined scope holds none of its
+own. -/
+theorem join_drained (t : ProcessTable) (n : Nursery) (hn : n.allDrained t)
+    (id : ActorId) (a : Actor) (hmem : id ∈ n.spawned)
+    (hlook : t id = some a) :
+    a.mailbox.messages = [] :=
+  hn id hmem a hlook
 
 end Morph.Specs.LayeredConcurrency

@@ -263,6 +263,40 @@ Support lemmas `lookup_none_of_not_mem_fst`/`lookup_eq_some_of_mem` written
 by hand — core Lean has no `List.lookup` membership lemmas.
 Snapshot ✔ no regressions — total theorems **1553 → 1557** (+4).
 
+---
+
+## Loop 98 — Concurrency: supervision and crash containment (DONE)
+
+**Research** (sources pulled):
+- OTP 29 supervisor docs: `one_for_one` default strategy — only the crashed
+  child restarts; restart intensity limits; inbox not preserved across crash.
+- Trio `_run.py` + Smith's notes: nursery `__aexit__` blocks until all child
+  tasks exit; "nurseries ensure the absence of orphaned tasks"; parallel
+  cancellation requires the bundle, not a loop.
+- Pony isolation (prior loop knowledge, cited for the containment framing).
+
+**Analysis.** Loop 95 made the dual error model normative — process failures
+crash the actor, supervision restarts it — but no spec section and no Lean
+module contained a supervision model. The three canonical systems agree on
+exactly the properties worth pinning: crash containment (OTP one-for-one /
+Pony isolation), restart-with-fresh-state, and scope-join draining (Trio).
+Adopt all three; model the drain premise as checked (like `Released`),
+matching OTP's practice. Reject: one-for-all/rest-for-one strategies (sibling
+termination is policy, not mechanism — a `restartOne` composition; recorded
+as such), crash-message redelivery (sender's concern, as in OTP).
+
+**Spec** (`spec/architecture/layered_concurrency_spec.md` → v1.1.0): new
+section "Supervision and Crash Containment" with the research basis, the
+concept/property table, the two checked-premise non-claims, and LC-INV-035.
+Lint ✔.
+
+**Lean** (`Morph/Specs/LayeredConcurrency/Spec.lean`): `ProcessTable`
+(function table, MemoryBounds-Heap style), `crashOne`/`restartOne`,
+`Nursery`/`allDrained`/`join`; theorems `crash_contained`,
+`restart_fresh`, `restart_contained`, `join_drained`. `ActorId` gained
+`DecidableEq` (needed for id comparison; additive). Snapshot ✔ no
+regressions — total theorems **1557 → 1561** (+4).
+
 ## Release-track entries (not part of the 93–102 research plan)
 
 Roadmap follow-ups after Sprint 10, done in one pass at maintainer
