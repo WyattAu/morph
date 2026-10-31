@@ -417,6 +417,48 @@ rewritten before case analysis; `by_cases`-style splits yield
 Snapshot ✔ no regressions — total theorems **1564 → 1578** (+14), Lean
 modules 219 → 222 (the new TypeUnification Spec/Lemmas/Examples).
 
+---
+
+## Loop 102 — Determinism: the pure binop core (DONE)
+
+**Research** (sources pulled):
+- Wright & Felleisen, *A Syntactic Approach to Type Soundness* (Information
+  & Computation 1994): determinism/soundness from value irreducibility +
+  agreement of leaf rules — the standard technique this loop follows.
+- OTP supervisor docs + Trio nursery notes were loop 98's inputs; the GA
+  clause being grounded here is `SPEC_GAPS_AND_BASIS.md` Foundational
+  Basis §4: "all pure expressions have deterministic evaluation order".
+
+**Analysis.** The `Step` relation has ~90 constructors with store-mutating
+ref rules — full one-step determinism is a multi-session proof. The right
+scoped core: `binop` over literal operands (the pure arithmetic fragment the
+GA clause is about). Two ingredients, both machine-checked: literal
+irreducibility, and leaf-rule agreement via an `opKind` classification that
+makes the five operator families pairwise disjoint by construction.
+**Finding:** unconditional value-irreducibility is **false** in the shipped
+semantics — `none_step` makes `Step σ .none_ σ .none_` hold reflexively
+(the value `.none_` steps; uniquely, so determinism is unaffected), and
+`some_none_done` departs from the value `.some_ .none_`. The theorem is
+therefore stated for literal operands, with the `none_` finding and the
+full-relation extension documented as future work. Reject: proving
+determinism over all 90 constructors now (mechanical but multi-session);
+the ingredients and the scoping are recorded so it can be resumed.
+
+**Spec** (`spec/concurrency/execution_model_spec.md` → v2.3.0): new §
+"Deterministic Pure Evaluation" — the technique, the property table, the
+`none_` finding, EM-INV-030. Lint ✔.
+
+**Lean** (`Morph/Specs/ExecutionModel/Spec.lean`; now imports
+`Morph.Semantics`): `opKind` classification + five kind lemmas,
+`lit_irreducible`, and `binop_arith_deterministic` (81-case analysis via
+`cases op <;> cases h₁ <;> cases h₂` + `simp_all` with the evaluator
+functions and kind lemmas in the simp set). Proof-engineering notes:
+`none_step` refutes naive value-irreducibility; `simp_all` cannot close
+`evalArithOp`-determined result equalities without the evaluator functions
+in the simp set (add `evalArithOp`/`evalCompOp`/… explicitly); `omega`
+prints fatal diagnostics on failure — avoid it in `<;>` fallback chains.
+Snapshot ✔ no regressions — total theorems **1578 → 1585** (+7).
+
 ## Release-track entries (not part of the 93–102 research plan)
 
 Roadmap follow-ups after Sprint 10, done in one pass at maintainer

@@ -346,16 +346,18 @@ belong to the E-series.
 
 ## Consequences
 
-### Positive- The full 1350-entry register is now on the record: Batch 0 (E-03, E-06, E-10,
-  ZX-q, DAT-s + T-01–T-20) plus Batches A–D (E-21–E-40) plus Batches E–H
-  (E-41–E-60) plus Batches I–L (E-61–E-80) plus Batches M–P (E-81–E-100),
-  continued in ADR-020 (E-101–E-250), ADR-021 (E-251–E-400), ADR-022
-  (E-401–E-550), ADR-023 (E-551–E-700), ADR-024 (E-701–E-850), ADR-025
-  (E-851–E-1000), ADR-026 (E-1001–E-1100, incoming paradigms 1–100),
-  ADR-027 (E-1101–E-1200, incoming paradigms 101–200), ADR-028
+### Positive- The full 1550-entry register is now on the record: Batch 0 (E-03, E-06,
+  E-10, ZX-q, DAT-s + T-01–T-20) plus Batches A–D (E-21–E-40) plus Batches
+  E–H (E-41–E-60) plus Batches I–L (E-61–E-80) plus Batches M–P
+  (E-81–E-100), continued in ADR-020 (E-101–E-250), ADR-021 (E-251–E-400),
+  ADR-022 (E-401–E-550), ADR-023 (E-551–E-700), ADR-024 (E-701–E-850),
+  ADR-025 (E-851–E-1000), ADR-026 (E-1001–E-1100, incoming paradigms
+  1–100), ADR-027 (E-1101–E-1200, incoming paradigms 101–200), ADR-028
   (E-1201–E-1300, incoming paradigms 201–300), ADR-029 (E-1301–E-1350,
-  incoming paradigms 301–350). Future proposals append as new ADR files;
-  nothing is silently dropped.
+  incoming paradigms 301–350), ADR-030 (E-1351–E-1450, incoming paradigms
+  351–450: everyday-software clusters XXX–XXXIX), ADR-031 (E-1451–E-1550,
+  incoming paradigms 451–550: everyday-software clusters XL–XLIX). Future
+  proposals append as new ADR files; nothing is silently dropped.
 - Every future proposal — including ones not yet seen — is decided by the
   acceptance rule in §1 plus the breadth-first directive, not by debate. The
   checklist is mechanical, and cuts require proof + execution evidence.
@@ -377,8 +379,11 @@ belong to the E-series.
 - File one experiment brief per E-entry family before implementation starts
   (briefs may cover coherent row families, e.g. one brief per 25-row batch),
   each stating scope, grade target, workload, and kill criterion. The table
-  rows across ADR-019–025 are the seed. E-1000 gates the experimentation
-  phase; E-999 audits register continuity.
+  rows across ADR-019–031 are the seed. E-1000 gates the experimentation
+  phase; E-999 audits register continuity. The 351–550 tranche is weighted
+  toward shippable product surface (UI runtimes, identity, VCS, cloud, build,
+  data, OS userland, observability, tooling, app security), so briefs there
+  can pair each row with an existing subsystem rather than a green field.
 - Revisit this ADR when any kill/reopen condition fires on measured proof +
   execution evidence, or when a new frontier proposal arrives; append, do not
   rewrite history.

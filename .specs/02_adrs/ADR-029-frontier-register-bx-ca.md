@@ -85,5 +85,6 @@ symplectic geometry, chromatic homotopy, twistor/microformal/supergeometry).
 ## References
 
 - ADR-019 (acceptance rule), ADR-020–028 (E-101–E-1300). Incoming source:
-  paradigms 301–350 (Clusters XXV–XXIX). This file completes the 1350-entry
-  register (E-1001–E-1350 for the incoming 350).
+  paradigms 301–350 (Clusters XXV–XXIX). This file closes the E-1001–E-1350
+  tranche; the register continues in ADR-030 (E-1351–E-1450) and ADR-031
+  (E-1451–E-1550).

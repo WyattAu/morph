@@ -3246,9 +3246,39 @@ fn parent() {
 
 ---
 
+## Deterministic Pure Evaluation (loop 102)
+
+The GA foundational assumption "all pure expressions have deterministic
+evaluation order" (`SPEC_GAPS_AND_BASIS.md`, Foundational Basis §4) is
+grounded here, machine-checked in `Morph/Specs/ExecutionModel/Spec.lean`
+(loop 102), following Wright & Felleisen's syntactic determinism technique
+(Information & Computation 1994): values are irreducible, and the leaf rules
+agree.
+
+| Property | Statement | Status |
+|---|---|---|
+| Operator-family disjointness | the five binop leaf-rule families get distinct kind numbers (`opKind`) | `isArithOp_kind` … `isPtrArithOp_kind` |
+| Literal irreducibility | no step departs from a literal | `lit_irreducible` |
+| Pure binop determinism | one `binop` step over literal operands with an arithmetic operator lands in a unique store (unchanged) and a unique result | `binop_arith_deterministic` |
+
+**Finding (loop 102):** unconditional value-irreducibility is **false** in
+the shipped semantics: `none_step` makes `Step σ .none_ σ .none_` hold
+reflexively (the value `.none_` steps — uniquely, so determinism is
+unaffected), and `some_none_done` departs from the value `.some_ .none_`.
+Determinism is therefore proved for literal operands; extending to the
+remaining non-`none_` values is future work, as is one-step determinism for
+all ~90 `Step` constructors (the same two ingredients apply per form).
+
+**EM-INV-030:** THE system SHALL preserve store-passthrough for pure binop
+steps, and the arithmetic core of the expression semantics SHALL be
+deterministic (`binop_arith_deterministic`).
+
+## Change Log
+
 ## Change Log
 
 | Version | Date       | Author      | Changes                                                                 |
+| 2.3.0   | 2026-10-31 | Research loop 102 | **Deterministic pure evaluation grounded (papers → spec → Lean):**<br>1. New §"Deterministic Pure Evaluation": operator-kind disjointness (`opKind`), literal irreducibility (`lit_irreducible`), pure binop one-step determinism (`binop_arith_deterministic`) — the machine-checked core of the GA assumption "all pure expressions have deterministic evaluation order" (Wright–Felleisen 1994 technique)<br>2. **Finding:** unconditional value-irreducibility is false — `none_step` steps the value `.none_` reflexively (uniquely; determinism unaffected); scoped accordingly with future work recorded<br>3. EM-INV-030 added |
 |---------|------------|-------------|-------------------------------------------------------------------------|
 | 2.1.0   | 2026-01-03 | Kilo Code    | **Resolved concurrency model contradiction with link-time replacement:**<br>1. Added Section 2.2.0: Scheduler Selection Mechanism<br>2. Clarified that deterministic scheduler is for debugging and testing only<br>3. Specified that production builds use work-stealing scheduler<br>4. Implemented link-time replacement (not runtime switch)<br>5. Added Section 2.2.3: Build Flag Specification with `--debug-scheduler` flag<br>6. Specified that production builds link only work-stealing scheduler<br>7. Specified that debug/test builds link only deterministic scheduler<br>8. Documented that mixing schedulers in same binary is not supported<br>9. Added Section 2.2.8: Testing Strategy for both configurations<br>10. Added Section 2.2.9: Performance Characteristics with benchmarks<br>11. Updated all invariants and requirements (EMS-INV-003 through EMS-INV-008)<br>12. Updated all functional requirements (EMS-REQ-003 through EMS-REQ-017)<br>13. Updated all non-functional requirements (EMS-NFR-003 through EMS-NFR-005)<br>14. Updated Architecture Overview to reflect link-time replacement<br>15. Updated Change Log |
 | 2.0.0   | 2026-01-02 | Kilo Code    | **Refined to match strategic refinements:**<br>1. Work-stealing scheduler as default and only production scheduler<br>2. Deterministic scheduler strictly as debug-mode shim<br>3. Updated all invariants and requirements<br>4. Added formal definitions and theorems |

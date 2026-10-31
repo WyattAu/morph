@@ -3,6 +3,9 @@ SPDX-License-Identifier: Apache-2.0
 -/
 
 import Std
+import Morph.Semantics
+
+open Morph.Semantics Morph.Store
 
 /-!
 # Execution Model Specification
@@ -119,5 +122,85 @@ def StepResult.isTerminal (r : StepResult) : Bool :=
   | .normal _ => true
   | .error _ => true
   | .stuck _ => false
+
+/-! ## Determinism of the pure binop core (loop 102)
+
+Research basis: Wright & Felleisen, *A Syntactic Approach to Type Soundness*
+(Information & Computation 1994) — determinism of a small-step semantics is
+proved from value irreducibility plus agreement of the leaf rules. The GA
+foundational assumption "all pure expressions have deterministic evaluation
+order" (`SPEC_GAPS_AND_BASIS.md`, Foundational Basis §4) is grounded here for
+the pure binop core: `binop` over literal operands, the arithmetic fragment
+of `spec/concurrency/execution_model_spec.md`.
+
+**Finding (loop 102):** unconditional value-irreducibility is **false** in
+the shipped semantics — `none_step` makes `Step σ .none_ σ .none_` hold
+reflexively, so the value `.none_` steps (uniquely, hence still
+deterministically), and `some_none_done` departs from the value
+`.some_ .none_`. The determinism theorem is therefore stated for literal
+operands, where irreducibility is provable; extending it to the remaining
+values is future work. -/
+
+/-- Every operator kind gets a distinct number: the five binop leaf-rule
+families are pairwise disjoint by construction. -/
+def opKind : Morph.Core.Operator → Nat
+  | .add | .sub | .mul | .div | .mod => 1
+  | .eq | .neq | .lt | .leq | .gt | .geq => 2
+  | .and | .or => 3
+  | .andb | .orb | .xorb | .shl | .shr => 4
+  | .ptrAdd | .ptrSub => 5
+  | _ => 0
+
+theorem isArithOp_kind (op : Morph.Core.Operator) (h : isArithOp op) :
+    opKind op = 1 := by
+  cases op <;> simp [isArithOp, opKind] at h ⊢ <;> omega
+
+theorem isCompOp_kind (op : Morph.Core.Operator) (h : isCompOp op) :
+    opKind op = 2 := by
+  cases op <;> simp [isCompOp, opKind] at h ⊢ <;> omega
+
+theorem isLogicOp_kind (op : Morph.Core.Operator) (h : isLogicOp op) :
+    opKind op = 3 := by
+  cases op <;> simp [isLogicOp, opKind] at h ⊢ <;> omega
+
+theorem isBitwiseOp_kind (op : Morph.Core.Operator) (h : isBitwiseOp op) :
+    opKind op = 4 := by
+  cases op <;> simp [isBitwiseOp, opKind] at h ⊢ <;> omega
+
+theorem isPtrArithOp_kind (op : Morph.Core.Operator) (h : isPtrArithOp op) :
+    opKind op = 5 := by
+  cases op <;> simp [isPtrArithOp, opKind] at h ⊢ <;> omega
+
+/-- **Literals are irreducible.** No step departs from a literal — the first
+ingredient of determinism (Wright–Felleisen 1994). -/
+theorem lit_irreducible (σ σ' : Morph.Store) (v : Morph.Core.Value)
+    (e : Morph.Syntax.Expr) :
+    ¬ Step σ (Morph.Syntax.Expr.lit v) σ' e := by
+  intro h
+  cases h
+
+set_option linter.unusedSimpArgs false in
+/-- **One-step determinism of the pure arithmetic core.** For `binop` over
+literal operands with an arithmetic operator, at most one leaf rule applies
+(the operator families are disjoint; literals are irreducible, so the
+congruence rules cannot fire), and it lands in a unique store — pure rules
+pass the store through unchanged — and a unique result. The machine-checked
+core of the GA assumption "all pure expressions have deterministic
+evaluation order". -/
+theorem binop_arith_deterministic (σ σ₁ σ₂ : Morph.Store)
+    (op : Morph.Core.Operator) (n1 n2 : Int) (r₁ r₂ : Morph.Syntax.Expr)
+    (ha : isArithOp op)
+    (h₁ : Step σ (Morph.Syntax.Expr.binop op
+      (Morph.Syntax.Expr.lit (Morph.Core.Value.int n1))
+      (Morph.Syntax.Expr.lit (Morph.Core.Value.int n2))) σ₁ r₁)
+    (h₂ : Step σ (Morph.Syntax.Expr.binop op
+      (Morph.Syntax.Expr.lit (Morph.Core.Value.int n1))
+      (Morph.Syntax.Expr.lit (Morph.Core.Value.int n2))) σ₂ r₂) :
+    σ₁ = σ₂ ∧ r₁ = r₂ := by
+  cases op <;> cases h₁ <;> cases h₂ <;>
+    simp_all [lit_irreducible, isArithOp, isCompOp, isLogicOp, isBitwiseOp,
+      isPtrArithOp, isArithOp_kind, isCompOp_kind, isLogicOp_kind,
+      isBitwiseOp_kind, isPtrArithOp_kind, evalArithOp, evalCompOp,
+      evalLogicOp, evalBitwiseOp, evalPtrArithOp]
 
 end Morph.Specs.ExecutionModel
