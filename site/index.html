@@ -36,22 +36,38 @@
       </p>
       <div class="hero-stats">
         <div class="stat">
-          <span class="stat-value">328</span>
+          <span class="stat-value">402</span>
           <span class="stat-label">Lean jobs</span>
         </div>
         <div class="stat">
-          <span class="stat-value">550</span>
+          <span class="stat-value">1508</span>
           <span class="stat-label">Theorems</span>
         </div>
         <div class="stat">
-          <span class="stat-value">735</span>
+          <span class="stat-value">836</span>
           <span class="stat-label">Python tests</span>
         </div>
         <div class="stat">
-          <span class="stat-value">93%</span>
+          <span class="stat-value">96%</span>
           <span class="stat-label">Coverage</span>
         </div>
       </div>
+    </section>
+
+    <section id="release">
+      <h2>Morph 0.1.0 — first versioned release</h2>
+      <p class="description">
+        The <code>morph</code> CLI over the verified pipeline:
+        <code>eval</code>, <code>parse</code>, <code>check</code>,
+        <code>run</code> (plus <code>--hir</code>), <code>fmt</code>,
+        <code>doc</code>, <code>version</code>. Failure is an
+        <code>Outcome</code> value with golden-tested message bytes — never a crash.
+      </p>
+      <ul class="doc-links">
+        <li><a href="https://github.com/WyattAu/morph/blob/main/CHANGELOG.md">Changelog</a></li>
+        <li><a href="https://github.com/WyattAu/morph/blob/main/STABILITY.md">Stability policy</a></li>
+        <li><a href="https://github.com/WyattAu/morph/blob/main/docs/AUDIT-PACKET-0.1.md">External audit packet</a></li>
+      </ul>
     </section>
 
     <section id="overview">
@@ -94,9 +110,9 @@
         </div>
         <div class="v-status">
           <h4>Preservation Theorem</h4>
-          <span class="badge badge-partial">Partial</span>
-          <p>Type preservation under substitution proven. Simultaneous substitution
-          and for-loop execution have documented gaps (6 sorries in Preservation.lean (Lemmas.lean sorries resolved)).</p>
+          <span class="badge badge-pass">Proven</span>
+          <p>Type preservation proven with 0 sorries and 0 axioms across the
+          whole Lean development (1,508 theorems).</p>
         </div>
         <div class="v-status">
           <h4>Type System Spec</h4>
@@ -107,7 +123,7 @@
         <div class="v-status">
           <h4>Spec Validation</h4>
           <span class="badge badge-pass">Automated</span>
-          <p>735 Python tests validate specification format, lint, cross-references,
+          <p>836 Python tests validate specification format, lint, cross-references,
           link integrity, and structural correctness.</p>
         </div>
       </div>
@@ -159,9 +175,9 @@
         </div>
         <div class="card">
           <h3>spec-tools (Python)</h3>
-          <p>735 tests validating specification quality: format checking, linting,
+          <p>836 tests validating specification quality: format checking, linting,
           cross-reference validation, link checking, structural analysis, and
-          coverage reporting. 93% test coverage.</p>
+          coverage reporting. 96% test coverage.</p>
         </div>
         <div class="card">
           <h3>CI/CD</h3>

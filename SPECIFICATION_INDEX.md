@@ -2,6 +2,12 @@
 
 Complete index of all Morph specification documents organized by category.
 
+> **Version 0.1.0** (2026-10-31) — this index is stamped to the Morph 0.1
+> release: 170 spec modules, 1,094 spec theorems, 0 sorry, 0 axioms.
+> See [`CHANGELOG.md`](CHANGELOG.md) and [`STABILITY.md`](STABILITY.md).
+> Spec Props are claims, not results — check `SPEC_CONTRADICTIONS.md` before
+> citing a mapping-summary ✓ as ground truth.
+
 ---
 
 ## Architecture

@@ -210,7 +210,7 @@ stage 2 is a separate analysis over `WFCFG`.
 
 /-- Worklist for `wfBlockUse`: walk the instruction list with an accumulator of
 available ids (params ∪ defs so far); every use must be in the accumulator. -/
-private def blockUseGo : List ValId → List Instr → Bool
+def blockUseGo : List ValId → List Instr → Bool
   | _, [] => true
   | avail, i :: rest =>
     (usesOf i).all (avail.contains ·) && blockUseGo (defOf i ++ avail) rest
@@ -259,6 +259,98 @@ theorem wfBlockUse_sound (fparams : List ValId) (b : Block)
   exact go_sound b.instrs fparams (fun _ hi => hi)
     (fun v hv => List.mem_append_left _ hv) h
 
+/-- Completeness of the computable use check (loop 95): if every use of
+every instruction is covered by the parameters or by earlier definitions,
+the check passes. Pairs with `wfBlockUse_sound`; together they say the
+check decides coverage. Lowering correctness (`Morph.HIRToMIR`) proves
+the premise for generated code. -/
+theorem wfBlockUse_complete (fparams : List ValId) (b : Block)
+    (h : ∀ pre i suf, b.instrs = pre ++ i :: suf →
+      ∀ v ∈ usesOf i, v ∈ fparams ++ pre.flatMap defOf) :
+    wfBlockUse fparams b = true := by
+  unfold wfBlockUse
+  have go : ∀ (is : List Instr) (avail : List ValId) (pre : List Instr),
+      (∀ w ∈ fparams ++ pre.flatMap defOf, w ∈ avail) →
+      (∀ p i s, is = p ++ i :: s →
+        ∀ v ∈ usesOf i, v ∈ fparams ++ (pre ++ p).flatMap defOf) →
+      blockUseGo avail is = true := by
+    intro is
+    induction is with
+    | nil => intro avail pre _ _; rfl
+    | cons i rest ih =>
+        intro avail pre hav hcov
+        have hi : (usesOf i).all (avail.contains ·) = true := by
+          rw [List.all_eq_true]
+          intro v hv
+          rw [List.contains_iff_mem]
+          apply hav
+          have hmem := hcov [] i rest rfl v hv
+          simpa using hmem
+        have ht : blockUseGo (defOf i ++ avail) rest = true := by
+          refine ih (defOf i ++ avail) (pre ++ [i]) ?_ ?_
+          · intro w hw
+            have hw' : w ∈ fparams ++ pre.flatMap defOf ++ defOf i := by
+              simpa [List.flatMap_append, List.append_assoc] using hw
+            rcases List.mem_append.mp hw' with h1 | h1
+            · exact List.mem_append_right _ (hav w h1)
+            · exact List.mem_append_left _ h1
+          · intro p i' s heq v hv
+            have hmem := hcov (i :: p) i' s (by simpa using heq) v hv
+            simpa [List.flatMap_append, List.append_assoc] using hmem
+        simp only [blockUseGo, Bool.and_eq_true]
+        exact ⟨hi, ht⟩
+  exact go b.instrs fparams [] (by simp)
+    (fun p i s heq v hv => h p i s heq v hv)
+
+/-- Monotonicity of the use-check accumulator: enlarging the available set
+(membership-wise) preserves success. Lowering correctness grows the
+accumulator with each generated prefix, so every composition step goes
+through here. -/
+theorem blockUseGo_mono (avail avail' : List ValId) (is : List Instr)
+    (hsub : ∀ v ∈ avail, v ∈ avail') (h : blockUseGo avail is = true) :
+    blockUseGo avail' is = true := by
+  induction is generalizing avail avail' with
+  | nil => rfl
+  | cons i rest ih =>
+      simp only [blockUseGo, Bool.and_eq_true] at h ⊢
+      obtain ⟨h1, h2⟩ := h
+      refine ⟨?_, ih (defOf i ++ avail) (defOf i ++ avail') ?_ h2⟩
+      · rw [List.all_eq_true] at h1 ⊢
+        intro v hv
+        have hmem : v ∈ avail := List.contains_iff_mem.mp (h1 v hv)
+        exact List.contains_iff_mem.mpr (hsub v hmem)
+      · intro v hv
+        rcases List.mem_append.mp hv with h3 | h3
+        · exact List.mem_append_left _ h3
+        · exact List.mem_append_right _ (hsub v h3)
+
+/-- Composition: checking `l₁ ++ l₂` splits into checking `l₁`, then `l₂`
+with the definitions of `l₁` added to the accumulator. The workhorse for
+lowering correctness (`Morph.HIRToMIR`), where each construct appends its
+own instructions after its children's. -/
+theorem blockUseGo_append (avail : List ValId) (l₁ l₂ : List Instr)
+    (h1 : blockUseGo avail l₁ = true)
+    (h2 : blockUseGo (l₁.flatMap defOf ++ avail) l₂ = true) :
+    blockUseGo avail (l₁ ++ l₂) = true := by
+  induction l₁ generalizing avail with
+  | nil => simpa using h2
+  | cons a l₁ ih =>
+      rw [List.cons_append]
+      simp only [blockUseGo, Bool.and_eq_true] at h1 ⊢
+      obtain ⟨ha, h1t⟩ := h1
+      refine ⟨ha, ih (defOf a ++ avail) h1t ?_⟩
+      have hmem : ∀ v ∈ (a :: l₁).flatMap defOf ++ avail,
+          v ∈ l₁.flatMap defOf ++ (defOf a ++ avail) := by
+        intro v hv
+        have h1 : v ∈ defOf a ++ l₁.flatMap defOf ++ avail := by
+          simpa [List.flatMap_cons] using hv
+        rcases List.mem_append.mp h1 with h | h
+        · rcases List.mem_append.mp h with h | h
+          · exact List.mem_append_right _ (List.mem_append_left _ h)
+          · exact List.mem_append_left _ h
+        · exact List.mem_append_right _ (List.mem_append_right _ h)
+      exact blockUseGo_mono _ _ _ hmem h2
+
 /-- Terminator targets: `goto`/`branch`/`switch` outgoing edges (branch
 targets only; the scrutinee/condition are values, not blocks). -/
 def blockTargets : Terminator → List BlockId
@@ -289,6 +381,10 @@ def WFParams (f : Func) : Bool :=
 single-block use check on every block. -/
 def WF (f : Func) : Bool :=
   WFCFG f && WFParams f && f.blocks.all (wfBlockUse (f.params.map Prod.fst))
+
+/-- Whole-program well-formedness: every function is well-formed. -/
+def WFProg (p : Program) : Bool :=
+  p.funcs.all WF
 
 /-! ## Evaluation oracle
 

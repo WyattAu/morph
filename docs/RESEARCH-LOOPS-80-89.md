@@ -400,3 +400,17 @@ track.
   steps, reviewer entry points.
 - **Hard gate NOT cleared: review invitations are unsent.** Packet
   authorship ≠ Sprint 9 completion; invites need the maintainer.
+
+## Loop 94 — final verification (DONE, Sprint 10)
+
+- `lake build Morph` ✔ 402 jobs, 0 warnings, 0 errors; `morph` exe ✔.
+- All eight CLI commands smoke-tested on shell + file inputs with exit
+  codes per contract (`eval 7`, `parse` AST, `check` type / golden
+  stderr, `run`/`run --hir` agree `5`, `fmt` fixpoint, `doc` Markdown,
+  `version 0.1.0`).
+- Final snapshot ✔ no regressions: 1508 theorems (1094 specs), 0 sorry,
+  0 axioms, 836 python tests / 96% coverage, lint 0 errors / 106
+  warnings (accepted baseline), cross-refs 0 broken.
+- Working tree holds pre-existing modifications beyond this session's
+  scope (87 files); nothing uncommitted was verified beyond the build +
+  snapshot gates above.

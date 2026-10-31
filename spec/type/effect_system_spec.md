@@ -1,11 +1,11 @@
 # Effect System Specification
 
 * File:* `type\effect_system_spec.md`
-* Version:* 2.0.0
+* Version:* 2.1.0
 * Context:* Layer 2 (Semantic Analysis)
 * Formalism:* Effect Algebra, Lattice Theory, Type Theory
 * Status:* Active
-* Last Modified:* 2026-01-03
+* Last Modified:* 2026-10-31
 * Author:* Kilo Code
 * Reviewers:* Pending
 
@@ -103,18 +103,36 @@ $$
 \text{Effect}(T, E) : \text{Type} \quad \text{where} \quad T : \text{Type}, \; E : \text{Effect}
 $$
 
-### 2.2 Built-in Effect Primitives
+### 2.2 Built-in Effect Primitives and Effect Rows
 
-Morph defines **four** primitive effect types that form the effect lattice:
+Morph defines **four** primitive effect *classes*. An **effect row** is a set of
+classes, and the four named effects are canonical rows:
 
 $$
 \begin{aligned}
-\text{IO} &= \{\text{FileIO}, \text{ConsoleIO}\} \\
-\text{Net} &= \text{IO} \cup \{\text{Network}\} \\
-\text{Time} &= \text{Net} \cup \{\text{Clock}\} \\
-\text{System} &= \text{Time} \cup \{\text{FFI}, \text{Process}\}
+\mathcal{C} &= \{\text{io}, \text{net}, \text{time}, \text{system}\} \\
+\text{IO} &= \{\text{io}\} \\
+\text{Net} &= \{\text{io}, \text{net}\} \\
+\text{Time} &= \{\text{io}, \text{net}, \text{time}\} \\
+\text{System} &= \mathcal{C} = \{\text{io}, \text{net}, \text{time}, \text{system}\}
 \end{aligned}
 $$
+
+The empty row $\emptyset$ is the absence of effects — this is the **Pure
+capability** defined in [`spec/type/pure_type_spec.md`](./pure_type_spec.md).
+Pure is not a class (resolution of contradiction C-003 stands); it is the name
+of the empty row, the identity of effect union.
+
+The operation-level view motivates the classes (machine-checked operation
+signatures: `Morph/Specs/EffectAlgebra/`, formalism in
+[`spec/language/effect_algebra_spec.md`](../language/effect_algebra_spec.md)):
+
+| Class | Operations | Character |
+|-------|-----------|-----------|
+| `io` | file, console, slot read/write | stateful, deterministic answers |
+| `net` | network connect/send | partial — may fail (empty answer set) |
+| `time` | clock, sleep | nondeterministic — answer not unique |
+| `system` | FFI, process exec | escalating; requires authority |
 
 **Effect Descriptions:*
 
@@ -129,19 +147,29 @@ $$
 
 ### 2.3 Effect Lattice
 
-The effect types form a complete lattice under the subset ordering:
+The effect rows form a complete lattice under the subset ordering:
 
 $$
-\mathcal{E} = (\mathcal{P}(\mathcal{E}), \sqsubseteq, \sqcup, \sqcap, \bot, \top)
+\mathcal{R} = (\mathcal{P}(\mathcal{C}), \sqsubseteq, \sqcup, \sqcap, \bot, \top)
 $$
 
 where:
-- $\mathcal{P}(\mathcal{E})$: Power set of $\mathcal{E}$ (all subsets of effects)
+- $\mathcal{P}(\mathcal{C})$: Power set of the four effect classes (all 16 rows)
 - $\sqsubseteq$: Subset relation (effect subtyping)
-- $\sqcup$: Join operation (least upper bound)
-- $\sqcap$: Meet operation (greatest lower bound)
-- $\bot$: Bottom element (IO)
-- $\top$: Top element (System)
+- $\sqcup$: Join operation (least upper bound = row union)
+- $\sqcap$: Meet operation (greatest lower bound = row intersection)
+- $\bot$: Bottom element ($\emptyset$ — the pure row)
+- $\top$: Top element ($\mathcal{C}$ — the System row)
+
+**Named rows form a chain inside this lattice:*
+
+$$
+\emptyset \;\sqsubseteq\; \text{IO} \sqsubseteq \text{Net} \sqsubseteq \text{Time} \sqsubseteq \text{System}
+$$
+
+The named chain is the *principal* granularity used by surface annotations
+(`performs IO` etc.); arbitrary rows arise as inferred effect sets and as
+handler residuals (§2.7).
 
 #### 2.3.1 Partial Order (Effect Subtyping)
 
@@ -157,22 +185,25 @@ $$
 \text{IO} \sqsubseteq \text{Net} \sqsubseteq \text{Time} \sqsubseteq \text{System}
 $$
 
-**Formal Proof of Lattice Properties:*
+**Formal Proof of Lattice Properties:**
 
-1. **Reflexivity:* $\forall E \in \mathcal{E}, \; E \sqsubseteq E$
+1. **Reflexivity:* $\forall E \in \mathcal{R}, \; E \sqsubseteq E$
    - Proof: Every set is a subset of itself.
 
-2. **Antisymmetry:* $\forall E_1, E_2 \in \mathcal{E}, \; E_1 \sqsubseteq E_2 \land E_2 \sqsubseteq E_1 \implies E_1 = E_2$
+2. **Antisymmetry:* $\forall E_1, E_2 \in \mathcal{R}, \; E_1 \sqsubseteq E_2 \land E_2 \sqsubseteq E_1 \implies E_1 = E_2$
    - Proof: If $E_1 \subseteq E_2$ and $E_2 \subseteq E_1$, then $E_1 = E_2$.
 
-3. **Transitivity:* $\forall E_1, E_2, E_3 \in \mathcal{E}, \; E_1 \sqsubseteq E_2 \land E_2 \sqsubseteq E_3 \implies E_1 \sqsubseteq E_3$
+3. **Transitivity:* $\forall E_1, E_2, E_3 \in \mathcal{R}, \; E_1 \sqsubseteq E_2 \land E_2 \sqsubseteq E_3 \implies E_1 \sqsubseteq E_3$
    - Proof: If $E_1 \subseteq E_2$ and $E_2 \subseteq E_3$, then $E_1 \subseteq E_3$.
 
-4. **Bottom Element:* $\forall E \in \mathcal{E}, \; \text{IO} \sqsubseteq E$
-   - Proof: $\text{IO} = \{\text{FileIO}, \text{ConsoleIO}\}$, and $\text{IO}$ is the minimal effect set containing only basic I/O operations.
+4. **Bottom Element:* $\forall E \in \mathcal{R}, \; \emptyset \sqsubseteq E$
+   - Proof: The empty set is a subset of every set. The empty row is the pure
+     row (Pure capability); machine-checked as `Eff.classes (.pure v) = []` and
+     `hasRow_nil_iff_isPure` in `Morph/Specs/EffectAlgebra/`.
 
-5. **Top Element:* $\forall E \in \mathcal{E}, \; E \sqsubseteq \text{System}$
-   - Proof: $\text{System}$ contains all primitive effects, so every effect set is a subset of System.
+5. **Top Element:* $\forall E \in \mathcal{R}, \; E \sqsubseteq \mathcal{C}$
+   - Proof: Every row is a subset of the full class set; $\mathcal{C}$ names the
+     System row.
 
 ### 2.4 Effect Algebra
 
@@ -190,11 +221,16 @@ $$
 - **Commutativity:* $E_1 \sqcup E_2 = E_2 \sqcup E_1$
 - **Associativity:* $(E_1 \sqcup E_2) \sqcup E_3 = E_1 \sqcup (E_2 \sqcup E_3)$
 - **Idempotence:* $E \sqcup E = E$
-- **Identity:* $E \sqcup \text{IO} = E$
+- **Identity:* $E \sqcup \emptyset = E$ (the empty row, i.e. pure, is the unit)
+
+On the named chain, union with IO absorbs every named row ($\text{IO} \sqsubseteq E$
+for named $E$), so $E \sqcup \text{IO} = E$ holds *for named rows*; it fails in
+general precisely when $E = \emptyset$.
 
 **Examples:*
 $$
 \begin{aligned}
+\emptyset \sqcup \text{IO} &= \text{IO} \\
 \text{IO} \sqcup \text{Net} &= \text{Net} \\
 \text{IO} \sqcup \text{Time} &= \text{Time} \\
 \text{Net} \sqcup \text{Time} &= \text{Time}
@@ -239,18 +275,42 @@ $$
 **Examples:*
 $$
 \begin{aligned}
-\text{Net} \setminus \text{IO} &= \{\text{Network}\} \\
-\text{Time} \setminus \text{Net} &= \{\text{Clock}\} \\
-\text{System} \setminus \text{Time} &= \{\text{FFI}, \text{Process}\}
+\text{Net} \setminus \text{IO} &= \{\text{net}\} \\
+\text{Time} \setminus \text{Net} &= \{\text{time}\} \\
+\text{System} \setminus \text{Time} &= \{\text{system}\}
 \end{aligned}
 $$
 
-### 2.5 Effect Type Constructor
+### 2.4.4 Handler Elimination (Non-Monotone Rule)
 
-The Effect type constructor wraps a value type with an effect set:
+Effect sets accumulate monotonically through every composing rule above — but
+**handling** removes effects. Bauer & Pretnar (*An Effect System for Algebraic
+Effects and Handlers*, 2013) observed that with handlers the effect system is
+**non-monotone**: a computation typed with effect $E$ becomes a computation with
+the covered classes deleted:
 
 $$
-\text{Effect}(T, E) : \text{Type} \quad \text{where} \quad T : \text{Type}, \; E \subseteq \mathcal{E}
+\frac{\Gamma_E \vdash e : T \text{ with effect } E \quad \text{covered}(h) \subseteq E}{\Gamma_E \vdash \text{handle } e \text{ with } h : T \text{ with effect } E \setminus \text{covered}(h)}
+$$
+
+This is the one effect-shrinking rule in the system, and it is what makes the
+typing relation match the machine-checked semantics: `Handler.residual`,
+`residual_subset`, and `covered_residual_empty` in
+`Morph/Specs/EffectAlgebra/Lemmas.lean` prove exactly that the residual set is
+the classes of the computation minus the handler's coverage, and that a covering
+handler discharges every effect. The deep-handler fold equation
+(`handle_op_deep`) grounds the operational side.
+
+*Consequence:* `handle` is the only way a function annotated `performs Net`
+can be called from a pure context: the handler must cover `net` (and `io`, since
+rows are cumulative), and the residual must be within the caller's bound.
+
+### 2.5 Effect Type Constructor
+
+The Effect type constructor wraps a value type with an effect row:
+
+$$
+\text{Effect}(T, E) : \text{Type} \quad \text{where} \quad T : \text{Type}, \; E \subseteq \mathcal{C}
 $$
 
 **Syntactic Sugar:*
@@ -260,11 +320,12 @@ $$
 \text{IO}(T) &\equiv \text{Effect}(T, \text{IO}) \\
 \text{Net}(T) &\equiv \text{Effect}(T, \text{Net}) \\
 \text{Time}(T) &\equiv \text{Effect}(T, \text{Time}) \\
-\text{System}(T) &\equiv \text{Effect}(T, \text{System})
+\text{System}(T) &\equiv \text{Effect}(T, \text{System}) \\
+\text{Pure}(T) &\equiv \text{Effect}(T, \emptyset)
 \end{aligned}
 $$
 
-**Note:* Pure is a capability defined in [`spec/type/pure_type_spec.md`](./pure_type_spec.md), not an effect type. Pure functions have no effects and are orthogonal to the effect lattice.
+**Note:* Pure is a capability defined in [`spec/type/pure_type_spec.md`](./pure_type_spec.md), not an effect class. In annotation position `Pure` abbreviates the empty row $\emptyset$ (§2.2) — the capability is *having* the empty row. Pure functions have no effects and are orthogonal to the effect classes.
 
 ### 2.6 Function Types with Effects
 
@@ -433,8 +494,8 @@ The Effect system is implemented as a type-level effect tracking mechanism that:
 - $T_2$: Return type
 
 * Invariants:*
-1. $E$ is a valid effect set
-2. If $E = \text{Pure}$, the function is Pure
+1. $E$ is a valid effect row ($E \subseteq \mathcal{C}$)
+2. If $E = \emptyset$ (annotation: $\text{Pure}$), the function is Pure
 
 ### 4.3 Type Checking Rules
 
@@ -486,15 +547,35 @@ $$
 
 **Interpretation:* A function with effect $E_1$ satisfies an effect bound $E_{\text{bound}}$ if $E_1 \sqsubseteq E_{\text{bound}}$.
 
+#### 4.3.7 Handler Rule (Effect Elimination)
+
+$$
+\frac{\Gamma_E \vdash e : T \text{ with effect } E \quad \text{covered}(h) \subseteq E}{\Gamma_E \vdash \text{handle } e \text{ with } h : T \text{ with effect } E \setminus \text{covered}(h)}
+$$
+
+**Interpretation:* Handling is the single effect-shrinking rule (§2.4.4). The
+handler's coverage must be within the handled computation's effect set; the
+result may perform only the uncovered remainder. A handler whose coverage
+includes all of $E$ types the handled expression as pure — the residual row is
+$E \setminus E = \emptyset$, matching `covered_residual_empty` in
+`Morph/Specs/EffectAlgebra/Lemmas.lean`.
+
 ### 4.4 Effect Inference Rules
 
 #### 4.4.1 Effect Inference for Literals
 
 $$
-\frac{l \text{ is a literal}}{\Gamma_E \vdash l : T \quad \text{with effect } \text{IO}}
+\frac{l \text{ is a literal}}{\Gamma_E \vdash l : T \quad \text{with effect } \emptyset}
 $$
 
-where $T$ is the type of the literal (e.g., $\text{i32}$ for integer literals). Literals have minimal I/O effect for type system consistency.
+where $T$ is the type of the literal (e.g., $\text{i32}$ for integer literals).
+Literals perform no operations, so their effect row is empty — the pure row.
+This is the base case that makes the Pure capability *reachable*: an expression
+built only from literals, variables, and pure functions infers $\emptyset$, and
+§4.3.1 then types it at any annotation. (Before v2.1.0 this rule assigned
+literals effect IO, which made every expression effectful and the pure row
+unreachable — an error contradicting §6's own correctness proof, which uses
+literals as the zero-effect base case.)
 
 #### 4.4.2 Effect Inference for Variables
 
@@ -705,9 +786,9 @@ We prove by structural induction on the syntax of expressions.
 
 * Base Cases:*
 
-1. **Literals:* For any literal $l$, $\text{Infer}(l, \Gamma_E) = \text{Pure}$.
+1. **Literals:* For any literal $l$, $\text{Infer}(l, \Gamma_E) = \emptyset$.
    - Literals have no side effects
-   - Therefore, $\Gamma_E \vdash l : T$ with effect $\text{Pure}$
+   - Therefore, $\Gamma_E \vdash l : T$ with effect $\emptyset$ (the pure row)
    - Inference is correct
 
 2. **Variables:* For any variable $x$ with type $(T, E)$ in $\Gamma_E$, $\text{Infer}(x, \Gamma_E) = E$.
@@ -1190,5 +1271,6 @@ fn parserInvalid<E>(data: str) -> Json performs [Pure] {
 
 | Version | Date       | Author      | Changes                                                                 |
 |---------|------------|-------------|-------------------------------------------------------------------------|
+| 2.1.0   | 2026-10-31 | Research loop 93 | **Restored the pure row and handler elimination (research loop 93, papers → spec → Lean):**<br>1. Effects redefined as **effect rows** — subsets of the class set $\mathcal{C}$ = {io, net, time, system}; named effects are canonical rows<br>2. Lattice bottom restored to $\emptyset$ (the pure row; Pure stays a capability, not a class — C-003 stands); fixed the false identity $E \sqcup \text{IO} = E$ to $E \sqcup \emptyset = E$<br>3. Added §2.4.4/§4.3.7 **handler elimination** — the non-monotone rule (Bauer–Pretnar 2013) the Lean theory already proved (`residual_subset`, `covered_residual_empty`); spec and `Morph/Specs/EffectAlgebra/` now agree<br>4. Fixed §4.4.1: literals infer $\emptyset$, not IO — the old rule made every expression effectful, contradicted §6's own proof, and made the Pure capability unreachable<br>5. Added `Pure(T)` sugar as $\text{Effect}(T, \emptyset)$ |
 | 2.0.0   | 2026-01-03 | Kilo Code    | **Resolved contradiction C-002:*<br>1. Removed Pure from effect lattice (now 4 effects: IO, Net, Time, System)<br>2. Updated bottom element from Pure to IO<br>3. Removed all Pure references from effect algebra, theorems, and examples<br>4. Updated syntactic sugar to remove Pure(T)<br>5. Updated security level mapping to remove Pure<br>6. Updated Mermaid diagrams to remove Pure node<br>7. Clarified Pure is a capability, not an effect type |
 | 1.0.0   | 2026-01-02 | Kilo Code    | Initial version with formal effect algebra, composition rules, subtyping lattice, inference rules, effect polymorphism, and examples |

@@ -339,4 +339,89 @@ example : shallowHead exModel
 /-- Row example: `pure` fits in any row, e.g. `[.io]`. -/
 example : (Eff.pure "x").hasRow [.io] := hasRow_pure _ _
 
+/-! ### The named-row chain (loop 93)
+
+The effect-system spec v2.1.0 (`spec/type/effect_system_spec.md` §2.2–2.3)
+defines an effect **row** as a subset of the four classes and names four
+canonical rows — IO, Net, Time, System — claiming they form a chain under row
+inclusion. These definitions and lemmas are that claim, machine-checked: the
+class order induces the named rows, membership in a named row is exactly the
+class order, distinct named rows are distinct, and `io`/`system` are the
+bottom/top classes. -/
+
+/-- The rank of a class in the named chain `io < net < time < system`. -/
+def classRank : EffectClass → Nat
+  | .io => 0
+  | .net => 1
+  | .time => 2
+  | .system => 3
+
+/-- The class order underlying the named rows. -/
+def classLE (a b : EffectClass) : Prop := classRank a ≤ classRank b
+
+/-- Rank is injective on classes: equal ranks are equal classes. The match
+compiler discharges the mismatched pairs — their rank hypotheses are
+constructor-impossible. -/
+theorem classRank_inj {a b : EffectClass} (h : classRank a = classRank b) : a = b := by
+  match a, b, h with
+  | .io, .io, _ => rfl
+  | .net, .net, _ => rfl
+  | .time, .time, _ => rfl
+  | .system, .system, _ => rfl
+
+/-- Reflexivity of the class order. -/
+theorem classLE_refl (a : EffectClass) : classLE a a := Nat.le_refl _
+
+/-- Transitivity of the class order. -/
+theorem classLE_trans {a b c : EffectClass} (h1 : classLE a b) (h2 : classLE b c) :
+    classLE a c := Nat.le_trans h1 h2
+
+/-- Antisymmetry of the class order, via rank injectivity. -/
+theorem classLE_antisym {a b : EffectClass} (h1 : classLE a b) (h2 : classLE b a) :
+    a = b := classRank_inj (Nat.le_antisymm h1 h2)
+
+/-- `io` is the least class — the IO row is below every named row. -/
+theorem classLE_io_min (c : EffectClass) : classLE .io c := by
+  cases c <;> simp only [classLE, classRank] <;> omega
+
+/-- `system` is the greatest class — the System row is above every named row. -/
+theorem classLE_system_max (c : EffectClass) : classLE c .system := by
+  cases c <;> simp only [classLE, classRank] <;> omega
+
+/-- The chain edges of spec §2.3: IO ⊑ Net ⊑ Time ⊑ System. -/
+theorem classLE_io_net : classLE .io .net := by
+  simp only [classLE, classRank]; omega
+
+theorem classLE_net_time : classLE .net .time := by
+  simp only [classLE, classRank]; omega
+
+theorem classLE_time_system : classLE .time .system := by
+  simp only [classLE, classRank]; omega
+
+/-- The named rows of the effect-system spec: IO, Net, Time, System. Each is
+the downward closure of its class in `classLE` — which is exactly why the
+spec's chain holds and why row inclusion on named rows *is* the class order. -/
+def namedRow : EffectClass → EffectSet
+  | .io => [.io]
+  | .net => [.io, .net]
+  | .time => [.io, .net, .time]
+  | .system => [.io, .net, .time, .system]
+
+/-- Row membership in a named row is exactly the class order. -/
+theorem mem_namedRow_iff {k c : EffectClass} : k ∈ namedRow c ↔ classLE k c := by
+  cases c <;> cases k <;> simp [namedRow, classLE, classRank]
+
+/-- The named rows separate the classes: equal named rows are equal classes
+(the row view is antisymmetric, as the spec's subset-ordering claim needs). -/
+theorem namedRow_inj {a b : EffectClass} (h : namedRow a = namedRow b) : a = b := by
+  have h1 : classLE a b := by
+    have ha : a ∈ namedRow a := by cases a <;> simp [namedRow]
+    rw [h] at ha
+    exact mem_namedRow_iff.mp ha
+  have h2 : classLE b a := by
+    have hb : b ∈ namedRow b := by cases b <;> simp [namedRow]
+    rw [← h] at hb
+    exact mem_namedRow_iff.mp hb
+  exact classLE_antisym h1 h2
+
 end Morph.Specs.EffectAlgebra

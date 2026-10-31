@@ -81,4 +81,10 @@ def ioOnlyHandler : Handler String := { model := ioModel, covers := [.io] }
 
 example : ioOnlyHandler.residual netProg = [.net] := rfl
 
+/-- Loop 93 pins for the named-row chain (spec v2.1.0 §2.3). -/
+example : classLE .io .net := classLE_io_net
+example : ¬ classLE .time .net := by simp only [classLE, classRank]; omega
+example : EffectClass.time ∈ namedRow .system := by simp [namedRow]
+example : ¬ (EffectClass.time ∈ namedRow .net) := by simp [namedRow]
+
 end Morph.Specs.EffectAlgebra
