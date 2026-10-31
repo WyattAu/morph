@@ -3,6 +3,21 @@ Math notation validation rule.
 
 This module implements the MathNotationRule which validates
 mathematical notation in specification files.
+
+The rule tokenizes LaTeX math the way renderers read it:
+
+- Fenced code blocks and inline code spans are not math (a ``$`` in
+  ``$HOME`` or a price is prose, not a delimiter).
+- Display math is ``$$ ... $$`` (possibly multi-line).
+- Inline math is ``$ ... $`` on a single line, opened by ``$`` followed
+  by a math-start character (letter, backslash, ``(``, ``{``). A lone
+  ``$`` followed by anything else (``$,``, ``$5``) is treated as a
+  literal dollar sign, not a delimiter.
+- Inside math expressions, braces must balance (``\\{``/``\\}`` escapes
+  excluded).
+
+The rule does not validate the mathematical correctness
+of expressions, only their syntax.
 """
 
 import re
@@ -14,7 +29,7 @@ from spec_tools.models import LintError, Severity
 
 
 class MathNotationRule(LintingRule):
-    """Validates mathematical notation in specification files.
+    """Validates mathematical notation syntax.
 
     This rule checks that:
     - Inline math ($...$) has matching delimiters
@@ -32,8 +47,16 @@ class MathNotationRule(LintingRule):
 
     def __init__(self) -> None:
         """Initialize math notation rule."""
-        self._inline_math_pattern = re.compile(r"\$([^$]+)\$")
-        self._display_math_pattern = re.compile(r"\$\$([^$]+)\$\$")
+        # Display math: $$ ... $$ (may span lines, non-greedy pairing)
+        self._display_math_pattern = re.compile(r"\$\$(.+?)\$\$", re.DOTALL)
+        # Inline math: single line, opener $ followed by a math-start
+        # character, closer $ preceded by a non-space and not part of $$.
+        self._inline_math_pattern = re.compile(r"(?<!\$)\$([A-Za-z\\({][^$\n]*?)(?<![\s\$])\$(?!\$)")
+        # Fenced code blocks (``` ... ```) and inline code (`...`)
+        self._fenced_code_pattern = re.compile(r"```.*?```", re.DOTALL)
+        self._inline_code_pattern = re.compile(r"`[^`\n]*`")
+        # A $ that opens math: followed by a math-start character
+        self._opener_pattern = re.compile(r"\$[A-Za-z\\({]")
 
     def check(self, content: str, lines: List[str], filepath: Path) -> List[LintError]:
         """Check if content has valid math notation.
@@ -48,127 +71,140 @@ class MathNotationRule(LintingRule):
         """
         errors: list[LintError] = []
 
-        # Check for matching $ delimiters
-        self._check_inline_math(content, filepath, errors)
+        # Neutralize escaped dollars (``\$`` is a literal dollar sign, as in
+        # ``$\$$`` for "the $ symbol"). Same length, so offsets survive.
+        content = re.sub(r"\\\$", "  ", content)
 
-        # Check for matching $$ delimiters
-        self._check_display_math(content, filepath, errors)
+        # Mask code: neither fences nor spans participate in math.
+        # Masking preserves offsets (and therefore line numbers) by
+        # replacing every non-newline character with a space.
+        masked = self._mask_code(content)
 
-        # Check for balanced braces in math expressions
-        self._check_balanced_braces(content, filepath, errors)
+        # Display math first (so $$ pairs are never read as two $ opens).
+        masked = self._extract_display_math(masked, content, filepath, errors)
+
+        # Then inline math.
+        masked = self._extract_inline_math(masked, content, filepath, errors)
+
+        # Anything left that looks like an opener is unmatched.
+        self._check_unmatched(masked, content, filepath, errors)
 
         return errors
 
-    def _check_inline_math(self, content: str, filepath: Path, errors: List[LintError]) -> None:
-        """Check for matching inline math delimiters.
+    def _mask_code(self, content: str) -> str:
+        """Replace code spans/blocks with spaces (newlines preserved)."""
 
-        Args:
-            content: Full content of file
-            filepath: File path for error reporting
-            errors: List to append errors to
-        """
-        # Count $ delimiters
-        dollar_count = content.count("$")
+        def blank(match: re.Match) -> str:
+            return "".join("\n" if ch == "\n" else " " for ch in match.group(0))
 
-        # Odd number means unmatched delimiter
-        if dollar_count % 2 != 0:
-            # Find the line with the issue
-            lines = content.split("\n")
-            for line_num, line in enumerate(lines, start=1):
-                if "$" in line:
-                    errors.append(
-                        LintError(
-                            file_path=str(filepath),
-                            line_number=line_num,
-                            column_number=line.find("$") + 1,
-                            severity=Severity.ERROR,
-                            rule_id="math-notation",
-                            message="Unmatched inline math delimiter ($)",
-                            suggestion="Ensure every $ has a matching closing $",
-                            context=line,
-                        )
-                    )
+        masked = self._fenced_code_pattern.sub(blank, content)
+        return self._inline_code_pattern.sub(blank, masked)
 
-    def _check_display_math(self, content: str, filepath: Path, errors: List[LintError]) -> None:
-        """Check for matching display math delimiters.
+    def _blank_region(self, text: str, start: int, end: int) -> str:
+        """Blank out text[start:end], preserving newlines."""
+        return text[:start] + "".join("\n" if ch == "\n" else " " for ch in text[start:end]) + text[end:]
 
-        Args:
-            content: Full content of file
-            filepath: File path for error reporting
-            errors: List to append errors to
-        """
-        # Count $$ delimiters
-        double_dollar_count = content.count("$$")
+    def _line_col(self, content: str, offset: int) -> tuple:
+        """Convert a character offset to (1-indexed line, column)."""
+        line = content.count("\n", 0, offset) + 1
+        col = offset - content.rfind("\n", 0, offset)
+        return line, col
 
-        # Odd number means unmatched delimiter
-        if double_dollar_count % 2 != 0:
-            # Find the line with the issue
-            lines = content.split("\n")
-            for line_num, line in enumerate(lines, start=1):
-                if "$$" in line:
-                    errors.append(
-                        LintError(
-                            file_path=str(filepath),
-                            line_number=line_num,
-                            column_number=line.find("$$") + 1,
-                            severity=Severity.ERROR,
-                            rule_id="math-notation",
-                            message="Unmatched display math delimiter ($$)",
-                            suggestion="Ensure every $$ has a matching closing $$",
-                            context=line,
-                        )
-                    )
-
-    def _check_balanced_braces(self, content: str, filepath: Path, errors: List[LintError]) -> None:
-        """Check for balanced braces in math expressions.
-
-        Args:
-            content: Full content of file
-            filepath: File path for error reporting
-            errors: List to append errors to
-        """
-        # Find all math expressions
-        inline_matches = list(self._inline_math_pattern.finditer(content))
-        display_matches = list(self._display_math_pattern.finditer(content))
-
-        # Check each math expression for balanced braces
-        for match in inline_matches + display_matches:
+    def _extract_display_math(self, masked: str, content: str, filepath: Path, errors: List[LintError]) -> str:
+        """Validate $$...$$ blocks, then blank them out of the scan."""
+        for match in self._display_math_pattern.finditer(masked):
             expr = match.group(1)
-            line_num = content[: match.start()].count("\n") + 1
+            line, col = self._line_col(content, match.start())
+            self._check_balanced_braces(expr, filepath, errors, line, col)
+            masked = self._blank_region(masked, match.start(), match.end())
+        return masked
 
-            # Check braces
-            brace_stack = []
-            for i, char in enumerate(expr):
-                if char == "{":
-                    brace_stack.append(i)
-                elif char == "}":
-                    if not brace_stack:
-                        errors.append(
-                            LintError(
-                                file_path=str(filepath),
-                                line_number=line_num,
-                                column_number=match.start() - content[: match.start()].rfind("\n") + i + 1,
-                                severity=Severity.ERROR,
-                                rule_id="math-notation",
-                                message="Unbalanced braces in math expression (closing without opening)",
-                                suggestion="Add opening brace or remove closing brace",
-                                context=expr,
-                            )
-                        )
-                    else:
-                        brace_stack.pop()
+    def _extract_inline_math(self, masked: str, content: str, filepath: Path, errors: List[LintError]) -> str:
+        """Validate $...$ spans, then blank them out of the scan."""
+        for match in self._inline_math_pattern.finditer(masked):
+            expr = match.group(1)
+            line, col = self._line_col(content, match.start())
+            self._check_balanced_braces(expr, filepath, errors, line, col)
+            masked = self._blank_region(masked, match.start(), match.end())
+        return masked
 
-            # Check for unclosed braces
-            if brace_stack:
-                errors.append(
-                    LintError(
-                        file_path=str(filepath),
-                        line_number=line_num,
-                        column_number=match.start() - content[: match.start()].rfind("\n") + brace_stack[0] + 1,
-                        severity=Severity.ERROR,
-                        rule_id="math-notation",
-                        message="Unbalanced braces in math expression (opening without closing)",
-                        suggestion="Add closing brace or remove opening brace",
-                        context=expr,
-                    )
+    def _check_unmatched(self, masked: str, content: str, filepath: Path, errors: List[LintError]) -> None:
+        """Flag leftover delimiters: a $$ pair fragment or a lone opener."""
+        for match in re.finditer(r"\$\$", masked):
+            line, col = self._line_col(content, match.start())
+            errors.append(
+                LintError(
+                    file_path=str(filepath),
+                    line_number=line,
+                    column_number=col,
+                    severity=Severity.ERROR,
+                    rule_id="math-notation",
+                    message="Unmatched display math delimiter ($$)",
+                    suggestion="Ensure every $$ has a matching closing $$",
+                    context=content.split("\n")[line - 1],
                 )
+            )
+        for match in self._opener_pattern.finditer(masked):
+            # Skip the second $ of a $$ pair already reported above.
+            if match.start() > 0 and masked[match.start() - 1] == "$":
+                continue
+            line, col = self._line_col(content, match.start())
+            errors.append(
+                LintError(
+                    file_path=str(filepath),
+                    line_number=line,
+                    column_number=col,
+                    severity=Severity.ERROR,
+                    rule_id="math-notation",
+                    message="Unmatched inline math delimiter ($)",
+                    suggestion="Ensure every $ has a matching closing $",
+                    context=content.split("\n")[line - 1],
+                )
+            )
+
+    def _check_balanced_braces(
+        self,
+        expr: str,
+        filepath: Path,
+        errors: List[LintError],
+        line: int,
+        col: int,
+    ) -> None:
+        """Check for balanced braces in one math expression.
+
+        Backslash-escaped braces (``\\{``, ``\\}``) are literals.
+        """
+        unescaped = re.sub(r"\\.", "", expr)
+        depth = 0
+        for char in unescaped:
+            if char == "{":
+                depth += 1
+            elif char == "}":
+                if depth == 0:
+                    errors.append(
+                        LintError(
+                            file_path=str(filepath),
+                            line_number=line,
+                            column_number=col,
+                            severity=Severity.ERROR,
+                            rule_id="math-notation",
+                            message="Unbalanced braces in math expression (closing without opening)",
+                            suggestion="Add opening brace or remove closing brace",
+                            context=expr.strip(),
+                        )
+                    )
+                    return
+                depth -= 1
+        if depth > 0:
+            errors.append(
+                LintError(
+                    file_path=str(filepath),
+                    line_number=line,
+                    column_number=col,
+                    severity=Severity.ERROR,
+                    rule_id="math-notation",
+                    message="Unbalanced braces in math expression (opening without closing)",
+                    suggestion="Add closing brace or remove opening brace",
+                    context=expr.strip(),
+                )
+            )

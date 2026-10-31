@@ -14,7 +14,7 @@
 Two small specifications whose theorems were pure trivia, replaced by the
 properties their subjects actually have.
 
-## 2. Lexical rules (`LexicalStructureSyntax`)
+## 2. Definitions: lexical rules (`LexicalStructureSyntax`)
 
 **What was there:** ten theorems, all `rfl` facts about `String.length`,
 `Char.isDigit` and `List.toString` — nothing about lexing.
@@ -37,7 +37,7 @@ is invisible until the two rules are put side by side.
 The *totality* of lexing — that every input is consumed in finite time — is
 proved separately in `Morph/Specs/TotalLexer` (research loop 9).
 
-## 3. Null coalescing (`OperatorNullCoalescing`)
+## 3. Requirements: null coalescing (`OperatorNullCoalescing`)
 
 **What was there:** four theorems, all `rfl` facts about `Option.getOrDeref` and
 `Option.orElse` — nothing about null coalescing, the module's actual subject.

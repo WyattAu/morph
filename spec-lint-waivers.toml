@@ -1,0 +1,79 @@
+# Intentional deviations from docs/conventions/specification_convention.md.
+#
+# Each waiver names a file, a lint rule, and the reason the deviation is
+# deliberate. Waived errors are still reported by `spec-tools lint`
+# (see the "Waived:" summary line) — they are explicit, not hidden.
+# Reviewed quarterly: a waiver is removed once the file complies.
+#
+# Rule IDs: header-validation, section-structure, math-notation,
+# mermaid-syntax, cross-reference, change-log, ears.
+
+[[waiver]]
+path = "spec/GLOSSARY.md"
+rule = "section-structure"
+reason = "Glossary document class: defines terms corpus-wide; a Requirements section is not applicable."
+
+[[waiver]]
+path = "spec/README.md"
+rule = "section-structure"
+reason = "Index document class: maps the spec tree; states no definitions or requirements of its own."
+
+[[waiver]]
+path = "spec/language/morph_language_spec.md"
+rule = "section-structure"
+reason = "Umbrella spec class: twelve domain sections each carry their own definitions and requirements; a single Requirements section would duplicate them."
+
+[[waiver]]
+path = "spec/language/lexical_structure_syntax_spec.md"
+rule = "section-structure"
+reason = "Reference-grammar class: states the grammar (source representation through EBNF); behavioral requirements are not applicable to a grammar reference."
+
+[[waiver]]
+path = "spec/language/morph_language_edits_spec.md"
+rule = "section-structure"
+reason = "Edits-log class: records before/after amendments with traceability; terms are defined in the specs it amends."
+
+[[waiver]]
+path = "spec/validation/unproven_assumptions_spec.md"
+rule = "section-structure"
+reason = "Assumption-ledger class: validates recorded assumptions against the Lean proofs; states no requirements of its own."
+
+[[waiver]]
+path = "spec/memory/memory_model_safety_spec.md"
+rule = "section-structure"
+reason = "Audit-table class: a before/after table of stub claims with traceability; the definitional content lives in memory_model_spec.md."
+
+[[waiver]]
+path = "spec/language/simultaneous_substitution_spec.md"
+rule = "section-structure"
+reason = "Proof-note class: the lifting and multi-argument laws are stated together with their definitions in a 95-line note; a standalone glossary section would duplicate them."
+
+[[waiver]]
+path = "spec/concurrency/monadic_effect_spec.md"
+rule = "section-structure"
+reason = "Monograph class: states the effect-monad formalization directly (§1 defines the monad); a separate Purpose section would duplicate the title, and the monad laws live inline in §1.1 rather than in a Requirements section."
+
+[[waiver]]
+path = "spec/language/module_system_spec.md"
+rule = "section-structure"
+reason = "Reference-style spec: opens directly with definitions; scope is stated in §7 Requirements Traceability."
+
+[[waiver]]
+path = "spec/licensing/licensing_spec.md"
+rule = "section-structure"
+reason = "Policy class: normative license policy whose authority and scope are stated in §§1-2; a separate Purpose section would duplicate them."
+
+[[waiver]]
+path = "spec/math/maths_spec.md"
+rule = "section-structure"
+reason = "Domain-extension umbrella class (units + arbitrary precision); purpose is stated in the file's opening note rather than a Purpose section."
+
+[[waiver]]
+path = "spec/security/infrastructure_safety_contracts_spec.md"
+rule = "section-structure"
+reason = "Contracts-catalog class: each contract section states its own scope; a single Purpose section would duplicate them."
+
+[[waiver]]
+path = "spec/type/type_category_spec.md"
+rule = "section-structure"
+reason = "Formalization-note class: formalizes Morph types as a category; the category laws are unstated future work, so a Requirements section would fabricate obligations."

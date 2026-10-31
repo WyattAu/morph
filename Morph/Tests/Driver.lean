@@ -3,6 +3,7 @@ SPDX-License-Identifier: Apache-2.0
 -/
 
 import Morph.Driver
+import Morph.Version
 
 /-!
 # Driver tests
@@ -268,6 +269,112 @@ example : isStuck (runSource "noSuchVariable + 1") := by
 
 -- And `morph parse` reports the AST without evaluating.
 example : isValue (parseSource "1 + 2") := by native_decide
+
+/-! ## Error-message goldens (Sprint 5) -/
+
+-- Golden: the exact bytes on stderr for a truncated expression.
+example : runSource "1 +" == .parseFailed "line 1, col 1: failed to parse" := by
+  native_decide
+
+-- Golden: garbage fails with the same single-line report.
+example : runSource "!!" == .parseFailed "line 1, col 1: failed to parse" := by
+  native_decide
+
+-- Golden: a bad first character reports at 1:1 too.
+example : runSource "@" == .parseFailed "line 1, col 1: failed to parse" := by
+  native_decide
+
+-- Golden: empty input has its own zero-position report.
+example : runSource "" == .parseFailed "line 0, col 0: empty input" := by
+  native_decide
+
+-- Golden: stuck carries no message -- these equalities pin that.
+example : runSource "1 && true" == .stuck := by native_decide
+
+example : runSource "noSuchVariable + 1" == .stuck := by native_decide
+
+-- Golden: the CLI help text (`morph` with missing/bad args prints this).
+example : usage =
+    "usage: morph <command> [argument]\n" ++
+    "  eval <expr>   parse and evaluate an expression\n" ++
+    "  parse <expr>  print the parsed AST\n" ++
+    "  check <expr>  print the inferred type or the type error\n" ++
+    "  run <file>    run the statement program in a file\n" ++
+    "  run --hir <file>  run the file through the HIR lowering\n" ++
+    "  fmt <file>    format the statement program in a file\n" ++
+    "  doc <file>    render the file's /// docs as Markdown\n" ++
+    "  version       print the Morph version\n" := by
+  native_decide
+
+-- Golden: the release version `morph version` prints.
+example : Morph.versionString == "0.1.0" := by native_decide
+
+-- Golden: what the CLI prints for a stuck outcome.
+example : report .stuck = "stuck: evaluation got stuck or exhausted its fuel" := by
+  rfl
+
+-- Golden: `check` surfaces the type error verbatim (the top-level
+-- expectation is `unitType` -- see `checkSource`).
+example : checkSource "1 + true" == .typeError
+    "Cannot infer type for expression: Morph.Syntax.Expr.binop\n  (Morph.Core.Operator.add)\n  (Morph.Syntax.Expr.lit (Morph.Core.Value.int 1))\n  (Morph.Syntax.Expr.lit (Morph.Core.Value.bool true))" := by
+  native_decide
+
+-- Golden: an unbound name is a type error under `check` (stuck under `eval`).
+example : checkSource "noSuchVariable + 1" == .typeError
+    "Cannot infer type for expression: Morph.Syntax.Expr.binop\n  (Morph.Core.Operator.add)\n  (Morph.Syntax.Expr.fvar \"noSuchVariable\")\n  (Morph.Syntax.Expr.lit (Morph.Core.Value.int 1))" := by
+  native_decide
+
+-- Golden: `--hir` on a program outside the fragment reports exactly this.
+example : runProgramHIR "let y = 0; match none { case none => { y = 1; } }" ==
+    .unsupported
+      "program leaves the HIR fragment (--hir runs first-order let/match/while programs only)" := by
+  native_decide
+
+-- Golden: `--hir` on a first-order program evaluates it.
+example : runProgramHIR "let y = 5; y" == .value "5" := by native_decide
+
+/-! ## `fmt` and `doc` goldens (Sprint 6 / loop 90) -/
+
+-- Golden: `fmt` prints the canonical `hum` rendering of a program.
+example : formatProgram "let y = 5; y" == .value "let y = 5;\ny" := by
+  native_decide
+
+-- Golden: formatting is a fixpoint — canonical output reformats cleanly.
+example : formatProgram "let y = 5;\ny" == .value "let y = 5;\ny" := by
+  native_decide
+
+-- Golden: `while` programs format structurally.
+example : formatProgram "while (true) { y = 1; }" ==
+    .value "while true { y = 1 }" := by
+  native_decide
+
+-- Golden: `fmt` fails exactly like `run` on unparseable input.
+example : formatProgram "1 +" == .parseFailed "line 1, col 1: failed to parse" := by
+  native_decide
+
+-- Golden: `///` lines are skipped by the parser, so documented files run.
+example : runProgram "/// Add one.\nlet y = 5;\ny" == .value "5" := by
+  native_decide
+
+-- Golden: `doc` renders doc entries as Markdown.
+example : docSource "/// Add one.\n/// Uses `y`.\nlet y = 5;\ny" ==
+    .value "# Documentation\n\n## `let y = 5;`\nAdd one.\nUses `y`.\n" := by
+  native_decide
+
+-- Golden: plain `//` comments between the docs and the code are tolerated.
+example : docSource "let y = 5;\n// plain comment\n/// Documented.\ny = 6;" ==
+    .value "# Documentation\n\n## `y = 6;`\nDocumented.\n" := by
+  native_decide
+
+-- Golden: files without docs get the empty note, not an error.
+example : docSource "let y = 5;\ny" ==
+    .value "# Documentation\n\nNo documentation comments found.\n" := by
+  native_decide
+
+-- Golden: trailing docs with no following statement are dropped.
+example : docSource "/// Trailing docs with no statement." ==
+    .value "# Documentation\n\nNo documentation comments found.\n" := by
+  native_decide
 
 /-! ## `match` expressions (loop 77) -/
 

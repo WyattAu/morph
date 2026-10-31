@@ -14,8 +14,8 @@
 ## Table of Contents
 
 1. [Purpose and Scope](#1-purpose-and-scope)
-2. [Version Numbering Scheme](#2-version-numbering-scheme)
-3. [Version Compatibility Rules](#3-version-compatibility-rules)
+2. [Definitions: Version Numbering Scheme](#2-definitions-version-numbering-scheme)
+3. [Requirements: Version Compatibility Rules](#3-requirements-version-compatibility-rules)
 4. [Compatibility Matrix](#4-compatibility-matrix)
 5. [Upgrade Paths](#5-upgrade-paths)
 6. [Deprecation Policy](#6-deprecation-policy)
@@ -71,7 +71,7 @@ This specification applies to:
 
 ---
 
-## 2. Version Numbering Scheme
+## 2. Definitions: version numbering scheme
 
 ### 2.1 Semantic Versioning (SemVer)
 
@@ -164,7 +164,7 @@ Build metadata MUST be ignored for version ordering:
 
 ---
 
-## 3. Version Compatibility Rules
+## 3. Requirements: version compatibility rules
 
 ### 3.1 Compatibility Lattice
 

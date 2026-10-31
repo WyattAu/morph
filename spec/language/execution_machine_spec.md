@@ -37,7 +37,7 @@ stating what it evaluates to. Two semantics, neither connected to the other.
 | **Krivine** (1979), **Landsky** (1978) | The display machine, whose single instruction is substitution — which makes the *substitution algebra* the whole semantics. Morph already has that algebra, machine-checked (`Morph/Specs/SubstTheory`). |
 | **Joachim & Bock**, *Programming language semantics by formalizing abstract machines* (1996) | The discipline followed here: specify the machine, derive the equations from its steps. |
 
-## 4. The machine
+## 4. Definitions: the machine
 
 `State = Expr × Env × Kont`, where `Kont` is a list of frames (`arg` for a
 pending closure, `ifThenElse` for a pending branch).

@@ -73,8 +73,8 @@ The Type System Specification is closely related to several other Morph specific
 - [`spec/language/scoping_lambda_calculus_spec.md`](../language/scoping_lambda_calculus_spec.md) - Scoping rules and lambda calculus formalization
 
 * Tooling Specifications:*
-- [`spec/tooling/metaprogramming_spec.md`](../tooling/metaprogramming_spec.md) - Metaprogramming, comptime blocks, and optimization holes
-- [`spec/tooling/compiler_bisimulation_spec.md`](../tooling/compiler_bisimulation_spec.md) - Compiler bisimulation and optimization correctness
+- [`spec/tooling/metaprogramming_spec.md`](../tooling/_future_research/metaprogramming_spec.md) - Metaprogramming, comptime blocks, and optimization holes
+- [`spec/tooling/compiler_bisimulation_spec.md`](../tooling/_future_research/compiler_bisimulation_spec.md) - Compiler bisimulation and optimization correctness
 
 * Type System Specifications:*
 - [`spec/type/type_category_spec.md`](./type_category_spec.md) - Type category theory and algebraic type foundations
@@ -96,8 +96,8 @@ The Type System Specification is closely related to several other Morph specific
 - [`spec/optimization/optimization_bayesian_spec.md`](../optimization/optimization_bayesian_spec.md) - Bayesian optimization strategies
 
 * Distributed Systems Specifications:*
-- [`spec/distributed_vector_clock_spec.md`](../distributed_vector_clock_spec.md) - Vector clocks for distributed causality
-- [`spec/tooling/distributed_crdt_spec.md`](../tooling/distributed_crdt_spec.md) - CRDTs for distributed data structures
+- [`spec/distributed_vector_clock_spec.md`(../tooling/_future_research/distributed_vector_clock_spec.md) - Vector clocks for distributed causality
+- [`spec/tooling/distributed_crdt_spec.md`](../tooling/_future_research/distributed_crdt_spec.md) - CRDTs for distributed data structures
 
 * Standard Library Specifications:*
 - [`spec/stdlib/stdlib_algebraic_spec.md`](../stdlib/stdlib_algebraic_spec.md) - Algebraic specification of standard library data structures
@@ -1050,10 +1050,10 @@ type Node<T> = { value: T, next: ^Node<T>? };
 
 ### 7.6 Tooling Specifications
 
-- [`spec/tooling/metaprogramming_spec.md`](../tooling/metaprogramming_spec.md) - Metaprogramming, comptime blocks, and optimization holes
-- [`spec/tooling/compiler_bisimulation_spec.md`](../tooling/compiler_bisimulation_spec.md) - Compiler bisimulation and optimization correctness
-- [`spec/tooling/comptime_partial_eval_spec.md`](../tooling/comptime_partial_eval_spec.md) - Compile-time evaluation
-- [`spec/tooling/operational_semantics_spec.md`](../tooling/operational_semantics_spec.md) - Operational semantics for language constructs
+- [`spec/tooling/metaprogramming_spec.md`](../tooling/_future_research/metaprogramming_spec.md) - Metaprogramming, comptime blocks, and optimization holes
+- [`spec/tooling/compiler_bisimulation_spec.md`](../tooling/_future_research/compiler_bisimulation_spec.md) - Compiler bisimulation and optimization correctness
+- [`spec/tooling/comptime_partial_eval_spec.md`](../tooling/_future_research/comptime_partial_eval_spec.md) - Compile-time evaluation
+- [`spec/tooling/operational_semantics_spec.md`](../tooling/_future_research/operational_semantics_spec.md) - Operational semantics for language constructs
 
 ### 7.7 Standard Library Specifications
 

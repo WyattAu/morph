@@ -119,8 +119,9 @@ def _lint_directory(linter: SpecLinter, directory: Path, strict: bool, fix: bool
         for result in results:
             if not result.passed:
                 failed_files += 1
-                total_errors += result.error_count
-                total_warnings += result.warning_count
+            # Count every file: passed files can still carry warnings.
+            total_errors += result.error_count
+            total_warnings += result.warning_count
 
         # Display individual file results
         for result in results:
@@ -133,6 +134,8 @@ def _lint_directory(linter: SpecLinter, directory: Path, strict: bool, fix: bool
         print(f"  Files with issues: {failed_files}")
         print(f"  Errors: {total_errors}")
         print(f"  Warnings: {total_warnings}")
+        if linter.waived_count:
+            print(f"  Waived: {linter.waived_count} (see spec-lint-waivers.toml)")
 
         if strict:
             total_issues = total_errors + total_warnings

@@ -63,4 +63,16 @@ example : (match Morph.Frontend.parse "let x = 5 in x + 1" with
   | .error _ => true) = false := by
   native_decide
 
+/-- Loop 84 regression pin: statement `match` arms do NOT extend the
+expression scope (unlike expression `match_` arms, which prepend
+`patVars` — see the `resolveExpr` test above). Statements are
+name-based end to end: the runtime binds pattern names by name
+(`runMatchArms`), so the arm body correctly stays an `fvar`. This is
+what makes depth-0 `toHIR` in `toHIRStmt` correct — and what would
+break if someone "fixed" `parseMatchStmtArms` to extend scope. -/
+example : (match Morph.Frontend.parseProgram "match s { case x => { x; } }" with
+  | .ok ⟨[.matchStmt _ [(_, [.exprStmt e])]]⟩ => hasFVar e
+  | _ => false) = true := by
+  native_decide
+
 end Morph.Tests.NameResolution

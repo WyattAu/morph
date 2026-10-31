@@ -17,7 +17,7 @@
 
 This specification formalizes the **Task Scheduler** system using **Randomized Algorithms (Balls-into-Bins)**, providing mathematical foundation for load balancing. This formalization enables the Morph runtime to distribute work evenly across cores with high probability.
 
-**IMPORTANT:* Randomized work-stealing is the **default production scheduler**. For debugging and testing, deterministic time mode is available via `--debug-deterministic` flag (see [deterministic_time_spec.md](tooling/deterministic_time_spec.md)). Deterministic mode has a 2-5x performance penalty and should only be used for debugging.
+**IMPORTANT:* Randomized work-stealing is the **default production scheduler**. For debugging and testing, deterministic time mode is available via `--debug-deterministic` flag (see [deterministic_time_spec.md](tooling/_future_research/deterministic_time_spec.md)). Deterministic mode has a 2-5x performance penalty and should only be used for debugging.
 
 ### 1.2 Scope
 
@@ -32,7 +32,7 @@ This specification does not cover:
 - Concrete implementation of scheduler
 - Performance optimization details
 - Integration with hardware threads
-- Deterministic time scheduling (see [deterministic_time_spec.md](tooling/deterministic_time_spec.md))
+- Deterministic time scheduling (see [deterministic_time_spec.md](tooling/_future_research/deterministic_time_spec.md))
 
 ### 1.3 Definitions, Acronyms, and Abbreviations
 
@@ -211,7 +211,7 @@ The Scheduler is implemented as a runtime component that:
 
 **Mode Selection:*
 - **Production Mode (Default):* Uses randomized work-stealing scheduler. Optimal performance with linear scaling guarantee $E[T_P] \le T_1/P + O(T_\infty)$.
-- **Debug Mode:* Enabled via `--debug-deterministic` flag. Uses deterministic time scheduler (see [deterministic_time_spec.md](tooling/deterministic_time_spec.md)). Performance penalty: 2-5x slower than production mode. Use only for debugging and testing.
+- **Debug Mode:* Enabled via `--debug-deterministic` flag. Uses deterministic time scheduler (see [deterministic_time_spec.md](tooling/_future_research/deterministic_time_spec.md)). Performance penalty: 2-5x slower than production mode. Use only for debugging and testing.
 
 **Performance Trade-offs:*
 | Mode | Scheduler | Determinism | Performance | Use Case |

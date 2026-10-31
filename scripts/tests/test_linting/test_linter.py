@@ -2,8 +2,6 @@
 Unit tests for SpecLinter.
 """
 
-from pathlib import Path
-
 import pytest
 
 from spec_tools.linting.linter import SpecLinter
@@ -66,11 +64,15 @@ class TestSpecLinter:
         config = LintingConfig()
         linter = SpecLinter(config)
 
-        content = """Title: Sample Specification
-Version: 1.0.0
-Status: Draft
-Author: John Doe
-Last Modified: 2024-01-01
+        content = """# Sample Specification
+
+- File: `test.md`
+- Version: 1.0.0
+- Status: Draft
+- Author: John Doe
+- Last Modified: 2024-01-01
+
+---
 
 # 1. Purpose and Scope
 

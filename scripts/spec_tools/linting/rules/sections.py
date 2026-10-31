@@ -17,14 +17,15 @@ class SectionStructureRule(LintingRule):
     """Validates section structure in specification files.
 
     This rule checks that:
-    - Mandatory sections are present
+    - Mandatory sections are present (matched fuzzily against the
+      corpus convention: a purpose/scope/introduction section, a
+      definitions section, and a requirements section, under any
+      numbering)
     - Section numbering is sequential
     - Heading level hierarchy is correct (no skipping levels)
 
-    Mandatory sections:
-    - 1. Purpose and Scope
-    - 2. Definitions
-    - 3. Requirements
+    Files under `_future_research/` are explicitly speculative sketches
+    and are exempt from the mandatory-section check.
     """
 
     @property
@@ -34,12 +35,17 @@ class SectionStructureRule(LintingRule):
 
     def __init__(self) -> None:
         """Initialize section structure rule."""
-        self._mandatory_sections = {
-            "1. Purpose and Scope",
-            "2. Definitions",
-            "3. Requirements",
-        }
+        # (label, keywords): a section satisfies the requirement when its
+        # normalized heading text contains any keyword.
+        self._mandatory_sections = (
+            # A Philosophy section states a spec's purpose in this corpus.
+            ("purpose and scope", ("purpose", "scope", "introduction", "overview", "philosophy")),
+            ("definitions", ("definition", "terminology", "glossary")),
+            # "Obligations discharged" is the research-note form of requirements.
+            ("requirements", ("requirement", "obligation")),
+        )
         self._heading_pattern = re.compile(r"^(#{1,6})\s+(.+)$")
+        self._number_prefix_pattern = re.compile(r"^[\d.\s]+")
 
     def check(self, content: str, lines: List[str], filepath: Path) -> List[LintError]:
         """Check if content has valid section structure.
@@ -55,20 +61,22 @@ class SectionStructureRule(LintingRule):
         errors = []
         sections = self._extract_sections(lines)
 
-        # Check for mandatory sections
-        found_sections = {section["text"] for section in sections}
-        for mandatory in self._mandatory_sections:
-            if mandatory not in found_sections:
-                errors.append(
-                    LintError(
-                        file_path=str(filepath),
-                        line_number=1,
-                        severity=Severity.ERROR,
-                        rule_id="section-structure",
-                        message=f"Missing mandatory section: {mandatory}",
-                        suggestion=f"Add section '{mandatory}' to the specification",
+        # Check for mandatory sections (fuzzy: any numbering accepted).
+        # Future-research sketches are exempt by document class.
+        if "_future_research" not in filepath.parts:
+            normalized = [self._normalize_heading(s["text"]) for s in sections]
+            for label, keywords in self._mandatory_sections:
+                if not any(any(keyword in heading for keyword in keywords) for heading in normalized):
+                    errors.append(
+                        LintError(
+                            file_path=str(filepath),
+                            line_number=1,
+                            severity=Severity.ERROR,
+                            rule_id="section-structure",
+                            message=f"Missing mandatory section: {label}",
+                            suggestion=f"Add a '{label}' section to the specification",
+                        )
                     )
-                )
 
         # Check section numbering for numbered sections
         numbered_sections = [s for s in sections if self._is_numbered_section(s["text"])]
@@ -90,7 +98,15 @@ class SectionStructureRule(LintingRule):
         """
         sections = []
 
+        in_fence = False
         for line_num, line in enumerate(lines, start=1):
+            # TOML/shell comments (`# ...`) inside fenced code blocks are
+            # not headings.
+            if line.strip().startswith("```"):
+                in_fence = not in_fence
+                continue
+            if in_fence:
+                continue
             match = self._heading_pattern.match(line)
             if match:
                 level = len(match.group(1))
@@ -105,6 +121,10 @@ class SectionStructureRule(LintingRule):
 
         return sections
 
+    def _normalize_heading(self, text: str) -> str:
+        """Lowercase heading text with any leading numbering stripped."""
+        return self._number_prefix_pattern.sub("", text.lower()).strip()
+
     def _is_numbered_section(self, text: str) -> bool:
         """Check if section text starts with a number.
 
@@ -116,7 +136,10 @@ class SectionStructureRule(LintingRule):
         """
         return bool(re.match(r"^\d+\.", text))
 
-    _section_num_pattern = re.compile(r"^(\d+(?:\.\d+)*)\.")
+    # A section number is digits-and-dots followed by a dot or whitespace,
+    # so both `2.7 Title` and `2.7.1 Title` parse (a trailing dot alone
+    # used to swallow the minor version, silently disabling the check).
+    _section_num_pattern = re.compile(r"^(\d+(?:\.\d+)*)(?:\.|\s)")
 
     def _parse_section_number(self, text: str) -> tuple[int, ...] | None:
         """Parse hierarchical section number into a tuple.

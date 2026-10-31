@@ -78,3 +78,24 @@ The keyword definitions in `morph_language_spec.md` (LANG-REQ-023) and `lexical_
 
 *Status:* No fix needed — versions already correct.
 
+---
+
+## Contradiction #11: AbiDataRefinement spec Props overstate (loop 91)
+
+*Source:* `Morph/Specs/AbiDataRefinement/Spec.lean` (mapping summary marks
+3.1–3.3 ✓; header says "Status: Complete", "None identified").
+
+Two of the three spec Props are false as stated:
+- `spec_layout_compatibility` claims *every* pair of layouts is compatible.
+  Two layouts over different ABI types refute it.
+- `spec_data_validation` claims matching the ABI type suffices for validity.
+  A layout with no offsets has the right type and still fails `validateLayout`.
+
+*Evidence:* machine-checked refutations `spec_layout_compatibility_false` and
+`spec_data_validation_false` in `Morph/Specs/AbiDataRefinement/Lemmas.lean`,
+plus computational pins of the true behavior (`validateLayout_hit/mismatch`,
+`compatibleLayouts_refl/distinct`).
+
+*Status:* Recorded — spec revision (weakening the Props to the validated
+conditional forms) proposed, not yet applied.
+

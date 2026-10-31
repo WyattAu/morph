@@ -268,9 +268,13 @@ end
 /-! Render a statement. -/
 mutual
 def stmtStr (spaced : Bool) : Stmt → String
+  -- Declarations print in surface syntax (loop 90): the parser's statement
+  -- `let` takes no annotation (it elaborates to a placeholder type), so
+  -- printing `": " ++ typStr` produced code that does not reparse and
+  -- `morph fmt` could not round-trip. The annotation stays in the AST.
   | .exprStmt e => exprStr spaced e
-  | .varDecl name t e =>
-    "let " ++ idStr name ++ ": " ++ typStr t ++ " = " ++ exprStr spaced e
+  | .varDecl name _ e =>
+    "let " ++ idStr name ++ " = " ++ exprStr spaced e
   | .assign name e => idStr name ++ " = " ++ exprStr spaced e
   | .returnStmt e => "return " ++ exprStr spaced e
   | .break => "break"

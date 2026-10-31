@@ -37,7 +37,7 @@ Both were about the same object, and both were wrong about it:
 This loop supplies the missing decision procedure, for a relation that means
 something.
 
-## 3. The relation
+## 3. Definitions: the subtyping relation
 
 `Sub` is a preorder on `Typ`:
 
@@ -56,7 +56,7 @@ something.
 `refType .iso (optionType τ)` where a `refType .iso τ` is expected would *widen*
 what the holder may do with it, which is unsound in a capability system.
 
-## 4. What is proved
+## 4. Requirements: what is proved
 
 | Theorem | Statement |
 |---|---|

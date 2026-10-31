@@ -65,8 +65,10 @@ def Flow.replace : Flow → Expr → Flow
 mutual
 
 /-- Run statements to completion. `acc` carries the most recent expression
-statement's value, so the sequence's value is its last expression. -/
-private def runStmts : Nat → List (String × Expr) → List Stmt → Flow → Ran
+statement's value, so the sequence's value is its last expression.
+Public (loop 88): the statement preservation theorem in
+`Morph.Frontend.HIRInterp` names this runner. -/
+def runStmts : Nat → List (String × Expr) → List Stmt → Flow → Ran
   | 0, env, _, _ => (.stuck, env)
   | _ + 1, env, [], acc => (acc, env)
   | fuel + 1, env, .nop :: rest, acc => runStmts fuel env rest acc
@@ -125,8 +127,9 @@ private def runStmts : Nat → List (String × Expr) → List Stmt → Flow → 
 /-- `while (cond) body`: one fuel unit per iteration; the body's final
 environment is the next iteration's starting environment. `break` exits the
 loop as completed; `continue` starts the next iteration; `return` propagates.
-The loop's own value is unit. -/
-private def runWhile (fuel : Nat) (env : List (String × Expr)) (cond : Expr)
+The loop's own value is unit. Public (loop 88): named by the statement
+preservation theorem. -/
+def runWhile (fuel : Nat) (env : List (String × Expr)) (cond : Expr)
     (body : List Stmt) : Ran :=
   match fuel with
   | 0 => (.stuck, env)

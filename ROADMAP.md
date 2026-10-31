@@ -14,7 +14,7 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 |---|---|
 | `lake build Morph` | 328 jobs, 0 errors, 2 sorry warnings |
 | `lake build Morph.Tests` | 186 jobs, 0 errors |
-| Python spec-tools | 735 tests, 93.29% coverage |
+| Python spec-tools | 836 tests, 96% coverage (as of 2026-10-30) |
 | `.lean` files | 155 (209 as of 2026-10-30) |
 | Lines of Lean | ~16,165 (~42k as of 2026-10-30) |
 | Spec modules | 43 (58 as of 2026-10-30) |
@@ -247,7 +247,7 @@ closure); see `Morph/Tests/Property.lean`. The original per-target plan:
 
 ### 3.4 Python spec-tools coverage improvement
 
-Current: 93.29% coverage. Target: 95%.
+Current: 96% coverage as of 2026-10-30 (target 95% met).
 
 Priority areas:
 - `spec_tools/validation/checks/` (70-73% each)
@@ -455,16 +455,16 @@ Ongoing:   [7.x]                               -- research directions
 | Criterion | Target | Current |
 |---|---|---|
 | `lake build Morph` errors | 0 | 0 |
-| `lake build Morph` warnings | 0 | 2 (sorry-related) |
+| `lake build Morph` warnings | 0 | 0 |
 | `sorry` in `Morph/` | 0 | 0 (was 6 at audit; resolved by 2026-10-30) |
 | `example : True := trivial` stubs | 0 | 0 |
-| Broken cross-references | 0 | 26 (nonexistent targets) |
+| Broken cross-references | 0 | 0 |
 | CI passes on every push | Yes | Blocked by billing |
-| Python spec-tools coverage | >= 95% | 93.29% |
+| Python spec-tools coverage | >= 95% | 96% |
 | Lean tests pass | All | All |
 | Pre-commit blocks on sorry | Yes | Warns only |
-| Regression snapshot tracking | Active | None |
-| Spec status page | Auto-generated | Manual |
+| Regression snapshot tracking | Active | Active (Era-1 baseline 2026-10-30) |
+| Spec status page | Auto-generated | Auto-generated (SPEC_STATUS.md + CI-tracked .reports/spec-status.md) |
 | Documentation site | Complete | Complete (landing + 5 pages) |
 
 ---

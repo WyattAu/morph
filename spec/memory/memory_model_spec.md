@@ -74,8 +74,8 @@ The Memory Model Specification is closely related to several other Morph specifi
 - [`spec/concurrency/concurrency_process_algebra_spec.md`](../concurrency/concurrency_process_algebra_spec.md) - Process algebra formalization of concurrent communication
 
 * Distributed Systems Specifications:*
-- [`spec/distributed_vector_clock_spec.md`](../distributed_vector_clock_spec.md) - Vector clocks for distributed causality and sequential consistency
-- [`spec/tooling/deterministic_time_spec.md`](../tooling/deterministic_time_spec.md) - Deterministic time simulation for debugging
+- [`spec/distributed_vector_clock_spec.md`(../tooling/_future_research/distributed_vector_clock_spec.md) - Vector clocks for distributed causality and sequential consistency
+- [`spec/tooling/deterministic_time_spec.md`](../tooling/_future_research/deterministic_time_spec.md) - Deterministic time simulation for debugging
 
 * Note:* These cross-references help readers navigate to Morph specification ecosystem by providing links to related specifications that provide complementary or detailed information about concepts referenced in this document.
 
@@ -589,7 +589,7 @@ $$ \forall o_1, o_2 \in \text{Operations}, o_1 \prec o_2 \implies \text{Visible}
 
 * Note on Distributed Consistency:*
 - Sequential consistency applies to local memory operations within a single actor
-- Distributed systems use vector clocks for causal consistency (see [`distributed_vector_clock_spec.md`](../distributed_vector_clock_spec.md))
+- Distributed systems use vector clocks for causal consistency (see [`distributed_vector_clock_spec.md`(../tooling/_future_research/distributed_vector_clock_spec.md))
 - Vector clocks provide causal ordering, not sequential consistency
 - Sequential consistency is only guaranteed within a single actor's memory space
 
@@ -2709,10 +2709,10 @@ logic receiver {
 
 ### 7.6 Tooling Specifications
 
-- [`spec/tooling/metaprogramming_spec.md`](../tooling/metaprogramming_spec.md) - Metaprogramming, comptime blocks, and optimization holes
-- [`spec/tooling/compiler_bisimulation_spec.md`](../tooling/compiler_bisimulation_spec.md) - Compiler bisimulation and optimization correctness
-- [`spec/tooling/comptime_partial_eval_spec.md`](../tooling/comptime_partial_eval_spec.md) - Compile-time evaluation
-- [`spec/tooling/operational_semantics_spec.md`](../tooling/operational_semantics_spec.md) - Operational semantics for language constructs
+- [`spec/tooling/metaprogramming_spec.md`](../tooling/_future_research/metaprogramming_spec.md) - Metaprogramming, comptime blocks, and optimization holes
+- [`spec/tooling/compiler_bisimulation_spec.md`](../tooling/_future_research/compiler_bisimulation_spec.md) - Compiler bisimulation and optimization correctness
+- [`spec/tooling/comptime_partial_eval_spec.md`](../tooling/_future_research/comptime_partial_eval_spec.md) - Compile-time evaluation
+- [`spec/tooling/operational_semantics_spec.md`](../tooling/_future_research/operational_semantics_spec.md) - Operational semantics for language constructs
 
 ### 7.7 Standard Library Specifications
 

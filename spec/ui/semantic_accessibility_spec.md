@@ -1,3 +1,5 @@
+# Semantic Accessibility Specification
+
 ## 1. Philosophy: The "Textual Viewport"
 
 An Agent cannot see pixels. If an Agent builds a UI, it needs a way to verify:
@@ -10,7 +12,7 @@ The SAP provides a **Computed Semantic Tree**—a snapshot of UI _after_ layout 
 
 * Note:* The layout calculation is performed by the **UI Layout Engine** defined in [`spec/ui/ui_constraint_algebra_spec.md`](./ui_constraint_algebra_spec.md). The Layout Engine computes widget geometry using constraint algebra, and SAP consumes this geometry to build a semantic tree.
 
-## 2. The Semantic Node Schema
+## 2. Definitions: the semantic node schema
 
 Every UI element (Widget) is serialized into a `SemanticNode` object.
 

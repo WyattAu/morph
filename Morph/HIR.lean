@@ -39,7 +39,7 @@ This dual representation enables both efficient indexing and readable debugging.
 structure Id where
   index : Nat
   name : String
-  deriving Repr, BEq, Hashable
+  deriving Repr, BEq, Hashable, DecidableEq
 
 namespace Id
 
@@ -104,6 +104,10 @@ inductive Expr : Type where
   | block : List Expr -> Expr
   | infer : Expr
  deriving Repr
+
+/-- The `infer` placeholder is a value, so `Expr` is inhabited (needed for
+`List.getLast!` in evaluators). -/
+instance : Inhabited Expr := ⟨.infer⟩
 
 /-!
 ## Stmt

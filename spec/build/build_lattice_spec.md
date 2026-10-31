@@ -405,10 +405,10 @@ a.morph -> b.morph -> a.morph
 
 ### 7.6 Tooling Specifications
 
-- [`spec/tooling/metaprogramming_spec.md`](../tooling/metaprogramming_spec.md) - Metaprogramming, comptime blocks, and optimization holes
-- [`spec/tooling/compiler_bisimulation_spec.md`](../tooling/compiler_bisimulation_spec.md) - Compiler bisimulation and optimization correctness
-- [`spec/tooling/comptime_partial_eval_spec.md`](../tooling/comptime_partial_eval_spec.md) - Compile-time evaluation
-- [`spec/tooling/operational_semantics_spec.md`](../tooling/operational_semantics_spec.md) - Operational semantics for language constructs
+- [`spec/tooling/metaprogramming_spec.md`](../tooling/_future_research/metaprogramming_spec.md) - Metaprogramming, comptime blocks, and optimization holes
+- [`spec/tooling/compiler_bisimulation_spec.md`](../tooling/_future_research/compiler_bisimulation_spec.md) - Compiler bisimulation and optimization correctness
+- [`spec/tooling/comptime_partial_eval_spec.md`](../tooling/_future_research/comptime_partial_eval_spec.md) - Compile-time evaluation
+- [`spec/tooling/operational_semantics_spec.md`](../tooling/_future_research/operational_semantics_spec.md) - Operational semantics for language constructs
 
 ### 7.7 Standard Library Specifications
 

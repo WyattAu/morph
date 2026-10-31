@@ -68,7 +68,7 @@ The Null-Coalescing Operator Specification is closely related to several other M
 - [`spec/language/scoping_lambda_calculus_spec.md`](./scoping_lambda_calculus_spec.md) - Lambda calculus and scoping rules
 
 * Tooling Specifications:*
-- [`spec/tooling/operational_semantics_spec.md`](../tooling/operational_semantics_spec.md) - Operational semantics for expressions
+- [`spec/tooling/operational_semantics_spec.md`](../tooling/_future_research/operational_semantics_spec.md) - Operational semantics for expressions
 
 * Note:* This specification provides the authoritative definition of the `??` operator that supersedes all previous references in the listed specifications.
 
@@ -128,7 +128,7 @@ $$
 **Rule 2: Evaluate Left Operand (Null)**
 $$
 \frac{\text{eval}(e_1, \sigma) = \text{null}}
-{e_1 \text{ ?? } e_2, \sigma} \longrightarrow \text{eval}(e_2, \sigma)}
+{e_1 \text{ ?? } e_2, \sigma} \longrightarrow \text{eval}(e_2, \sigma)
 $$
 
 **Interpretation:* 

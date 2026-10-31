@@ -129,7 +129,7 @@ The Morph specification refinement project was initiated to address:
 - Provided examples with effects
 
 **Deliverables:**
-- Operational semantics in [`spec/tooling/operational_semantics_spec.md`](../spec/tooling/operational_semantics_spec.md)
+- Operational semantics in [`spec/tooling/operational_semantics_spec.md`](../spec/tooling/_future_research/operational_semantics_spec.md)
 - Type rules: `Γ ⊢ e1 : T?     Γ ⊢ e2 : T ⇒ Γ ⊢ e1 ?? e2 : T`
 - Effect rules: `eff(e1 ?? e2) = E1 ∪ E2` (with short-circuiting exception)
 - Examples demonstrating behavior
@@ -163,7 +163,7 @@ The Morph specification refinement project was initiated to address:
 - Resolved contradiction between projectional editing and multiple dialects
 
 **Deliverables:**
-- [`spec/tooling/hot_reload_projection_spec.md`](../spec/tooling/hot_reload_projection_spec.md)
+- [`spec/tooling/hot_reload_projection_spec.md`](../spec/tooling/_future_research/hot_reload_projection_spec.md)
 - Projection type definition
 - Multiple projection examples (agent, human)
 - Projection composition rules

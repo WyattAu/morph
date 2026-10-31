@@ -121,11 +121,22 @@ class MermaidSyntaxRule(LintingRule):
             filepath: File path for error reporting
             errors: List to append errors to
         """
-        # Extract first line (should contain diagram type)
-        first_line = block_content.split("\n")[0].strip()
+        # Extract first line (should contain diagram type). Mermaid
+        # diagrams take arguments on the same line (``graph TD``,
+        # ``flowchart LR``) and versioned variants (``stateDiagram-v2``),
+        # so only the first token identifies the diagram type. Leading
+        # comment lines (``%% ...`` or ``// ...``) are skipped.
+        first_line = ""
+        for raw_line in block_content.split("\n"):
+            stripped = raw_line.strip()
+            if stripped and not stripped.startswith("%%") and not stripped.startswith("//"):
+                first_line = stripped
+                break
+        diagram_token = first_line.split()[0] if first_line.split() else ""
+        diagram_base = diagram_token.removesuffix("-v2")
 
         # Check if it's a valid diagram type
-        if first_line not in self._valid_diagram_types:
+        if diagram_base not in self._valid_diagram_types:
             errors.append(
                 LintError(
                     file_path=str(filepath),

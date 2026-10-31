@@ -599,4 +599,31 @@ section CheckingModeTests
 
 end CheckingModeTests
 
+section ErrorMessageTests
+  open Morph.Core
+  open Morph.Syntax
+  open Morph.TypeChecker
+
+  -- Golden: the exact user-facing type-error strings (Sprint 5).
+  -- `checkSource` / `morph check` surface these verbatim.
+
+  -- A synthesized type that differs from the expectation reports both.
+  example : formatTypeError [] [] (.lit (.int 1)) .boolType =
+      "Type mismatch: expected Morph.Core.Typ.boolType, found Morph.Core.Typ.intType in Morph.Syntax.Expr.lit (Morph.Core.Value.int 1)" := by
+    native_decide
+
+  -- An unbound name reports the whole expression it could not infer.
+  example : formatTypeError [] [] (.fvar "zzz") .intType =
+      "Cannot infer type for expression: Morph.Syntax.Expr.fvar \"zzz\"" := by
+    native_decide
+
+  -- The multi-line `repr` continuation (two-space indent) is pinned too:
+  -- a pretty-printing change must update this golden deliberately.
+  example : formatTypeError [] []
+      (.binop .add (.lit (.int 1)) (.lit (.bool true))) .intType =
+      "Cannot infer type for expression: Morph.Syntax.Expr.binop\n  (Morph.Core.Operator.add)\n  (Morph.Syntax.Expr.lit (Morph.Core.Value.int 1))\n  (Morph.Syntax.Expr.lit (Morph.Core.Value.bool true))" := by
+    native_decide
+
+end ErrorMessageTests
+
 end Tests.Typing

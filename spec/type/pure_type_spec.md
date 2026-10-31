@@ -73,8 +73,8 @@ The Pure Type Specification is closely related to several other Morph specificat
 - [`spec/security/security_flow_spec.md`](../security/security_flow_spec.md) - Security flow analysis and effect-based access control
 
 * Tooling Specifications:*
-- [`spec/tooling/operational_semantics_spec.md`](../tooling/operational_semantics_spec.md) - Operational semantics for Pure functions
-- [`spec/tooling/comptime_partial_eval_spec.md`](../tooling/comptime_partial_eval_spec.md) - Compile-time evaluation of Pure expressions
+- [`spec/tooling/operational_semantics_spec.md`](../tooling/_future_research/operational_semantics_spec.md) - Operational semantics for Pure functions
+- [`spec/tooling/comptime_partial_eval_spec.md`](../tooling/_future_research/comptime_partial_eval_spec.md) - Compile-time evaluation of Pure expressions
 
 * Note:* This specification provides authoritative definition of Pure type that supersedes all previous references in listed specifications.
 

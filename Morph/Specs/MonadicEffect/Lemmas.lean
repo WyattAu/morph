@@ -42,4 +42,57 @@ theorem effect_algebra_traverses_continuations :
       (.op (.read "secret") (fun _ => .op (.now "utc") (fun _ => .pure "x"))))
       = [.io, .time] := rfl
 
+/-! ## Depth re-audit (loop 91): the spec definitions' own facts -/
+
+/-- `effectName` projects each operation's name. -/
+theorem effectName_read (n : String) : (EffectOp.read n).effectName = n := rfl
+
+theorem effectName_write (n v : String) : (EffectOp.write n v).effectName = n := rfl
+
+theorem effectName_ask (n : String) : (EffectOp.ask n).effectName = n := rfl
+
+theorem effectName_raise (n : String) : (EffectOp.raise n).effectName = n := rfl
+
+/-- A handler handles what it lists. -/
+theorem canHandle_listed :
+    Handler.canHandle ⟨"h", ["fs", "net"]⟩ (.read "fs") = true := rfl
+
+/-- A handler refuses what it does not list. -/
+theorem canHandle_unlisted :
+    Handler.canHandle ⟨"h", ["fs"]⟩ (.raise "boom") = false := rfl
+
+/-- Shallow collection: `pure` and `fail` report nothing. -/
+theorem effectNames_pure (v : String) :
+    EffectfulComputation.effectNames (.pure v) = [] := rfl
+
+theorem effectNames_fail (m : String) :
+    EffectfulComputation.effectNames (.fail m) = [] := rfl
+
+/-- Shallow collection: `perform` reports exactly its operation's name. -/
+theorem effectNames_perform (op : EffectOp) :
+    EffectfulComputation.effectNames (.perform op) = [op.effectName] := rfl
+
+/-- `contains` is list membership. -/
+theorem contains_hit : EffectSet.contains ["a", "b"] "b" = true := rfl
+
+theorem contains_miss : EffectSet.contains ["a", "b"] "z" = false := rfl
+
+/-- The empty stack handles nothing. -/
+theorem findHandler_empty (op : EffectOp) :
+    HandlerStack.findHandler [] op = none := rfl
+
+/-- Pushing a capable handler makes it the one found. -/
+theorem findHandler_push_hit :
+    HandlerStack.findHandler [⟨"h", ["fs"]⟩] (.read "fs") =
+      some ⟨"h", ["fs"]⟩ := rfl
+
+/-- An incapable top handler is skipped for the one below. -/
+theorem findHandler_skips_top :
+    HandlerStack.findHandler [⟨"top", []⟩, ⟨"low", ["fs"]⟩] (.read "fs") =
+      some ⟨"low", ["fs"]⟩ := rfl
+
+/-- No capable handler means `none`. -/
+theorem findHandler_miss :
+    HandlerStack.findHandler [⟨"h", ["other"]⟩] (.read "fs") = none := rfl
+
 end Morph.Specs.MonadicEffect

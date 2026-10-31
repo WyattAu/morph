@@ -83,7 +83,7 @@ class TestMathNotationRule:
 
     def test_unmatched_inline_error_details(self):
         rule = MathNotationRule()
-        content = "Line with $ unmatched\n"
+        content = "Line with $x unmatched\n"
         lines = content.split("\n")
         errors = rule.check(content, lines, Path("test.md"))
         assert len(errors) == 1
@@ -102,3 +102,45 @@ class TestMathNotationRule:
         assert errors[0].rule_id == "math-notation"
         assert errors[0].line_number == 1
         assert errors[0].column_number > 0
+
+    def test_single_line_display_math_with_braces(self):
+        """Single-line $$ blocks with balanced braces are valid."""
+        rule = MathNotationRule()
+        content = "Result: $$\\vec{v}_{x} = [1, 0]$$\n"
+        lines = content.split("\n")
+        errors = rule.check(content, lines, Path("test.md"))
+        assert len(errors) == 0
+
+    def test_currency_dollar_ignored(self):
+        """A lone $ used as currency is not an unmatched delimiter."""
+        rule = MathNotationRule()
+        content = "Currency symbol (e.g., $, EUR)\n"
+        lines = content.split("\n")
+        errors = rule.check(content, lines, Path("test.md"))
+        assert len(errors) == 0
+
+    def test_price_dollars_ignored(self):
+        """$5-style prices are not math delimiters."""
+        rule = MathNotationRule()
+        content = "The price is $5 today.\n"
+        lines = content.split("\n")
+        errors = rule.check(content, lines, Path("test.md"))
+        assert len(errors) == 0
+
+    def test_shell_var_in_code_ignored(self):
+        """$VAR inside code spans is not math."""
+        rule = MathNotationRule()
+        content = "Run `echo $HOME` to print.\n"
+        lines = content.split("\n")
+        errors = rule.check(content, lines, Path("test.md"))
+        assert len(errors) == 0
+
+    def test_unclosed_inline_reported_once(self):
+        """A genuine unclosed $ reports exactly one error with details."""
+        rule = MathNotationRule()
+        content = "Value $x and more $y$ here\n"
+        lines = content.split("\n")
+        errors = rule.check(content, lines, Path("test.md"))
+        inline_errors = [e for e in errors if "Unmatched inline" in e.message]
+        assert len(inline_errors) == 1
+        assert inline_errors[0].line_number == 1

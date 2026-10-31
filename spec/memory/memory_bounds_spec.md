@@ -48,7 +48,7 @@ see §5.
 
 ---
 
-## 3. Operational Model
+## 3. Definitions: operational model
 
 - `Heap : Addr → Option (List Addr)` — the object graph; each address maps to its
   field addresses, `none` meaning unallocated.
@@ -81,7 +81,7 @@ see §5.
 
 ---
 
-## 4. Formal Results
+## 4. Requirements: formal results (proved theorems)
 
 | Theorem | Statement |
 |---------|-----------|
@@ -130,6 +130,6 @@ These are deliberate and recorded so the theorem set is not over-read:
 
 ## Change Log
 
-| Version | Date | Change | Author |
+| Version | Date | Changes | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-10-15 | Initial specification: collector model, `Precise`/`Affine` invariants, four formal theorems, survey of Perceus/ORCA/Rust and the escape-clause argument | Morph research loop 2 |

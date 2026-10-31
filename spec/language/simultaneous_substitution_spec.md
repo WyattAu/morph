@@ -23,7 +23,7 @@ Loop 10 proved they agree for a single argument. This specification states the
 two laws that govern their interaction — the lifting law and the
 multi-argument absorption law — and both are now proved.
 
-## 2. The lifting law (proved)
+## 2. Requirements: the lifting law (proved)
 
 > **`subst_lifted`** — `subst' (k + m) (liftUnder m (k+1) w) v = liftUnder m k w`
 
@@ -43,7 +43,7 @@ It is what the multi-argument result needs, because a value inserted at a higher
 level is shifted down by the next substitution — which is precisely what the
 simultaneous substitution does to it.
 
-## 3. The multi-argument law (proved)
+## 3. Requirements: the multi-argument law (proved)
 
 > **`substAll'_eq_seqSubst`** — `substAll' k vs e = seqSubst k vs e`
 

@@ -108,7 +108,7 @@ morph/
 │   │   └── TypeSoundness/  # Progress & Preservation theorems
 │   └── Tests/           # Lean 4 test suite
 ├── scripts/             # Python tooling
-│   ├── spec_tools/      # Specification validation tools (735 tests, 93.29% coverage)
+│   ├── spec_tools/      # Specification validation tools (836 tests, 96% coverage)
 │   └── tests/           # Python test suite
 ├── docs/                # Documentation
 ├── impl/                # Implementation documentation

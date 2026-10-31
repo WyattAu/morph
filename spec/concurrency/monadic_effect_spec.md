@@ -4,8 +4,11 @@
 - `Version:* 1.0.0
 - `Context:* Layer 2 (Semantics) & Layer 4 (Infrastructure)
 - `Formalism:* Monads, Kleisli Categories
+- `Status:* Draft
+- Last Modified:* 2026-05-24
+- `Author:* Kilo Code
 
-## 1. The Effect Monad ($\mathcal{M}$)
+## 1. Definitions: the effect monad ($\mathcal{M}$)
 
 The Effect System is formalized as a Monad $(M, \eta, \mu)$ handling side effects.
 

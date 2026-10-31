@@ -81,7 +81,7 @@ example : renderCode { stmts := [.exprStmt (.binop .add (.lit (.int 1)) (.lit (.
     Dialect.hum = "(1 + 2)" := by native_decide
 
 example : renderCode { stmts := [.varDecl ⟨"x"⟩ .intType (.lit (.int 5))] }
-    Dialect.min = "let x: int = 5" := by native_decide
+    Dialect.min = "let x = 5" := by native_decide
 
 example : renderCode
     { stmts := [.exprStmt (.lit (.int 1)), .exprStmt (.lit (.int 2))] } Dialect.min =

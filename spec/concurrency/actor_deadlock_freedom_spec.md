@@ -7,8 +7,8 @@
 **Formal Module:** `Morph/Specs/ActorDeadlock/`, `Morph/Specs/ConcurrencyProcessAlgebra/`
 **Closes:** SG-004 (deadlock-freedom proof for the actor system)
 **Related Specifications:** [`concurrency_process_algebra_spec.md`](./concurrency_process_algebra_spec.md),
-[`layered_concurrency_spec.md`](./layered_concurrency_spec.md),
-[`scheduler_randomized_stealing_spec.md`](./scheduler_randomized_stealing_spec.md)
+[`layered_concurrency_spec.md`(../architecture/layered_concurrency_spec.md),
+[`scheduler_randomized_stealing_spec.md`(../scheduler_randomized_stealing_spec.md)
 
 ---
 
@@ -45,7 +45,7 @@ hang.
 
 ---
 
-## 3. Model
+## 3. Definitions and requirements: the actor model (CONC-R-001-005)
 
 *CONC-R-001:* An actor system is a finite set `Sys.actors`, a set
 `Sys.run` of actors able to take a step, and a wait relation
@@ -72,7 +72,7 @@ strictly lower to a strictly higher rank.
 
 ---
 
-## 4. Formal Results
+## 4. Requirements: formal results (proved)
 
 | Theorem | Statement |
 |---------|-----------|
@@ -133,6 +133,6 @@ you — which is a deadlock by definition.
 
 ## Change Log
 
-| Version | Date | Change | Author |
+| Version | Date | Changes | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-10-16 | Initial: wait-for-graph model, `WF`/`Ranked` invariants, `progress_invariant`, replacement of the `True` stubs in `ConcurrencyProcessAlgebra` | Morph research loop 3 |

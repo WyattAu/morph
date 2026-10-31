@@ -5,6 +5,9 @@
 - `Context:* Layer 2 (Compilation) & Layer 1 (Infrastructure)
 - `Formalism:* Content-Addressable, Graph-Based, Hermetic
 - `Machine-checked in:* `Morph/Specs/ModuleSystem/`
+- `Status:* Draft
+- Last Modified:* 2026-10-29
+- `Author:* Kilo Code
 
 - -
 

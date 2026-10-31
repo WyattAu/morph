@@ -998,9 +998,9 @@ fn impure_function(x: i64) -> i64 performs IO {
 
 ### 12.6 Tooling Specifications
 
-- [`spec/tooling/metaprogramming_spec.md`](../tooling/metaprogramming_spec.md) - Metaprogramming
-- [`spec/tooling/operational_semantics_spec.md`](../tooling/operational_semantics_spec.md) - Operational semantics
-- [`spec/tooling/comptime_partial_eval_spec.md`](../tooling/comptime_partial_eval_spec.md) - Compile-time evaluation
+- [`spec/tooling/metaprogramming_spec.md`](../tooling/_future_research/metaprogramming_spec.md) - Metaprogramming
+- [`spec/tooling/operational_semantics_spec.md`](../tooling/_future_research/operational_semantics_spec.md) - Operational semantics
+- [`spec/tooling/comptime_partial_eval_spec.md`](../tooling/_future_research/comptime_partial_eval_spec.md) - Compile-time evaluation
 
 ---
 

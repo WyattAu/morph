@@ -59,4 +59,40 @@ theorem classifyChar_underscore_disagrees :
   · simp [isIdentStart]
   · simp [classifyChar]
 
+/-! ## Depth re-audit (loop 91): keyword, classification, and delimiter facts -/
+
+/-- Reserved words are keywords. -/
+theorem isKeyword_let : isKeyword "let" = true := rfl
+
+theorem isKeyword_fn : isKeyword "fn" = true := rfl
+
+theorem isKeyword_while : isKeyword "while" = true := rfl
+
+/-- Ordinary identifiers are not keywords. -/
+theorem isKeyword_ident : isKeyword "balance" = false := rfl
+
+/-- Keywords are case-sensitive (`Let` is not `let`). -/
+theorem isKeyword_case : isKeyword "Let" = false := rfl
+
+/-- Digits classify as integer literals. -/
+theorem classifyChar_digit : classifyChar '7' = .intLiteral := rfl
+
+/-- Whitespace classifies as whitespace. -/
+theorem classifyChar_space : classifyChar ' ' = .whitespace := rfl
+
+/-- Punctuation that is neither alnum nor space is an operator. -/
+theorem classifyChar_plus : classifyChar '+' = .operator := rfl
+
+/-- Letters start and continue identifiers. -/
+theorem isIdentStart_letter : isIdentStart 'q' = true := rfl
+
+theorem isIdentContinue_digit : isIdentContinue '9' = true := rfl
+
+/-- The delimiter set is exactly the bracket and separator characters. -/
+theorem isDelimiter_paren : isDelimiter '(' = true := rfl
+
+theorem isDelimiter_semi : isDelimiter ';' = true := rfl
+
+theorem isDelimiter_letter : isDelimiter 'x' = false := rfl
+
 end Morph.Specs.LexicalStructureSyntax

@@ -104,10 +104,10 @@ The algorithm uses the following transformation rules:
    $$ \frac{F(\tau_1, \dots, \tau_n) = F(\tau_1', \dots, \tau_n')}{\tau_1 \doteq \tau_1' \land \dots \land \tau_n \doteq \tau_n'} $$
 
 2. **Orientation Rule:*
-   $$ \frac{\tau_1 \doteq \tau_1' \land \dots \land \tau_n \doteq \tau_n'}{\tau_1 \doteq \tau_1' \land \dots \land \tau_n \doteq \tau_n'} \to \tau_1 \doteq \tau_1' \land \dots \land \tau_n \doteq \tau_n'} $$
+   $$ \frac{\tau_1 \doteq \tau_1' \land \dots \land \tau_n \doteq \tau_n'}{\tau_1 \doteq \tau_1' \land \dots \land \tau_n \doteq \tau_n'} \to \tau_1 \doteq \tau_1' \land \dots \land \tau_n \doteq \tau_n' $$
 
 3. **Elimination Rule:*
-   $$ \frac{\tau_1 \doteq \tau_1' \land \dots \land \tau_n \doteq \tau_n'}{\tau_1 \doteq \tau_1' \land \dots \land \tau_n \doteq \tau_n'} \to \tau_1' \land \dots \land \tau_n'} $$
+   $$ \frac{\tau_1 \doteq \tau_1' \land \dots \land \tau_n \doteq \tau_n'}{\tau_1 \doteq \tau_1' \land \dots \land \tau_n \doteq \tau_n'} \to \tau_1' \land \dots \land \tau_n' $$
 
 * TYPUNI-INV-003:* THE system SHALL apply Robinson's transformation rules correctly.
 

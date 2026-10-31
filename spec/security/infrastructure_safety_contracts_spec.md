@@ -4,10 +4,13 @@
 - `Version:* 1.0.0
 - `Context:* Layer 2 (Semantics) & Layer 4 (Framework)
 - `Formalism:* Hoare Logic, Effect-Oriented, Pessimistic FFI
+- `Status:* Draft
+- Last Modified:* 2026-06-09
+- `Author:* Kilo Code
 
 - -
 
-## 1. Design by Contract (DbC)
+## 1. Requirements: design by contract (DbC)
 
 Morph implements a first-class **Contract System** based on Hoare Logic. Contracts serve two purposes: Runtime Verification (Debug) and Static Optimization (Release).
 
@@ -46,7 +49,7 @@ fn divide(a: i32, b: i32) -> i32
 
 - -
 
-## 2. The Effect System
+## 2. Definitions: the effect system
 
 Morph utilizes a **Typed Effect System** to track and restrict side effects, preventing "Spooky Action at a Distance."
 

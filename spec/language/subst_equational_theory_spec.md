@@ -35,7 +35,7 @@ is a 29-constructor inductive with nested lists, match arms carrying pattern
 variable lists, and two sorts of variable. The theory is therefore stated by
 hand, in the shape Autosubst would have generated.
 
-## 3. Syntax and operations
+## 3. Definitions: syntax and operations
 
 De Bruijn indices are natural numbers. `Expr` carries both sorts of variable:
 

@@ -19,7 +19,7 @@ This specification formalizes **Distributed Event Ordering** system using **Vect
 
 - Note on Consistency Models:*
 - Vector clocks provide **causal ordering**, not sequential consistency
-- Sequential consistency is only guaranteed within a single actor's memory space (see [`memory_model_spec.md`](memory/memory_model_spec.md))
+- Sequential consistency is only guaranteed within a single actor's memory space (see [`memory_model_spec.md`](../../memory/memory_model_spec.md))
 - Vector clocks enable distributed systems to track causal relationships across actors
 - Causal consistency is weaker than sequential consistency but sufficient for many distributed applications
 

@@ -98,10 +98,7 @@ class TestCrossReferenceRule:
 
     def test_multiple_links(self, temp_dir):
         rule = CrossReferenceRule()
-        content = (
-            "See [Ext](https://example.com) and [File](missing.md) "
-            "and [Sec](#intro).\n\n# Intro\n"
-        )
+        content = "See [Ext](https://example.com) and [File](missing.md) and [Sec](#intro).\n\n# Intro\n"
         filepath = temp_dir / "test.md"
         filepath.write_text(content, encoding="utf-8")
         lines = content.split("\n")
@@ -155,3 +152,31 @@ class TestCrossReferenceRule:
         errors = []
         rule._validate_link(link, filepath, errors)
         assert len(errors) == 0
+
+    def test_section_link_numbered_heading(self, temp_dir):
+        """Anchors to numbered headings use GitHub slugs (dots stripped)."""
+        rule = CrossReferenceRule()
+        content = "See [scope](#1-purpose-and-scope).\n\n## 1. Purpose and Scope\n\nContent here.\n"
+        filepath = temp_dir / "test.md"
+        filepath.write_text(content, encoding="utf-8")
+        lines = content.split("\n")
+        errors = rule.check(content, lines, filepath)
+        assert len(errors) == 0
+
+    def test_extract_sections_github_slugs(self):
+        """Section IDs follow GitHub slug rules (punctuation stripped)."""
+        rule = CrossReferenceRule()
+        content = "## 1. Purpose and Scope\n### What's new?\n"
+        sections = rule._extract_sections(content)
+        assert "1-purpose-and-scope" in sections
+        assert "whats-new" in sections
+
+    def test_headings_in_code_fences_ignored(self, temp_dir):
+        """Anchors must not resolve to `#` comments inside code fences."""
+        rule = CrossReferenceRule()
+        content = "See [x](#real-section).\n\n```toml\n# fake-comment\n```\n\n# Real Section\n"
+        filepath = temp_dir / "test.md"
+        filepath.write_text(content, encoding="utf-8")
+        errors = rule.check(content, content.split("\n"), filepath)
+        assert len(errors) == 0
+        assert "fake-comment" not in rule._extract_sections(content)

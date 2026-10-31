@@ -329,9 +329,10 @@ example : renderCode { stmts := [.exprStmt (.binop .add (.lit (.int 1)) (.lit (.
 example : renderCode { stmts := [.exprStmt (.binop .add (.lit (.int 1)) (.lit (.int 2)))] }
     Dialect.hum = "(1 + 2)" := by native_decide
 
-/-- Declarations render with their type annotation. -/
+/-- Declarations render in surface syntax (loop 90): statement `let` takes
+no annotation, so the annotation is not printed and the output reparses. -/
 example : renderCode { stmts := [.varDecl ⟨"x"⟩ .intType (.lit (.int 5))] }
-    Dialect.min = "let x: int = 5" := by native_decide
+    Dialect.min = "let x = 5" := by native_decide
 
 /-! ### The remaining spec claims, proved -/
 

@@ -17,7 +17,7 @@ This specification closes the gap left by loop 10: `Morph/Semantics.lean` and
 nothing. This document proves the one fact that makes their disagreement
 impossible for β-reduction.
 
-## 2. The finding
+## 2. Definitions: the finding (simultaneous vs single substitution)
 
 The shipped β-rule is
 
@@ -38,7 +38,7 @@ and applies `lift b v` at the hit site.
 Different functions. So the two β-rules were not obviously the same, and nothing
 in the repository said they were.
 
-## 3. Theorem
+## 3. Requirements: the equivalence theorem
 
 > **`substAll_single`** — for every offset `k`, value `v` and term `e`:
 > `substAll' k [v] e = subst' k e v`

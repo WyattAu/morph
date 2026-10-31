@@ -1156,7 +1156,7 @@ This checklist applies to all specification documents in `spec/` directory, incl
 
 - [ ] **Signal Usage:** Signal used for FRP contexts
   - **Validation:** Signal used for time-varying values in FRP
-  - **Context:** [`spec/tooling/reactive_frp_spec.md`](../spec/tooling/reactive_frp_spec.md)
+  - **Context:** [`spec/tooling/reactive_frp_spec.md`](../spec/tooling/_future_research/reactive_frp_spec.md)
   - **Severity:** High
 
 - [ ] **Stream Usage:** Stream used for data flow contexts
@@ -1179,7 +1179,7 @@ This checklist applies to all specification documents in `spec/` directory, incl
 
 - [ ] **Transducer Usage:** Transducer used for graph rewriting
   - **Validation:** Transducer used for structure transformations
-  - **Context:** [`spec/tooling/graph_rewriting_spec.md`](../spec/tooling/graph_rewriting_spec.md)
+  - **Context:** [`spec/tooling/graph_rewriting_spec.md`](../spec/tooling/_future_research/graph_rewriting_spec.md)
   - **Severity:** High
 
 - [ ] **No Interchangeable Use:** Reducer and Transducer not used interchangeably

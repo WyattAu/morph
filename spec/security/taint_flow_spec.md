@@ -7,7 +7,7 @@
 **Formal Module:** `Morph/Specs/TaintFlow/`, `Morph/Specs/SecurityFlow/`
 **Closes:** SG-003 (taint tracking across dialect boundaries)
 **Related Specifications:** [`security_flow_spec.md`](./security_flow_spec.md),
-[`security_ocap_spec.md`](./security_ocap_spec.md),
+[`security_ocap_spec.md`(../security_ocap_spec.md),
 [`morph_language_spec.md`](../language/morph_language_spec.md)
 
 ---
@@ -44,7 +44,7 @@ robustness condition (authority to downgrade) are the contributions here.
 
 ---
 
-## 3. Model
+## 3. Definitions and requirements: the taint model (SEC-IFC-001-005)
 
 *SEC-IFC-001:* Confidentiality labels are the two-point lattice
 `pub ⊑ sec`, with `join` and the usual order laws (`le_refl`, `le_trans`,
@@ -67,7 +67,7 @@ statement.
 
 ---
 
-## 4. Formal Results
+## 4. Requirements: formal results (proved)
 
 | Theorem | Statement |
 |---------|-----------|
@@ -128,6 +128,6 @@ removes a class of proofs is worth more than one that discharges them.
 
 ## Change Log
 
-| Version | Date | Change | Author |
+| Version | Date | Changes | Author |
 |---------|------|--------|--------|
 | 1.0.0 | 2026-10-16 | Initial: taint lattice, dialect translation, robust-declassification rule, noninterference, and the boundary theorems; `SecurityFlow` rewired to the real statements | Morph research loop 4 |

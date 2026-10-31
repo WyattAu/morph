@@ -59,8 +59,8 @@ This specification does not cover:
 This specification is closely related to several other Morph specifications:
 
 * Metaprogramming Specifications:*
-- [`spec/tooling/metaprogramming_spec.md`](../tooling/metaprogramming_spec.md) - Monomorphization requirements and cost analysis
-- [`spec/tooling/comptime_partial_eval_spec.md`](../tooling/comptime_partial_eval_spec.md) - Compile-time evaluation for specialization decisions
+- [`spec/tooling/metaprogramming_spec.md`](../tooling/_future_research/metaprogramming_spec.md) - Monomorphization requirements and cost analysis
+- [`spec/tooling/comptime_partial_eval_spec.md`](../tooling/_future_research/comptime_partial_eval_spec.md) - Compile-time evaluation for specialization decisions
 
 * Type System Specifications:*
 - [`spec/type/type_system_spec.md`](../type/type_system_spec.md) - Generic type system and monomorphization mandate

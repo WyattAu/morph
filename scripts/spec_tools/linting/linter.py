@@ -16,6 +16,7 @@ from spec_tools.linting.rules.math import MathNotationRule
 from spec_tools.linting.rules.mermaid import MermaidSyntaxRule
 from spec_tools.linting.rules.requirements import EARSValidationRule
 from spec_tools.linting.rules.sections import SectionStructureRule
+from spec_tools.linting.waivers import load_waivers, waived_reason
 from spec_tools.models import LintingConfig, ValidationResult
 
 
@@ -40,6 +41,8 @@ class SpecLinter:
         """
         self.config = config
         self.rules: Dict[str, LintingRule] = self._load_rules()
+        self._waivers_cache: Dict[str, list] = {}
+        self.waived_count = 0
 
     def _load_rules(self) -> Dict[str, LintingRule]:
         """Load all linting rules based on configuration.
@@ -96,6 +99,10 @@ class SpecLinter:
                 rule_errors = rule.check(content, lines, filepath)
                 errors.extend(rule_errors)
 
+            # Apply intentional-deviation waivers (reported, not silent:
+            # see the CLI summary's waived count).
+            errors = self._apply_waivers(filepath, errors)
+
             # Determine if validation passed
             passed = all(e.severity.value != "ERROR" for e in errors)
 
@@ -119,6 +126,30 @@ class SpecLinter:
                 file_path=str(filepath),
                 details={"error": str(e)},
             ) from e
+
+    def _apply_waivers(self, filepath: Path, errors: list) -> list:
+        """Filter waived errors, counting them for the CLI summary.
+
+        Args:
+            filepath: File the errors were reported in.
+            errors: Reported lint errors.
+
+        Returns:
+            Errors with waived entries removed.
+        """
+        root = str(filepath.resolve().anchor)
+        if root not in self._waivers_cache:
+            self._waivers_cache[root] = load_waivers(filepath)
+        waivers = self._waivers_cache[root]
+        if not waivers:
+            return errors
+        kept = []
+        for error in errors:
+            if waived_reason(waivers, filepath, error.rule_id) is not None:
+                self.waived_count += 1
+            else:
+                kept.append(error)
+        return kept
 
     def lint_directory(self, directory: Path, recursive: bool = True) -> List[ValidationResult]:
         """Lint all files in a directory.

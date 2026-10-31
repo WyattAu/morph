@@ -3,8 +3,11 @@
 - `System:* Morph Ecosystem
 - `Version:* 1.0.0
 - `Context:* Layer 1 (Infrastructure) & Layer 5 (Agent Interface)
+- `Status:* Draft
+- Last Modified:* 2026-01-03
+- `Author:* Kilo Code
 
-## 1. Metadata Standards
+## 1. Definitions: metadata standards (SPDX)
 
 ### 1.1 SPDX Identifiers
 
@@ -12,7 +15,7 @@
 - **REQ-LIC-02:* The Registry SHALL reject package publications with invalid or ambiguous SPDX identifiers.
 - **REQ-LIC-03:* For multi-licensed packages, complex expressions are supported (e.g., `"MIT OR Apache-2.0"`).
 
-## 2. Policy Enforcement (The Firewall)
+## 2. Requirements: policy enforcement (the firewall)
 
 ### 2.1 The License Policy Configuration
 

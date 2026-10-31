@@ -3,7 +3,6 @@
 from pathlib import Path
 
 from spec_tools.linting.rules.mermaid import MermaidSyntaxRule
-from spec_tools.models import Severity
 
 
 class TestMermaidSyntaxRule:
@@ -127,3 +126,39 @@ class TestMermaidSyntaxRule:
         assert len(errors) == 1
         assert errors[0].suggestion is not None
         assert "flowchart" in errors[0].suggestion
+
+    def test_diagram_type_with_direction_args(self):
+        """Diagrams with layout args (graph TD, flowchart LR) are valid."""
+        rule = MermaidSyntaxRule()
+        for first_line in ["graph TD", "graph LR", "flowchart TD", "flowchart LR"]:
+            content = f"```mermaid\n{first_line}\n    A --> B\n```\n"
+            errors = rule.check(content, content.split("\n"), Path("test.md"))
+            type_errors = [e for e in errors if "diagram type" in e.message]
+            assert type_errors == [], first_line
+
+    def test_statediagram_v2_accepted(self):
+        """stateDiagram-v2 is a valid Mermaid diagram type."""
+        rule = MermaidSyntaxRule()
+        content = "```mermaid\nstateDiagram-v2\n    [*] --> Active\n```\n"
+        errors = rule.check(content, content.split("\n"), Path("test.md"))
+        type_errors = [e for e in errors if "diagram type" in e.message]
+        assert type_errors == []
+
+    def test_invalid_diagram_type_still_flagged(self):
+        """Unknown diagram types are still rejected."""
+        rule = MermaidSyntaxRule()
+        content = "```mermaid\nnotadiagram XYZ\n    A --> B\n```\n"
+        errors = rule.check(content, content.split("\n"), Path("test.md"))
+        assert any("diagram type" in e.message for e in errors)
+
+    def test_headings_in_code_fences_ignored(self):
+        """TOML/shell comments inside fences are not section headings."""
+        from spec_tools.linting.rules.sections import SectionStructureRule
+
+        rule = SectionStructureRule()
+        content = (
+            "# Spec\n\n## 1. Introduction\n\n```toml\n# not a heading\n"
+            "key = 1\n```\n\n## 2. Definitions\n\n## 3. Requirements\n"
+        )
+        errors = rule.check(content, content.split("\n"), Path("test.md"))
+        assert errors == []

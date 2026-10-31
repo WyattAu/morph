@@ -3,6 +3,7 @@ SPDX-License-Identifier: Apache-2.0
 -/
 
 import Morph.Driver
+import Morph.Version
 
 /-!
 # The `morph` executable
@@ -19,11 +20,16 @@ private def finish (out : Outcome) : IO UInt32 := do
   | .parseFailed s => IO.eprintln s; return 1
   | .stuck => IO.eprintln (report .stuck); return 1
   | .typeError s => IO.eprintln s; return 1
+  | .unsupported s => IO.eprintln s; return 1
 
 def main (args : List String) : IO UInt32 := do
   match args with
   | ["eval", src] => finish (runSource src)
   | ["parse", src] => finish (parseSource src)
   | ["check", src] => finish (checkSource src)
+  | ["run", "--hir", path] => finish (runProgramHIR (← IO.FS.readFile path))
   | ["run", path] => finish (runProgram (← IO.FS.readFile path))
+  | ["fmt", path] => finish (formatProgram (← IO.FS.readFile path))
+  | ["doc", path] => finish (docSource (← IO.FS.readFile path))
+  | ["version"] => IO.println Morph.versionString; return 0
   | _ => IO.println usage; return 1

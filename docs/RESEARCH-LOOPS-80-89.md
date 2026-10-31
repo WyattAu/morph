@@ -210,3 +210,193 @@ it); `check` against an expected type (needs type-syntax parsing); the
 - `spec-tools` pytest ✔ 803 passed, 96.04% coverage.
 - Counts at commit: 213 `.lean` files / ~43k lines, 1167
   `theorem`/`lemma` declarations, 16 `Morph/Tests/` files.
+
+## Loop 87 — HIR statement interpreter + `morph run --hir` (DONE, Lean)
+
+**Target.** Loops 82/83 lowered expressions, statements, and programs to
+HIR but never executed them: HIR had no statement semantics, and the
+`run` pipeline was surface-only. This loop closes the §6.1 execution
+row: run lowered programs and ship the flag.
+
+**Delivered.**
+- `Frontend/HIRInterp.lean` (new): `runHIRStmts`/`runHIRWhile`/
+  `runHIRProgram`, mirroring `Morph.Interp` stage by stage over `HEnv`
+  (`HFlow`/`HRan`, `updateHEnv` with propositional equality like
+  `lookupHEnv`, loop-value-is-unit convention, `break`/`continue`/
+  `return` propagation). Expression positions evaluate with `evalHIR`
+  seeded at 256 — the same seed as surface `Executable.eval` — and the
+  statement fuel matches `Interp.runProgram` (1024). `doWhile`/`ifStmt`/
+  `matchStmt` need no mirror: they never lower.
+- `morph run --hir <file>` (new CLI arm): `Driver.runProgramHIR`
+  parses, lowers via `toHIRProgram`, and runs the HIR interpreter. A
+  program that leaves the fragment reports the new
+  `Outcome.unsupported` (exit 1) instead of running — `Main.finish`
+  and `Driver.report`/`usage` extended; `isUnsupported` added beside
+  the other outcome predicates.
+- Namespace fix (found by executing, not by reading): loop 83 mapped
+  statement identifiers to `Id ⟨0, name⟩` while the expression pass maps
+  free names to `⟨0, "free:" ++ name⟩`, so no lowered program with a
+  variable could evaluate — and a statement variable named `"bv"`
+  would have captured binder slot 0. Statement `varDecl`/`assign` ids
+  now join the `free:` namespace (surface identifiers never contain
+  `':'`, so the prefix is injective, and `hirId_free_ne_bv/ctx` keeps
+  them disjoint from binder/slot ids). The `toHIRStmt_varDecl`
+  contract theorem and both pins updated; the rationale is recorded in
+  the `toHIRStmt` doc block.
+- Tests in `Morph/Tests/HIRLower.lean`: declaration/read, assignment,
+  a counting loop, `return`-from-`while`, and the `unsupported` path
+  for an `if` program — all `native_decide` through `runProgramHIR`.
+  Three unused-`simp`-arg warnings in the loop-86 `match_` proofs
+  removed along the way (gate stays at zero warnings).
+- Smoke-tested the built binary: `run` and `run --hir` agree (`10`)
+  on a counting-loop file; `run --hir` on an `if` program prints the
+  fragment message with exit 1.
+
+**Still named.** Statement-level preservation (the 4e half of this
+sprint: relating `runHIRStmts` to `runStmts` across `toHIRProgram`);
+`check` against an expected type; the 26 broken links / numbering lint;
+the Rust/C++ runtime track.
+
+## Verification
+
+- `lake build Morph` ✔ 400 jobs, **0 warnings, 0 errors** (forced
+  recompile of all touched files).
+- `lake build morph` ✔ exe relinked; CLI smoke test above ✔.
+- `Morph.Tests.HIRLower` ✔ 5 new `runProgramHIR` examples green.
+
+## Loop 88 — statement-level preservation (DONE, Lean)
+
+**Target.** Loop 87 ran lowered programs but proved nothing about them:
+`evalHIR_preservation` agreed on one expression while `runHIRProgram`
+ran whole statement sequences on faith. This loop closes the 4e half:
+relate `runHIRStmts` to `runStmts` across `toHIRProgram`.
+
+**Delivered.**
+- `stmtFirstOrder` in `HIRLower.lean`: the proved statement fragment
+  (every embedded expression `FirstOrder`; lowering success alone does
+  not imply it — `toHIR` also maps `lam`/variable-applied `app`).
+- `agreeBoth`/`runHIRProgram_preservation` in `HIRInterp.lean`: when
+  `toHIRStmtList ss = some ss'` and every statement is `stmtFirstOrder`,
+  related environments stay related and surface success is HIR success
+  — for statements and `while` loops, mutually, by induction on fuel.
+  The relation is lookup-based (`relStmtEnv`: every surface `getFv?`
+  hit is a literal the HIR side sees under the `free:` id), the
+  conclusion is one-directional like `evalHIR_preservation` (a stuck
+  surface run imposes nothing, so failure coincidence is never owed).
+  Supporting lemmas: `free:`-injectivity, `getFv?`/`lookupHEnv`
+  cons/update characterizations, declaration/assignment preservation
+  (`relStmtEnv_push/update`), lowering inversions, outcome inversions.
+- Visibility change: `Interp.runStmts`/`runWhile` (and the HIR
+  runners) are no longer `private` — the cross-stage theorem must name
+  both sides. The statement is about `ranStmts`-level agreement with
+  the program corollary at the `runProgram` fuel (1024).
+- Snapshot: `scripts/regression-snapshot.sh` ✔ no regressions;
+  total theorems 1395 → 1424, modules 214 → 215, warnings still 0.
+
+**Still named.** `check` against an expected type (needs type-syntax
+parsing); the 26 broken links / numbering lint; the Rust/C++ runtime
+track.
+
+## Verification
+
+- `lake build Morph` ✔ 400 jobs, **0 warnings, 0 errors**.
+- `lake build morph` ✔ exe relinked; `run`/`run --hir` agree (`10`)
+  on the counting-loop file; `run --hir` on an `if` program still
+  reports the fragment message with exit 1.
+- Regression snapshot ✔ recorded, no regressions, +29 theorems.
+
+## Loop 89 — error-message golden tests (DONE, Sprint 5)
+
+- Pinned the exact user-visible error bytes nobody had pinned: the
+  old tests only checked *variants* (`isParseFailed`, `isStuck`).
+- `Morph/Tests/Driver.lean`: `runSource` parse-failure goldens
+  (`"1 +"`/`"!!"`/`"@"` → `line 1, col 1: failed to parse`;
+  `""` → `line 0, col 0: empty input`), stuck equalities (no message),
+  `usage` help text (caught a transcription slip — the real text ends
+  with `\n`), `report .stuck`, `checkSource` type-error goldens, and
+  the `--hir` unsupported message plus a `--hir` success golden.
+  `Outcome` has no `DecidableEq`, so goldens use the file's `==` style.
+- `Morph/Tests/Typing.lean`: new `ErrorMessageTests` section pinning
+  `formatTypeError` strings both ways (mismatch + cannot-infer,
+  including the two-space `repr` continuation indent).
+- `Morph/Tests/HIRLower.lean`: rejection goldens for every previously
+  unpinned `none` arm (`nullCoalesce`, `some_`, `ok_`, non-variable
+  `app`, `arrayLit`, `some_` patterns, `matchStmt`, an `ifStmt`
+  program) plus a `whileLoop` lowers-positive.
+- CLI verified end-to-end: `eval '1 +'` prints the golden bytes on
+  stderr with exit 1; `check '1 + true'` likewise.
+- Snapshot: `scripts/regression-snapshot.sh` ✔ no regressions;
+  total theorems 1424 (unchanged — `example`s aren't theorems),
+  LOC 45698 → 45817, warnings still 0.
+
+## Loop 90 — `morph fmt` + `morph doc` (DONE, Sprint 6)
+
+- `morph fmt <file>` = `Driver.formatProgram` (parse + canonical `hum`
+  `renderCode`); `morph doc <file>` = `Driver.docSource` (Markdown from
+  `///` entries). Both wired in `Main.lean`, both pinned by goldens.
+- Blocker found by probing: `stmtStr` printed `let y: unit = 5`, which the
+  parser rejects (statement `let` takes no annotation — the type is a
+  placeholder). A formatter must round-trip, so `stmtStr` now prints
+  surface syntax (`let y = 5`); the two spec pins
+  (`Lemmas`/`Examples`) updated from `let x: int = 5`. Type-syntax
+  parsing stays deferred (still named). Fixpoint golden:
+  `formatProgram "let y = 5;\ny"` is stable.
+- New `Morph.Frontend.DocComment`: `///` blocks (one space stripped)
+  attach to the next code line across blanks/plain-`//` lines; trailing
+  blocks drop; `renderMarkdown` emits `# Documentation` + `## \`code\``
+  sections, or the empty note. No lexer/parser change — `///` already
+  lexes as a `//` comment, pinned by a documented-file-still-runs test.
+- Spec: `lexical_structure_syntax_spec.md` §1.3 `///` behavior += `morph
+  doc` tooling note; file lint ✔ clean.
+- CLI verified on a demo file (`fmt`/`doc`/`run` all exit 0; `run` → `3`).
+- Snapshot ✔ no regressions; modules 215 → 216, LOC 45817 → 45951,
+  warnings still 0.
+
+## Loop 91 — depth re-audit across the 58 Specs modules (DONE, Sprint 7)
+
+- Audit: 58 topic dirs, all with a `Lemmas.lean`; no axioms, no sorries.
+  Total 1424 → goal ≥1500 real theorems (+76 needed, `example`s excluded
+  from the count). Thinnest-first, every addition a property of the
+  module's own defs (no padding: the audit kept the loop-17 convention of
+  recording findings as theorems).
+- `DialectProjection` 1→14: capability facts, validity-table positives +
+  the self-projection negative, `equiv` refl/symm/trans, `lower_into_target`
+  (nested induction mirroring `lower_identity`). Quirk: multi-line `{ s with
+  ... }` updates fail to parse — single-line form used.
+- `MonadicEffect` 2→16: `effectName`/`canHandle`/`effectNames`/`contains`/
+  `findHandler` facts (hit/miss/skip-top). Dotted-ctor fix: `EffectOp.read`.
+- `ExecutionModel` 3→15: `subst` hit/miss/shadow, env lookup/shadow,
+  `isTerminal` all three, trace counting. (Pre-existing Nat fillers kept.)
+- `Financial` 3→19: codes, decimal places, major-unit round-trip, add/sub
+  same/cross-currency, non-negativity, `isBalanced` triviality.
+- `LexicalStructureSyntax` 3→16: keyword/char/delimiter facts.
+- `AbiDataRefinement` 4→10: validation outcomes, compatibility pins, and
+  two spec refutations (`spec_layout_compatibility_false`,
+  `spec_data_validation_false`) — the mapping summary's ✓ overstates.
+  Logged as SPEC_CONTRADICTIONS.md #11 (revision proposed, not applied).
+- `DocComment` +7 contract pins (`native_decide`: String internals are
+  kernel-opaque, `rfl`/`decide` fail — same class as the `usage` fixpoint).
+- Snapshot ✔ no regressions (2 improvements); total theorems **1508**,
+  build 401 jobs, 0 warnings/errors, sorry count 0.
+
+## Loop 92 — Morph 0.1 release artifacts (DONE, Sprint 8)
+
+- `CHANGELOG.md` (Keep a Changelog, 0.1.0 entry: seven CLI commands,
+  error goldens, fixpoint `fmt`, HIR agreement, 1508 theorems) and
+  `STABILITY.md` (SemVer tiers: CLI + error text + core syntax + `fmt`
+  form + proof invariants stable; `--hir` membership, `doc` layout,
+  spec Props experimental; deprecation + snapshot mechanics).
+- Version constant: new `Morph/Version.lean` (`versionString = "0.1.0"`),
+  `morph version` in `Main.lean` (exit 0), usage line, golden test.
+  No `git tag` cut — left as the release step.
+- Snapshot ✔ no regressions (1 improvement); build 402 jobs, 0 warnings.
+
+## Loop 93 — external audit packet prep (DONE, Sprint 9 prep; gate open)
+
+- `docs/AUDIT-PACKET-0.1.md`: scope, proved-vs-trusted inventory (totality,
+  HIR agreement, soundness, substitution theory, 1508 theorems / 0 sorry /
+  0 axioms), trust base (toolchain, spec text — auditor warned that ✓
+  marks are claims, citing #11), known issues (3 handed over), repro
+  steps, reviewer entry points.
+- **Hard gate NOT cleared: review invitations are unsent.** Packet
+  authorship ≠ Sprint 9 completion; invites need the maintainer.

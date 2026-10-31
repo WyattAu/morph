@@ -243,7 +243,6 @@ The Graph Rewriting System is implemented as a transformation engine that:
 - Mathematical Definition:*
 $$
 M = \{ \phi: L \xrightarrow{\phi} G \} $$
-$$
 
 where $\phi$ is a graph isomorphism from $L$ to a subgraph of $G$.
 

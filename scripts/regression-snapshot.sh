@@ -6,6 +6,11 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPORT_DIR="$PROJECT_ROOT/.reports/regression"
 BUILD_LOG="/tmp/morph_regression_build.log"
 
+FAIL_ON_REGRESSION=0
+if [ "${1:-}" = "--fail-on-regression" ]; then
+  FAIL_ON_REGRESSION=1
+fi
+
 mkdir -p "$REPORT_DIR"
 
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
@@ -34,7 +39,8 @@ echo "Counting sorries..."
 SORRY_COUNT=$(grep -r "sorry" "$PROJECT_ROOT/Morph/" --include="*.lean" \
   | grep -v "\.olean" \
   | grep -v "/--" \
-  | wc -l | tr -d ' ')
+  | wc -l | tr -d ' ' || true)
+SORRY_COUNT="${SORRY_COUNT:-0}"
 echo "  sorry count    : $SORRY_COUNT"
 
 echo "Counting spec stubs..."
@@ -69,6 +75,38 @@ echo "  lean modules   : $LEAN_MODULES"
 SPEC_MODULES=$(find "$PROJECT_ROOT/Morph/Specs" -name "*.lean" | wc -l | tr -d ' ')
 echo "  spec modules   : $SPEC_MODULES"
 
+echo "Counting theorems..."
+SPECS_THEOREMS=$(grep -rE '^\s*(theorem|lemma) ' "$PROJECT_ROOT/Morph/Specs/" --include="*.lean" 2>/dev/null | wc -l | tr -d ' ')
+TOTAL_THEOREMS=$(grep -rE '^\s*(theorem|lemma) ' "$PROJECT_ROOT/Morph/" --include="*.lean" 2>/dev/null | wc -l | tr -d ' ')
+echo "  specs theorems : $SPECS_THEOREMS"
+echo "  total theorems : $TOTAL_THEOREMS"
+
+LEAN_LOC=$(find "$PROJECT_ROOT/Morph" -name "*.lean" -exec cat {} + 2>/dev/null | wc -l | tr -d ' ')
+echo "  lean loc       : $LEAN_LOC"
+
+echo "Running spec lint..."
+LINT_OUTPUT=$("$VENV_PYTHON" "$PROJECT_ROOT/scripts/spec_tools/cli/main.py" lint "$PROJECT_ROOT/spec" 2>&1 || true)
+LINT_ERRORS=$(echo "$LINT_OUTPUT" | grep -oiP '\berrors\s*:\s*\K\d+' | head -1 || echo "?")
+LINT_WARNINGS=$(echo "$LINT_OUTPUT" | grep -oiP '\bwarnings\s*:\s*\K\d+' | head -1 || echo "?")
+LINT_ERRORS="${LINT_ERRORS:-?}"
+LINT_WARNINGS="${LINT_WARNINGS:-?}"
+echo "  lint errors    : $LINT_ERRORS"
+echo "  lint warnings  : $LINT_WARNINGS"
+
+echo "Running cross-ref validation..."
+CROSSREF_OUTPUT=$(bash "$PROJECT_ROOT/scripts/cross-ref-validate.sh" 2>&1 || true)
+CROSSREF_BROKEN=$(echo "$CROSSREF_OUTPUT" | grep -oP 'FAIL:\s*\K\d+' | tail -1 || echo "?")
+CROSSREF_BROKEN="${CROSSREF_BROKEN:-?}"
+echo "  crossref broken: $CROSSREF_BROKEN"
+
+# Normalize maybe-missing counts to JSON numbers (or null).
+json_num() {
+  if [[ "${1:-?}" =~ ^[0-9]+$ ]]; then printf '%s' "$1"; else printf 'null'; fi
+}
+LINT_ERRORS_JSON=$(json_num "$LINT_ERRORS")
+LINT_WARNINGS_JSON=$(json_num "$LINT_WARNINGS")
+CROSSREF_BROKEN_JSON=$(json_num "$CROSSREF_BROKEN")
+
 cat > "$SNAPSHOT" <<EOF
 {
   "timestamp": "$ISO_TIMESTAMP",
@@ -82,7 +120,13 @@ cat > "$SNAPSHOT" <<EOF
     "python_tests_failed": $PY_FAILED,
     "python_coverage_pct": $COVERAGE_PCT,
     "lean_modules": $LEAN_MODULES,
-    "spec_modules": $SPEC_MODULES
+    "spec_modules": $SPEC_MODULES,
+    "specs_theorems": $SPECS_THEOREMS,
+    "total_theorems": $TOTAL_THEOREMS,
+    "lean_loc": $LEAN_LOC,
+    "lint_errors": $LINT_ERRORS_JSON,
+    "lint_warnings": $LINT_WARNINGS_JSON,
+    "crossref_broken": $CROSSREF_BROKEN_JSON
   }
 }
 EOF
@@ -100,9 +144,9 @@ if [ -n "$PREV_SNAPSHOT" ] && [ "$PREV_SNAPSHOT" != "$SNAPSHOT" ]; then
   REGRESSIONS=0
   IMPROVEMENTS=0
 
-  for METRIC in build_errors build_warnings sorry_count stub_count python_tests_failed; do
-    PREV_VAL=$("$VENV_PYTHON" -c "import json; print(json.load(open('$PREV_SNAPSHOT'))['metrics']['$METRIC'])" 2>/dev/null || echo "?")
-    CURR_VAL=$("$VENV_PYTHON" -c "import json; print(json.load(open('$SNAPSHOT'))['metrics']['$METRIC'])" 2>/dev/null || echo "?")
+  for METRIC in build_errors build_warnings sorry_count stub_count python_tests_failed lint_errors lint_warnings crossref_broken; do
+    PREV_VAL=$("$VENV_PYTHON" -c "import json; v=json.load(open('$PREV_SNAPSHOT'))['metrics'].get('$METRIC'); print('?' if v is None else v)" 2>/dev/null || echo "?")
+    CURR_VAL=$("$VENV_PYTHON" -c "import json; v=json.load(open('$SNAPSHOT'))['metrics'].get('$METRIC'); print('?' if v is None else v)" 2>/dev/null || echo "?")
 
     if [ "$PREV_VAL" = "?" ] || [ "$CURR_VAL" = "?" ]; then
       echo "  $METRIC: $CURR_VAL (prev: $PREV_VAL)"
@@ -120,9 +164,11 @@ if [ -n "$PREV_SNAPSHOT" ] && [ "$PREV_SNAPSHOT" != "$SNAPSHOT" ]; then
     fi
   done
 
-  for METRIC in python_tests_passed python_coverage_pct lean_modules spec_modules; do
-    PREV_VAL=$("$VENV_PYTHON" -c "import json; print(json.load(open('$PREV_SNAPSHOT'))['metrics']['$METRIC'])" 2>/dev/null || echo "?")
-    CURR_VAL=$("$VENV_PYTHON" -c "import json; print(json.load(open('$SNAPSHOT'))['metrics']['$METRIC'])" 2>/dev/null || echo "?")
+  for METRIC in python_tests_passed python_coverage_pct lean_modules spec_modules specs_theorems total_theorems; do
+    # NB: lean_loc is recorded in JSON but excluded here: LOC can
+    # legitimately shrink during refactors, so it is informational only.
+    PREV_VAL=$("$VENV_PYTHON" -c "import json; v=json.load(open('$PREV_SNAPSHOT'))['metrics'].get('$METRIC'); print('?' if v is None else v)" 2>/dev/null || echo "?")
+    CURR_VAL=$("$VENV_PYTHON" -c "import json; v=json.load(open('$SNAPSHOT'))['metrics'].get('$METRIC'); print('?' if v is None else v)" 2>/dev/null || echo "?")
 
     if [ "$PREV_VAL" = "?" ] || [ "$CURR_VAL" = "?" ]; then
       echo "  $METRIC: $CURR_VAL (prev: $PREV_VAL)"
@@ -145,6 +191,10 @@ if [ -n "$PREV_SNAPSHOT" ] && [ "$PREV_SNAPSHOT" != "$SNAPSHOT" ]; then
     echo "  RESULT: $REGRESSIONS regression(s) detected!"
   else
     echo "  RESULT: No regressions. All clear."
+  fi
+  if [ "$FAIL_ON_REGRESSION" -eq 1 ] && [ "$REGRESSIONS" -gt 0 ]; then
+    echo "  (--fail-on-regression: exiting 1)"
+    exit 1
   fi
   if [ "$IMPROVEMENTS" -gt 0 ]; then
     echo "  IMPROVEMENTS: $IMPROVEMENTS metric(s) improved."

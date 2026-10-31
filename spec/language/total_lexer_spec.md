@@ -44,7 +44,7 @@ lemmas, every one `rfl` about `String.length`, `Char.isDigit`, or
   This specification therefore does **not** claim a lexer has no partial states;
   it claims the partial states are *named and separate* from end of input.
 
-## 4. Design decisions
+## 4. Definitions: design decisions (the token model)
 
 - **`.eof` is a token, not an absence.** A step returns `TokKind × List Char`, so
   it cannot fail.

@@ -14,7 +14,7 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 |--------|-------|--------|
 | `lake build Morph` | 328 jobs, 0 errors, 4 sorry warnings | PASS |
 | `lake build Morph.Tests` | 186 jobs, 0 errors | PASS |
-| Python spec-tools | 735 tests, 93.29% coverage | PASS |
+| Python spec-tools | 836 tests, 96% coverage (as of 2026-10-30) | PASS |
 | ruff lint | 0 errors, 0 warnings | PASS |
 | ruff format | 0 unformatted files | PASS |
 | mypy strict | 0 errors across 66 source files | PASS |
@@ -34,7 +34,16 @@ The table above predates the implementation track. Verified current values:
 **1116 theorems/lemmas**, **14 `Morph/Tests/` files**
 (loop 81: zero-warning gate; loop 82: name-resolution pass, HIR lowering,
 `morph check`, spec-status CI — now **213 files / ~43k lines**,
-**1160 theorems/lemmas**, **16 test files**, **0 warnings**). Consequences:
+**1160 theorems/lemmas**, **16 test files**, **0 warnings**;
+Sprint 3, 2026-10-30: **214 `.lean` files / 44,190 lines**,
+**1395 `theorem`/`lemma` declarations repo-wide** (`^\s*(theorem|lemma)` grep;
+**1017 in `Morph/Specs/`**), **836 Python tests at 96% coverage**,
+**1 build warning** (unused simp arg, `HIRLower.lean:263` — fixed same day, build now 0 warnings),
+**spec lint 0 errors / 106 warnings** (18 waived), **cross-refs 0 broken**,
+regression baseline `snapshot-20261030-234730.json` captured with
+`--fail-on-regression` gate (verified: synthetic regression exits 1),
+`SPEC_STATUS.md` regenerated (**55 modules, 817 real lemmas, 54 Tier-1**;
+Tier-1 claim-to-file mappings verified by independent grep). Consequences:
 
 - §1.1 is done: no Preservation sorries remain, so the sorry-free and
   zero-warning CI gates (§2.1/§2.2, pre-commit hardening §2.4) are unblocked.
@@ -173,7 +182,7 @@ The `scripts/regression-snapshot.sh` script already exists. Integrate into CI:
 
 ### 3.3 Python spec-tools coverage improvement
 
-Current: 735 tests, 93.29% coverage (up from 48%). Target: 95%+.
+Current: 836 tests, 96% coverage as of 2026-10-30 (up from 48%; 95%+ target met).
 
 Priority areas for new tests:
 - `scripts/spec_tools/cli/commands/` -- CLI integration tests
@@ -401,16 +410,16 @@ Ongoing:   [7.x]                                -- research directions
 | Criterion | Current | Target | Priority |
 |-----------|---------|--------|----------|
 | `lake build Morph` errors | 0 | 0 | P0 |
-| `lake build Morph` warnings | 6 (sorry) | 0 | P0 |
+| `lake build Morph` warnings | 0 | 0 | P0 |
 | `sorry` in `Morph/` | 6 | 0 | P0 |
 | Spec stubs (all tiers) | 0 | 0 | PASS |
 | CI passes on every push | Blocked by billing | Yes | P1 |
 | ruff lint errors | 0 | 0 | PASS |
 | ruff format issues | 0 | 0 | PASS |
 | mypy errors | 0 | 0 | PASS |
-| Python test count | 735 | 800+ | P1 |
-| Python coverage | 93.29% | 95%+ | P1 |
+| Python test count | 836 (target met) | 800+ | P1 |
+| Python coverage | 96% (target met) | 95%+ | P1 |
 | Pre-commit blocks on sorry | Warns | Blocks | P0 |
-| Regression snapshot tracking | Script exists | Active | P1 |
+| Regression snapshot tracking | Active (Era-1 baseline 2026-10-30) | Active | P1 |
 | Documentation site | Complete | Complete | PASS |
 | Documentation emojis | 0 | 0 | PASS |

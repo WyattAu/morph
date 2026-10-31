@@ -75,7 +75,7 @@ We model the life of a shared object `#Val` as a Petri Net $N = (P, T, F, M_0)$.
 
 * PET-INV-003:* THE system SHALL define transitions for lifecycle operations.
 
-##### 2.2.1 Transition Definitions
+#### 2.2.1 Transition Definitions
 
 1. **$T_{new}$:* $\emptyset \to \{P_{active}, P_{refs}\}$ (Allocation sets $RC=1$)
 2. **$T_{clone}$:* $P_{active} \to P_{active} + P_{refs}$ (Increments $RC$)

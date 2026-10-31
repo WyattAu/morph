@@ -4,6 +4,9 @@
 - `Version:* 1.0.0
 - `Context:* Layer 2 (Compiler Backend) $\rightarrow$ Layer 1 (Build Cache)
 - `Formalism:* Search-Based Software Engineering (SBSE), Profile-Guided Optimization (PGO)
+- `Status:* Draft
+- Last Modified:* 2026-01-03
+- `Author:* Kilo Code
 
 - -
 
@@ -19,7 +22,7 @@ The OSE operates during the **Release Build** phase. In Debug builds, `??` resol
 
 - -
 
-## 2. The Hole Primitive (`??`)
+## 2. Definitions: the hole primitive (`??`)
 
 ### 2.1 Valid Contexts
 

@@ -80,8 +80,8 @@ The Effect System Specification is closely related to several other Morph specif
 - [`spec/security/security_flow_spec.md`](../security/security_flow_spec.md) - Security flow analysis and effect-based access control
 
 * Tooling Specifications:*
-- [`spec/tooling/operational_semantics_spec.md`](../tooling/operational_semantics_spec.md) - Operational semantics for effectful expressions
-- [`spec/tooling/comptime_partial_eval_spec.md`](../tooling/comptime_partial_eval_spec.md) - Compile-time evaluation of effectful expressions
+- [`spec/tooling/operational_semantics_spec.md`](../tooling/_future_research/operational_semantics_spec.md) - Operational semantics for effectful expressions
+- [`spec/tooling/comptime_partial_eval_spec.md`](../tooling/_future_research/comptime_partial_eval_spec.md) - Compile-time evaluation of effectful expressions
 
 * Note:* This specification provides the authoritative definition of the Effect system that supersedes all previous references in the listed specifications.
 

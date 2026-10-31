@@ -356,7 +356,7 @@ where:
 
 **Original Claim:* "Projectional editing eliminates syntax errors by construction."
 
-**Location:* [`spec/tooling/hot_reload_projection_spec.md`](../tooling/hot_reload_projection_spec.md)
+**Location:* [`spec/tooling/hot_reload_projection_spec.md`](../tooling/_future_research/hot_reload_projection_spec.md)
 
 **Validation Status:* **PARTIALLY-VALID-ASSUMPTION** (Syntax Errors Only)
 

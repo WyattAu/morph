@@ -4,6 +4,9 @@
 - `Version:* 1.0.0
 - `Context:* Layer 2 (Compilation Phase)
 - `Formalism:* EBNF (Extended Backus-Naur Form)
+- `Status:* Draft
+- Last Modified:* 2026-01-03
+- `Author:* Kilo Code
 
 - -
 
@@ -28,6 +31,9 @@
 - **Block:* `/* ... */` (Nestable).
 - **Semantic Doc:* `/// ...`
   - **Behavior:* Extracted by the compiler for Vector Embedding (RAG).
+  - **Tooling:* Skipped by the parser like ordinary line comments; a run of
+    `///` lines documents the next statement, and `morph doc` renders the
+    entries as Markdown (loop 90).
 
 - -
 

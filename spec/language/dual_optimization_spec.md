@@ -47,7 +47,7 @@ This specification does not cover:
 ### 1.4 References
 
 - [`spec/language/morph_language_spec.md`](morph_language_spec.md) - Morph language specification with Projectional Only Mandate
-- [`spec/tooling/agent_planning_mdp_spec.md`](../tooling/agent_planning_mdp_spec.md) - Agent planning using Markov Decision Processes
+- [`spec/tooling/agent_planning_mdp_spec.md`](../tooling/_future_research/agent_planning_mdp_spec.md) - Agent planning using Markov Decision Processes
 - [`spec/language/dialect_projection_spec.md`](dialect_projection_spec.md) - Dialect and projection specification
 - IEEE 830: Recommended Practice for Software Requirements Specifications
 - ISO/IEC 25010: Systems and software Quality Requirements and Evaluation (SQuaRE)
@@ -817,7 +817,7 @@ This specification resolves the contradiction documented in:
 
 This specification is referenced by:
 - [`spec/language/morph_language_spec.md`](morph_language_spec.md) - Projectional Only Mandate
-- [`spec/tooling/agent_planning_mdp_spec.md`](../tooling/agent_planning_mdp_spec.md) - Agent planning system
+- [`spec/tooling/agent_planning_mdp_spec.md`](../tooling/_future_research/agent_planning_mdp_spec.md) - Agent planning system
 - [`spec/language/dialect_projection_spec.md`](dialect_projection_spec.md) - Dialect and projection specification
 
 This specification implements the resolution proposed in:

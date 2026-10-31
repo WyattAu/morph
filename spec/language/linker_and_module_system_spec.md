@@ -15,7 +15,7 @@ Two build-system specifications whose theorems were trivia, replaced by the
 properties their subjects actually have — and, in both cases, by *findings* about
 advertised properties that do not hold.
 
-## 2. LinkerLogic
+## 2. Definitions: LinkerLogic
 
 **What was there:** ten theorems — `Option.map`, `Option.bind`, `List.append`
 lemmas — with no theorem about linking.
@@ -53,7 +53,7 @@ check (`ltoSafe_is_a_stub`).
 | `resolveBinding_total` | the resolution is always one of the two bindings |
 | `acyclic_catches_self_import` | a direct self-import *is* caught |
 
-## 3. ModuleSystem
+## 3. Requirements: ModuleSystem
 
 **What was there:** ten theorems, of which the interesting-looking ones were
 about *empty* tables — true because the table is empty. Nothing said what

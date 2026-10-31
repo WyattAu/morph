@@ -4,8 +4,11 @@
 - `Version:* 1.0.0
 - `Context:* Layer 2 (Type Checker)
 - `Formalism:* Category Theory
+- `Status:* Draft
+- Last Modified:* 2026-05-24
+- `Author:* Kilo Code
 
-## 1. The Category of Types ($\mathcal{C}_{Morph}$)
+## 1. Definitions: the category of types ($\mathcal{C}_{Morph}$)
 
 Morph types form a Category where:
 

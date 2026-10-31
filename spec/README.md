@@ -41,34 +41,34 @@ This directory contains all formal specifications for the Morph programming lang
   - [infrastructure_safety_contracts_spec.md](security/infrastructure_safety_contracts_spec.md)
   - [security_flow_spec.md](security/security_flow_spec.md)
 - **tooling/** - Tooling specifications
-  - [agent_planning_mdp_spec.md](tooling/agent_planning_mdp_spec.md)
-  - [analysis_abstract_interp_spec.md](tooling/analysis_abstract_interp_spec.md)
-  - [compiler_bisimulation_spec.md](tooling/compiler_bisimulation_spec.md)
-  - [comptime_partial_eval_spec.md](tooling/comptime_partial_eval_spec.md)
-  - [context_comonad_spec.md](tooling/context_comonad_spec.md)
-  - [context_temporal_logic_spec.md](tooling/context_temporal_logic_spec.md)
-  - [deterministic_time_spec.md](tooling/deterministic_time_spec.md)
-  - [diagnose_protocol_spec.md](tooling/diagnose_protocol_spec.md)
-  - [distributed_crdt_spec.md](tooling/distributed_crdt_spec.md)
-  - [fuzzing_combinatorial_spec.md](tooling/fuzzing_combinatorial_spec.md)
-  - [graph_rewriting_spec.md](tooling/graph_rewriting_spec.md)
-  - [history_persistent_tree_spec.md](tooling/history_persistent_tree_spec.md)
-  - [hot_reload_projection_spec.md](tooling/hot_reload_projection_spec.md)
-  - [learning_theory_spec.md](tooling/learning_theory_spec.md)
-  - [meta_modal_logic_spec.md](tooling/meta_modal_logic_spec.md)
-  - [metaprogramming_spec.md](tooling/metaprogramming_spec.md)
-  - [operational_semantics_spec.md](tooling/operational_semantics_spec.md)
-  - [parsing_island_grammar_spec.md](tooling/parsing_island_grammar_spec.md)
-  - [pattern_coverage_matrix_spec.md](tooling/pattern_coverage_matrix_spec.md)
-  - [protocol_session_types_spec.md](tooling/protocol_session_types_spec.md)
-  - [reactive_frp_spec.md](tooling/reactive_frp_spec.md)
-  - [realtime_mtl_spec.md](tooling/realtime_mtl_spec.md)
-  - [registry_merkle_spec.md](tooling/registry_merkle_spec.md)
-  - [semantic_trie_spec.md](tooling/semantic_trie_spec.md)
-  - [semantic_vector_spec.md](tooling/semantic_vector_spec.md)
-  - [serialization_isomorphism_spec.md](tooling/serialization_isomorphism_spec.md)
-  - [symbolic_execution_fuzz_spec.md](tooling/symbolic_execution_fuzz_spec.md)
-  - [synthesis_inhabitation_spec.md](tooling/synthesis_inhabitation_spec.md)
+  - [agent_planning_mdp_spec.md](tooling/_future_research/agent_planning_mdp_spec.md)
+  - [analysis_abstract_interp_spec.md](tooling/_future_research/analysis_abstract_interp_spec.md)
+  - [compiler_bisimulation_spec.md](tooling/_future_research/compiler_bisimulation_spec.md)
+  - [comptime_partial_eval_spec.md](tooling/_future_research/comptime_partial_eval_spec.md)
+  - [context_comonad_spec.md](tooling/_future_research/context_comonad_spec.md)
+  - [context_temporal_logic_spec.md](tooling/_future_research/context_temporal_logic_spec.md)
+  - [deterministic_time_spec.md](tooling/_future_research/deterministic_time_spec.md)
+  - [diagnose_protocol_spec.md](tooling/_future_research/diagnose_protocol_spec.md)
+  - [distributed_crdt_spec.md](tooling/_future_research/distributed_crdt_spec.md)
+  - [fuzzing_combinatorial_spec.md](tooling/_future_research/fuzzing_combinatorial_spec.md)
+  - [graph_rewriting_spec.md](tooling/_future_research/graph_rewriting_spec.md)
+  - [history_persistent_tree_spec.md](tooling/_future_research/history_persistent_tree_spec.md)
+  - [hot_reload_projection_spec.md](tooling/_future_research/hot_reload_projection_spec.md)
+  - [learning_theory_spec.md](tooling/_future_research/learning_theory_spec.md)
+  - [meta_modal_logic_spec.md](tooling/_future_research/meta_modal_logic_spec.md)
+  - [metaprogramming_spec.md](tooling/_future_research/metaprogramming_spec.md)
+  - [operational_semantics_spec.md](tooling/_future_research/operational_semantics_spec.md)
+  - [parsing_island_grammar_spec.md](tooling/_future_research/parsing_island_grammar_spec.md)
+  - [pattern_coverage_matrix_spec.md](tooling/_future_research/pattern_coverage_matrix_spec.md)
+  - [protocol_session_types_spec.md](tooling/_future_research/protocol_session_types_spec.md)
+  - [reactive_frp_spec.md](tooling/_future_research/reactive_frp_spec.md)
+  - [realtime_mtl_spec.md](tooling/_future_research/realtime_mtl_spec.md)
+  - [registry_merkle_spec.md](tooling/_future_research/registry_merkle_spec.md)
+  - [semantic_trie_spec.md](tooling/_future_research/semantic_trie_spec.md)
+  - [semantic_vector_spec.md](tooling/_future_research/semantic_vector_spec.md)
+  - [serialization_isomorphism_spec.md](tooling/_future_research/serialization_isomorphism_spec.md)
+  - [symbolic_execution_fuzz_spec.md](tooling/_future_research/symbolic_execution_fuzz_spec.md)
+  - [synthesis_inhabitation_spec.md](tooling/_future_research/synthesis_inhabitation_spec.md)
 - **stdlib/** - Standard library specifications
   - [stdlib_algebraic_spec.md](stdlib/stdlib_algebraic_spec.md)
   - [stdlib_amortized_spec.md](stdlib/stdlib_amortized_spec.md)
@@ -81,7 +81,7 @@ This directory contains all formal specifications for the Morph programming lang
   - [license_deontic_logic_spec.md](licensing/license_deontic_logic_spec.md)
   - [licensing_spec.md](licensing/licensing_spec.md)
 - **distributed/** - Distributed systems specifications
-  - [distributed_vector_clock_spec.md](distributed_vector_clock_spec.md)
+  - [distributed_vector_clock_spec.md(tooling/_future_research/distributed_vector_clock_spec.md)
 - **scheduler/** - Task scheduling specifications
   - [scheduler_randomized_stealing_spec.md](scheduler_randomized_stealing_spec.md)
 - **storage/** - Storage specifications
@@ -157,34 +157,34 @@ Specifications related to security, safety, and access control.
 ### Tooling
 Specifications related to development tools, analysis, and automation.
 
-- **[agent_planning_mdp_spec.md](tooling/agent_planning_mdp_spec.md)**: Markov Decision Processes for agent planning
-- **[analysis_abstract_interp_spec.md](tooling/analysis_abstract_interp_spec.md)**: Galois connections and lattices for abstract interpretation
-- **[compiler_bisimulation_spec.md](tooling/compiler_bisimulation_spec.md)**: Compiler correctness via bisimulation
-- **[comptime_partial_eval_spec.md](tooling/comptime_partial_eval_spec.md)**: Compile-time partial evaluation
-- **[context_comonad_spec.md](tooling/context_comonad_spec.md)**: Indexed comonads and co-effects for context propagation
-- **[context_temporal_logic_spec.md](tooling/context_temporal_logic_spec.md)**: Linear Temporal Logic for context lifecycle
-- **[deterministic_time_spec.md](tooling/deterministic_time_spec.md)**: Deterministic time handling
-- **[diagnose_protocol_spec.md](tooling/diagnose_protocol_spec.md)**: Diagnostic protocol
-- **[distributed_crdt_spec.md](tooling/distributed_crdt_spec.md)**: Conflict-free replicated data types
-- **[fuzzing_combinatorial_spec.md](tooling/fuzzing_combinatorial_spec.md)**: Combinatorial fuzzing
-- **[graph_rewriting_spec.md](tooling/graph_rewriting_spec.md)**: Graph rewriting for refactoring
-- **[history_persistent_tree_spec.md](tooling/history_persistent_tree_spec.md)**: Persistent data structures for version history
-- **[hot_reload_projection_spec.md](tooling/hot_reload_projection_spec.md)**: Type projection for hot module reload
-- **[learning_theory_spec.md](tooling/learning_theory_spec.md)**: Learning theory for AI agents
-- **[meta_modal_logic_spec.md](tooling/meta_modal_logic_spec.md)**: Contextual modal type theory for comptime staging
-- **[metaprogramming_spec.md](tooling/metaprogramming_spec.md)**: Metaprogramming capabilities
-- **[operational_semantics_spec.md](tooling/operational_semantics_spec.md)**: Operational semantics
-- **[parsing_island_grammar_spec.md](tooling/parsing_island_grammar_spec.md)**: Island grammars for resilient parsing
-- **[pattern_coverage_matrix_spec.md](tooling/pattern_coverage_matrix_spec.md)**: Pattern matching coverage via matrix reduction
-- **[protocol_session_types_spec.md](tooling/protocol_session_types_spec.md)**: Session types for protocol verification
-- **[reactive_frp_spec.md](tooling/reactive_frp_spec.md)**: Functional reactive programming
-- **[realtime_mtl_spec.md](tooling/realtime_mtl_spec.md)**: Metric Temporal Logic for real-time constraints
-- **[registry_merkle_spec.md](tooling/registry_merkle_spec.md)**: Merkle trees for supply chain security
-- **[semantic_trie_spec.md](tooling/semantic_trie_spec.md)**: Radix trees for semantic storage
-- **[semantic_vector_spec.md](tooling/semantic_vector_spec.md)**: Semantic vector representations
-- **[serialization_isomorphism_spec.md](tooling/serialization_isomorphism_spec.md)**: Category theory for serialization guarantees
-- **[symbolic_execution_fuzz_spec.md](tooling/symbolic_execution_fuzz_spec.md)**: Symbolic execution for fuzzing
-- **[synthesis_inhabitation_spec.md](tooling/synthesis_inhabitation_spec.md)**: Curry-Howard correspondence and proof search for code synthesis
+- **[agent_planning_mdp_spec.md](tooling/_future_research/agent_planning_mdp_spec.md)**: Markov Decision Processes for agent planning
+- **[analysis_abstract_interp_spec.md](tooling/_future_research/analysis_abstract_interp_spec.md)**: Galois connections and lattices for abstract interpretation
+- **[compiler_bisimulation_spec.md](tooling/_future_research/compiler_bisimulation_spec.md)**: Compiler correctness via bisimulation
+- **[comptime_partial_eval_spec.md](tooling/_future_research/comptime_partial_eval_spec.md)**: Compile-time partial evaluation
+- **[context_comonad_spec.md](tooling/_future_research/context_comonad_spec.md)**: Indexed comonads and co-effects for context propagation
+- **[context_temporal_logic_spec.md](tooling/_future_research/context_temporal_logic_spec.md)**: Linear Temporal Logic for context lifecycle
+- **[deterministic_time_spec.md](tooling/_future_research/deterministic_time_spec.md)**: Deterministic time handling
+- **[diagnose_protocol_spec.md](tooling/_future_research/diagnose_protocol_spec.md)**: Diagnostic protocol
+- **[distributed_crdt_spec.md](tooling/_future_research/distributed_crdt_spec.md)**: Conflict-free replicated data types
+- **[fuzzing_combinatorial_spec.md](tooling/_future_research/fuzzing_combinatorial_spec.md)**: Combinatorial fuzzing
+- **[graph_rewriting_spec.md](tooling/_future_research/graph_rewriting_spec.md)**: Graph rewriting for refactoring
+- **[history_persistent_tree_spec.md](tooling/_future_research/history_persistent_tree_spec.md)**: Persistent data structures for version history
+- **[hot_reload_projection_spec.md](tooling/_future_research/hot_reload_projection_spec.md)**: Type projection for hot module reload
+- **[learning_theory_spec.md](tooling/_future_research/learning_theory_spec.md)**: Learning theory for AI agents
+- **[meta_modal_logic_spec.md](tooling/_future_research/meta_modal_logic_spec.md)**: Contextual modal type theory for comptime staging
+- **[metaprogramming_spec.md](tooling/_future_research/metaprogramming_spec.md)**: Metaprogramming capabilities
+- **[operational_semantics_spec.md](tooling/_future_research/operational_semantics_spec.md)**: Operational semantics
+- **[parsing_island_grammar_spec.md](tooling/_future_research/parsing_island_grammar_spec.md)**: Island grammars for resilient parsing
+- **[pattern_coverage_matrix_spec.md](tooling/_future_research/pattern_coverage_matrix_spec.md)**: Pattern matching coverage via matrix reduction
+- **[protocol_session_types_spec.md](tooling/_future_research/protocol_session_types_spec.md)**: Session types for protocol verification
+- **[reactive_frp_spec.md](tooling/_future_research/reactive_frp_spec.md)**: Functional reactive programming
+- **[realtime_mtl_spec.md](tooling/_future_research/realtime_mtl_spec.md)**: Metric Temporal Logic for real-time constraints
+- **[registry_merkle_spec.md](tooling/_future_research/registry_merkle_spec.md)**: Merkle trees for supply chain security
+- **[semantic_trie_spec.md](tooling/_future_research/semantic_trie_spec.md)**: Radix trees for semantic storage
+- **[semantic_vector_spec.md](tooling/_future_research/semantic_vector_spec.md)**: Semantic vector representations
+- **[serialization_isomorphism_spec.md](tooling/_future_research/serialization_isomorphism_spec.md)**: Category theory for serialization guarantees
+- **[symbolic_execution_fuzz_spec.md](tooling/_future_research/symbolic_execution_fuzz_spec.md)**: Symbolic execution for fuzzing
+- **[synthesis_inhabitation_spec.md](tooling/_future_research/synthesis_inhabitation_spec.md)**: Curry-Howard correspondence and proof search for code synthesis
 
 ### Standard Library
 Specifications related to the standard library and data structures.

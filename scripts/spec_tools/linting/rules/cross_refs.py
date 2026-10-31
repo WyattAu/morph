@@ -204,12 +204,25 @@ class CrossReferenceRule(LintingRule):
             Set of section IDs
         """
         sections = set()
-        heading_pattern = re.compile(r"^#{1,6}\s+(.+)$", re.MULTILINE)
+        heading_pattern = re.compile(r"^#{1,6}\s+(.+)$")
 
-        for match in heading_pattern.finditer(content):
+        in_fence = False
+        for line in content.split("\n"):
+            # `#` comments inside fenced code blocks are not sections.
+            if line.strip().startswith("```"):
+                in_fence = not in_fence
+                continue
+            if in_fence:
+                continue
+            match = heading_pattern.match(line)
+            if not match:
+                continue
             heading_text = match.group(1).strip()
-            # Convert to section ID (lowercase, replace spaces with hyphens)
-            section_id = heading_text.lower().replace(" ", "-")
+            # GitHub-style slug: lowercase, drop punctuation except
+            # hyphens/underscores, spaces become hyphens. This makes
+            # `## 1. Purpose and Scope` resolve to `1-purpose-and-scope`.
+            section_id = re.sub(r"[^\w\s\-]", "", heading_text.lower())
+            section_id = section_id.replace(" ", "-")
             sections.add(section_id)
 
         return sections

@@ -3,10 +3,13 @@
 - `System:* Morph Ecosystem
 - `Version:* 1.0.0
 - `Context:* Layer 2 (Compiler) & Layer 4 (Standard Library)
+- `Status:* Draft
+- Last Modified:* 2026-05-15
+- `Author:* Kilo Code
 
 - -
 
-## 1. Unit Algebra Specification
+## 1. Definitions: unit algebra specification
 
 How do we declare units? We do not want them to be runtime objects (too slow). They must be **Compile-Time Metadata Tags** attached to numeric types.
 

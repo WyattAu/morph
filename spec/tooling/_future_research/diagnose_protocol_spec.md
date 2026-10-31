@@ -3,6 +3,9 @@
 - `System:* Morph Ecosystem
 - `Version:* 1.0.0
 - `Context:* Layer 2 (Compiler) $\rightarrow$ Layer 5 (Agent Interface)
+- `Status:* Draft
+- Last Modified:* 2026-06-09
+- `Author:* Kilo Code
 
 ## 1. Philosophy: Errors as Data
 

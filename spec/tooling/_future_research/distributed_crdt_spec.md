@@ -637,7 +637,7 @@ assert!(merged == set);
 
 #### 6.5.2 Commutative Merge
 
-```mermaid
+```morph
 // Commutative merge: Order doesn't matter
 let set1 = GrowOnlySet::new();
 let set2 = GrowOnlySet::new();

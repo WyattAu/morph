@@ -131,7 +131,7 @@ Where:
 **Context:* FRP, reactive programming, time-varying values
 
 **Related Specifications:*
-- [`spec/tooling/reactive_frp_spec.md`](../tooling/reactive_frp_spec.md)
+- [`spec/tooling/reactive_frp_spec.md`](../tooling/_future_research/reactive_frp_spec.md)
 
 #### 3.1.3 Stream Definition
 
@@ -239,7 +239,7 @@ $$
 **Context:* Graph rewriting, program transformation, AST manipulation
 
 **Related Specifications:*
-- [`spec/tooling/graph_rewriting_spec.md`](../tooling/graph_rewriting_spec.md)
+- [`spec/tooling/graph_rewriting_spec.md`](../tooling/_future_research/graph_rewriting_spec.md)
 
 #### 3.2.4 Relationship Between Reducer and Transducer
 
@@ -731,7 +731,7 @@ Use **Signal** when:
 
 - Describing FRP time-varying values
 - Working with continuous or discrete values that change over time
-- Referencing [`spec/tooling/reactive_frp_spec.md`](../tooling/reactive_frp_spec.md)
+- Referencing [`spec/tooling/reactive_frp_spec.md`](../tooling/_future_research/reactive_frp_spec.md)
 
 **Migration Example:*
 
@@ -931,7 +931,7 @@ let doubledSignal: Signal<Int> = mapSignal(timeSignal, fn(x: Int): Int { x * 2 }
 
 **Context:* FRP, time-varying values
 
-**Related Specification:* [`spec/tooling/reactive_frp_spec.md`](../tooling/reactive_frp_spec.md)
+**Related Specification:* [`spec/tooling/reactive_frp_spec.md`](../tooling/_future_research/reactive_frp_spec.md)
 
 #### 8.1.2 Stream Usage (Correct)
 
@@ -990,7 +990,7 @@ let simplifiedAST: AST = normalizeTransducer(originalAST);
 
 **Context:* Graph rewriting, program transformation
 
-**Related Specification:* [`spec/tooling/graph_rewriting_spec.md`](../tooling/graph_rewriting_spec.md)
+**Related Specification:* [`spec/tooling/graph_rewriting_spec.md`](../tooling/_future_research/graph_rewriting_spec.md)
 
 #### 8.1.5 Pure Function Usage (Correct)
 
@@ -1167,10 +1167,10 @@ This specification is referenced by and references the following specifications:
 
 - [`SPEC_INCONSISTENCIES.md`](../../SPEC_INCONSISTENCIES.md) - Terminology conflicts identified
 - [`SPEC_FIX_PROPOSAL.md`](../../SPEC_FIX_PROPOSAL.md) - Standardization requirements
-- [`spec/tooling/reactive_frp_spec.md`](../tooling/reactive_frp_spec.md) - Signal usage
+- [`spec/tooling/reactive_frp_spec.md`](../tooling/_future_research/reactive_frp_spec.md) - Signal usage
 - [`spec/language/unidirectional_data_flow_spec.md`](../language/unidirectional_data_flow_spec.md) - Stream usage
 - [`spec/language/ast_graph_spec.md`](../language/ast_graph_spec.md) - Reducer usage
-- [`spec/tooling/graph_rewriting_spec.md`](../tooling/graph_rewriting_spec.md) - Transducer usage
+- [`spec/tooling/graph_rewriting_spec.md`](../tooling/_future_research/graph_rewriting_spec.md) - Transducer usage
 - [`spec/type/type_system_spec.md`](../type/type_system_spec.md) - Pure function definition
 - [`spec/language/scoping_lambda_calculus_spec.md`](../language/scoping_lambda_calculus_spec.md) - Deprecated pure function definitions
 - [`spec/memory/memory_affine_logic_spec.md`](../memory/memory_affine_logic_spec.md) - Deprecated pure function definitions
