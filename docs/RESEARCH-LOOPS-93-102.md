@@ -83,6 +83,55 @@ max), `namedRow`, `mem_namedRow_iff` (row membership ≡ class order),
 Build 404 jobs, 0 warnings/errors; snapshot ✔ no regressions —
 total theorems **1508 → 1539** (+31), Lean modules 217 → 219.
 
+---
+
+## Loop 94 — Memory: strong-heap acyclicity by construction, and the weak escape (DONE)
+
+**Research** (papers pulled and analyzed):
+- Reinking, Xie, de Moura & Leijen, *Perceus: garbage free reference counting
+  with reuse* (PLDI 2021): precise RC is garbage free only for **cycle-free**
+  programs — the hypothesis is in the abstract but never discharged; drop
+  specialization + reuse analysis (FBIP) noted as future adoptables.
+- Swift ARC practice: no cycle collector, `weak`/`unowned` are the programmer
+  discipline; LLVM "peer-pressure" collector exists but is not semantic.
+- Bacon & Rajan, *Concurrent Cycle Collection in Reference Counted Systems*
+  (2001): trial-deletion — the backstop Python actually ships.
+- McBride, *FP²: Fully In-Place Functional Programming* (ICFP 2023): the
+  FIP discipline — candidate for a later loop as a function annotation.
+
+**Analysis.** Morph's own scope-limit §5.3.3 recorded "acyclicity is not
+derived; a cycle `a → b → a` still satisfies A5" — a real gap shared with
+every industrial RC system. The literature's answers are (a) assume
+cycle-freedom (Perceus), (b) leave it to the programmer (Swift), or (c) ship a
+trial-deletion collector (Python). Morph can do better *provably*: functional
+construction (the only kind affine moves permit without sharing) is
+young-into-old — a fresh object captures only existing objects — and under
+that discipline the strong heap cannot cycle. Adopt: make the discipline a
+named, compile-time-enforced invariant; keep `Weak<T>` as the escape; prove
+the escape unblocks collection. Reject: no new runtime machinery, no FBIP
+annotation yet (logged for a later loop).
+
+**Spec**:
+- `spec/memory/memory_model_spec.md` → v3.4.0: new §2.6.7 states the
+  young-into-old construction discipline and the acyclicity consequence;
+  adds MMS-INV-034; identifies Perceus's implicit cycle-freedom hypothesis;
+  reduces runtime cycle collection to the trial-deletion premise.
+- `spec/memory/memory_bounds_spec.md` → v1.1.0: scope-limit §5.3.3 narrowed
+  (acyclicity derived *for disciplined executions*, still not for arbitrary
+  ones — the model's `store` can build a 2-cycle and that is now stated);
+  §5.3.2 gains the `weak_cut_released` note; traceability row added.
+  Both files lint ✔.
+
+**Lean** (`Morph/Specs/MemoryBounds/Spec.lean`): `Strong`, `Referenced`,
+`StrongPath` (young-into-old paths), `StrongPath_lt` (paths strictly descend),
+`strong_acyclic` (no strong path returns to its origin),
+`referenced_not_released` (why `Released` is exactly "no strong in-refs"),
+`weak_cut_released` (weakening the sole strong in-reference — fields `Nodup`,
+which is required: `erase` drops only the first occurrence — restores
+`Released`). Proof notes: index-varying induction needed explicit `@cons`
+naming; core Lean has no general `not_mem_erase`, only `Nodup.not_mem_erase`.
+Snapshot ✔ no regressions — total theorems **1539 → 1543**.
+
 ## Release-track entries (not part of the 93–102 research plan)
 
 Roadmap follow-ups after Sprint 10, done in one pass at maintainer

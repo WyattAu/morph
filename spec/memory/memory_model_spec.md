@@ -1,10 +1,10 @@
 # Morph Memory Model Specification (MMS)
 
 - File: `memory_model_spec.md`
-- Version: 3.3.0
+- Version: 3.4.0
 - Context: Layer 3 (Runtime) & Layer 2 (Semantic Analysis) - Formalism
 - Status: Active
-- Last Modified: 2026-01-04
+- Last Modified: 2026-10-31
 - Author: Kilo Code
 - Reviewers: [Pending Review]
 
@@ -566,6 +566,42 @@ Manually breaks a cycle by clearing weak references.
 8. **Profile Memory:** Use memory profiling to identify unexpected retention
 
 * MMS-INV-031:* THE system SHALL document best practices for avoiding runtime cycles.
+
+#### 2.6.7 The Young-Into-Old Construction Discipline (loop 94)
+
+The runtime-acyclicity gap is closed *by discipline* rather than by collection.
+Functional construction — the only kind affine moves permit without sharing —
+builds a new object $a$ from objects that already exist: every strong edge
+introduced by `store` runs from the **younger** object (allocated later) to the
+**older** one (allocated earlier). Formally, with addresses assigned in
+allocation order (the bump pointer this spec's growth analysis requires), a
+computation satisfies the discipline when every strong edge $a \to f$ has
+$f < a$. Under that discipline:
+
+$$
+\text{strong path } a \to^{+} c \;\Longrightarrow\; c < a
+\qquad\text{hence}\qquad
+\text{no strong path returns to its origin (acyclicity)}
+$$
+
+Machine-checked in `Morph/Specs/MemoryBounds/Spec.lean`:
+`Strong`, `StrongPath`, `StrongPath_lt`, `strong_acyclic`.
+
+This is exactly the hypothesis under which precise reference counting claims
+garbage-freedom — Perceus (PLDI 2021) proves "(cycle-free) programs are garbage
+free" without saying where cycle-freedom comes from; here it comes from the
+construction discipline, and `Weak<T>` (§2.6.3) remains the documented escape
+for structures that genuinely need cycles. The escape is effective, not merely
+declarative: `weak_cut_released` (MemoryBounds, loop 94) proves that weakening
+a target's only strong in-reference (fields `Nodup`) makes it `Released` — the
+premise `Step.collect` requires. Runtime cycle collection therefore reduces to
+the classical trial-deletion test (Bacon & Rajan, 2001), kept as a checked
+premise rather than a modeled algorithm (ADR-013).
+
+* MMS-INV-034:* THE system SHALL treat the young-into-old construction
+discipline as the compile-time-enforced source of strong-heap acyclicity, and
+`Weak<T>` (§2.6.3) as the escape that restores collectability for structures
+outside the discipline.
 
 ### 2.7 Memory Consistency Model
 
@@ -2856,6 +2892,7 @@ logic receiver {
 
 | Version | Date       | Author      | Changes                                                                 |
 |---------|------------|-------------|-------------------------------------------------------------------------|
+| 3.4.0   | 2026-10-31 | Research loop 94 | **Added §2.6.7 the young-into-old construction discipline (papers → spec → Lean):**<br>1. Strong-heap acyclicity derived under the discipline (fresh objects capture only existing ones) — machine-checked as `StrongPath_lt`/`strong_acyclic`<br>2. Identified this as the explicit hypothesis Perceus (PLDI 2021) leaves implicit ("cycle-free programs are garbage free")<br>3. `weak_cut_released`: weakening a target's only strong in-reference makes it `Released` — the `Weak<T>` escape (§2.6.3) provably unblocks `Step.collect`<br>4. Added MMS-INV-034; runtime cycle collection reduced to the trial-deletion premise (Bacon–Rajan 2001, ADR-013) |
 | 3.2.0   | 2026-01-03 | Kilo Code    | **Resolved memory management contradiction (cycle detection):**<br>1. Added new section 2.6 "Type-Level Acyclicity vs Runtime Cycle Breaking"<br>2. Clarified that compile-time cycle detection is for type-level acyclicity only<br>3. Explicitly stated that compiler cannot detect all dynamic cycles<br>4. Documented that runtime cycle detection is undecidable in general<br>5. Provided algorithms for type-level cycle detection<br>6. Provided guidelines for using Weak<T> for runtime cycle breaking<br>7. Added examples of type-level cycle scenarios<br>8. Added examples of runtime cycle scenarios with Weak<T><br>9. Updated existing sections to clarify limitations of cycle detection<br>10. Documented best practices for avoiding runtime cycles<br>11. Updated Acyclicity Theorem to clarify type-level scope<br>12. Updated Cycle Handling section to clarify type-level scope |
 | 3.1.0   | 2026-01-03 | Kilo Code    | **Completed CRIT-003:** Extended Memory Safety Theorem proof to cover all language constructs including:<br>1. Complete formal proof by structural induction on program syntax<br>2. Proof that affine logic prevents use-after-free errors<br>3. Proof that capability system prevents double-free errors<br>4. Proof that atomic reference counting prevents data races<br>5. Proof that zero-copy transitions preserve memory safety<br>6. Analysis of weak reference cycle-breaking correctness<br>7. Consideration of FFI interactions and safety boundaries |
 | 3.0.0   | 2026-01-03 | Kilo Code    | **Resolved contradiction C-005:**<br>1. Clarified that deterministic deallocation is guaranteed for strong references only<br>2. Documented that weak references can create cycles<br>3. Added cycle detection tools (detect_cycles, analyze_cycles, break_cycle)<br>4. Updated Acyclicity Theorem to clarify weak reference behavior<br>5. Added MMS-REQ-017 for cycle detection tools |

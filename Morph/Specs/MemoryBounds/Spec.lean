@@ -244,4 +244,82 @@ inductive Steps : Nat → Config → Config → Prop where
   | refl : ∀ c, Steps 0 c c
   | tail : ∀ (n : Nat) c c' c'', Steps n c c' → Step c' c'' → Steps (n + 1) c c''
 
+/-! ### The strong heap, cycles, and the weak escape (loop 94)
+
+Research basis: Reinking, Xie, de Moura & Leijen, *Perceus: garbage free
+reference counting with reuse* (PLDI 2021) — precise RC is garbage free only
+for **cycle-free** programs; Swift and Koka leave cycles to programmer-supplied
+weak references; Python's cycle collector is the trial-deletion backstop
+(Bacon & Rajan, 2001). Morph's answer closes scope-limit §5.3.3 of
+`spec/memory/memory_bounds_spec.md`:
+
+- a **strong reference** is an edge in the `Heap`;
+- under the **young-into-old construction discipline** (a freshly allocated
+  object captures only already-allocated objects — which is what the affine
+  move `store` means for functional construction), every strong edge goes
+  from a strictly younger address to an older one, so the strong heap is
+  **acyclic**: `StrongPath_lt`, `strong_acyclic`;
+- for structures that genuinely need cycles (`Weak<T>`, per
+  `memory_model_spec.md` §2.6), weakening one strong edge per cycle unblocks
+  collection: `weak_cut_released` proves the target becomes `Released`,
+  which is exactly the premise `Step.collect` needs. -/
+
+/-- A strong reference: `a` holds `f` among its strong fields. -/
+def Strong (h : Heap) (a f : Addr) : Prop := ∃ gs, h a = some gs ∧ f ∈ gs
+
+/-- A strong reference into `f` exists from *some* object. -/
+def Referenced (h : Heap) (f : Addr) : Prop := ∃ a, Strong h a f
+
+/-- A strong path under the young-into-old discipline: every edge goes from
+a strictly younger address to an older one. -/
+inductive StrongPath (h : Heap) : Addr → Addr → Prop where
+  /-- A single decreasing edge. -/
+  | edge : ∀ {a f}, f < a → Strong h a f → StrongPath h a f
+  /-- A decreasing edge followed by a path. -/
+  | cons : ∀ {a b c}, b < a → Strong h a b → StrongPath h b c → StrongPath h a c
+
+/-- Every young-into-old strong path strictly descends: the destination is
+strictly younger than the origin. -/
+theorem StrongPath_lt {h : Heap} {a c : Addr} (p : StrongPath h a c) : c < a := by
+  induction p with
+  | edge hf _ => exact hf
+  | @cons a b c hb _ p2 ih => exact Nat.lt_of_lt_of_le ih (Nat.le_of_lt hb)
+
+/-- **Strong-heap acyclicity under the construction discipline.** No strong
+young-into-old path returns to its origin — the discipline rules out the
+cycle `a → b → a` that scope-limit §5.3.3 recorded as satisfying A5. -/
+theorem strong_acyclic {h : Heap} (a : Addr) : ¬ StrongPath h a a :=
+  fun p => Nat.lt_irrefl a (StrongPath_lt p)
+
+/-- A strong reference into `f` blocks release: `Released` is exactly the
+absence of strong in-references, so a collectable object is one whose every
+strong in-reference has been cut. -/
+theorem referenced_not_released {h : Heap} {f : Addr} (href : Referenced h f) :
+    ¬ Released h f := by
+  intro hall
+  obtain ⟨a, gs, ha, hf⟩ := href
+  exact hall a gs ha hf
+
+/-- **The weak-reference escape works at the model level.** If `f`'s only
+strong in-reference is the edge `a → f`, weakening that edge (replacing the
+strong field by `Weak<T>` — the strong `Heap` no longer carries it) leaves
+`f` released, which is exactly what `Step.collect` requires. The field list
+is `Nodup` (an object holds at most one strong field reference per target),
+so the erased edge is *the* strong in-reference. This is the machine-checked
+form of `memory_model_spec.md` §2.6: weak cycles do not prevent deallocation
+of objects with no strong references. -/
+theorem weak_cut_released {h : Heap} {a f : Addr} {gs : List Addr}
+    (ha : h a = some gs) (hnd : gs.Nodup)
+    (honly : ∀ y, y ≠ a → ∀ gs', h y = some gs' → f ∉ gs') :
+    Released (hUpd h a (gs.erase f)) f := by
+  intro y gs' hy
+  by_cases hya : y = a
+  · subst hya
+    rw [hUpd_self] at hy
+    simp only [Option.some.injEq] at hy
+    subst hy
+    exact hnd.not_mem_erase
+  · rw [hUpd_ne _ _ _ _ hya] at hy
+    exact honly y hya gs' hy
+
 end Morph.Specs.MemoryBounds

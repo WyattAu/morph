@@ -1,9 +1,9 @@
 # Memory Bounds and Garbage-Freedom Specification
 
 **Spec ID:** MEM-BND-001
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Status:** Formalized (Lean 4)
-**Date:** 2026-10-15
+**Date:** 2026-10-31
 **Formal Module:** `Morph/Specs/MemoryBounds/Spec.lean`, `Morph/Specs/MemoryBounds/Lemmas.lean`
 **Closes:** SG-002 (formal bounds on heap allocation growth)
 **Related Specifications:** [`memory_model_spec.md`](./memory_model_spec.md),
@@ -104,15 +104,27 @@ These are deliberate and recorded so the theorem set is not over-read:
 2. **No reclamation-completeness claim.** That every unreachable object is
    *eventually* freed requires cycle detection and a fairness argument on the
    collector; `Released` is a premise, not a theorem. Weak-reference cycles
-   (`memory_model_spec.md` §2.6) remain the documented escape.
-3. **Acyclicity is not derived.** A5 plus A7 gives unique ownership and no
-   self-loops; a cycle `a → b → a` still satisfies A5. Cycles are therefore
-   *not* claimed impossible — they are claimed harmless for the reachability
-   statement, since cycle members remain reachable from the queue.
+   (`memory_model_spec.md` §2.6) remain the documented escape — and loop 94
+   adds `weak_cut_released`: weakening a target's *only* strong in-reference
+   (fields `Nodup`) makes it `Released`, so the escape demonstrably unblocks
+   the very premise `collect` needs.
+3. **Acyclicity is not derived — for arbitrary executions.** A5 plus A7 gives
+   unique ownership and no self-loops; a cycle `a → b → a` still satisfies A5,
+   and the `store` step permits building one. It *is* derived for executions
+   that respect the **young-into-old construction discipline** (loop 94): a
+   fresh object captures only already-allocated objects, so every strong edge
+   runs from a strictly younger address to an older one (`StrongPath`) and no
+   strong path returns to its origin (`strong_acyclic`). This is the same
+   hypothesis under which Perceus (PLDI 2021) claims garbage-freedom —
+   "cycle-free programs" — made explicit here as a construction discipline on
+   the affine `store` move. Genuinely cyclic structures must cut each cycle
+   with `Weak<T>` (§2.6 of the memory-model spec), and `weak_cut_released`
+   shows the cut restores collectability.
 4. **`collect` assumes `Released`.** Statically, `Iso` consumption guarantees
-   it; dynamically it is the trial-deletion test. Making it a checked premise
-   keeps this specification about the memory model rather than about the
-   borrow checker (see ADR-013).
+   it; dynamically it is the trial-deletion test (Bacon–Rajan 2001, as in
+   Python's cycle collector). Making it a checked premise keeps this
+   specification about the memory model rather than about the borrow checker
+   (see ADR-013).
 
 ---
 
@@ -125,11 +137,13 @@ These are deliberate and recorded so the theorem set is not over-read:
 | MMS-INV-008 (affine usage) | `Affine` (A1–A7), `store` rule |
 | MMS-INV-009 (zero-copy affine moves) | `store` rule, `hAdd_live` |
 | MMS-INV-014 (no tracing GC) | Step relation: only `collect` frees |
+| MMS-INV-034 (young-into-old acyclicity, loop 94) | `StrongPath_lt`, `strong_acyclic`, `weak_cut_released` |
 
 ---
 
 ## Change Log
 
 | Version | Date | Changes | Author |
-|---------|------|--------|--------|
+|---------|------|---------|--------|
+| 1.1.0 | 2026-10-31 | **Young-into-old acyclicity and the weak escape (research loop 94):** §5.3.3 narrowed to arbitrary executions — under the construction discipline, strong-heap acyclicity *is* derived (`StrongPath_lt`, `strong_acyclic` in Spec.lean); §5.3.2 note: `weak_cut_released` proves weakening a sole strong in-reference restores `Released`, so the §2.6 weak escape unblocks `collect`; traceability row for MMS-INV-034 added | Morph research loop 94 |
 | 1.0.0 | 2026-10-15 | Initial specification: collector model, `Precise`/`Affine` invariants, four formal theorems, survey of Perceus/ORCA/Rust and the escape-clause argument | Morph research loop 2 |
