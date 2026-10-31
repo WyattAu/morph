@@ -1,7 +1,7 @@
 # Type Unification Specification
 
 * File:* `type\type_unification_spec.md`
-* Version:* 1.0.0
+* Version:* 1.1.0
 * Context:* Layer 2 (Type Checker)
 * Formalism:* Robinson's Unification Algorithm & Substitution
 * Status:* Active
@@ -527,3 +527,38 @@ let t2 = List<α>;
 | Version | Date       | Author      | Changes                                                                 |
 |---------|------------|-------------|-------------------------------------------------------------------------|
 | 1.0.0   | 2026-01-01 | Kilo Code    | Initial version                                                        |
+
+
+---
+
+## 9. Machine-Checked Core (loop 101)
+
+This specification was, until loop 101, aspirational: Robinson's algorithm,
+the MGU, and the occurs check were stated as mathematics with no machine
+checked counterpart anywhere in the repository. Loop 101 supplies the
+first-order core, machine-checked in `Morph/Specs/TypeUnification/`:
+
+| Concept | Definition | Machine-checked property |
+|---|---|---|
+| Type terms | variables, base types, arrows (`UTerm`) | — |
+| Substitutions | functions `Nat → UTerm`, with `apply`, `update`, `comp` | `apply_comp`: application distributes over composition |
+| Occurs check | `occurs x t` | `apply_update_of_not_occurs(_gen)`: substituting for `x` leaves `x`-free terms unchanged — the soundness argument for rejecting `x ≐ t` with `x ∈ vars(t)` (Robinson 1965; Baader & Nipkow ch. 4) |
+| Unifier | `unifyF` — fuel-recursion form of Robinson's algorithm, occurs check before every binding | `unifyF_sound`: whatever it returns makes the two terms equal |
+
+**Non-claims** (recorded so the table above is not over-read):
+
+1. **Most-generality** (the M in MGU) is not proved: it needs an
+   instantiation order (`σ ⊑ τ`) and a generality induction. Next candidate
+   after the inference loop.
+2. **Completeness** (no unifier is missed) is not proved; the fuel bound
+   makes `unifyF` a semi-decision at fixed fuel.
+3. **Efficiency**: Paterson–Wegman's linear-time algorithm and
+   Martelli–Montanari's disagreement-set rewriting are algorithmic
+   refinements; the correctness content is the same as `unifyF`'s.
+
+## Change Log
+
+| Version | Date | Author | Changes |
+|---------|------|--------|---------|
+| 1.1.0 | 2026-10-31 | Research loop 101 | **Machine-checked core added (§9):** `Morph/Specs/TypeUnification/` — `UTerm`/`Subst`/`occurs`/`unifyF`, `apply_comp`, occurs-check soundness (`apply_update_of_not_occurs_gen`), unification soundness (`unifyF_sound`); MGU, completeness, and efficiency recorded as non-claims |
+| 1.0.0 | 2026-01-01 | Kilo Code | Initial version |

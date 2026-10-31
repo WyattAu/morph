@@ -375,6 +375,48 @@ new §"Projection faithfulness" + DIA-INV-031. Lint ✔.
 total theorems **1563 → 1564** (+1, the refutation; the conjunction's other
 half is a proof, not a theorem).
 
+---
+
+## Loop 101 — Unification: the machine-checked core (DONE)
+
+**Research** (papers pulled):
+- Robinson (1965): the original unification algorithm and the occurs check.
+- Martelli & Montanari (1982): unification as nondeterministic rewriting of
+  disagreement sets — the formulation most specs copy.
+- Paterson & Wegman (1978): linear-time unification.
+- Baader & Nipkow, *Term Rewriting and All That* ch. 4: the occurs-check
+  soundness argument in the form used here.
+
+**Analysis.** `spec/type/type_unification_spec.md` (v1.0.0, January) was
+**aspirational mathematics with no machine-checked counterpart** — no Lean
+module, no soundness proof, nothing. That is the largest spec/theory gap in
+the repository, now closed at the first-order core. Non-claims recorded in
+the spec: most-generality (needs an instantiation order + generality
+induction), completeness at fixed fuel, and algorithmic efficiency
+(Paterson–Wegman / Martelli–Montanari are refinements with the same
+correctness content).
+
+**Spec** (`spec/type/type_unification_spec.md` → v1.1.0): new §9 — the
+concept/property table grounding the spec's §1.2 scope in
+`Morph/Specs/TypeUnification/`, plus the three non-claims. Lint ✔.
+
+**Lean** (new module `Morph/Specs/TypeUnification/`): `UTerm` (var/const/
+arrow), `Subst` as functions with `apply`/`update`/`comp`,
+`apply_update_of_not_occurs_gen` (occurs-instance independence, general
+form) and `apply_update_of_not_occurs` (the occurs-check soundness
+statement), `apply_id`, `apply_comp`, `unifyF` (fuel-recursion Robinson with
+occurs check before every binding), and `unifyF_sound` — the spec's core
+soundness requirement. Six example pins including the occurs-check
+refusal `v 0 ≐ arrow (v 0) (c "x") = none`.
+Proof-engineering notes: `rw [unifyF] at h` picks equations
+unpredictably when arms overlap — the robust pattern is per-shape `rfl`
+equations (`unifyF_vv`, `unifyF_vc`, `unifyF_varr`, `unifyF_cc`,
+`unifyF_arrv`, `unifyF_arrc`, `unifyF_cv`, `unifyF_carr`, `unifyF_arrarr`)
+rewritten before case analysis; `by_cases`-style splits yield
+`¬(b = true)` hypotheses convertible via `Bool.eq_false_iff`.
+Snapshot ✔ no regressions — total theorems **1564 → 1578** (+14), Lean
+modules 219 → 222 (the new TypeUnification Spec/Lemmas/Examples).
+
 ## Release-track entries (not part of the 93–102 research plan)
 
 Roadmap follow-ups after Sprint 10, done in one pass at maintainer
