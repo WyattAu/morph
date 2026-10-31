@@ -348,4 +348,33 @@ theorem error_handling_explicit_holds : error_handling_explicit := by
   | ok a => exact Or.inl ⟨a, rfl⟩
   | error e => exact Or.inr ⟨e, rfl⟩
 
+/-! ### The projection is not injective (loop 100)
+
+GA-003 asked whether "projectional editing can express all syntactic forms".
+It cannot, and this is the machine-checked counterexample: `Stmt.nop` has no
+surface syntax — `stmtStr` renders it to the empty string — so the empty
+program and a one-`nop` program are different ASTs with identical `hum`
+projections. This is the information-loss class that killed first-generation
+projectional editors (Intentional); Hazel draws the same lesson and prints
+implicit holes as an explicit marker (`¿`) precisely because "if we printed
+those as nothing, the round-trip would lose them".
+
+The resolution (see `SPEC_GAPS_AND_BASIS.md` GA-003 and
+`spec/language/dialect_projection_spec.md` §"Projection faithfulness"):
+the AST is the storage; projections are *views*. The faithfulness requirement
+is not injectivity over all ASTs but **surface faithfulness** — the
+projection expresses every *surface* form, and `parseProgram ∘ renderCode` is
+the identity on rendered output (the `morph fmt` fixpoint, loop 90). AST-only
+forms such as `nop` are unobservable by design: they carry no surface
+information to lose. -/
+
+/-- **The counterexample.** The empty program and a one-`nop` program are
+different ASTs with identical `hum` projections. -/
+theorem render_not_injective :
+    (renderCode ⟨([] : List Stmt)⟩ Dialect.hum = renderCode ⟨[Stmt.nop]⟩ Dialect.hum) ∧
+    (⟨([] : List Stmt)⟩ : Program) ≠ ⟨[Stmt.nop]⟩ := by
+  refine ⟨rfl, fun h => ?_⟩
+  have hs : ([] : List Stmt) = [Stmt.nop] := congrArg Program.stmts h
+  cases hs
+
 end Morph.Specs.MorphLanguage

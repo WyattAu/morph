@@ -1,7 +1,7 @@
 # Dialect Projection Specification
 
 * File:* `language\dialect_projection_spec.md`
-* Version:* 1.0.0
+* Version:* 1.1.0
 * Context:* Layer 2 (Compiler)
 * Formalism:* Category Theory, Graph Theory, Type Theory
 * Status:* Active
@@ -1397,3 +1397,53 @@ function render_min(node):
    - $\forall \text{code}_1, \text{code}_2 \in \mathcal{L}_{\text{min}}, \text{Semantics}(\text{code}_1) = \text{Semantics}(\text{code}_2) \iff \text{Semantics}(f(\text{code}_1)) = \text{Semantics}(f(\text{code}_2))$
 
 **Conclusion:* $d_{\text{min}} \cong d_{\text{hum}}$. ∎
+
+---
+
+## Projection Faithfulness (loop 100 — GA-003 resolution)
+
+GA-003 asked whether "projectional editing can express all syntactic forms".
+Loop 100 resolves it, with a machine-checked refutation of the strong claim
+and a scoped replacement.
+
+**The refutation** (machine-checked as `render_not_injective` in
+`Morph/Specs/MorphLanguage/Lemmas.lean`): the projection is **not injective**
+over all ASTs. `Stmt.nop` has no surface syntax — `stmtStr` renders it to the
+empty string — so the empty program and a one-`nop` program are different ASTs
+with identical `hum` projections:
+
+$$
+\langle [\,] \rangle \neq \langle [\text{nop}] \rangle
+\qquad\text{but}\qquad
+\text{renderCode}(\langle [\,] \rangle, \text{hum}) =
+\text{renderCode}(\langle [\text{nop}] \rangle, \text{hum})
+$$
+
+This is the information-loss class that killed first-generation projectional
+editors (the Intentional post-mortems). Hazel reaches the same conclusion from
+the round-trip side and prints implicit holes as an explicit marker (`¿`)
+precisely because "if we printed those as nothing, the round-trip would lose
+them" (Hazel CLI round-trip docs).
+
+**The resolution.** Morph follows the Unison/Hazel storage split: the AST is
+the storage; projections are views. The faithfulness requirement is therefore
+not injectivity over all ASTs but **surface faithfulness**:
+
+1. the projection is total over every accepted AST (`stmtStr` covers every
+   `Stmt` constructor, including `matchStmt` and `nop`);
+2. the projection expresses every *surface* form — anything the parser can
+   produce has a rendering;
+3. `parseProgram ∘ renderCode` is the identity on rendered output — the
+   `morph fmt` fixpoint (loop 90's golden, theorem upgrade pending a
+   parser-correctness proof);
+4. AST-only forms (`nop`) are unobservable **by design**: they carry no
+   surface information, so nothing is lost — and `morph fmt` collapses
+   `nop`-runs, which is the desired formatting behavior.
+
+GA-003 status: **Resolved (scoped)** — see `SPEC_GAPS_AND_BASIS.md`.
+
+**DIA-INV-031:** THE system SHALL keep the AST as the storage of record;
+dialect projections SHALL be total over accepted ASTs and surface-faithful
+(every parser-producible form has a rendering), and the composition
+`parseProgram ∘ renderCode` SHALL be the identity on rendered output for
+every dialect.

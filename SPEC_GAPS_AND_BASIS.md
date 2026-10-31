@@ -30,7 +30,7 @@ The following assumptions were identified as needing formal validation. See `spe
 |----|-----------|--------|------------|
 | GA-001 | Affine types guarantee cycle-freedom in ARC | Validated (for type-level cycles) | Formal proof in `spec/memory/arc_affine_integration_spec.md`; runtime-cycle caveat recorded in `memory_bounds_spec.md` §5.3 |
 | GA-002 | SSUS pattern preserves referential transparency | Validated | See `spec/language/strict_state_unidirectional_spec.md` |
-| GA-003 | Projectional editing can express all syntactic forms | Under Review | See `spec/language/dialect_projection_spec.md` |
+| GA-003 | Projectional editing can express all syntactic forms | **Resolved (loop 100, scoped)** — injectivity refuted: `render_not_injective` (MorphLanguage) shows `nop` is unobservable in any dialect (no surface syntax). Resolution: the AST is the storage; projections are views that must express every *surface* form, with `parseProgram ∘ renderCode` the identity on rendered output (the `morph fmt` fixpoint, loop 90). See `spec/language/dialect_projection_spec.md` §"Projection faithfulness" |
 | GA-004 | Actor message ordering is deterministic | Validated | See `spec/architecture/layered_concurrency_spec.md` |
 | GA-005 | Subtyping over `Typ` is decidable | **Corrected** | The claimed `instDecidableSubtype`/`isSubtype` (ADR-015) did not exist in the repository. Loop 12 supplies both: `Morph/Specs/Subtyping/` — `isSubtype` with `isSubtype_sound`/`isSubtype_complete` and the `instDecidableSub` instance. The *old* `Subtype` relation is exactly equality (`subtype_iff_eq`). |
 

@@ -335,6 +335,46 @@ was an invocation artifact — snapshot run from `scripts/` made `lake build`
 fail on a missing lakefile; clean re-run from the root is green) — total
 theorems **1561 → 1563** (+2).
 
+---
+
+## Loop 100 — Projectional syntax: GA-003 resolved (DONE)
+
+**Research** (sources pulled):
+- Hazel docs + commit history: implicit holes (Grout) are printed as an
+  explicit marker (`¿`) because "if we printed those as nothing — or as a
+  regular space — the re-parsed text wouldn't know they were there... the
+  round-trip would lose them"; the marker must be atomic and disjoint from
+  identifier/operator characters. Round-trip is Hazel's core invariant.
+- Omar et al., *Live Functional Programming with Typed Holes* (POPL 2019):
+  every editor state is well-defined — structure editing + holes.
+- Unison's model (prior knowledge, framing): content-addressed definitions —
+  the hash is the storage, syntax is a projection.
+
+**Analysis.** GA-003 ("projectional editing can express all syntactic forms —
+Under Review") had a precise, checkable content: is `renderCode` injective?
+It is **not**: `Stmt.nop` has no surface syntax, so the empty program and a
+one-`nop` program are different ASTs with identical projections — the exact
+Intentional failure class, and exactly why Hazel prints Grout as a marker.
+Resolution (Hazel/Unison-informed): the AST is the storage, projections are
+views; the requirement is **surface faithfulness** (total over accepted
+ASTs, every parser-producible form renders, `parseProgram ∘ renderCode` =
+id on rendered output — loop 90's fixpoint), not injectivity. `nop` is
+unobservable by design and `fmt` collapsing nop-runs is desired behavior.
+Adopt the scoping; reject adding a marker syntax for `nop` (it would change
+the surface language for zero observational gain — `nop` is introduced only
+by desugaring).
+
+**Spec**: `SPEC_GAPS_AND_BASIS.md` GA-003 → Resolved (scoped) with the
+refuting theorem named; `spec/language/dialect_projection_spec.md` → v1.1.0,
+new §"Projection faithfulness" + DIA-INV-031. Lint ✔.
+
+**Lean** (`Morph/Specs/MorphLanguage/Lemmas.lean`): `render_not_injective`
+— both the equal-renderings equation (by `rfl`: `joinSep` of `[]` and of
+`[""]` both compute to `""`) and the AST-inequality (by
+`congrArg Program.stmts` + constructor mismatch). Snapshot ✔ no regressions —
+total theorems **1563 → 1564** (+1, the refutation; the conjunction's other
+half is a proof, not a theorem).
+
 ## Release-track entries (not part of the 93–102 research plan)
 
 Roadmap follow-ups after Sprint 10, done in one pass at maintainer
