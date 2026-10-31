@@ -583,4 +583,141 @@ example : isSubtype
     (.linearFunctionType [.linearFunctionType [.neverType] .unitType] .unitType)
     (.linearFunctionType [.linearFunctionType [.intType] .unitType] .unitType) = false := rfl
 
+/-! ## Loop 96: transitivity — the preorder claim, discharged
+
+The subtyping spec calls `Sub` a preorder; reflexivity was shipped with the
+relation and transitivity was not. Research basis: Pierce, *Types and
+Programming Languages* §16 (subsumption chains require transitivity — it is
+the rule that makes subtyping usable at depth); Brandt & Henglein (TLCA'97):
+the coinductive closure's finite fragment is exactly the derivability
+relation, so a finite derivation system must prove transitivity explicitly;
+Dolan (POPL'17) and Parreaux (ICFP'20) build transitivity into the algebra
+(biunification), which Morph's syntactic approach must state as a theorem.
+
+`Sub`, `SubList`, `SubFields` are mutually inductive, so `Sub_trans` goes
+through the joint recursor with trans-shaped auxiliary motives; the list-level
+relations then follow by inversion (`sub_tuple_inv`, `sub_struct_inv`).
+`SubX_trans` lifts transitivity through the loop-61 contravariant extension,
+so the whole relation — functions included — composes. -/
+
+/-- Transitivity at the `Sub` level, by mutual recursion on derivations. -/
+private theorem sub_trans_core : ∀ {τ σ : Typ}, Sub τ σ → ∀ υ : Typ, Sub σ υ → Sub τ υ := by
+  refine Morph.Specs.Subtyping.Sub.rec
+    (motive_1 := fun τ σ _ => ∀ υ : Typ, Sub σ υ → Sub τ υ)
+    (motive_2 := fun as bs _ => ∀ cs : List Typ, SubList bs cs → SubList as cs)
+    (motive_3 := fun fs gs _ => ∀ hs : List (String × Typ), SubFields gs hs → SubFields fs hs)
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
+  · intro τ υ h2; exact h2
+  · intro τ υ _; exact .never υ
+  · intro τ υ h2
+    cases h2 with
+    | refl => exact .unit τ
+    | unit => exact .unit τ
+  · intro _ σ d ih υ h2
+    cases h2 with
+    | refl => exact .option d
+    | option hbc => exact .option (ih _ hbc)
+    | unit => exact .unit _
+  · intro _ _ σ σ' d d' ih ih' υ h2
+    cases h2 with
+    | refl => exact .result d d'
+    | result hbc hc' => exact .result (ih _ hbc) (ih' _ hc')
+    | unit => exact .unit _
+  · intro _ σ _ d ih υ h2
+    cases h2 with
+    | refl => exact .array d
+    | array hbc => exact .array (ih _ hbc)
+    | unit => exact .unit _
+  · intro _ bs d ih υ h2
+    cases h2 with
+    | refl => exact .tuple d
+    | tuple hbc => exact .tuple (ih _ hbc)
+    | unit => exact .unit _
+  · intro _ _ fs' d ih υ h2
+    cases h2 with
+    | refl => exact .struct d
+    | struct hbc => exact .struct (ih _ hbc)
+    | unit => exact .unit _
+  · intro cs h; cases h; exact .nil
+  · intro _ _ _ _ hab hrest ihA ihB cs h
+    cases h with
+    | cons hbc hrest' => exact .cons (ihA _ hbc) (ihB _ hrest')
+  · intro hs h; cases h; exact .nil
+  · intro _ _ _ _ _ hab hrest ihA ihB hs h
+    cases h with
+    | cons hbc hrest' => exact .cons (ihA _ hbc) (ihB _ hrest')
+
+/-- **Transitivity of the structural subtyping relation** — the missing half
+of the preorder claim. -/
+theorem Sub_trans {τ σ υ : Typ} (h1 : Sub τ σ) (h2 : Sub σ υ) : Sub τ υ :=
+  sub_trans_core h1 υ h2
+
+/-- Reflexivity of the pointwise tuple-element relation (structural on the
+list; no mutual induction needed). -/
+theorem SubList_refl : ∀ as : List Typ, SubList as as
+  | [] => .nil
+  | a :: as => .cons (Sub.refl a) (SubList_refl as)
+
+/-- Reflexivity of the pointwise struct-field relation. -/
+theorem SubFields_refl : ∀ fs : List (String × Typ), SubFields fs fs
+  | [] => .nil
+  | (_, a) :: fs => .cons (Sub.refl a) (SubFields_refl fs)
+
+/-- Inversion: subtyping between tuple types is pointwise. -/
+theorem sub_tuple_inv {as cs : List Typ} (h : Sub (.tupleType as) (.tupleType cs)) :
+    SubList as cs := by
+  cases h with
+  | refl => exact SubList_refl _
+  | tuple hbc => exact hbc
+
+/-- Inversion: subtyping between struct types is pointwise in the fields
+(the struct name and field names are already exact by the constructor). -/
+theorem sub_struct_inv {nm : String} {fs gs : List (String × Typ)}
+    (h : Sub (.structType nm fs) (.structType nm gs)) : SubFields fs gs := by
+  cases h with
+  | refl => exact SubFields_refl _
+  | struct hbc => exact hbc
+
+/-- Pointwise subtyping on tuple elements is transitive. -/
+theorem SubList_trans {as bs cs : List Typ} (h1 : SubList as bs)
+    (h2 : SubList bs cs) : SubList as cs :=
+  sub_tuple_inv (Sub_trans (.tuple h1) (.tuple h2))
+
+/-- Pointwise subtyping on struct fields is transitive. -/
+theorem SubFields_trans {fs gs hs : List (String × Typ)} (h1 : SubFields fs gs)
+    (h2 : SubFields gs hs) : SubFields fs hs :=
+  sub_struct_inv (Sub_trans (.struct (nm := "x") h1) (.struct (nm := "x") h2))
+
+/-- Transitivity through the loop-61 extension: contravariant function
+subtyping composes too. -/
+theorem SubX_trans {τ σ υ : Typ} (h1 : SubX τ σ) (h2 : SubX σ υ) : SubX τ υ := by
+  induction h1 generalizing υ with
+  | ofSub d =>
+      cases h2 with
+      | ofSub d' => exact .ofSub (Sub_trans d d')
+      | func hargs' hret' =>
+          cases d with
+          | refl => exact .func hargs' hret'
+          | never => exact .ofSub (.never _)
+      | linfunc hargs' hret' =>
+          cases d with
+          | refl => exact .linfunc hargs' hret'
+          | never => exact .ofSub (.never _)
+  | @func _ _ _ _ hargs hret ihret =>
+      cases h2 with
+      | ofSub d =>
+          cases d with
+          | refl => exact .func hargs hret
+          | unit => exact .ofSub (.unit _)
+      | func hargs' hret' =>
+          exact .func (SubList_trans hargs' hargs) (ihret hret')
+  | @linfunc _ _ _ _ hargs hret ihret =>
+      cases h2 with
+      | ofSub d =>
+          cases d with
+          | refl => exact .linfunc hargs hret
+          | unit => exact .ofSub (.unit _)
+      | linfunc hargs' hret' =>
+          exact .linfunc (SubList_trans hargs' hargs) (ihret hret')
+
 end Morph.Specs.Subtyping

@@ -1,7 +1,7 @@
 # Subtyping Specification
 
 * File:* `language/subtyping_spec.md`
-* Version:* 1.0.0
+* Version:* 1.1.0
 * Context:* Type system — subtyping and its decidability
 * Formalism:* Preorder on `Typ` with a decision procedure
 * Status:* Active
@@ -188,3 +188,74 @@ recursor `Sub.rec` (motives `motive_1/2/3`), the same technique as loop
 2. **No field permutation** (in-order comparison only).
 3. **No structural structs** (the name requirement stays).
 4. **No checker wiring** (still §6.2).
+
+---
+
+## 9. Transitivity — the preorder claim, discharged (loop 96)
+
+Section 3 called `Sub` a preorder; reflexivity shipped with the relation, but
+transitivity was never proved — so subsumption chains (the reason subtyping
+is usable at depth) had no warrant. Machine-checked now in
+`Morph/Specs/Subtyping/Lemmas.lean` (loop 96):
+
+| Theorem | Statement |
+|---|---|
+| `Sub_trans` | `Sub τ σ → Sub σ υ → Sub τ υ` — by mutual recursion on derivations through the joint recursor, with trans-shaped auxiliary motives for `SubList`/`SubFields` |
+| `SubList_trans` | pointwise transitivity on tuple elements (derived by inversion: `sub_tuple_inv (Sub_trans (.tuple h1) (.tuple h2))`) |
+| `SubFields_trans` | pointwise transitivity on struct fields (inversion at a fixed struct name) |
+| `SubList_refl` / `SubFields_refl` | pointwise reflexivity, structurally |
+| `SubX_trans` | transitivity through the loop-61 contravariant function extension |
+
+Proof-shape notes for future loops: `Sub`/`SubList`/`SubFields` are mutually
+inductive, so plain `induction` is unavailable; the proof goes through
+`Morph.Specs.Subtyping.Sub.rec` (the joint recursor) with `motive_2`/`motive_3`
+instantiated to the corresponding transitivity statements. In `cases` on the
+second derivation, the target type is substituted away — inversion hypotheses
+must be applied with `_` in the refined position.
+
+## 10. Relation to algebraic and set-theoretic subtyping (loop 96, non-claims)
+
+Research position (papers pulled and analyzed in loop 96):
+
+- **Dolan, MLsub** (POPL 2017) and **Parreaux, Simple-sub** (ICFP 2020):
+  *algebraic* subtyping — types as elements of a distributive lattice,
+  biunification for inference, union/intersection types, compact principal
+  types. The strongest known inference story for subtyping.
+- **Castagna et al., semantic/set-theoretic subtyping** (CDuce lineage;
+  Laurent, *Implementing Set-Theoretic Types*): subtyping as set inclusion
+  over a value interpretation; decidable, but the decision problem requires
+  coinductive regular types and is far more expensive (EXPTIME-class in
+  general) than structural comparison.
+- **Brandt & Henglein** (TLCA 1997): the coinductive closure underlying both
+  schools has as its finite fragment exactly the derivability relation —
+  which is why a finite derivation system must prove transitivity explicitly
+  (§9).
+
+Morph's relation is the *syntactic structural* school (Parreaux's third
+school: inference rules over type syntax). Deliberate non-adoptions, with
+reasons:
+
+1. **No union/intersection types.** They buy principal types with subtyping,
+   at the cost of semantic interpretation, negation, and DNF-based decision
+   procedures. Morph's rows (effects) and closed class set give the needed
+   expressiveness for the language Morph is; nothing in the runtime or ABI
+   consumes union types.
+2. **No equirecursive types.** Set-theoretic subtyping needs regular
+   coinductive terms; Morph's affine discipline keeps data finite and
+   acyclic by construction (memory-model spec §2.6.7), so recursive type
+   comparison is not required for soundness.
+3. **No polar (input/output) type separation.** MLsub's polarity discipline
+   conflicts with `refType`'s invariance (§3): a capability reference is
+   neither strictly positive nor negative. Invariance is the price of the
+   capability system and is kept.
+4. **Principal types with subtyping** remain future work for the inference
+   module (loop 101's target); when attempted, Simple-sub (not MLsub's
+   biunification) is the reference algorithm, per Parreaux's own evaluation
+   showing the two agree on a million generated programs.
+
+## 11. Change Log
+
+| Version | Date | Author | Changes |
+|---------|------|--------|---------|
+| 1.1.0 | 2026-10-31 | Research loop 96 | **Transitivity proved (§9):** `Sub_trans`, `SubList_trans`, `SubFields_trans`, `SubX_trans` machine-checked — the preorder claim of §3 is now fully discharged; **position paper §10:** relation to MLsub/Simple-sub algebraic subtyping and Castagna set-theoretic subtyping recorded with four reasoned non-adoptions |
+| 1.0.0 | 2026-05-29 | Research loop 12 | Initial version: structural `Sub` relation, `isSubtype` decision procedure, soundness + completeness + decidability (`instDecidableSub`), closing SG-005 |

@@ -179,6 +179,52 @@ explicit rows).
 `raise_recovers` (answering `raise` with `r` resumes at `k r`), each pinned
 by an example. Snapshot ✔ no regressions — total theorems **1543 → 1545**.
 
+---
+
+## Loop 96 — Subtyping: transitivity proved, position recorded (DONE)
+
+**Research** (papers pulled and analyzed):
+- Dolan, *Algebraic Subtyping* (thesis) / MLsub (POPL 2017): biunification,
+  polar types, union/intersection in a distributive lattice, compact
+  principal types with subtyping — the strongest inference story.
+- Parreaux, *The Simple Essence of Algebraic Subtyping* (ICFP 2020):
+  Simple-sub — constraint-based, <500 lines, agrees with MLsub on 10⁶
+  generated programs; several MLsub implementation bugs found by that
+  comparison. Three schools named: syntactic, semantic, algebraic.
+- Castagna et al. (semantic subtyping; Laurent, *Implementing Set-Theoretic
+  Types*): subtyping as set inclusion; decidable at EXPTIME-class cost,
+  needs regular coinductive types + DNF.
+- Brandt & Henglein (TLCA 1997): coinductive closure's finite fragment = the
+  derivability relation → a finite derivation system must prove
+  transitivity explicitly.
+
+**Analysis.** Morph's `Sub` is the syntactic structural school, decidable,
+sound, complete (loop 12), with contravariant functions (loop 61) and deep
+variance (loop 70) — but §3's "preorder" claim had no transitivity theorem.
+That was the gap: any subsumption chain (τ ≤ σ ≤ υ) was unwarranted.
+Non-adoptions recorded with reasons (spec §10): no union/intersection types
+(decision cost, no consumer in runtime/ABI), no equirecursive types (affine
+discipline keeps data acyclic — §2.6.7), no polar separation (conflicts with
+`refType` invariance — the capability system's price), principal-types-
+with-subtyping deferred to loop 101 with Simple-sub as the reference
+algorithm. Verdict: morph is *not* re-solving a solved problem — it took a
+different, cheaper point in the design space and the spec now says so
+explicitly.
+
+**Spec** (`spec/language/subtyping_spec.md` → v1.1.0): §9 the transitivity
+table + proof-shape notes for future loops (joint recursor; substituted
+targets need `_` in inversion hypotheses); §10 the three-school comparison
+and the four non-adoptions; §11 change log. Lint ✔.
+
+**Lean** (`Morph/Specs/Subtyping/Lemmas.lean`): `sub_trans_core` (mutual
+recursion via the joint recursor with trans-shaped motives — plain
+`induction` is unavailable for the mutual family), `Sub_trans`,
+`SubList_refl`/`SubFields_refl` (structural), `sub_tuple_inv`/
+`sub_struct_inv` (inversions), `SubList_trans`/`SubFields_trans` (by
+inversion over `Sub_trans`), `SubX_trans` (lifts through the loop-61
+extension; corner cases: an exact-`Sub` target can only be `refl` or `unit`).
+Snapshot ✔ no regressions — total theorems **1545 → 1553** (+8).
+
 ## Release-track entries (not part of the 93–102 research plan)
 
 Roadmap follow-ups after Sprint 10, done in one pass at maintainer
