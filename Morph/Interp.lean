@@ -145,7 +145,7 @@ def runWhile (fuel : Nat) (env : List (String × Expr)) (cond : Expr)
     | _ => (.stuck, env)
 
 /-- `do body while (cond)`: the body runs at least once. -/
-private def runDoWhile (fuel : Nat) (env : List (String × Expr)) (cond : Expr)
+def runDoWhile (fuel : Nat) (env : List (String × Expr)) (cond : Expr)
     (body : List Stmt) : Ran :=
   match fuel with
   | 0 => (.stuck, env)
@@ -164,7 +164,7 @@ private def runDoWhile (fuel : Nat) (env : List (String × Expr)) (cond : Expr)
 scrutinee's evaluated value; a hit runs the arm body in the environment
 extended with the pattern's bindings. Fuel-bounded like the other runners:
 the body runs at the predecessor fuel, so one unit covers the dispatch. -/
-private def runMatchArms (fuel : Nat) (env : List (String × Expr)) (v : Expr)
+def runMatchArms (fuel : Nat) (env : List (String × Expr)) (v : Expr)
     (arms : List (Pattern × List Stmt)) : Ran :=
   match fuel with
   | 0 => (.stuck, env)

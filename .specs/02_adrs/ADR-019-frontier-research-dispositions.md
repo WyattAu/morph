@@ -344,6 +344,230 @@ belong to the E-series.
 | E-99 | Uniform-latency volumetric 3D memory (`Latency(x,y,z)=τ_uniform≈1–2 cycles`, optical/spintronic stack) | Implement uniform-latency memory model + DOD-ablation harness: single-byte granularity, no lines/coherence/false-sharing; rerun pointer-graph vs SoA workloads; measure DOD-necessity claim vs L1/L2/L3+MESI baseline. Hardware fab is out of scope. | Memory-model experiment, L0/L1. | Kill iff harness shows DOD still wins at equal cost, or model assumes unbuildable physics. |
 | E-100 | Spin-glass / Ising ground-state compute (`H(σ)=−ΣJ_ijσ_iσ_j−Σh_iσ_i`, `δH=0` in ns, no ISA) | Implement constraint-to-coupling mapper on bounded SAT/routing/portfolio fragments: `J/h` synthesis + relaxation solver (sim/annealer); compare time-to-optimum vs Dijkstra/A*/sort/CFG imperative baselines. | Solver experiment, L0/L1. | Kill iff solution quality/time loses to imperative baseline or mapper covers only toy sizes. |
 
+### 20. Execution record — earliest-rows first cycle (loop 105)
+
+First full cycle (research → design → implement → test → validate → proof)
+for the ten earliest registered rows: Batch 0 carry-forwards E-03, E-06,
+E-10 (§2) plus Batch A E-21–E-25 (§4) plus Batch B E-26, E-27 (§5).
+Artifact: `Morph/Specs/Earliest/` (Spec 366 lines, Lemmas 604 lines / 49
+theorems, Examples 224 lines) plus `Morph/Tests/Earliest.lean` (190 lines).
+Brief with research basis, proof-burden log, validation findings, and the
+benchmark plan:
+[`E0-earliest-kernel.md`](../03_research/briefs/E0-earliest-kernel.md).
+
+| Row | Artifact | Key theorem | Grade | Status |
+|----|----------|-------------|-------|--------|
+| E-03 | `strategyOk`, `stratOfIto` | `strategyOk_iff`, `ito_strat_roundtrip` | model L3 / claim L1 | acausality + drift laws proved; agent-trial burden pending |
+| E-06 | `tadd`, `tmul`, `blockWCET`, `branchWCET` | semiring laws, `blockWCET_append`, `branchWCET_ge` | model L3 / claim L1 | tropical + WCET laws proved; dynamic-flow data pending |
+| E-10 | `shearX`, `shearY`, `leapfrog` | `shearX_area`, `shearY_area`, `leapfrog_area`, `leapfrog_rev` | model L3 / claim L1 | symplecticity + reversibility proved; drift benchmark pending |
+| E-21 | `outEdges`, `synth`, `checkSim` | `synth_complete`, `checkSim_sound`, `sim_refl`, `sim_comp` | model L3 / claim L1 | synthesis + checker laws proved; protocol trial pending |
+| E-22 | `cutWeight`, `moveOut` | `move_delta`, `not_mem_moveOut_self` | model L3 / claim L1 | KL move-delta proved; placement measurement pending |
+| E-23 | `evalPoly`, `derivPoly`, `isCritical` | `derivAux_eval`, `isCritical_sound` | model L3 / claim L1 | power rule + verification proved; search + MC comparison pending |
+| E-24 | `expectedCost`, `best` | `best_optimal`, `cost_mono` | model L3 / claim L1 | optimality proved; profiler comparison pending |
+| E-25 | `step`, `spread` | `mem_spread_succ`, `spread_mono_mem` | model L3 / claim L1 | expansion law proved; hammer-test data pending |
+| E-26 | `evalKer`, `compileAff` | `compileAff_correct`, `backends_conformant` | model L3 / claim L1 | functoriality proved; two-backend divergence data pending |
+| E-27 | `mu`, `checkStable`, `findWitness` | `stable_of_check`, `findWitness_sound` | model L3 / claim L1 | stability + witness laws proved; RTL-config data pending |
+
+Cycle findings (recorded, not hidden): the first `Tests/Earliest.lean`
+draft used the Unicode minus U+2212 in four `Int` literals, which Lean 4
+does not parse — four parse errors caught by the build and fixed to ASCII
+`-` (remaining U+2212 occurrences are comments-only, verified by search);
+all tests replay their row's laws on fresh instances rather than
+re-deciding the examples. `lake build Morph Morph.Tests` passes (420
+jobs) with 0 warnings and 0 `sorry`. No external kill criterion was
+testable, so none fired and no row was cut. Next cycle: critical-point
+search, KL sweeps, counter-driven depth, subgroup-sampling completeness,
+and simulation-to-liveness.
+
+### 21. Execution record — BatchDEF first cycle (loops 105–107)
+
+First full cycle (research → design → implement → test → validate → proof)
+for ten more registered rows: Batch D remainder E-38–E-40 (§7) plus Batch E
+E-41–E-45 (§8) plus Batch F start E-46, E-47 (§9).
+Artifact: `Morph/Specs/BatchDEF/` (Spec 460 lines, Lemmas 1047 lines / 76
+theorems, Examples 192 lines) plus `Morph/Tests/BatchDEF.lean` (171 lines).
+Brief with research basis, proof-burden log, validation findings, and the
+benchmark plan:
+[`E2-batchdef-kernel.md`](../03_research/briefs/E2-batchdef-kernel.md).
+
+| Row | Artifact | Key theorem | Grade | Status |
+|----|----------|-------------|-------|--------|
+| E-38 | `loadsOK`, `firstBad`, `solve` | `solve_ok`, `solve_blocked_viol`, `solve_blocked_frac` | model L3 / claim L1 | graded outcomes proved; SOR latency + log-usage data pending |
+| E-39 | `eval`, `prune`, `cuts`, `neg` | `eval_prune`, `cut_eval`, `neg_eval` | model L3 / claim L1 | slicing laws proved; corpus minimality data pending |
+| E-40 | `lowerReg`, `lowerStack`, `evalCells` | `conform_eval`, `volReg`, `volStack` | model L3 / claim L1 | conformance + volume proved; cross-target data pending |
+| E-41 | `reachE`, `massey3`, `hasCycle` | `massey_sound`, `massey_excl`, `mem3` | model L3 / claim L1 | ternary verdict proved; stress-test datum pending |
+| E-42 | `packAux`, `extents`, `disjointCheck` | `cert_sound`, `cert_complete`, `pack_cert` | model L3 / claim L1 | checker sound + complete; L1-split measurement pending |
+| E-43 | `isPath`, `bfs`, `deform` | `bfs_sound`, `deform_sound`, `deform_ends` | model L3 / claim L1 | reroute soundness + endpoints proved; glitch corpus pending |
+| E-44 | `upsert`, `reconcile`, `findK` | `findK_reconcile`, `upsert_idem`, `mem_reconcile` | model L3 / claim L1 | max-version laws proved; crash-trace data pending |
+| E-45 | `scatter`, `reconstruct`, `sumsq` | `recon_roundtrip`, `scatter_parseval` | model L3 / claim L1 | inversion + energy split proved; filter comparison pending |
+| E-46 | `bracket`, `cross`, `corr`, `star` | `corr_rev`, `star_reverse`, `star_classical` | model L3 / claim L1 | order-explicitness proved; oracle + CAS data pending |
+| E-47 | `disc`, `classify`, `needsFence` | `classify_total`, `space_not_time`, `light_of_small` | model L3 / claim L1 | totality + disjointness proved; coherence-sim data pending |
+
+Cycle findings (recorded, not hidden): `decide` refuted two hand-computed
+E-46 example values (ordered-pair corrections over an increasing window
+are negative: `corr [1,2,3] = −4`, `star = 2`, not `4`/`10`); `cases` on a
+non-variable discriminant substitutes it into the goal, which reshaped the
+`deform_ends` and `bfs_sound` proofs; full `simp` with hypotheses in
+context proved unpredictable and was replaced by an explicit `simp only`
+discipline with pre-derived equations plus `omega` residues; a negated
+`Bool` hypothesis needs `reduceCtorEq` before `if_false` fires. All tests
+replay their row's laws on fresh instances rather than re-deciding the
+examples. `lake build` passes with 0 warnings and 0 `sorry`. No external
+kill criterion was testable, so none fired and no row was cut. Next cycle:
+measurement harnesses per row family, stress-test mining for E-41, the
+second E-46 correction term, BFS completeness for E-43, and fraction
+maximality for E-38.
+
+### 22. Execution record — BatchFGH first cycle (loop 108)
+
+First full cycle (research → design → implement → test → validate → proof)
+for ten more registered rows: Batch F remainder E-48–E-50 (§9) plus Batch
+G E-51–E-55 (§10) plus Batch H start E-56, E-57 (§11).
+Artifact: `Morph/Specs/BatchFGH/` (Spec 396 lines, Lemmas 408 lines / 32
+theorems, Examples 155 lines) plus `Morph/Tests/BatchFGH.lean` (133 lines).
+Brief with research basis, proof-burden log, validation findings, and the
+benchmark plan:
+[`E3-batchfgh-kernel.md`](../03_research/briefs/E3-batchfgh-kernel.md).
+
+| Row | Artifact | Key theorem | Grade | Status |
+|----|----------|-------------|-------|--------|
+| E-48 | `Seed`, `mut0`, `seedPos` | `mut0_invol`, `mut0_pos` | model L3 / claim L1 | involution + positivity proved; feed/latency data pending |
+| E-49 | `safeR`, `placeAll` | `safeR_sound`, `placeAll_sound` | model L3 / claim L1 | cone certificate proved; NUMA comparison pending |
+| E-50 | `Pair2`, `gap`, `repel` | `repel_gap`, `repelN_gap` | model L3 / claim L1 | separation growth proved; race-rate data pending |
+| E-51 | `msize`, `stepM`, `normM` | `stepM_shrink`, `normM_normal` | model L3 / claim L1 | measure + coverage proved; divergence datum pending |
+| E-52 | `bdyC`, `bdyD`, `cmap` | `cmap_chain`, `cmap_cycle` | model L3 / claim L1 | chain-map law proved; oracle comparison pending |
+| E-53 | `alive`, `mids`, `route2` | `route2_ends`, `route2_alive` | model L3 / claim L1 | endpoints + liveness proved; Dijkstra comparison pending |
+| E-54 | `total`, `countGt` | `localize`, `markov` | model L3 / claim L1 | localization + tail bound proved; MC agreement pending |
+| E-55 | `admit`, `rejectReason` | `admit_sound`, `reject_iff` | model L3 / claim L1 | two-way soundness proved; fault-injection data pending |
+| E-56 | `transp`, `xrun`, `arun` | `transp_correct`, `transpL_correct` | model L3 / claim L1 | simulation laws proved; oracle divergence pending |
+| E-57 | `reachN`, `minimize` | `accepts_min`, `minimize_le` | model L3 / claim L1 | preservation + shrink proved; timing data pending |
+
+Cycle findings (recorded, not hidden): `mul_comm` is unavailable with only
+`Std` imported (core `Int.mul_comm` covers the E-48 involution);
+overlapping match patterns defeat `simp only` (the E-51 `stepM` redexes
+became `if` guards); `cases`-with-`rfl` eliminated the `placeAll_sound`
+mutator variable; induction on a `≤` proof trips the unused-variable
+linter (replaced with `exists_eq_add_of_le` plus data induction); `decide`
+cannot see through `Prop` definitions (`seedPos` needs an unfold first).
+All tests replay their row's laws on fresh instances rather than
+re-deciding the examples. `lake build` passes with 0 warnings and 0
+`sorry`. No external kill criterion was testable, so none fired and no
+row was cut. Next cycle: measurement harnesses per row family, the Hodge
+finiteness half for E-51, the `K₀` move for E-57, a three-state E-52
+complex, and multi-hop E-53 re-derivation.
+
+### 23. Execution record — BatchHIJ first cycle (loop 109)
+
+First full cycle (research → design → implement → test → validate → proof)
+for ten more registered rows: Batch H remainder E-58–E-60 (§11) plus Batch
+I E-61–E-65 (§12) plus Batch J start E-66, E-67 (§13).
+Artifact: `Morph/Specs/BatchHIJ/` (Spec 243 lines, Lemmas 339 lines / 36
+theorems, Examples 177 lines) plus `Morph/Tests/BatchHIJ.lean` (159 lines).
+Brief with research basis, proof-burden log, validation findings, and the
+benchmark plan:
+[`E3-batchhij-kernel.md`](../03_research/briefs/E3-batchhij-kernel.md).
+
+| Row | Artifact | Key theorem | Grade | Status |
+|----|----------|-------------|-------|--------|
+| E-58 | `stepBuf`, `dropFree`, `drainAll` | `dropFree_sound`, `drainAll_zero` | model L3 / claim L1 | accounting + zero-schedule proved; burst-trace data pending |
+| E-59 | `between`, `crosses` | `crosses_sound`, `crosses_none` | model L3 / claim L1 | two-way wall certificate proved; crash-replay data pending |
+| E-60 | `Bundle`, `hnFlag`, `flagAll` | `flagAll_sound`, `flagAll_complete` | model L3 / claim L1 | two-way flag certificate proved; settlement P&L pending |
+| E-61 | `flow1`, `liquidate`, `drained` | `drained_add`, `liquidate_length` | model L3 / claim L1 | exact accounting proved; slippage data pending |
+| E-62 | `KNPair`, `knGap`, `stepKN` | `stepKN_sum`, `stepKN_gap2` | model L3 / claim L1 | conservation + descent proved; migration data pending |
+| E-63 | `ADHM`, `adhmErr`, `admitA` | `adhmErr_eq`, `admitA_iff` | model L3 / claim L1 | commutator + admission proved; timing data pending |
+| E-64 | `stay`, `pruneCount` | `pruneCount_le`, `pruneCount_all_stay` | model L3 / claim L1 | bound + quiet-trace proved; flush-rate data pending |
+| E-65 | `split2`, `shapeImpact` | `split2_add`, `shapeImpact_le` | model L3 / claim L1 | add-back + split-improvement proved; replay data pending |
+| E-66 | `disjointD`, `elideFence` | `disjointD_sound`, `disjointD_complete` | model L3 / claim L1 | two-way disjointness proved; hammer-test data pending |
+| E-67 | `charge`, `anchor`, `heldAfter` | `anchor_sound`, `heldAfter_anchor` | model L3 / claim L1 | exit naming + hold proved; flash-crash data pending |
+
+Cycle findings (recorded, not hidden): bare `⟨·,·⟩` literals need explicit
+`List Bundle` annotations in examples/tests; `Bool.or_eq_false` does not
+exist in this toolchain (`cases` on the test plus `simp` instead); `simp
+only [knGap]` does not expose the subtraction to `omega` (explicit `rfl`
+equality first — same class as the FGH `seedPos` unfold datum); nonlinear
+goals avoid `ring` entirely (distribution lemmas + `omega`, `Std` only).
+All tests replay their row's laws on fresh instances rather than
+re-deciding the examples. `lake build` passes with 0 warnings and 0
+`sorry`. No external kill criterion was testable, so none fired and no
+row was cut. Next cycle: KN oscillation traces, the E-65 fractal-claim
+decision, a shared E-59/E-67 wall harness, the ADHM real-equation half,
+and data-only harnesses per row family.
+
+### 24. Execution record — Feasible-50 P1, verification + types (loop 110)
+
+Ten core-adjacent rows (E4 triage): E-104 peephole validation, E-113
+oracle differential, E-116 Kildall liveness, E-120 borrow completeness
+fragment, E-123 monotone framework, E-124 interval domains, E-137 order
+typestate, E-141 phantom brands, E-148 pattern exhaustiveness, E-149 row
+records. Artifact: `Morph/Specs/BatchP1/` (Spec/Lemmas 38 theorems /
+Examples) plus `Morph/Tests/BatchP1.lean`. Key laws: `popt_sound`,
+`agree_sound/complete`, `mem_transfer_use`/`not_mem_transfer_def`,
+`acceptLoan_sound/complete`, `runM_mono`, `ivalJoin_valid`, `ostep_*`,
+`matchSame_*`, `hasWild/coversAny`, `compose_length`. Cycle findings: the
+peephole rule needed an explicit `isZero` + `if` form (overlapping match
+patterns defeat `simp only`); `cases h : x` does not substitute (use
+`cases h : test` on `Bool`); full-`simp` is required to reduce `if`
+conditions (`false = true` → `False`). `lake build` clean, 0 warnings, 0
+`sorry`.
+
+### 25. Execution record — Feasible-50 P2, concurrency (loop 110)
+
+E-151 nurseries, E-156 flat-combining, E-157 seqlock, E-159 record/replay,
+E-160 ownership transfer, E-161 supervision, E-162 credit windows, E-163
+idempotent dedup, E-172 G-counter merge, E-174 edge-chasing. Artifact:
+`Morph/Specs/BatchP2/` (26 theorems) plus `Morph/Tests/BatchP2.lean`. Key
+laws: `joinAll_length`, `batchAdd_eq` (via local `sum_append'` —
+`List.sum_append` is unavailable), `writeSeq_even`/`readOk_write`,
+`mem_replay`, `give_owner/payload`, `restart_idem`, `admitC_sound/complete`
+(over explicit `windowOk` — admission without window validity is **false**,
+caught by `omega`), `deliver_fresh/dup`, `mergeG_*` semilattice laws,
+`deadlock2_sound/symm`. `lake build` clean, 0 warnings, 0 `sorry`.
+
+### 26. Execution record — Feasible-50 P3, models + storage (loop 110)
+
+E-177 MESI, E-178 store buffer, E-187 PCIe ordering, E-199 litmus suites,
+E-354 open-addressing probes, E-355 Bloom no-false-negatives, E-360 WAL
+replay, E-362 CoW snapshots, E-363 MVCC visibility, E-366 maintained
+views. Artifact: `Morph/Specs/BatchP3/` (26 theorems) plus
+`Morph/Tests/BatchP3.lean`. Key laws: `wrM_is_M`/`rdM_*`,
+`read_write_hit/miss`, `checkOrder_cons`, `suiteAll_sound/complete`,
+`probe_bound`, `query_add_hit`, `replayW_append`, `write_hit/miss`,
+`snap_read/isolation`, `vis_live`/`invis_future`, `view_add`. One dropped
+entry (wrong truncation witness) caught by `decide`. Clean build.
+
+### 27. Execution record — Feasible-50 P4, wire/session (loop 110)
+
+E-380 framing, E-381 codec conformance, E-382 session FSM, E-383 token
+bucket, E-384 cancel-on-disconnect, E-385 drop-copy, E-392 strict
+priority, E-393 shaping, E-396 capture records, E-398 Lamport clocks.
+Artifact: `Morph/Specs/BatchP4/` (29 theorems) plus
+`Morph/Tests/BatchP4.lean`. Key laws: `parse_mk`/`parse_bad`,
+`encode_conforms`, `sstep_*`, `takeB_sound` (via `Option.some_inj` +
+`show`, after `split`/`simp only` variants failed), `disconnect_dead/empty`,
+`sync_consistent`, `sched_hi/lo/none`, `allow_sound/complete/burst`,
+`cap_roundtrip`, `sendL_gt`/`recvL_*`. Two `allow_burst` witnesses cited
+unprovable bounds (fixed to boundary-exact values). Clean build.
+
+### 28. Execution record — Feasible-50 P5, everyday product (loop 110)
+
+E-1455 affine RPC, E-1460 Presburger meet, E-1463 channel duality, E-1468
+affine mailboxes, E-1469 SPSC ring, E-1470 signal lattice, E-1484 deny
+list, E-1487 capabilities, E-1489 snapshot restore, E-1490 peripheral
+FSM. Artifact: `Morph/Specs/BatchP5/` (34 theorems) plus
+`Morph/Tests/BatchP5.lean`. Key laws: `invoke_fresh/dup/records`,
+`meet_sound`, `dual_invol`/`match_*`, `receive_ok/reject/seq`,
+`push_used`/`pop_used`/`push_pop` (SPSC accounting needs `head ≤ tail`
+for push and `head < tail` for pop — pop on an empty ring is underflow,
+**false** without it, caught by `omega`), `combine_*`,
+`evalOnce_append`, `deny_*`, `use_grant`/`revoke_dead`, `restore_snap`,
+`bstep_*`. Combined brief with proof-burden log, validation findings,
+and the core-continuation gate:
+[`E5-feasible50-kernel.md`](../03_research/briefs/E5-feasible50-kernel.md).
+153 theorems across P1–P5, full `lake build` green, 0 warnings, 0 `sorry`.
+No external kill criterion was testable, so none fired and no row was cut.
+Frontier batch work stops here per the user's directive; next is core
+progression through the ten integration candidates named in the brief §6.
+
 ## Consequences
 
 ### Positive- The full 1550-entry register is now on the record: Batch 0 (E-03, E-06,

@@ -134,6 +134,8 @@ inductive Stmt : Type where
   | break : Stmt
   | continue : Stmt
   | whileLoop : Expr -> List Stmt -> Stmt
+  | ifStmt : Expr -> List Stmt -> List Stmt -> Stmt
+  | matchStmt : Expr -> List (Pattern × List Stmt) -> Stmt
   | nop : Stmt
  deriving Repr
 

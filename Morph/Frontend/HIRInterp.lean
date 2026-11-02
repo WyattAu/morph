@@ -93,6 +93,24 @@ def runHIRStmts : Nat → HEnv → List HIR.Stmt → HFlow → HRan
       match runHIRWhile fuel env cond body with
       | (.value u, env') => runHIRStmts fuel env' rest (acc.replace u)
       | (f, env') => (f, env')
+  | fuel + 1, env, .ifStmt cond th el :: rest, acc =>
+      match evalHIR 256 env cond with
+      | some (.lit (.bool true)) =>
+        match runHIRStmts fuel env th (.value (.lit .unit)) with
+        | (.value u, env') => runHIRStmts fuel env' rest (acc.replace u)
+        | (f, env') => (f, env')
+      | some (.lit (.bool false)) =>
+        match runHIRStmts fuel env el (.value (.lit .unit)) with
+        | (.value u, env') => runHIRStmts fuel env' rest (acc.replace u)
+        | (f, env') => (f, env')
+      | _ => (.stuck, env)
+  | fuel + 1, env, .matchStmt scrut arms :: rest, acc =>
+      match evalHIR 256 env scrut with
+      | none => (.stuck, env)
+      | some v =>
+        match runHIRMatchArms fuel env v arms with
+        | (.value u, env') => runHIRStmts fuel env' rest (acc.replace u)
+        | (f, env') => (f, env')
 
 /-- `while (cond) body`: one fuel unit per iteration; the body's final
 environment is the next iteration's starting environment. `break` exits
@@ -113,6 +131,28 @@ def runHIRWhile (fuel : Nat) (env : HEnv) (cond : HIR.Expr)
       | (f, env') => (f, env')
     | some (.lit (.bool false)) => (.value (.lit .unit), env)
     | _ => (.stuck, env)
+
+/-- Bound ids of an HIR statement pattern (`var` binds one, else none). -/
+def hirPatVars : HIR.Pattern → List HIR.Id
+  | .var id => [id]
+  | _ => []
+
+/-- First-match-wins over HIR statement-match arms, mirroring
+`Interp.runMatchArms`: a hit runs the arm body with the pattern's bindings
+pushed; no hit is unit. -/
+def runHIRMatchArms (fuel : Nat) (env : HEnv) (v : HIR.Expr)
+    (arms : List (HIR.Pattern × List HIR.Stmt)) : HRan :=
+  match fuel with
+  | 0 => (.stuck, env)
+  | fuel + 1 =>
+    match arms with
+    | [] => (.value (.lit .unit), env)
+    | (pat, body) :: rest =>
+      match matchHIRPat pat v with
+      | some vs =>
+        runHIRStmts fuel ((hirPatVars pat).zip vs ++ env) body
+          (.value (.lit .unit))
+      | none => runHIRMatchArms fuel env v rest
 
 end
 
@@ -145,6 +185,7 @@ nothing, so failure coincidence never has to be proved.
 open Morph.Executable
 open Morph.Frontend.HIRLower
 open Morph.Interp
+open Morph.Syntax
 
 /-- Statement environments agree: every surface free-variable lookup
 succeeds with a literal the HIR side sees under the `free:` id. -/
@@ -377,6 +418,100 @@ theorem relStmtEnv_nil : relStmtEnv [] [] := by
   intro x v hget
   simp [ctxOf, Context.getFv?] at hget
 
+/-- A statement pattern that lowers is wild/lit/var, with the expected HIR image. -/
+theorem toHIRStmtPat_shape {pat : Syntax.Pattern} {pat' : HIR.Pattern}
+    (h : toHIRStmtPat pat = some pat') :
+    (pat = .wild ∧ pat' = .wildcard) ∨
+      (∃ v, pat = .lit_ v ∧ pat' = .lit v) ∨
+      (∃ x, pat = .var_ x ∧ pat' = .var ⟨0, "free:" ++ x⟩) := by
+  cases pat with
+  | wild => simp [toHIRStmtPat] at h; subst h; exact Or.inl ⟨rfl, rfl⟩
+  | var_ x => simp [toHIRStmtPat] at h; subst h; exact Or.inr (Or.inr ⟨x, rfl, rfl⟩)
+  | lit_ v => simp [toHIRStmtPat] at h; subst h; exact Or.inr (Or.inl ⟨v, rfl, rfl⟩)
+  | some_ p => simp [toHIRStmtPat] at h
+  | none_ => simp [toHIRStmtPat] at h
+  | ok_ p => simp [toHIRStmtPat] at h
+  | err_ p => simp [toHIRStmtPat] at h
+
+/-- Fragment arms give fragment bodies. -/
+theorem stmtArmsFirstOrder_mem {arms : List (Syntax.Pattern × List Syntax.Stmt)} :
+    ∀ {pat : Syntax.Pattern} {body : List Syntax.Stmt} {s : Syntax.Stmt},
+    (pat, body) ∈ arms → stmtArmsFirstOrder arms → s ∈ body →
+      stmtFirstOrder s := by
+  induction arms with
+  | nil => intro pat body s hmem _ _; simp at hmem
+  | cons hd tl ih =>
+    intro pat body s hmem hfo hs
+    obtain ⟨p0, b0⟩ := hd
+    simp only [stmtArmsFirstOrder] at hfo
+    obtain ⟨hhead, htail⟩ := hfo
+    simp at hmem
+    rcases hmem with ⟨rfl, rfl⟩ | hmem
+    · exact hhead s hs
+    · exact ih hmem htail hs
+
+/-- Lowered arms contain exactly the lowered images (membership lift). -/
+theorem toHIRStmtArms_mem {arms : List (Syntax.Pattern × List Syntax.Stmt)}
+    {arms' : List (HIR.Pattern × List HIR.Stmt)}
+    (h : toHIRStmtArms arms = some arms')
+    {pat : Syntax.Pattern} {body : List Syntax.Stmt}
+    (hmem : (pat, body) ∈ arms) :
+    ∃ pat' body', toHIRStmtPat pat = some pat' ∧
+      toHIRStmtList body = some body' ∧ (pat', body') ∈ arms' := by
+  induction arms generalizing arms' with
+  | nil => simp at hmem
+  | cons hd tl ih =>
+    obtain ⟨p0, b0⟩ := hd
+    obtain ⟨pat0', body0', rest', hp0, hb0, hr, rfl⟩ := toHIRStmtArms_cons h
+    simp at hmem
+    rcases hmem with ⟨rfl, rfl⟩ | hmem
+    · exact ⟨pat0', body0', hp0, hb0, List.mem_cons_self⟩
+    · obtain ⟨pat', body', hp, hb, hmem'⟩ := ih hr hmem
+      exact ⟨pat', body', hp, hb, List.mem_cons_of_mem _ hmem'⟩
+
+/-- Wild and lit patterns bind nothing on both sides. -/
+theorem matchStmtPat_nobind {pat : Syntax.Pattern} {pat' : HIR.Pattern} {w : Value}
+    (hlower : toHIRStmtPat pat = some pat')
+    (hnobind : pat = .wild ∨ ∃ v, pat = .lit_ v)
+    {vs : List Syntax.Expr} (h : matchPat pat (.lit w) = some vs) :
+    vs = [] ∧ matchHIRPat pat' (.lit w) = some [] := by
+  rcases hnobind with rfl | ⟨v, rfl⟩
+  · simp [toHIRStmtPat] at hlower; subst hlower
+    simp only [matchPat] at h
+    cases h
+    exact ⟨rfl, rfl⟩
+  · simp [toHIRStmtPat] at hlower; subst hlower
+    cases heq : (v == w)
+    · have hnone : matchPat (Syntax.Pattern.lit_ v) (.lit w) = none := by
+        simp [matchPat, heq]
+      rw [hnone] at h
+      cases h
+    · simp only [matchPat, heq] at h
+      cases h
+      exact ⟨rfl, by simp [matchHIRPat, heq]⟩
+
+/-- A `var` match binds the scrutinee value on both sides, preserving relation. -/
+theorem relStmtEnv_match_var {env : List (String × Syntax.Expr)} {henv : HEnv}
+    (hrel : relStmtEnv env henv) {x : String} {w : Value} :
+    relStmtEnv ((x, Syntax.Expr.lit w) :: env)
+      ((⟨0, "free:" ++ x⟩, HIR.Expr.lit w) :: henv) := by
+  intro y v' hget
+  rw [getFv?_cons] at hget
+  by_cases hy : x = y
+  · rw [if_pos hy] at hget
+    have hv' : Syntax.Expr.lit w = v' := Option.some.inj hget
+    subst hv'
+    subst hy
+    exact ⟨w, rfl, lookupHEnv_cons_head _ _ _⟩
+  · rw [if_neg hy] at hget
+    obtain ⟨w', heq, hlook⟩ := hrel y v' hget
+    refine ⟨w', heq, ?_⟩
+    have hne : (⟨0, "free:" ++ x⟩ : HIR.Id) ≠ ⟨0, "free:" ++ y⟩ := by
+      intro hcon
+      exact hy (hirId_free_eq.mp hcon)
+    rw [lookupHEnv_cons_ne hne]
+    exact hlook
+
 /-- Inversion for the map-shaped lowering arms (`exprStmt`, `varDecl`,
 `assign`, `returnStmt`). -/
 theorem toHIRStmt_map_arm {e : Syntax.Expr} {s' : HIR.Stmt}
@@ -522,20 +657,33 @@ theorem agreeBoth : ∀ (fuel : Nat),
       FirstOrder cond → (∀ s ∈ body, stmtFirstOrder s) →
       relStmtEnv env henv →
       agreeFwd (runWhile fuel env cond body)
-        (runHIRWhile fuel henv cond' body')) := by
+        (runHIRWhile fuel henv cond' body'))
+    ∧ (∀ (env : List (String × Syntax.Expr)) (henv : HEnv)
+      (v : Value) (arms : List (Syntax.Pattern × List Syntax.Stmt))
+      (arms' : List (HIR.Pattern × List HIR.Stmt)),
+      toHIRStmtArms arms = some arms' →
+      (∀ (p : Syntax.Pattern) (b : List Syntax.Stmt), (p, b) ∈ arms →
+        p = .wild ∨ (∃ l, p = .lit_ l) ∨ (∃ x, p = .var_ x)) →
+      stmtArmsFirstOrder arms →
+      relStmtEnv env henv →
+      agreeFwd (runMatchArms fuel env (.lit v) arms)
+        (runHIRMatchArms fuel henv (.lit v) arms')) := by
   intro fuel
   induction fuel with
   | zero =>
-    refine ⟨?_, ?_⟩
+    refine ⟨?_, ?_, ?_⟩
     · intro env henv ss ss' acc hacc hlower hfo hrel hflow
       simp only [runStmts, runHIRStmts]
       exact Or.inl rfl
     · intro env henv cond cond' body body' hcond hbody hfo_c hfo_b hrel
       simp only [runWhile, runHIRWhile]
       exact Or.inl rfl
+    · intro env henv v arms arms' hlower hpat hfo hrel
+      simp only [runMatchArms, runHIRMatchArms]
+      exact Or.inl rfl
   | succ f ih =>
-    obtain ⟨ihS, ihW⟩ := ih
-    refine ⟨?_, ?_⟩
+    obtain ⟨ihS, ihW, ihM⟩ := ih
+    refine ⟨?_, ?_, ?_⟩
     · intro env henv ss ss' acc hacc hlower hfo hrel hflow
       cases ss with
       | nil =>
@@ -672,11 +820,163 @@ theorem agreeBoth : ∀ (fuel : Nat),
           rw [toHIRStmt_doWhile_none] at hs
           cases hs
         | .ifStmt cond th el =>
-          rw [toHIRStmt_ifStmt_none] at hs
-          cases hs
+          have hfo_if : FirstOrder cond ∧ (∀ s ∈ th, stmtFirstOrder s) ∧
+              (∀ s ∈ el, stmtFirstOrder s) := by
+            simpa [stmtFirstOrder] using hfo_s
+          obtain ⟨hfo_c, hfo_th, hfo_el⟩ := hfo_if
+          obtain ⟨cond', th', el', hcond, hth, hel, rfl⟩ := toHIRStmt_if hs
+          simp only [runStmts, runHIRStmts]
+          cases hev : eval (ctxOf env) cond with
+          | none => exact Or.inl rfl
+          | some v =>
+            have hev256 : evalWithFuel 256 (ctxOf env) cond = some v := hev
+            obtain ⟨w, rfl⟩ := fo_eval_is_lit 256 (ctxOf env) cond v hfo_c
+              (envAllLit_ctxOf hrel) hev256
+            have hhe := evalHIR_of_eval hfo_c hcond hrel hev256
+            cases w with
+            | bool b =>
+              cases b with
+              | true =>
+                simp only [hhe]
+                match hB : runStmts f env th (.value (.lit .unit)) with
+                | (F, env2) =>
+                  match hH : runHIRStmts f henv th' (.value (.lit .unit)) with
+                  | (H, henv2) =>
+                    have hIB := ihS env henv th th'
+                      (.value (.lit .unit)) (.value (.lit .unit))
+                      hth hfo_th hrel ⟨.unit, rfl, rfl⟩
+                    rw [hB, hH] at hIB
+                    cases F with
+                    | value u =>
+                      rcases hIB with hstuck | ⟨hfl, henvrel⟩
+                      · simp at hstuck
+                      · obtain ⟨hu, rfl, huv⟩ := relFlowFwd_value hfl
+                        obtain ⟨w2, rfl, rfl⟩ := huv
+                        exact ihS env2 henv2 rest rest'
+                          (Flow.replace acc (.lit w2))
+                          (HFlow.replace hacc (.lit w2)) hss hfo_rest
+                          henvrel (relFlow_replace hflow ⟨w2, rfl, rfl⟩)
+                    | returned v =>
+                      rcases hIB with hstuck | ⟨hfl, henvrel⟩
+                      · simp at hstuck
+                      · obtain ⟨hv, rfl, huv⟩ := relFlowFwd_returned hfl
+                        exact Or.inr ⟨huv, henvrel⟩
+                    | broke =>
+                      rcases hIB with hstuck | ⟨hfl, henvrel⟩
+                      · simp at hstuck
+                      · have hH' : H = .broke := relFlowFwd_broke hfl
+                        subst hH'
+                        exact Or.inr ⟨trivial, henvrel⟩
+                    | continued =>
+                      rcases hIB with hstuck | ⟨hfl, henvrel⟩
+                      · simp at hstuck
+                      · have hH' : H = .continued := relFlowFwd_continued hfl
+                        subst hH'
+                        exact Or.inr ⟨trivial, henvrel⟩
+                    | stuck => exact Or.inl rfl
+              | false =>
+                simp only [hhe]
+                match hB : runStmts f env el (.value (.lit .unit)) with
+                | (F, env2) =>
+                  match hH : runHIRStmts f henv el' (.value (.lit .unit)) with
+                  | (H, henv2) =>
+                    have hIB := ihS env henv el el'
+                      (.value (.lit .unit)) (.value (.lit .unit))
+                      hel hfo_el hrel ⟨.unit, rfl, rfl⟩
+                    rw [hB, hH] at hIB
+                    cases F with
+                    | value u =>
+                      rcases hIB with hstuck | ⟨hfl, henvrel⟩
+                      · simp at hstuck
+                      · obtain ⟨hu, rfl, huv⟩ := relFlowFwd_value hfl
+                        obtain ⟨w2, rfl, rfl⟩ := huv
+                        exact ihS env2 henv2 rest rest'
+                          (Flow.replace acc (.lit w2))
+                          (HFlow.replace hacc (.lit w2)) hss hfo_rest
+                          henvrel (relFlow_replace hflow ⟨w2, rfl, rfl⟩)
+                    | returned v =>
+                      rcases hIB with hstuck | ⟨hfl, henvrel⟩
+                      · simp at hstuck
+                      · obtain ⟨hv, rfl, huv⟩ := relFlowFwd_returned hfl
+                        exact Or.inr ⟨huv, henvrel⟩
+                    | broke =>
+                      rcases hIB with hstuck | ⟨hfl, henvrel⟩
+                      · simp at hstuck
+                      · have hH' : H = .broke := relFlowFwd_broke hfl
+                        subst hH'
+                        exact Or.inr ⟨trivial, henvrel⟩
+                    | continued =>
+                      rcases hIB with hstuck | ⟨hfl, henvrel⟩
+                      · simp at hstuck
+                      · have hH' : H = .continued := relFlowFwd_continued hfl
+                        subst hH'
+                        exact Or.inr ⟨trivial, henvrel⟩
+                    | stuck => exact Or.inl rfl
+            | int _ => simp only [hhe]; exact Or.inl rfl
+            | string _ => simp only [hhe]; exact Or.inl rfl
+            | float _ => simp only [hhe]; exact Or.inl rfl
+            | unit => simp only [hhe]; exact Or.inl rfl
+            | undef => simp only [hhe]; exact Or.inl rfl
+            | none => simp only [hhe]; exact Or.inl rfl
+            | some _ => simp only [hhe]; exact Or.inl rfl
+            | ok _ => simp only [hhe]; exact Or.inl rfl
+            | err _ => simp only [hhe]; exact Or.inl rfl
+            | tuple_ _ => simp only [hhe]; exact Or.inl rfl
+            | array_ _ => simp only [hhe]; exact Or.inl rfl
+            | loc _ => simp only [hhe]; exact Or.inl rfl
+            | pointer _ => simp only [hhe]; exact Or.inl rfl
+            | closure _ _ => simp only [hhe]; exact Or.inl rfl
         | .matchStmt scrut arms =>
-          rw [toHIRStmt_matchStmt_none] at hs
-          cases hs
+          have hfo_m : FirstOrder scrut ∧
+              (∀ (p : Syntax.Pattern) (b : List Syntax.Stmt), (p, b) ∈ arms →
+                p = .wild ∨ (∃ l, p = .lit_ l) ∨ (∃ x, p = .var_ x)) ∧
+              stmtArmsFirstOrder arms := by
+            simpa [stmtFirstOrder] using hfo_s
+          obtain ⟨hfo_c, hpat_ok, hfo_arms⟩ := hfo_m
+          obtain ⟨scrut', arms', hscrut, harms, rfl⟩ := toHIRStmt_match hs
+          simp only [runStmts, runHIRStmts]
+          cases hev : eval (ctxOf env) scrut with
+          | none => exact Or.inl rfl
+          | some v =>
+            have hev256 : evalWithFuel 256 (ctxOf env) scrut = some v := hev
+            obtain ⟨w, rfl⟩ := fo_eval_is_lit 256 (ctxOf env) scrut v hfo_c
+              (envAllLit_ctxOf hrel) hev256
+            have hhe := evalHIR_of_eval hfo_c hscrut hrel hev256
+            simp only [hhe]
+            have hAM := ihM env henv w arms arms' harms hpat_ok hfo_arms hrel
+            match hA : runMatchArms f env (.lit w) arms with
+            | (F, env2) =>
+              match hH : runHIRMatchArms f henv (.lit w) arms' with
+              | (H, henv2) =>
+                rw [hA, hH] at hAM
+                cases F with
+                | value u =>
+                  rcases hAM with hstuck | ⟨hfl, henvrel⟩
+                  · simp at hstuck
+                  · obtain ⟨hu, rfl, huv⟩ := relFlowFwd_value hfl
+                    obtain ⟨w2, rfl, rfl⟩ := huv
+                    exact ihS env2 henv2 rest rest'
+                      (Flow.replace acc (.lit w2))
+                      (HFlow.replace hacc (.lit w2)) hss hfo_rest
+                      henvrel (relFlow_replace hflow ⟨w2, rfl, rfl⟩)
+                | returned v =>
+                  rcases hAM with hstuck | ⟨hfl, henvrel⟩
+                  · simp at hstuck
+                  · obtain ⟨hv, rfl, huv⟩ := relFlowFwd_returned hfl
+                    exact Or.inr ⟨huv, henvrel⟩
+                | broke =>
+                  rcases hAM with hstuck | ⟨hfl, henvrel⟩
+                  · simp at hstuck
+                  · have hH' : H = .broke := relFlowFwd_broke hfl
+                    subst hH'
+                    exact Or.inr ⟨trivial, henvrel⟩
+                | continued =>
+                  rcases hAM with hstuck | ⟨hfl, henvrel⟩
+                  · simp at hstuck
+                  · have hH' : H = .continued := relFlowFwd_continued hfl
+                    subst hH'
+                    exact Or.inr ⟨trivial, henvrel⟩
+                | stuck => exact Or.inl rfl
     · intro env henv cond cond' body body' hcond hbody hfo_c hfo_b hrel
       simp only [runWhile, runHIRWhile]
       cases hev : eval (ctxOf env) cond with
@@ -771,6 +1071,61 @@ theorem agreeBoth : ∀ (fuel : Nat),
         | closure _ _ =>
           simp only [hhe]
           exact Or.inl rfl
+    · intro env henv v arms arms' hlower hpat hfoarms hrel
+      cases arms with
+      | nil =>
+        simp only [toHIRStmtArms] at hlower
+        cases hlower
+        simp only [runMatchArms, runHIRMatchArms]
+        exact Or.inr ⟨⟨.unit, rfl, rfl⟩, hrel⟩
+      | cons hd tl =>
+        obtain ⟨pat, body⟩ := hd
+        obtain ⟨pat', body', rest', hppat, hpbody, hrest, rfl⟩ :=
+          toHIRStmtArms_cons hlower
+        have hpat_head : pat = .wild ∨ (∃ l, pat = .lit_ l) ∨
+            (∃ x, pat = .var_ x) :=
+          hpat pat body List.mem_cons_self
+        have hpat_tail : ∀ (p : Syntax.Pattern) (b : List Syntax.Stmt),
+            (p, b) ∈ tl →
+              p = .wild ∨ (∃ l, p = .lit_ l) ∨ (∃ x, p = .var_ x) :=
+          fun p b hmem => hpat p b (List.mem_cons_of_mem _ hmem)
+        have hfo_head : ∀ s ∈ body, stmtFirstOrder s := by
+          have h := hfoarms
+          simp only [stmtArmsFirstOrder] at h
+          obtain ⟨hh, _⟩ := h
+          exact hh
+        have hfo_tail : stmtArmsFirstOrder tl := by
+          have h := hfoarms
+          simp only [stmtArmsFirstOrder] at h
+          exact h.2
+        simp only [runMatchArms, runHIRMatchArms]
+        rcases toHIRStmtPat_shape hppat with ⟨rfl, rfl⟩ | ⟨l, rfl, rfl⟩ | ⟨x, rfl, rfl⟩
+        · have hB := ihS env henv body body'
+            (.value (.lit .unit)) (.value (.lit .unit))
+            hpbody hfo_head hrel ⟨.unit, rfl, rfl⟩
+          simpa [matchPat, matchHIRPat, patVars, hirPatVars] using hB
+        · cases heq : (l == v)
+          · have hnone : matchPat (Syntax.Pattern.lit_ l) (.lit v) = none := by
+              simp [matchPat, heq]
+            have hnone' : matchHIRPat (.lit l) (.lit v) = none := by
+              simp [matchHIRPat, heq]
+            rw [hnone, hnone']
+            exact ihM env henv v tl rest' hrest hpat_tail hfo_tail hrel
+          · have hvs : matchPat (Syntax.Pattern.lit_ l) (.lit v) = some [] := by
+              simp [matchPat, heq]
+            have hvs' : matchHIRPat (.lit l) (.lit v) = some [] := by
+              simp [matchHIRPat, heq]
+            rw [hvs, hvs']
+            have hB := ihS env henv body body'
+              (.value (.lit .unit)) (.value (.lit .unit))
+              hpbody hfo_head hrel ⟨.unit, rfl, rfl⟩
+            simpa [patVars, hirPatVars] using hB
+        · simp only [matchPat, matchHIRPat, patVars, hirPatVars]
+          have hB := ihS ((x, Syntax.Expr.lit v) :: env)
+            ((⟨0, "free:" ++ x⟩, HIR.Expr.lit v) :: henv) body body'
+            (.value (.lit .unit)) (.value (.lit .unit))
+            hpbody hfo_head (relStmtEnv_match_var hrel) ⟨.unit, rfl, rfl⟩
+          simpa [patVars, hirPatVars] using hB
 
 /-- Whole-program preservation: a surface program that lowers and runs
 to a literal value runs to the same literal through HIR. -/

@@ -937,6 +937,14 @@ theorem lowerStmts_useCheck : ∀ (ρ : List (HIR.Id × ValId)) (supply : Nat)
           intro ρ' v is s' h hFresh acc hran hlast
           simp only [lowerStmts] at h
           simp at h
+      | ifStmt c th el =>
+          intro ρ' v is s' h hFresh acc hran hlast
+          simp only [lowerStmts] at h
+          simp at h
+      | matchStmt s arms =>
+          intro ρ' v is s' h hFresh acc hran hlast
+          simp only [lowerStmts] at h
+          simp at h
 
 /-- Closed programs lower to use-checked code: the empty environment is
 trivially fresh and covered, and register `0` (the pre-emitted unit) is

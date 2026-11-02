@@ -92,12 +92,13 @@ example : toHIR (.arrayLit [.lit (.int 1)]) = none := by rfl
 /-- `some_` patterns are rejected. -/
 example : toHIRPat (.some_ (.var_ "x")) = none := by rfl
 
-/-- `matchStmt` is rejected (HIR statements have no match). -/
-example : toHIRStmt (.matchStmt (.lit (.int 1)) []) = none := by rfl
+/-- `matchStmt` with no arms lowers (empty match is unit). -/
+example : toHIRStmt (.matchStmt (.lit (.int 1)) []) =
+    some (.matchStmt (.lit (.int 1)) []) := by rfl
 
-/-- A program with an `if` statement leaves the fragment. -/
+/-- A program with an `if` statement stays in the fragment (loop 112). -/
 example : toHIRProgram ⟨[.ifStmt (.lit (.bool true)) [.nop] [.nop]]⟩ =
-    none := by rfl
+    some ⟨[.ifStmt (.lit (.bool true)) [.nop] [.nop]]⟩ := by rfl
 
 /-- End-to-end: `1 + 2` parses and lowers. -/
 example : (match Morph.Frontend.parse "1 + 2" with
@@ -129,8 +130,9 @@ example : toHIRStmt (.varDecl ⟨"y"⟩ .unitType (.lit (.int 5))) =
 /-- `doWhile` is rejected (at-least-once has no HIR counterpart). -/
 example : toHIRStmt (.doWhile (.lit (.bool true)) []) = none := by rfl
 
-/-- `ifStmt` is rejected (HIR statements have no conditional). -/
-example : toHIRStmt (.ifStmt (.lit (.bool true)) [] []) = none := by rfl
+/-- `ifStmt` lowers 1:1 (loop 112: HIR grew the statement conditional). -/
+example : toHIRStmt (.ifStmt (.lit (.bool true)) [] []) =
+    some (.ifStmt (.lit (.bool true)) [] []) := by rfl
 
 /-- `whileLoop` with a true guard lowers (the supported loop). -/
 example : toHIRStmt (.whileLoop (.lit (.bool true)) [.nop]) =
@@ -169,8 +171,12 @@ example : runProgramHIR
 example : runProgramHIR "while (true) { return 7; }" == .value "7" := by
   native_decide
 
-/-- End-to-end: `if` statements leave the fragment and report `unsupported`. -/
-example : isUnsupported (runProgramHIR "if (true) { 1; } else { 2; }") = true := by
+/-- End-to-end: `if` statements run through HIR (loop 112). -/
+example : runProgramHIR "if (true) { 1; } else { 2; }" == .value "1" := by
   native_decide
+
+/-- End-to-end: `match` statements with var patterns run through HIR. -/
+example : runProgramHIR "let y = 0; match 1 { case x => { y = x; } } y" ==
+    .value "1" := by native_decide
 
 end Morph.Tests.HIRLower

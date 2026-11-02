@@ -303,14 +303,36 @@ have captured binder slot 0. Surface identifiers never contain `':'`, so
 the prefix is injective, and the `hirId_free_ne_bv/ctx` separation in
 `Morph.Frontend.HIREval` keeps statement ids disjoint from binder and
 slot ids).
-`whileLoop` is the only control statement HIR shares; `doWhile` (executes
-at least once — no HIR counterpart, and desugaring would change
-semantics), `ifStmt`, and `matchStmt` (HIR statements have no
-conditional or match) are rejected. The scope-extending `matchStmt` arms
-need no scope threading precisely because the whole statement is `none`.
+`whileLoop`, `ifStmt`, and `matchStmt` lower 1:1 (loop 112: HIR grew
+the two missing statement forms); `doWhile` (executes at least once — no
+HIR counterpart, and desugaring would change semantics) stays rejected.
+Statement `matchStmt` arms bind as statement-level free names
+(`free:`-ids, matching `runMatchArms`' `patVars`-zip discipline), not as
+expression-level `bv` slots — arm bodies are statement sequences whose
+variables resolve via `free:` lookup.
 -/
 
+/-- Lower a statement-level pattern; `var` binds a `free:`-id (statement
+bodies resolve names via `free:` lookup, matching `Interp.runMatchArms`). -/
+def toHIRStmtPat : Syntax.Pattern → Option HIR.Pattern
+  | .wild => some .wildcard
+  | .var_ x => some (.var ⟨0, "free:" ++ x⟩)
+  | .lit_ v => some (.lit v)
+  | .some_ _ => none
+  | .none_ => none
+  | .ok_ _ => none
+  | .err_ _ => none
+
 mutual
+
+/-- Lower statement-match arms; one rejection fails the list. -/
+def toHIRStmtArms : List (Syntax.Pattern × List Syntax.Stmt) →
+    Option (List (HIR.Pattern × List HIR.Stmt))
+  | [] => some []
+  | (pat, body) :: rest =>
+    match toHIRStmtPat pat, toHIRStmtList body, toHIRStmtArms rest with
+    | some pat', some body', some rest' => some ((pat', body') :: rest')
+    | _, _, _ => none
 
 /-- Lower a surface statement; `none` where HIR statements stop. -/
 def toHIRStmt : Syntax.Stmt → Option HIR.Stmt
@@ -325,8 +347,14 @@ def toHIRStmt : Syntax.Stmt → Option HIR.Stmt
     | some c, some b => some (.whileLoop c b)
     | _, _ => none
   | .doWhile _ _ => none
-  | .ifStmt _ _ _ => none
-  | .matchStmt _ _ => none
+  | .ifStmt cond th el =>
+    match toHIR cond, toHIRStmtList th, toHIRStmtList el with
+    | some c, some th', some el' => some (.ifStmt c th' el')
+    | _, _, _ => none
+  | .matchStmt scrut arms =>
+    match toHIR scrut, toHIRStmtArms arms with
+    | some s, some arms' => some (.matchStmt s arms')
+    | _, _ => none
   | .nop => some .nop
 
 /-- `toHIRStmt` over a statement list; one rejection fails the list. -/
@@ -355,14 +383,72 @@ theorem toHIRStmt_nop : toHIRStmt .nop = some .nop := rfl
 theorem toHIRStmt_doWhile_none (cond : Syntax.Expr) (body : List Syntax.Stmt) :
     toHIRStmt (.doWhile cond body) = none := rfl
 
-/-- `ifStmt` has no HIR counterpart (HIR statements have no conditional). -/
-theorem toHIRStmt_ifStmt_none (cond : Syntax.Expr) (th el : List Syntax.Stmt) :
-    toHIRStmt (.ifStmt cond th el) = none := rfl
+/-- `ifStmt` lowers over cond plus both branches. -/
+theorem toHIRStmt_ifStmt (cond : Syntax.Expr) (th el : List Syntax.Stmt) :
+    toHIRStmt (.ifStmt cond th el) =
+      match toHIR cond, toHIRStmtList th, toHIRStmtList el with
+      | some c, some th', some el' => some (.ifStmt c th' el')
+      | _, _, _ => none := rfl
 
-/-- `matchStmt` has no HIR counterpart (HIR statements have no match). -/
-theorem toHIRStmt_matchStmt_none (scrut : Syntax.Expr)
+/-- `matchStmt` lowers over scrutinee plus statement arms. -/
+theorem toHIRStmt_matchStmt (scrut : Syntax.Expr)
     (arms : List (Syntax.Pattern × List Syntax.Stmt)) :
-    toHIRStmt (.matchStmt scrut arms) = none := rfl
+    toHIRStmt (.matchStmt scrut arms) =
+      match toHIR scrut, toHIRStmtArms arms with
+      | some s, some arms' => some (.matchStmt s arms')
+      | _, _ => none := rfl
+
+/-- Inversion for a lowered `ifStmt`. -/
+theorem toHIRStmt_if {cond : Syntax.Expr} {th el : List Syntax.Stmt}
+    {ss' : HIR.Stmt} (h : toHIRStmt (.ifStmt cond th el) = some ss') :
+    ∃ cond' th' el', toHIR cond = some cond' ∧ toHIRStmtList th = some th' ∧
+      toHIRStmtList el = some el' ∧ ss' = .ifStmt cond' th' el' := by
+  cases hc : toHIR cond with
+  | none => simp only [toHIRStmt, hc, reduceCtorEq] at h
+  | some cond' =>
+    cases hth : toHIRStmtList th with
+    | none => simp only [toHIRStmt, hc, hth, reduceCtorEq] at h
+    | some th' =>
+      cases hel : toHIRStmtList el with
+      | none => simp only [toHIRStmt, hc, hth, hel, reduceCtorEq] at h
+      | some el' =>
+        simp only [toHIRStmt, hc, hth, hel] at h
+        exact ⟨cond', th', el', rfl, rfl, rfl, (Option.some.inj h).symm⟩
+
+/-- Inversion for `toHIRStmtArms` over a cons. -/
+theorem toHIRStmtArms_cons {pat : Syntax.Pattern} {body : List Syntax.Stmt}
+    {rest : List (Syntax.Pattern × List Syntax.Stmt)}
+    {arms' : List (HIR.Pattern × List HIR.Stmt)}
+    (h : toHIRStmtArms ((pat, body) :: rest) = some arms') :
+    ∃ pat' body' rest', toHIRStmtPat pat = some pat' ∧
+      toHIRStmtList body = some body' ∧ toHIRStmtArms rest = some rest' ∧
+      arms' = (pat', body') :: rest' := by
+  cases hp : toHIRStmtPat pat with
+  | none => simp only [toHIRStmtArms, hp, reduceCtorEq] at h
+  | some pat' =>
+    cases hb : toHIRStmtList body with
+    | none => simp only [toHIRStmtArms, hp, hb, reduceCtorEq] at h
+    | some body' =>
+      cases hr : toHIRStmtArms rest with
+      | none => simp only [toHIRStmtArms, hp, hb, hr, reduceCtorEq] at h
+      | some rest' =>
+        simp only [toHIRStmtArms, hp, hb, hr] at h
+        exact ⟨pat', body', rest', rfl, rfl, rfl, (Option.some.inj h).symm⟩
+
+/-- Inversion for a lowered `matchStmt`. -/
+theorem toHIRStmt_match {scrut : Syntax.Expr}
+    {arms : List (Syntax.Pattern × List Syntax.Stmt)} {ss' : HIR.Stmt}
+    (h : toHIRStmt (.matchStmt scrut arms) = some ss') :
+    ∃ scrut' arms', toHIR scrut = some scrut' ∧ toHIRStmtArms arms = some arms' ∧
+      ss' = .matchStmt scrut' arms' := by
+  cases hsc : toHIR scrut with
+  | none => simp only [toHIRStmt, hsc, reduceCtorEq] at h
+  | some scrut' =>
+    cases ha : toHIRStmtArms arms with
+    | none => simp only [toHIRStmt, hsc, ha, reduceCtorEq] at h
+    | some arms' =>
+      simp only [toHIRStmt, hsc, ha] at h
+      exact ⟨scrut', arms', rfl, rfl, (Option.some.inj h).symm⟩
 
 /-- Variable declarations join the `free:` namespace (loop 87: this is what
 the expression pass produces for the same name, so declaration and use
@@ -381,6 +467,13 @@ expression is `FirstOrder`. Lowering success alone does not imply this
 (`toHIR` also maps `lam`/variable-applied `app`, whose preservation
 needs the substitution lemma); the statement preservation theorem takes
 both hypotheses. -/
+mutual
+
+/-- Statement arms are in the fragment when every body statement is. -/
+def stmtArmsFirstOrder : List (Syntax.Pattern × List Syntax.Stmt) → Prop
+  | [] => True
+  | (_, b) :: rest => (∀ s ∈ b, stmtFirstOrder s) ∧ stmtArmsFirstOrder rest
+
 def stmtFirstOrder : Syntax.Stmt → Prop
   | .exprStmt e => FirstOrder e
   | .varDecl _ _ init => FirstOrder init
@@ -392,7 +485,14 @@ def stmtFirstOrder : Syntax.Stmt → Prop
   | .continue => True
   | .nop => True
   | .doWhile _ _ => False
-  | .ifStmt _ _ _ => False
-  | .matchStmt _ _ => False
+  | .ifStmt cond th el =>
+      FirstOrder cond ∧ (∀ s ∈ th, stmtFirstOrder s) ∧ (∀ s ∈ el, stmtFirstOrder s)
+  | .matchStmt scrut arms =>
+      FirstOrder scrut ∧
+        (∀ (p : Syntax.Pattern) (b : List Syntax.Stmt), (p, b) ∈ arms →
+          p = .wild ∨ (∃ l, p = .lit_ l) ∨ (∃ x, p = .var_ x)) ∧
+        stmtArmsFirstOrder arms
+
+end
 
 end Morph.Frontend.HIRLower

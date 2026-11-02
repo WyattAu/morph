@@ -96,6 +96,12 @@ Two of the three spec Props are false as stated:
 plus computational pins of the true behavior (`validateLayout_hit/mismatch`,
 `compatibleLayouts_refl/distinct`).
 
-*Status:* Recorded — spec revision (weakening the Props to the validated
-conditional forms) proposed, not yet applied.
+*Status:* **Resolved (loop 111).** `Spec.lean` now states the validated
+conditional forms (`refinesLayout` characterization; validity needs offsets
++ size match; compatibility implies field agreement), proved as
+`spec_type_refinement_holds`, `spec_data_validation_holds`,
+`spec_layout_compatibility_holds` in `Morph/Specs/AbiDataRefinement/Lemmas.lean`.
+`compatibleLayouts` is structural equality (`decide (L1 = L2)`), which is
+exactly what the old field-wise check decides. The original refutations are
+retained in git history.
 

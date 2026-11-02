@@ -50,3 +50,22 @@ First versioned release: the `morph` CLI over the verified pipeline.
   pinned in `Morph/Specs/AbiDataRefinement/Lemmas.lean`.
 - Statement `let` takes no type annotation; the pretty-printer drops the
   elaborator's placeholder type so output stays in surface syntax.
+
+## [Unreleased] — loop 112: HIR statement coverage
+
+### Added
+
+- HIR `Stmt.ifStmt` / `Stmt.matchStmt` with 1:1 lowering (`toHIRStmtPat` /
+  `toHIRStmtArms`), statement interpreters (`runHIRStmts` cases +
+  `runHIRMatchArms`), and preservation (`agreeBoth` triple: statements,
+  `while`, match-arms; `runHIRProgram_preservation` unchanged in shape).
+- Goldens: `if (true) { 1; } else { 2; } → 1` and var-pattern `match`
+  through `--hir`.
+
+### Changed
+
+- `runDoWhile` / `runMatchArms` made public for the preservation proof
+  (no semantics change).
+- `HARD-GATES.md` G-6 decided: `doWhile` / `forLoop` stay `none` with
+  pinned reasons; G-8 root-caused to `TMPDIR` harness artifact.
+- Docs heartbeat `docs/RESEARCH-LOOPS-103-112.md` added.

@@ -9,7 +9,9 @@ authorization, version control, cloud infrastructure, build systems and
 packaging, data/search, OS userland, observability, compiler tooling,
 application security). Rows cross-reference the earlier kernel each one
 extends (e.g. E-1351→E-22, E-1371→E-98), so E-990's dedup audit can merge
-them later on evidence.
+them later on evidence.Batch CB's first ten rows ran a full development cycle (loop 103) and batch
+CC's first ten rows ran one (loop 104); the execution records are at the end
+of this file.
 
 ## Decision — Batch CB: UI, web runtimes, reactive engines (E-1351–E-1360)
 
@@ -160,6 +162,73 @@ them later on evidence.
 | E-1448 | Non-malleable zero-knowledge session exchanges (no replay/modification) | Implement session protocol with non-malleable proofs; run replay/tamper/hijack tests vs signed-cookie sessions; measure handshake latency. | Protocol experiment, L1/L2. | Kill iff an attack succeeds that the cookie baseline blocks, or latency breaks the request budget. |
 | E-1449 | Decidable multi-party access-control lattices (authorisation as lattice morphisms) | Implement authorisation as morphism membership in a complete lattice with a decision procedure; run an IDOR/escalation corpus; compare decisions and latency vs policy-engine rules. | Authz experiment, L2. | Kill iff an escalation is authorised that the rule engine denies, or latency loses. |
 | E-1450 | Formal cryptographic key-derivation monads (self-destructing key contexts) | Implement key-derivation contexts that zeroise on exit, with a leak scanner over core dumps/swap; compare detected secret residue vs a plain key-manager flow. | Crypto experiment, L1/L2. | Kill iff residue is found that the baseline avoids, or key operations become unusable. |
+
+## Execution record — batch CB first cycle (loop 103)
+
+First full cycle (research → design → implement → test → validate → proof)
+for E-1351–E-1360. Artifact: `Morph/Specs/EverydayUI/` (Spec 303 lines,
+Lemmas 440 lines / 37 theorems, Examples 191 lines) plus
+`Morph/Tests/EverydayUI.lean` (178 lines). Brief with research basis,
+proof-burden log, validation findings, and the benchmark plan:
+[`CB-everyday-ui-kernel.md`](../03_research/briefs/CB-everyday-ui-kernel.md).
+
+| Row | Artifact | Key theorem | Grade | Status |
+|----|----------|-------------|-------|--------|
+| E-1351 | `Covered`, `Confined` | `rowBoxes_covered`, `rowBoxes_confined` | model L3 / claim L1 | coverage gluing proved in 1-D; 2-D pending |
+| E-1352 | `iterate`, `UpdatePass` | `kleene_stabilizes` | model L3 / claim L1 | stabilisation proved; scheduler benchmark pending |
+| E-1353 | `Lens`, `Lawful` | `Lens.lawful_comp` | model L3 / claim L1 | composition law proved; schema corpus pending |
+| E-1354 | `rowBoxes`, `rowRects` | widths / no-overlap / translation / `rowRects_disjoint` | model L3 / claim L1 | affine fragment only; flex sizing pending |
+| E-1355 | `BTree.route` | `BTree.route_sound` | model L3 / claim L1 | soundness proved; dispatch benchmark pending |
+| E-1356 | `Expr.compile`, `run` | `run_compile`, `run_append` | model L3 / claim L1 | compiler correctness proved; TTI benchmark pending |
+| E-1357 | `lerp` | endpoint / constancy / reversal | model L3 / claim L1 | integer fragment; real weights out of fragment |
+| E-1358 | `Usage.Linear` | `linear_seq`, `double_use_rejected` | model L3 / claim L1 | rejection proved; disjoint-composition law pending |
+| E-1359 | `Op.composeAt` | arity + output laws | model L3 / claim L1 | typing law proved; component corpus pending |
+| E-1360 | `evalDag` | `evalDag_ids`, `evalDag_length` | model L3 / claim L1 | single evaluation proved; glitch freedom pending |
+
+Cycle findings (recorded, not hidden): the first `UpdatePass` model was
+**vacuous** (global extensivity + boundedness on `Nat` is unsatisfiable) and
+was restricted to the finite segment; the first `Usage.seq` composition law
+was **false** (shared handles); `BTree` needed `DecidableEq` for the
+decidable-core claim to hold in tests. `lake build Morph Morph.Tests` passes
+with 0 warnings and 0 `sorry`. No external kill criterion was testable, so
+none fired and no row was cut. Next cycle: 2-D coverage, disjoint-sequence
+linearity, glitch freedom, min/max layout, and the first baseline harness.
+
+## Execution record — batch CC first cycle (loop 104)
+
+First full cycle (research → design → implement → test → validate → proof)
+for E-1361–E-1370. Artifact: `Morph/Specs/AuthIdentity/` (Spec 335 lines,
+Lemmas 395 lines / 38 theorems, Examples 213 lines) plus
+`Morph/Tests/AuthIdentity.lean` (185 lines). Brief with research basis,
+proof-burden log, validation findings, and the benchmark plan:
+[`CC-auth-identity-kernel.md`](../03_research/briefs/CC-auth-identity-kernel.md).
+
+| Row | Artifact | Key theorem | Grade | Status |
+|----|----------|-------------|-------|--------|
+| E-1361 | `findCap`, `Holds`, `bind` | `findCap_sound`, `findCap_complete`, `bind_req_injective` | model L3 / claim L1 | synthesis + binding proved; OAuth2 benchmark pending |
+| E-1362 | `acc`, `remove`, `witness` | `witness_verifies`, `acc_delete`, `acc_remove_not_mem` | model L3 / claim L1 | revocation algebra proved; soundness rests on strong RSA |
+| E-1363 | `Attrs`, `Policy`, `allows` | `allows_iff`, `raising_never_loses`, `ceiling_blocks_escalation` | model L3 / claim L1 | monotonicity proved; escalation corpus pending |
+| E-1364 | `RevState`, `revoke` | `revoke_invalidates`, `revoke_preserves`, `stale_witness_rejected` | model L3 / claim L1 | revocation algebra proved; CRL/OCSP benchmark pending |
+| E-1365 | `foldSig`, `delegate` | `foldSig_append`, `delegate_preserves`, `tamper_detected` | model L3 / claim L1 | local re-signing proved; mTLS benchmark pending |
+| E-1366 | `Token`, `issueTag`, `spend` | `issueTag_origin_separates`, `spend_fresh`, `spend_replay` | model L3 / claim L1 | separation + replay safety proved; issuance benchmark pending |
+| E-1367 | `Form`, `Proof`, `check` | `check_sound` | model L3 / claim L1 | reflection proved; OPA/Casbin benchmark pending |
+| E-1368 | `share`, `combine` | `combine_share`, `remaining_hides`, `rotate_preserves` | model L3 / claim L1 | n-of-n laws proved; Shamir interpolation pending |
+| E-1369 | `blind`, `unblind` | `unblind_sign`, `view_consistent` | model L3 / claim L1 | unlinkability proved in exponent space; SAML benchmark pending |
+| E-1370 | `mismatches`, `accept`, `ctSteps` | `accept` trade-off, `mismatches_comm`, `earlySteps_leaks` | model L3 / claim L1 | trade-off proved; bearer-token attack script pending |
+
+Cycle findings (recorded, not hidden): the first `lower_never_gains`
+statement had the lattice direction backwards (a satisfying vector lowered
+arbitrarily need not satisfy — raising preserves, lowering rejects) and was
+replaced by `raising_never_loses`; the core `List.erase` is `BEq`-based and
+its rewrite lemmas did not fire in this toolchain, so the accumulator uses
+a structural `remove` with `split`-based proofs; the E-1364 test fixture
+initially revoked an identifier that was already in the list, which the
+checker rejected — the example was wrong, the theorem right. `lake build
+Morph Morph.Tests` passes (416 jobs) with 0 warnings and 0 `sorry`; axiom
+footprint is Lean's standard `propext`/`Quot.sound` only. No external kill
+criterion was testable, so none fired and no row was cut. Next cycle: Shamir
+interpolation for t-of-n, hash-indirected tags for real user spaces, PUF
+noise modelling, and the first baseline harness (OAuth2, OPA, SAML).
 
 ## References
 
