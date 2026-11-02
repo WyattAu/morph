@@ -23,9 +23,11 @@ module runs `HIR.Program`/`HIR.Stmt` over the same evaluator, mirroring
 - statement-level recursion (including `while` iterations) is bounded by an
   explicit fuel; exhaustion is `HFlow.stuck`, not divergence.
 
-Only the statements HIR shares with the surface exist here — `whileLoop`
-is the only control statement. `doWhile`/`ifStmt`/`matchStmt` never lower
-(`Morph.Frontend.HIRLower`), so there is nothing to mirror for them.
+Only the statements HIR shares with the surface exist here — `whileLoop`,
+`ifStmt`, and `matchStmt` (loops 88/112). `doWhile` never lowers
+(`Morph.Frontend.HIRLower`, `toHIRStmt_doWhile_none`), so there is
+nothing to mirror for it; see HARD-GATES.md G-6 for the faithfulness
+analysis that keeps the rejection.
 -/
 
 namespace Morph.Frontend.HIRInterp

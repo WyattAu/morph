@@ -51,6 +51,27 @@ First versioned release: the `morph` CLI over the verified pipeline.
 - Statement `let` takes no type annotation; the pretty-printer drops the
   elaborator's placeholder type so output stays in surface syntax.
 
+## [Unreleased] — loops 113–115: verification hygiene + G-6 analysis
+
+### Fixed
+
+- Restored six accidentally deleted `spec/build/*.md` files (loop 113),
+  fixing 72 spec-lint errors and 68 broken cross-references; lint and
+  cross-refs back to 0 errors / 0 broken (106 warnings baseline).
+- Fixed stale `HIRInterp.lean` header claiming `ifStmt`/`matchStmt` never
+  lower (loop 115).
+- Regenerated `SPEC_STATUS.md` (loop 114): 68 modules (was 55), 1408 real
+  lemmas, 934 real examples, 0 stubs, 0 sorries.
+
+### Added
+
+- Six `runDoWhile_*` characterization pins in `Morph/Interp.lean`
+  (loop 115): at-least-once discipline machine-checked.
+- `HARD-GATES.md` G-6 desugar-faithfulness analysis (loop 115): three
+  `doWhile` desugar candidates refuted/recorded, `forLoop` second
+  rejection leg (expression position, no `HIR.Expr` iteration form).
+- Docs heartbeat extended to `docs/RESEARCH-LOOPS-103-115.md`.
+
 ## [Unreleased] — loop 112: HIR statement coverage
 
 ### Added

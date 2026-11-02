@@ -305,7 +305,9 @@ the prefix is injective, and the `hirId_free_ne_bv/ctx` separation in
 slot ids).
 `whileLoop`, `ifStmt`, and `matchStmt` lower 1:1 (loop 112: HIR grew
 the two missing statement forms); `doWhile` (executes at least once — no
-HIR counterpart, and desugaring would change semantics) stays rejected.
+HIR counterpart, and every direct desugar is unfaithful — see
+HARD-GATES.md G-6 and the `runDoWhile_*` pins in `Morph.Interp`)
+stays rejected.
 Statement `matchStmt` arms bind as statement-level free names
 (`free:`-ids, matching `runMatchArms`' `patVars`-zip discipline), not as
 expression-level `bv` slots — arm bodies are statement sequences whose

@@ -179,6 +179,59 @@ def runMatchArms (fuel : Nat) (env : List (String × Expr)) (v : Expr)
 
 end
 
+/-! ## `doWhile` characterization (loop 115, supporting HARD-GATES.md G-6)
+
+The body runs before the condition is ever consulted. These pins make the
+exact at-least-once discipline machine-checked: the naive desugars
+(`body; while cond body`, `while (flag || cond) ...` under strict `or`)
+are unfaithful precisely where these lemmas bite — stuck bodies ignore
+`cond` entirely, and `break`/`continue` in the first copy behave
+ differently than in a leading-copy desugar. -/
+
+/-- `doWhile` at zero fuel is stuck, like every other statement runner. -/
+theorem runDoWhile_zero (env : List (String × Expr)) (cond : Expr)
+    (body : List Stmt) : runDoWhile 0 env cond body = (.stuck, env) := rfl
+
+/-- A stuck body propagates without consulting `cond` (even a stuck `cond`). -/
+theorem runDoWhile_body_stuck (fuel : Nat) (env env' : List (String × Expr))
+    (cond : Expr) (body : List Stmt)
+    (h : runStmts fuel env body (.value (.lit .unit)) = (.stuck, env')) :
+    runDoWhile (fuel + 1) env cond body = (.stuck, env') := by
+  simp only [runDoWhile, h]
+
+/-- `break` in the body completes the loop with unit. -/
+theorem runDoWhile_body_broke (fuel : Nat) (env env' : List (String × Expr))
+    (cond : Expr) (body : List Stmt)
+    (h : runStmts fuel env body (.value (.lit .unit)) = (.broke, env')) :
+    runDoWhile (fuel + 1) env cond body = (.value (.lit .unit), env') := by
+  simp only [runDoWhile, h]
+
+/-- `continue` in the body goes to the condition check (`runWhile`). -/
+theorem runDoWhile_body_continued (fuel : Nat)
+    (env env' : List (String × Expr)) (cond : Expr) (body : List Stmt)
+    (h : runStmts fuel env body (.value (.lit .unit)) = (.continued, env')) :
+    runDoWhile (fuel + 1) env cond body = runWhile fuel env' cond body := by
+  simp only [runDoWhile, h]
+
+/-- A completed body with a false condition exits with unit. -/
+theorem runDoWhile_body_done_false (fuel : Nat)
+    (env env' : List (String × Expr)) (cond : Expr) (body : List Stmt)
+    (u : Expr)
+    (h : runStmts fuel env body (.value (.lit .unit)) = (.value u, env'))
+    (hc : eval (ctxOf env') cond = some (.lit (.bool false))) :
+    runDoWhile (fuel + 1) env cond body = (.value (.lit .unit), env') := by
+  simp only [runDoWhile, h, hc]
+
+/-- A completed body with a true condition iterates. -/
+theorem runDoWhile_body_done_true (fuel : Nat)
+    (env env' : List (String × Expr)) (cond : Expr) (body : List Stmt)
+    (u : Expr)
+    (h : runStmts fuel env body (.value (.lit .unit)) = (.value u, env'))
+    (hc : eval (ctxOf env') cond = some (.lit (.bool true))) :
+    runDoWhile (fuel + 1) env cond body =
+      runDoWhile fuel env' cond body := by
+  simp only [runDoWhile, h, hc]
+
 /-- Run a whole program: 1024 statement-level fuel units (one per statement,
 per `while` iteration), empty starting environment. -/
 def runProgram (prog : Program) : Flow :=

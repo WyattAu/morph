@@ -1,4 +1,4 @@
-# Research Loops 103–112 — HIR Statement Coverage
+# Research Loops 103–115 — HIR Statement Coverage, Status Regen, G-6 Analysis
 
 > Loops 103–110 shipped batch specs (BatchBCD/BatchFGH/BatchHIJ/P1–P5) with
 > briefs + ADR records but no heartbeat entries. Loop 111 closed
@@ -63,6 +63,54 @@ theorems. Era-1 exit asks for full-fragment lowering.
 - Thin-module audit: `MachineRelation` (single deep β-agreement theorem),
   `Maths` (Nat/Int/Rational/gcd data + ops), `DualOptimization`
   (O0–O3 + pass/result data) — all complete as specified, no padding added.
+
+## Loop 114 — `SPEC_STATUS.md` regeneration
+
+**Problem.** `SPEC_STATUS.md` was stale at 55 modules: the 12 batch /
+earliest / UI / identity modules plus `TypeUnification` were missing, and
+several rows predated recent lemma growth (e.g. `DialectProjection`
+1→15, `EffectAlgebra` 26→39, `AbiDataRefinement` 4→11 after loop 111).
+Sprint 6's exit criterion (status counts match the tree) was violated.
+
+**Work.** Regenerated the full table under the file's own documented
+methodology (same grep rules, byte-sort order): 68 modules, 1408 real
+lemmas, 934 real examples, 0 stubs, 0 sorries, 67 tier-1 + README tier-2.
+`.reports/spec-status.md` refreshed with the generator script and
+committed alongside (counts agree). Noted accounting gap: the repo
+"specs theorems" metric (1633) also sweeps 105 theorems stated in
+`Spec.lean` files, 20 in `Examples.lean` files, and doc-comment lines
+beginning with the word "theorem" — the table counts `Lemmas.lean` only.
+
+## Loop 115 — G-6 desugar-faithfulness analysis (this pass)
+
+**Problem.** G-6 (HIR `forLoop`/`doWhile` lowering) unblocks on "a
+desugar-faithfulness proof vs surface semantics". Loop 112 decided the
+rejection; the analysis itself was never written.
+
+**Work.**
+- `Morph/Interp.lean`: six `runDoWhile_*` characterization pins
+  (`zero`, `body_stuck/broke/continued/done_false/done_true`) making the
+  at-least-once discipline machine-checked — the body runs before `cond`
+  is ever consulted.
+- Checked three desugar candidates: naive `body; while` (break/continue
+  in the leading copy escape instead of completing/checking — contradicts
+  the `broke`/`continued` pins); `while (flag || cond)` (surface `or` is
+  strict per `Executable.evalWithFuel`, so a stuck `cond` aborts before
+  the first body run — contradicts the `stuck` pin); flag + lazy
+  `ifThenElse` guard (entry-faithful, but needs stmt free-vars +
+  freshness, fuel-inequality agreement vs same-fuel `agreeBoth`, and
+  env-extension reasoning — a compilation pass, not a sprint tail).
+- `forLoop`: second rejection leg recorded — iteration needs statement
+  context (`whileLoop` is `Stmt`-only, `HIR.Expr` has no iteration form),
+  so no counter-desugar can target HIR without a phase split; stands with
+  loop 78b (anonymous unreachable iterator).
+- Fixed stale `HIRInterp.lean` header (claimed `ifStmt`/`matchStmt` never
+  lower — true before loop 112, false since); `HIRLower.lean` doc now
+  points at the G-6 analysis.
+
+**Disposition.** Rejection retained conservatively; analysis recorded in
+`HARD-GATES.md` G-6. Unblocks if (a)+(b)+(c) above are built, or new
+evidence for a 1:1 map appears.
 
 ## Loop 113 — `spec/build/` restoration (this pass)
 
