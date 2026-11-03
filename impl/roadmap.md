@@ -1,5 +1,14 @@
 # Technical Implementation Plan (TIP)
 
+> Governance note (loop 128): this file is the Rust-implementation
+> viewpoint. Where it conflicts with `docs/FIVE-YEAR-ROADMAP.md` on
+> timeline (12-month v1.0) or backend language (C++ runtime, LLVM
+> default), **the five-year file governs** pending the Y1 review ADR.
+> The tree contains a Rust runtime and zero C++; any C++ introduction
+> must justify itself against it in the Year-2 backend ADR. Formal
+> counts herein ("40+ modules", "6 sorries") predate the tree — see
+> `SPEC_STATUS.md` and the five-year entry state for measured numbers.
+
 * Project:** Morph Ecosystem
 * Timeline:** 12 Months (4 Quarters)
 * Repository:** Monorepo (`rust-lang` style)
