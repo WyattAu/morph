@@ -1,5 +1,14 @@
 # Implementation Strategy Document (ISD)
 
+> Governance note (loop 129): the C++23 runtime / LLVM-backend
+> architecture below is an **input to the Year-2 backend ADR, not a
+> decision** (`docs/FIVE-YEAR-ROADMAP.md`, D-3). The tree contains a
+> Rust workspace (`compiler/`, `runtime/`, `cli/` — 218 tests green,
+> no codegen) and zero C++; any C++ introduction must justify itself
+> against it in that ADR. Where this file conflicts with the five-year
+> file on timeline or backend language, the five-year file governs
+> pending the Y1 review ADR.
+
 * System:** Morph Toolchain
 * Version:** 1.0.0
 * Target:** Bootstrapping Phase (v0.1 $\rightarrow$ v1.0)
