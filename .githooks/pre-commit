@@ -187,7 +187,12 @@ elif command -v spec-tools &>/dev/null; then
 fi
 
 if [ -n "$SPEC_TOOLS_CMD" ]; then
-    MD_FILES=$(git diff --cached --name-only --diff-filter=ACM '*.md' 2>/dev/null || true)
+    # Jurisdiction (loop 131): the specification convention governs spec/
+    # only — this matches CI (spec-validation.yml runs `lint spec`). Linting
+    # every staged *.md flagged non-spec documents (CHANGELOG, heartbeat
+    # notes, impl/ strategy docs) for missing spec sections they must not
+    # have; that advisory noise trains reviewers to ignore this step.
+    MD_FILES=$(git diff --cached --name-only --diff-filter=ACM -- 'spec/*.md' 'spec/**/*.md' 2>/dev/null || true)
     if [ -n "$MD_FILES" ]; then
         LINT_OK=true
         for md_file in $MD_FILES; do

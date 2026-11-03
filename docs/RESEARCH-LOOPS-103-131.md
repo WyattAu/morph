@@ -426,5 +426,24 @@ heartbeat file. Convention going forward: stage the rename with `git add
 **Verification.** Cross-refs 1700 pass / 0 fail (dead links gone); spec
 lint 0 errors / 105 warnings (baseline unchanged). No code touched.
 
+## Loop 131 — Pre-commit step 7 jurisdiction (this pass)
+
+**Problem.** Step 7 of `.githooks/pre-commit` ran `spec-tools lint` on
+every staged `*.md` — including CHANGELOG, heartbeat notes, and `impl/`
+strategy docs. Those are not specs and must not carry spec sections
+(the waivers module states the doctrine: fabricating missing sections
+would be worse), so every docs commit printed advisory failures that
+taught reviewers to ignore the step. CI (`spec-validation.yml`) already
+lints only `spec/`; the hook disagreed with CI on jurisdiction.
+
+**Work.** One-line scope change plus a comment recording the reason:
+the hook now collects staged files under `spec/*.md` + `spec/**/*.md`
+only. Verified both directions: a staged non-spec md yields an empty
+set (skip branch), and the same pathspec matches all 97 tracked spec
+files (`git ls-files`). Real spec edits still get the per-file check;
+non-spec docs edits stop generating noise.
+
+**Not done (gates, noted):** G-1/G-3/G-7 unchanged.
+
 **Not done (gates, noted):** G-1/G-3/G-7 unchanged — CHANGELOG is
 release *input*, not the release.
