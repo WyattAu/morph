@@ -1,4 +1,4 @@
-# Research Loops 103–123 — HIR Statement Coverage, Status Regen, G-6 Analysis, Closeout, CI Repair, Roadmap Reconciliation, Runtime CI, Sprint Sweep, Site Metrics, 5-Year Design
+# Research Loops 103–124 — HIR Statement Coverage, Status Regen, G-6 Analysis, Closeout, CI Repair, Roadmap Reconciliation, Runtime CI, Sprint Sweep, Site Metrics, 5-Year Design, Y1 Readiness
 
 > Loops 103–110 shipped batch specs (BatchBCD/BatchFGH/BatchHIJ/P1–P5) with
 > briefs + ADR records but no heartbeat entries. Loop 111 closed
@@ -274,7 +274,29 @@ explicit out-of-scope list (Eras 4–5). Adopts `ERA2-BACKEND-SCOPE.md`
 Stages A–D as the Year 2–3 spine; declares governance over
 `impl/roadmap.md` on timeline/backend-language conflicts pending a Y1
 review ADR. No code, no gates moved — a planning artifact for
-maintainers and (post-tag) auditors. Recorded: §5.2 open (no `doc-gen4` dep; new dependency
+maintainers and (post-tag) auditors.
+
+## Loop 124 — Year-1 release-readiness probe (this pass)
+
+**Problem.** Year 1's remaining unblocked work is proving the 0.1.0
+release candidate actually behaves as `CHANGELOG.md` + `STABILITY.md`
+promise — not re-verifying proofs (green), but exercising the shipped
+artifact end to end.
+
+**Work.** Built `morph` (`lake build morph`, 46 jobs) and ran the full
+CLI matrix against it: `version` → 0.1.0; `eval` arithmetic → 7 and
+empty-input / parse-failure goldens (exit 1, byte-exact messages);
+`parse`/`check` success + type-error paths; `run` vs `run --hir`
+agreement on let-programs (6 = 6), `ifStmt` through `--hir` (1),
+var-pattern `match` through `--hir` (1 = 1, loop-112 golden live);
+`fmt` fixpoint rendering; `doc` Markdown output; `doWhile` direct run
+(3) vs `--hir` rejection (exit 1, exact leaves-fragment message — the
+G-6 path behaving as documented). Toolchain pins verified:
+`leanprover/lean4:v4.27.0`, Lake 5.0.0, build offline-clean.
+
+**Not done (gates, noted):** billing → live CI (G-1), audit invites +
+findings (G-3), tag + announce (G-7). The artifact is proven ready;
+the actions are maintainers'. Recorded: §5.2 open (no `doc-gen4` dep; new dependency
 needs maintainer approval); §6.3 measured (workspace builds, 218 Rust
 tests green); §6.4 seed noted (`Morph/Stdlib.lean`, 187 lines, unwired
 — wiring is a maintainer call); G-7 checklist gained the index/specs
