@@ -1,4 +1,4 @@
-# Research Loops 103–121 — HIR Statement Coverage, Status Regen, G-6 Analysis, Closeout, CI Repair, Roadmap Reconciliation, Runtime CI, Sprint Sweep
+# Research Loops 103–122 — HIR Statement Coverage, Status Regen, G-6 Analysis, Closeout, CI Repair, Roadmap Reconciliation, Runtime CI, Sprint Sweep, Site Metrics
 
 > Loops 103–110 shipped batch specs (BatchBCD/BatchFGH/BatchHIJ/P1–P5) with
 > briefs + ADR records but no heartbeat entries. Loop 111 closed
@@ -241,7 +241,21 @@ pinned `--cov-fail-under=48` while the stated target is 95%; (3)
 `scripts/` with pytest-cov: **96.08%**) and hardened the effective gate
 48 → 95 in `pytest.ini` (plus `pyproject.toml` for consistency) — passes
 with margin. Cross-ref total 1704 → 1700 is expected: the script checks
-imports in the deleted `TestVars.lean` (4 imports), 0 fail either way. Recorded: §5.2 open (no `doc-gen4` dep; new dependency
+imports in the deleted `TestVars.lean` (4 imports), 0 fail either way.
+
+## Loop 122 — Site metrics refresh (this pass)
+
+**Problem.** The undeployable-but-visible site carried stale numbers:
+`site/index.html` showed 402 Lean jobs / 1,508 theorems (now 454 /
+2,081); `site/docs/tools.html` claimed 636 tests at 88% coverage (now
+836 at 96.08%). Audited and deliberately left alone: the "60+ spec
+modules" taglines (68 Lean modules / 104 md files — still true), the
+curated ADR page (11 key-decision entries; the 22 frontier-register
+files are research logs, out of scope for that page), and the
+`SPECIFICATION_INDEX.md` + `specs.html` 0.1.0 stamp (unreproducible
+"170 modules / 1,094 theorems" — re-stamp is G-7 release work, already
+checklisted). The site can't deploy until billing (G-2) regardless; this
+keeps the source of truth correct for when it can. Recorded: §5.2 open (no `doc-gen4` dep; new dependency
 needs maintainer approval); §6.3 measured (workspace builds, 218 Rust
 tests green); §6.4 seed noted (`Morph/Stdlib.lean`, 187 lines, unwired
 — wiring is a maintainer call); G-7 checklist gained the index/specs
