@@ -1,4 +1,4 @@
-# Research Loops 103–115 — HIR Statement Coverage, Status Regen, G-6 Analysis
+# Research Loops 103–116 — HIR Statement Coverage, Status Regen, G-6 Analysis, Closeout
 
 > Loops 103–110 shipped batch specs (BatchBCD/BatchFGH/BatchHIJ/P1–P5) with
 > briefs + ADR records but no heartbeat entries. Loop 111 closed
@@ -111,6 +111,20 @@ rejection; the analysis itself was never written.
 **Disposition.** Rejection retained conservatively; analysis recorded in
 `HARD-GATES.md` G-6. Unblocks if (a)+(b)+(c) above are built, or new
 evidence for a 1:1 map appears.
+
+## Loop 116 — Roadmap closeout + final verification (this pass)
+
+**Problem.** `CORE-ROADMAP.md` still showed its loop-111 opening baseline
+(2 warnings, 9 sorry false positives, 2066 theorems) with all sprints
+written as future work, though every sprint had since completed.
+
+**Work.** Marked all seven sprints DONE with their completing loops and
+replaced the baseline with the closing state (454 jobs, 0/0;
+0 sorries/stubs; 2081 theorems). Ran the full battery: build, pytest
+(836), lint (0/106), cross-refs (1704/0), regression snapshot — no
+regressions vs the loop-113 baseline, one improvement (total theorems
+2075→2081 from the loop-115 pins). Full disposition of remaining work
+is `HARD-GATES.md` G-1–G-8, all maintainer- or Era-2-blocked.
 
 ## Loop 113 — `spec/build/` restoration (this pass)
 
