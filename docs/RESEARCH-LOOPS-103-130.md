@@ -302,3 +302,129 @@ tests green); §6.4 seed noted (`Morph/Stdlib.lean`, 187 lines, unwired
 — wiring is a maintainer call); G-7 checklist gained the index/specs
 re-stamp step (`SPECIFICATION_INDEX.md` + `site/docs/specs.html` stamp
 predates the tree: "170 modules" vs 104 md files).
+
+## Loop 125 — Year-1 maintenance + Stage-A design prep (this pass)
+
+**Work.** Baseline re-verify: `lake build Morph Morph.Tests` 454 jobs,
+0 errors, 0 warnings; `sorry`/`example : True` scans empty; theorem grep
+2096 repo-wide / 1642 in `Specs/` (loop-122 scoreboard seeded 2081 /
+1633 — delta is same-grep drift on an unchanged Lean tree, recorded not
+reconciled; `SPEC_STATUS.md` real-lemma methodology unchanged);
+`pytest` 836 passed, 96.14% (gate 95%); Rust workspace 218 passed
+(30 + 133 + 55). Wrote `docs/STAGEA-PREP-125.md` (design-only, no code):
+strict-subset `morph build` contract position (D-4 default; `IsStraight`
+IN, `whileLoop`/match/calls + G-6 `doWhile`/`forLoop` OUT, `Option`-`none`
++ goldens as the rejection shape), verified-lowering default (D-2) with
+the per-backend TCB the ADR must state, and the MIR small-step semantics
+gap Stage A must close post-audit.
+
+**Not done (gates, noted):** G-1 (billing → live CI), G-3 (audit invites
++ findings — this prep is what auditors react to), G-7 (tag + announce).
+No Era-2 implementation landed (Year-1 freeze honored).
+
+## Loop 126 — Audit-packet freshness (this pass)
+
+**Problem.** `docs/AUDIT-PACKET-0.1.md` was pinned "current as of loop
+116" while the tree moved on: cross-refs 1704 → 1700 (loop 121
+scratch-file removal), coverage 96% → 96.14% (loop-125 measure), and the
+new `docs/STAGEA-PREP-125.md` design positions existed nowhere in the
+auditor-facing materials.
+
+**Work.** Four-line patch, all measured: provenance loop 116 → 125;
+coverage 96.14%; cross-refs 1700/0 (re-ran both checks this loop);
+new §6 pointing auditors at `ERA2-BACKEND-SCOPE.md` + `STAGEA-PREP-125.md`
+as the Era-2 scope they react to. Theorem counts left on the loop-114
+`SPEC_STATUS.md` methodology (packet §2) — the loop-125 grep drift
+(2096/1642 vs 2081/1633) is recorded in the loop-125 entry, not
+reconciled by churning the packet.
+
+**Not done (gates, noted):** G-1/G-3/G-7 unchanged — the packet is
+prepped, sending + tag + findings remain maintainers'.
+
+## Loop 127 — Regression-snapshot verdict, G-7 step 1 (this pass)
+
+**Work.** Ran `bash scripts/regression-snapshot.sh` (clean `TMPDIR`):
+RESULT: No regressions. All clear — sorry 0, stubs 0, pytest 836/0,
+lint 0/105, cross-refs 0 broken, coverage 96%, Lean modules 268 / spec
+modules 208 unchanged. The snapshot's canonical counters read
+specs-theorems 1633 / total-theorems 2081, matching the loop-122
+scoreboard and packet §2 — this reconciles the loop-125 grep drift
+(2096/1642): the rough `^\s*(theorem|lemma)` grep overcounts vs the
+snapshot methodology, so the packet correctly stayed on 2081/1633.
+The new snapshot JSON is left untracked per convention (tag-time record
+ships with release materials per `AUDIT-INVITES-0.1.md` item 3).
+
+**Not done (gates, noted):** G-7 steps 2–6 (tag, CI-on-tag, invites,
+re-stamp, announce) are maintainer actions; G-1/G-3 unchanged.
+
+## Loop 128 — Roadmap governance banner (this pass)
+
+**Problem.** `impl/roadmap.md` promises a 12-month v1.0 with a C++
+runtime and LLVM backend, and cites stale formal counts ("40+ modules",
+"6 sorries") — contradicting the measured tree (no C++ exists, audit
+gate freezes Era-2 work, 0 sorries, 68 spec modules) and risking
+stakeholder confusion per the five-year risk register.
+
+**Work.** Docs-only banner at the top of `impl/roadmap.md`: names the
+file as the Rust-implementation viewpoint, states the five-year file
+governs on timeline/backend-language pending the Y1 review ADR,
+requires any C++ introduction to justify itself in the Year-2 backend
+ADR, and redirects formal counts to `SPEC_STATUS.md`. No timeline,
+code, or gate changed — the conflict was already adjudicated in the
+five-year doc; this makes it visible where a reader lands.
+
+**Not done (gates, noted):** the Y1 review ADR itself is maintainer
+work; G-1/G-3/G-7 unchanged.
+
+## Loop 129 — Overview governance banner (this pass)
+
+**Problem.** Same conflict as loop 128, second file: `impl/overview.md`
+recommends the Hybrid "Rust + C++" architecture (C++23 runtime, LLVM
+backends/JIT/libFuzzer) and "40+ specification modules" — inputs to
+the Year-2 backend ADR (D-3), not decisions, and stale counts.
+
+**Work.** Docs-only banner at the top of `impl/overview.md`: the C++23
+/ LLVM architecture is an input to the backend ADR, the tree holds a
+Rust workspace with zero C++, and the five-year file governs conflicts
+pending the Y1 review ADR. No code, no gates moved.
+
+**Year-1 unilateral closeout (loops 124–129).** Everything actionable
+without a maintainer now stands done: release artifact probed end to
+end (124), baseline re-verified (125), Stage-A design prep for auditors
+(125), packet current (126), snapshot verdict clean (127), both `impl/`
+strategy files bannered (128–129). What remains is maintainer-gated:
+billing → live CI (G-1), audit invites + findings (G-3), tag + announce
+(G-7), Y1 review ADR. Next unilateral work is maintenance duty (keep
+`lake build` green against toolchain churn) until a gate clears.
+
+## Loop 130 — CHANGELOG drift repair (this pass)
+
+**Problem.** `CHANGELOG.md` had two dead heartbeat links — two
+`[Unreleased]` sections still cited `docs/RESEARCH-LOOPS-103-124.md`,
+renamed to `-103-129.md` by the heartbeat-rename convention — and no
+entry at all for loops 121–129 (site metrics, five-year roadmap,
+release-readiness probe, Stage-A prep, packet refresh, snapshot
+verdict, governance banners). The file is the release-notes source
+(G-7 step 6), so drift there is an auditor-visible defect.
+
+**Work.** Repointed both stale refs to `docs/RESEARCH-LOOPS-103-129.md`;
+added one `[Unreleased] — loops 121–129` section grouped Added / Changed
+/ Verified, each claim traceable to its loop entry and to a measured
+number (2,081 theorems, 836 pytest, 0/0 Lean, cross-refs 1700/0). The
+loop-127 grep-drift reconciliation is not restated here — the snapshot
+counters are the canonical figures.
+
+**Second defect, same commit.** The rename-per-loop convention was
+being committed with a pathspec that named only the *new* path, so each
+`git mv` deletion stayed out of the commit: HEAD accumulated six stale
+heartbeat files (`103-124`…`103-129`) that are growing prefixes of the
+current one (304 → 398 lines vs 421). Verified byte-identical prefixes
+before deleting; `docs/RESEARCH-LOOPS-103-130.md` is now the single
+heartbeat file. Convention going forward: stage the rename with `git add
+-A <dir>`, never a pathspec naming only the destination.
+
+**Verification.** Cross-refs 1700 pass / 0 fail (dead links gone); spec
+lint 0 errors / 105 warnings (baseline unchanged). No code touched.
+
+**Not done (gates, noted):** G-1/G-3/G-7 unchanged — CHANGELOG is
+release *input*, not the release.

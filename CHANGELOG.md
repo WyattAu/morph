@@ -75,7 +75,45 @@ First versioned release: the `morph` CLI over the verified pipeline.
 - `HARD-GATES.md` G-6 desugar-faithfulness analysis (loop 115): three
   `doWhile` desugar candidates refuted/recorded, `forLoop` second
   rejection leg (expression position, no `HIR.Expr` iteration form).
-- Docs heartbeat extended to `docs/RESEARCH-LOOPS-103-124.md`.
+- Docs heartbeat extended in `docs/RESEARCH-LOOPS-103-130.md`.
+
+## [Unreleased] — loops 121–129: closeout, planning, release readiness
+
+### Added
+
+- `docs/FIVE-YEAR-ROADMAP.md` (loop 123): the 5-year program between the
+  long-term horizon and the task list — Years 1–5 with exit criteria and
+  miss-rules, six dated decisions (D-1…D-6) with conservative defaults,
+  annual scoreboard seeded from measured loop-122 numbers, explicit
+  Era-4/5 out-of-scope list. Adopts `docs/ERA2-BACKEND-SCOPE.md` Stages
+  A–D as the Year 2–3 spine.
+- `docs/STAGEA-PREP-125.md` (loop 125, design-only): positions for the
+  two Era-2 audit questions — strict-subset `morph build` contract (D-4)
+  and verified lowering over translation validation (D-2) with the
+  per-backend TCB the ADR must state; records the MIR small-step
+  semantics gap Stage A must close.
+- Governance banners (loops 128–129) on `impl/roadmap.md` and
+  `impl/overview.md`: their C++/LLVM architecture is an input to the
+  Year-2 backend ADR, not a decision; the five-year file governs
+  timeline/backend-language conflicts pending the Y1 review ADR.
+
+### Changed
+
+- `docs/AUDIT-PACKET-0.1.md` (loop 126): provenance re-stamped to loop
+  125, coverage 96.14%, cross-refs 1700/0, new §6 pointing auditors at
+  the Era-2 scope documents.
+- Site metrics refreshed (loop 122): `site/index.html` 454 Lean jobs /
+  2,081 theorems; `site/docs/tools.html` 836 tests at 96.08%.
+
+### Verified
+
+- Release readiness (loop 124): all eight `morph` commands exercised end
+  to end, including `run` vs `run --hir` agreement, the loop-112 `if`/
+  `match` goldens, and the G-6 rejection path; toolchain pins
+  (`v4.27.0`, Lake 5.0.0) confirmed.
+- Regression snapshot (loop 127): no regressions — 0 sorry, 0 stubs,
+  836 pytest, lint 0/105, 0 broken cross-refs, 2,081 theorems
+  (1,633 in `Specs/`).
 
 ## [Unreleased] — loop 112: HIR statement coverage
 
@@ -94,4 +132,4 @@ First versioned release: the `morph` CLI over the verified pipeline.
   (no semantics change).
 - `HARD-GATES.md` G-6 decided: `doWhile` / `forLoop` stay `none` with
   pinned reasons; G-8 root-caused to `TMPDIR` harness artifact.
-- Docs heartbeat `docs/RESEARCH-LOOPS-103-124.md` added.
+- Docs heartbeat `docs/RESEARCH-LOOPS-103-130.md` added.
