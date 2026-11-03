@@ -464,3 +464,31 @@ moved, no timeline proposed.
 
 **Not done (gates, noted):** G-1/G-3/G-7 unchanged; implementation
 starts only after the audit publishes.
+
+## Loop 133 — Era-1 exit: close the in-repo prep (this pass)
+
+**Request:** finish Era-1 exit. **Constraint:** three exit items are
+maintainer/external-only and cannot be produced from inside the repo —
+G-1 billing (CI per push + Pages), G-3 audit invites + published
+findings, G-7 tag + announce. What *can* close here is every in-repo
+precondition so the exit is maintainer-action-only.
+
+**Work.**
+- G-7 item 5 (re-stamp): `SPECIFICATION_INDEX.md` header and
+  `site/docs/specs.html` banner marked the 0.1.0 numbers historical
+  ("170 modules / 1,094 theorems" frozen at tag time) and pointed at
+  the live counters — 104 `spec/*.md` files, 68 Lean spec modules
+  (`SPEC_STATUS.md`), 1633 Specs theorems / 2081 repo-wide, 0 sorry /
+  0 stubs, all re-measured this loop. `CHANGELOG.md` 0.1.0 section
+  deliberately untouched (frozen release notes, not the live count).
+- Re-verified cheap gates: `sorry` 0, `example : True := trivial` 0,
+  `theorem`/`lemma` lines 2081 repo-wide / 1633 in `Specs/`.
+- Exit verdict: in-repo prep COMPLETE; remaining exit actions are
+  maintainer-only in dependency order — (1) resolve billing G-1 so
+  runners + Pages go live, (2) cut + push tag 0.1.0 per the G-7
+  checklist (snapshot JSON ships with the tag), (3) send audit invites
+  G-3 with packet + snapshot, (4) publish findings and triage. No
+  Era-2 implementation starts before (3) publishes (Year-1 freeze).
+
+**Not done (gates, noted):** G-1/G-3/G-7 — maintainer/external only;
+no code or proof work remains for Era-1 exit.

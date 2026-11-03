@@ -2,8 +2,14 @@
 
 Complete index of all Morph specification documents organized by category.
 
-> **Version 0.1.0** (2026-10-31) — this index is stamped to the Morph 0.1
-> release: 170 spec modules, 1,094 spec theorems, 0 sorry, 0 axioms.
+> **Version 0.1.0** (2026-10-31) — historical tag-time record: 170 spec
+> modules, 1,094 spec theorems, 0 sorry, 0 axioms. The tag-time numbers
+> are frozen history, not the live inventory: measured loop 133 the tree
+> holds 104 `spec/*.md` files and 68 Lean spec modules (`SPEC_STATUS.md`:
+> 1408 real lemmas, 934 real examples; 1633 `theorem`/`lemma` lines in
+> `Morph/Specs/`, 2081 repo-wide), 0 sorry, 0 stubs. `SPEC_STATUS.md`
+> plus the regression snapshot JSON are the live counters; this page
+> lists documents, not metrics.
 > See [`CHANGELOG.md`](CHANGELOG.md) and [`STABILITY.md`](STABILITY.md).
 > Spec Props are claims, not results — check `SPEC_CONTRADICTIONS.md` before
 > citing a mapping-summary ✓ as ground truth.
