@@ -15,7 +15,7 @@
 | `sorry` scan | 0 hits (Sprint 1 headers reworded; hooks pass) |
 | Spec stubs | 0 (`example : True := trivial` absent) |
 | Python pytest | 836 passed, clean `TMPDIR` (G-8 artifact otherwise) |
-| Spec lint | 0 errors / 106 warnings (documented count) |
+| Spec lint | 0 errors / 105 warnings (documented count; 19 waived) |
 | Cross-refs | 1704 pass / 0 fail |
 | Theorems | 2081 repo-wide, 1633 in Specs/ (Era-1 ≥1500 target met) |
 | `SPEC_STATUS.md` | 68 modules, 1408 lemmas, 934 examples, regenerated loop 114 |
@@ -93,7 +93,7 @@ the tree; changelog lists the batches.
 ## Sprint 7 — Final verification — DONE (loop 116, this pass)
 
 Rebuilt everything (454 jobs, 0 errors/warnings); pytest 836 passed;
-spec lint 0 errors/106 warnings; cross-refs 1704/0; regression snapshot
+spec lint 0 errors/105 warnings; cross-refs 1704/0; regression snapshot
 vs loop-113 baseline shows only the expected counts drift (see heartbeat).
 G-8 (`TMPDIR` harness artifact) disposition recorded in `HARD-GATES.md`.
 

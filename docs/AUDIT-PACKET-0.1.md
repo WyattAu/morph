@@ -49,7 +49,7 @@ compatibility promises are `STABILITY.md`.
 - `morph check` checks elaboration only; checking against an expected type
   needs type-syntax parsing (named future work, `CHANGELOG.md`).
 - The Python spec-lint tooling (`scripts/spec_tools/`): 836 tests, 96%
-  coverage, 0 lint errors, 106 lint warnings, 0 broken cross-refs.
+  coverage, 0 lint errors, 105 lint warnings (19 waived), 0 broken cross-refs.
   Warnings are the accepted baseline, not failures (zero-warning gate
   covers Lean only).
 
@@ -69,7 +69,7 @@ compatibility promises are `STABILITY.md`.
 lake build Morph Morph.Tests  # 0 warnings, 0 errors (454 jobs)
 lake build morph              # the CLI
 unset TMPDIR; python3 -m pytest -q            # 836 passed
-python3 scripts/spec_tools/cli/main.py lint spec  # 0 errors, 106 warnings (baseline)
+python3 scripts/spec_tools/cli/main.py lint spec  # 0 errors, 105 warnings (baseline; 19 waived)
 bash scripts/cross-ref-validate.sh               # 1704 pass / 0 fail
 bash scripts/regression-snapshot.sh              # metrics + no-regression verdict
 ```

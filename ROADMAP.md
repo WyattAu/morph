@@ -232,14 +232,19 @@ CI/CD workflows are correct but not executing due to GitHub account spending lim
 
 **Effort:** 2-3 hours | **Deps:** none
 
-### 3.2 Normalize section numbering
+### 3.2 Normalize section numbering — DISPOSITIONED (loop 120, no bulk edit)
 
-3868 section numbering warnings across 87 spec files. Options:
-1. Renumber all sections sequentially (high effort, breaks cross-refs)
-2. Suppress numbering check for specs that intentionally use non-sequential numbering
-3. Adopt a hierarchical numbering scheme (1, 1.1, 1.2, 2, 2.1...)
-
-**Effort:** 1-2 days | **Deps:** none
+The "3868 warnings" figure is stale. Machine-measured breakdown of the
+106 lint warnings (via the linter API): 74 `header-validation` (files
+missing the File/Version/Status/Author/Last Modified block), 31
+`change-log` (files missing a change log section), 1
+`section-structure` (numbering decrease 2.7.2 → 2.2.8 in
+`execution_model_spec.md` — a false positive on an intentional,
+changelog-recorded series return, now waived; 105 warnings / 19
+waived). The sections rule contributes zero real warnings, so options
+1–3 are closed: no renumbering. The remaining 105 are
+missing-boilerplate warnings, accepted baseline (zero-warning gate
+covers Lean only).
 
 ### 3.3 Lean property-based testing (Plausible, not SlimCheck) — DELIVERED (loop 80)
 
@@ -299,9 +304,12 @@ Store in `.reports/regression/`. Fail CI on metric regression.
 
 ### 4.3 Lean toolchain caching optimization
 
-Verify cache keys include `lake-manifest.json`. Already implemented in `lean-build.yml`. Monitor cache hit rates after billing resolved.
+Verified loop 120 in `lean-build.yml`: Lake cache key includes
+`lake-manifest.json` and elan caching is present (keyed on
+`lean-toolchain`). No change needed. Monitor cache hit rates after
+billing resolved.
 
-**Effort:** 1 hour (verification) | **Deps:** 2.4
+**Effort:** 1 hour (verification, spent) | **Deps:** 2.4
 
 ---
 

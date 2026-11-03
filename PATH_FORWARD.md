@@ -39,7 +39,7 @@ Sprint 3, 2026-10-30: **214 `.lean` files / 44,190 lines**,
 **1395 `theorem`/`lemma` declarations repo-wide** (`^\s*(theorem|lemma)` grep;
 **1017 in `Morph/Specs/`**), **836 Python tests at 96% coverage**,
 **1 build warning** (unused simp arg, `HIRLower.lean:263` — fixed same day, build now 0 warnings),
-**spec lint 0 errors / 106 warnings** (18 waived), **cross-refs 0 broken**,
+**spec lint 0 errors / 105 warnings** (19 waived, loop 120), **cross-refs 0 broken**,
 regression baseline `snapshot-20261030-234730.json` captured with
 `--fail-on-regression` gate (verified: synthetic regression exits 1),
 `SPEC_STATUS.md` regenerated (**55 modules, 817 real lemmas, 54 Tier-1**;
@@ -234,9 +234,13 @@ runners (billing, G-1), not config work.
 
 **Effort:** 4-6 hours | **Deps:** 3.4
 
-### 4.2 Lean toolchain caching
+### 4.2 Lean toolchain caching — DONE (loop 120 audit)
 
-Verify `.lake/build` and `.lake/packages` cache keys include `lake-manifest.json`. Add elan toolchain caching:
+Verified in `.github/workflows/lean-build.yml`: Lake cache key is
+`lake-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lakefile.lean',
+'lake-manifest.json') }}` (manifest included) and elan caching is
+present (`~/.elan`, keyed on `lean-toolchain`). No change needed. The
+cache-hit behavior itself still needs a billed runner to observe (G-1).
 
 ```yaml
 - uses: actions/cache@v4

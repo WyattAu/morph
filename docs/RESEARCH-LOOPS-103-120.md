@@ -1,4 +1,4 @@
-# Research Loops 103–119 — HIR Statement Coverage, Status Regen, G-6 Analysis, Closeout, CI Repair, Roadmap Reconciliation
+# Research Loops 103–120 — HIR Statement Coverage, Status Regen, G-6 Analysis, Closeout, CI Repair, Roadmap Reconciliation, Runtime CI
 
 > Loops 103–110 shipped batch specs (BatchBCD/BatchFGH/BatchHIJ/P1–P5) with
 > briefs + ADR records but no heartbeat entries. Loop 111 closed
@@ -199,3 +199,29 @@ rows annotated as the pre-fix plan; §3.1 marked done with the
 success-criteria rows corrected (stubs CI-gated, cross-refs 1704/0,
 pre-commit blocks). No plan changes — the phases were already complete;
 only the status view caught up.
+
+## Loop 120 — Runtime CI green + lint baseline measured (this pass)
+
+**Problem.** With Lean-side sprints closed, the remaining red-on-arrival
+risk was the Rust workspace CI (`rust-ci.yml` runs `cargo fmt --check`,
+`clippy --all-targets -- -D warnings`, full build + tests — all verified
+by running them locally): clippy emitted 2 warnings
+(`manual_is_ascii_check` at `compiler/src/lexer/mod.rs:130`,
+`unnecessary_map_or` at :638), which `-D warnings` promotes to failure.
+Separately, `nightly.yml`'s error gate grepped `^error:` — an anchor
+Lean diagnostics (`file:line:col: error: ...`) never match, so a broken
+nightly would report green.
+
+**Work.** Fixed both clippy lints at the source
+(`is_ascii_hexdigit()`, `is_some_and()` — semantics unchanged);
+`clippy -D warnings`, `fmt --check`, and `cargo test --workspace`
+(218 passed) all green locally. Unanchored the nightly error grep to
+match `lean-build.yml`. Measured the lint baseline through the linter
+API instead of stale prose: 74 `header-validation` + 31 `change-log` +
+1 `section-structure` (false positive on the intentional §2.2.8 series
+return — waived, 19 waived total, 105 warnings). The 105
+missing-boilerplate warnings stay accepted baseline; `PATH_FORWARD`
+§3.2 dispositioned with the measured breakdown, §4.2 verified done
+(cache keys include the manifest, elan cached); `ROADMAP.md` §3.2/§4.2
+updated to match. All baselines (roadmap, packet, changelog) moved
+106 → 105.

@@ -127,7 +127,7 @@ const fn build_hex_table() -> [bool; 256] {
     let mut i = 0;
     while i < 256 {
         let b = i as u8;
-        tbl[i] = matches!(b, b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F');
+        tbl[i] = b.is_ascii_hexdigit();
         i += 1;
     }
     tbl
@@ -638,7 +638,7 @@ impl<'a> LexerState<'a> {
                     self.source[after_dot_pos..]
                         .chars()
                         .next()
-                        .map_or(false, |c| c.is_ascii_digit())
+                        .is_some_and(|c| c.is_ascii_digit())
                 } else {
                     false
                 };

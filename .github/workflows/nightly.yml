@@ -13,8 +13,12 @@ jobs:
       - name: Full build
         run: nix develop --command lake build Morph 2>&1 | tee build.log
       - name: Check for errors
+        # Unanchored `error:` (loop 120): Lean diagnostics print as
+        # `file:line:col: error: ...`, which a `^error:` anchor misses --
+        # the gate would stay green on a broken build. Matches
+        # lean-build.yml's pattern.
         run: |
-          if grep "^error:" build.log; then
+          if grep "error:" build.log; then
             echo "::error::Nightly build has errors"
             exit 1
           fi

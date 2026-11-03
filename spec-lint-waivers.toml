@@ -77,3 +77,8 @@ reason = "Contracts-catalog class: each contract section states its own scope; a
 path = "spec/type/type_category_spec.md"
 rule = "section-structure"
 reason = "Formalization-note class: formalizes Morph types as a category; the category laws are unstated future work, so a Requirements section would fabricate obligations."
+
+[[waiver]]
+path = "spec/concurrency/execution_model_spec.md"
+rule = "section-structure"
+reason = "Intentional series return (loop 120): §2.7.2 is followed by §2.2.8 Testing Strategy, which belongs to the §2.2 scheduler series (§2.2.9 follows; changelog-recorded). Renumbering would break five traceability refs and the change log."

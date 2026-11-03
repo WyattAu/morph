@@ -62,7 +62,7 @@ First versioned release: the `morph` CLI over the verified pipeline.
   §3.4 closed, §4.1 updated.
 - Restored six accidentally deleted `spec/build/*.md` files (loop 113),
   fixing 72 spec-lint errors and 68 broken cross-references; lint and
-  cross-refs back to 0 errors / 0 broken (106 warnings baseline).
+  cross-refs back to 0 errors / 0 broken (105 warnings baseline, loop 120).
 - Fixed stale `HIRInterp.lean` header claiming `ifStmt`/`matchStmt` never
   lower (loop 115).
 - Regenerated `SPEC_STATUS.md` (loop 114): 68 modules (was 55), 1408 real
@@ -75,7 +75,7 @@ First versioned release: the `morph` CLI over the verified pipeline.
 - `HARD-GATES.md` G-6 desugar-faithfulness analysis (loop 115): three
   `doWhile` desugar candidates refuted/recorded, `forLoop` second
   rejection leg (expression position, no `HIR.Expr` iteration form).
-- Docs heartbeat extended to `docs/RESEARCH-LOOPS-103-119.md`.
+- Docs heartbeat extended to `docs/RESEARCH-LOOPS-103-120.md`.
 
 ## [Unreleased] — loop 112: HIR statement coverage
 
@@ -94,4 +94,4 @@ First versioned release: the `morph` CLI over the verified pipeline.
   (no semantics change).
 - `HARD-GATES.md` G-6 decided: `doWhile` / `forLoop` stay `none` with
   pinned reasons; G-8 root-caused to `TMPDIR` harness artifact.
-- Docs heartbeat `docs/RESEARCH-LOOPS-103-119.md` added.
+- Docs heartbeat `docs/RESEARCH-LOOPS-103-120.md` added.
