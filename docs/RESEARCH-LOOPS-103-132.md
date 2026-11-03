@@ -447,3 +447,20 @@ non-spec docs edits stop generating noise.
 
 **Not done (gates, noted):** G-1/G-3/G-7 unchanged — CHANGELOG is
 release *input*, not the release.
+
+## Loop 132 — Year-2 entry-gated kickoff, design-only (this pass)
+
+**Request:** start Year 2. **Constraint:** Era-1 exit is not met, so
+Year-2 implementation remains frozen: no audit (G-3), no 0.1 tag (G-7),
+no live CI (G-1). The freeze rule is explicit in Year 1 of the five-year
+roadmap and the Era-2 scope header.
+
+**Work.** Added `docs/YEAR2-KICKOFF.md`: entry-gate verdict, allowed
+vs blocked work, the five-item blocked queue (MIR semantics,
+`compile_correct`, backend ADR, flagged `morph build`, Rust pipeline
+plus advisory differential testing), and the audit dependencies that
+must be answered before implementation. No Lean/Rust code, no gates
+moved, no timeline proposed.
+
+**Not done (gates, noted):** G-1/G-3/G-7 unchanged; implementation
+starts only after the audit publishes.
