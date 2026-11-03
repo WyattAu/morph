@@ -1,4 +1,4 @@
-# Research Loops 103–122 — HIR Statement Coverage, Status Regen, G-6 Analysis, Closeout, CI Repair, Roadmap Reconciliation, Runtime CI, Sprint Sweep, Site Metrics
+# Research Loops 103–123 — HIR Statement Coverage, Status Regen, G-6 Analysis, Closeout, CI Repair, Roadmap Reconciliation, Runtime CI, Sprint Sweep, Site Metrics, 5-Year Design
 
 > Loops 103–110 shipped batch specs (BatchBCD/BatchFGH/BatchHIJ/P1–P5) with
 > briefs + ADR records but no heartbeat entries. Loop 111 closed
@@ -255,7 +255,26 @@ files are research logs, out of scope for that page), and the
 `SPECIFICATION_INDEX.md` + `specs.html` 0.1.0 stamp (unreproducible
 "170 modules / 1,094 theorems" — re-stamp is G-7 release work, already
 checklisted). The site can't deploy until billing (G-2) regardless; this
-keeps the source of truth correct for when it can. Recorded: §5.2 open (no `doc-gen4` dep; new dependency
+keeps the source of truth correct for when it can.
+
+## Loop 123 — Five-year roadmap design (this pass)
+
+**Problem.** The repo had a 10-year horizon (`LONGTERM_ROADMAP.md`,
+eras/outcomes) and a task-level execution view (`PATH_FORWARD.md`), but
+nothing scheduling outcomes by year for the fundable, plannable middle
+distance — and the existing implementation plan (`impl/roadmap.md`:
+12-month v1.0, C++ runtime, LLVM) contradicts the measured tree (no C++
+exists, backend language undecided, audit gate freezes Era-2 work).
+
+**Work.** Wrote `docs/FIVE-YEAR-ROADMAP.md`: entry state fully measured
+at loop 122, Years 1–5 with per-year exit criteria and miss-rules, six
+dated decisions with conservative defaults (D-1…D-6), an annual
+scoreboard seeded with today's numbers, plan-specific risks, and an
+explicit out-of-scope list (Eras 4–5). Adopts `ERA2-BACKEND-SCOPE.md`
+Stages A–D as the Year 2–3 spine; declares governance over
+`impl/roadmap.md` on timeline/backend-language conflicts pending a Y1
+review ADR. No code, no gates moved — a planning artifact for
+maintainers and (post-tag) auditors. Recorded: §5.2 open (no `doc-gen4` dep; new dependency
 needs maintainer approval); §6.3 measured (workspace builds, 218 Rust
 tests green); §6.4 seed noted (`Morph/Stdlib.lean`, 187 lines, unwired
 — wiring is a maintainer call); G-7 checklist gained the index/specs
