@@ -1,4 +1,4 @@
-# Research Loops 103–118 — HIR Statement Coverage, Status Regen, G-6 Analysis, Closeout, CI Repair
+# Research Loops 103–119 — HIR Statement Coverage, Status Regen, G-6 Analysis, Closeout, CI Repair, Roadmap Reconciliation
 
 > Loops 103–110 shipped batch specs (BatchBCD/BatchFGH/BatchHIJ/P1–P5) with
 > briefs + ADR records but no heartbeat entries. Loop 111 closed
@@ -180,3 +180,22 @@ section-numbering warnings. `PATH_FORWARD.md` §3.4 marked DONE, §4.1
 updated (`lean-build.yml` already builds Tests, gates all four checks,
 enforces status freshness, caches elan + Lake; only the snapshot-in-CI
 step still needs runners).
+
+## Loop 119 — `ROADMAP.md` reconciliation (this pass)
+
+**Problem.** `ROADMAP.md`, the canonical status view, contradicted the
+verified state in five places: §1.2–§1.5 tier tables listed nonzero stub
+counts for modules that have shipped real lemmas (stubs are 0
+repo-wide, CI-gated); §1.1's per-row "Needs proof" statuses contradicted
+its own DONE header; §3.1 still assigned work for the 26 broken links
+(0 broken since loops 112–113); the §4.1 table predated the loop-118 CI
+fix; and the success-criteria table said pre-commit "warns only" on
+sorry (it exits 1 — verified by reading `.githooks/pre-commit`).
+
+**Work.** Dated DONE banners on §1.2–§1.5 pointing at `SPEC_STATUS.md`
+as the live inventory (history tables retained, not rewritten); §1.1
+rows annotated as the pre-fix plan; §3.1 marked done with the
+1704/0 evidence; §4.1 rows updated for the loop-118 gate semantics;
+success-criteria rows corrected (stubs CI-gated, cross-refs 1704/0,
+pre-commit blocks). No plan changes — the phases were already complete;
+only the status view caught up.

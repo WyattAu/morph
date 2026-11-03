@@ -56,7 +56,7 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 
 Unblocks §2.1/§2.3 (zero-warning gate, pre-commit hardening).
 
-**Preservation.lean (6 sorries, all resolved):**
+**Preservation.lean (6 sorries, all resolved — row statuses below are the pre-fix plan, retained for history):**
 
 | Line | Location | Required Lemma | Status |
 |---|---|---|---|
@@ -76,7 +76,16 @@ Unblocks §2.1/§2.3 (zero-warning gate, pre-commit hardening).
 
 **Effort:** 1-2 weeks | **Deps:** none | **Blocks:** sorry-free CI gate
 
-### 1.2 Eliminate stubs -- Tier 1 (runtime foundation)
+> **Loop 119 note:** §1.2–§1.5 below are spent. All `example : True :=
+> trivial` stubs are eliminated repo-wide (0 remaining, CI-gated), and
+> every one of the 68 spec modules in `SPEC_STATUS.md` ships real
+> `theorem`/`lemma` declarations (1408 total, 0 sorries) — including
+every
+> module these tables list with nonzero stub counts. The per-module
+> tables are retained as the historical work plan, not current state.
+> Current proof inventory: `SPEC_STATUS.md` (regenerated loop 114).
+
+### 1.2 Eliminate stubs -- Tier 1 (runtime foundation) — DONE
 
 | Module | Current stubs | Target proofs | Effort | Notes |
 |---|---|---|---|---|
@@ -90,7 +99,7 @@ Unblocks §2.1/§2.3 (zero-warning gate, pre-commit hardening).
 
 **Total Tier 1:** 4-6 weeks | **Deps:** none (parallelizable)
 
-### 1.3 Eliminate stubs -- Tier 2 (compiler/runtime support)
+### 1.3 Eliminate stubs -- Tier 2 (compiler/runtime support) — DONE
 
 | Module | Stubs | Effort | Notes |
 |---|---|---|---|
@@ -105,7 +114,7 @@ Unblocks §2.1/§2.3 (zero-warning gate, pre-commit hardening).
 
 **Total Tier 2:** 5-8 weeks | **Deps:** Tier 1 complete
 
-### 1.4 Eliminate stubs -- Tier 3 (domain-specific)
+### 1.4 Eliminate stubs -- Tier 3 (domain-specific) — DONE
 
 | Module | Stubs | Effort |
 |---|---|---|
@@ -126,7 +135,7 @@ Unblocks §2.1/§2.3 (zero-warning gate, pre-commit hardening).
 
 **Total Tier 3:** 6-9 weeks | **Deps:** Tier 1
 
-### 1.5 Eliminate stubs -- Tier 4 (auxiliary)
+### 1.5 Eliminate stubs -- Tier 4 (auxiliary) — DONE
 
 | Module | Stubs | Effort |
 |---|---|---|
@@ -211,7 +220,7 @@ CI/CD workflows are correct but not executing due to GitHub account spending lim
 
 ## 3. Specification Quality [P1]
 
-### 3.1 Fix 26 remaining broken cross-references
+### 3.1 Fix 26 remaining broken cross-references — DONE (0 broken; `cross-ref-validate.sh` 1704 pass / 0 fail, loop 112–113; re-verified loop 118)
 
 | Category | Count | Action |
 |---|---|---|
@@ -265,11 +274,11 @@ Priority areas:
 | Workflow | Platform | Scope | Status |
 |---|---|---|---|
 | `lean-build.yml` | GitHub Actions | Lake build, sorry/stub scan, error check | Correct, blocked by billing |
-| `spec-validation.yml` | GitHub Actions | spec-tools format/lint/validate/check-links | Correct, non-blocking lint |
+| `spec-validation.yml` | GitHub Actions | spec-tools format/lint/validate/check-links | Correct, blocked by billing; format+validate advisory since loop 118 (were red-on-arrival), lint error-gate blocking |
 | `nightly.yml` | GitHub Actions | Nix-based full build at 06:00 UTC | Correct, blocked by billing |
 | `pages.yml` | GitHub Actions | Deploy site/ to GitHub Pages | Correct, blocked by billing |
 | `.gitlab-ci.yml` | GitLab CI | pytest, bandit, safety | Correct for GitLab |
-| `Jenkinsfile` | Jenkins | pytest, spec-tools format/lint/validate | Correct for Jenkins |
+| `Jenkinsfile` | Jenkins | pytest, spec-tools format/lint/validate | Aligned loop 118 (was red-on-arrival: `--strict` + hard format/validate); lint error-gate blocking, rest advisory |
 
 ### 4.2 Regression test snapshots
 
@@ -457,12 +466,12 @@ Ongoing:   [7.x]                               -- research directions
 | `lake build Morph` errors | 0 | 0 |
 | `lake build Morph` warnings | 0 | 0 |
 | `sorry` in `Morph/` | 0 | 0 (was 6 at audit; resolved by 2026-10-30) |
-| `example : True := trivial` stubs | 0 | 0 |
-| Broken cross-references | 0 | 0 |
+| `example : True := trivial` stubs | 0 | 0 (all §1.2–§1.5 tiers; CI-gated) |
+| Broken cross-references | 0 | 0 (§3.1 done loop 118 audit; `cross-ref-validate.sh` 1704/0) |
 | CI passes on every push | Yes | Blocked by billing |
 | Python spec-tools coverage | >= 95% | 96% |
 | Lean tests pass | All | All |
-| Pre-commit blocks on sorry | Yes | Warns only |
+| Pre-commit blocks on sorry | Yes | Blocks (`.githooks/pre-commit` step 2 exits 1) |
 | Regression snapshot tracking | Active | Active (Era-1 baseline 2026-10-30) |
 | Spec status page | Auto-generated | Auto-generated (SPEC_STATUS.md + CI-tracked .reports/spec-status.md) |
 | Documentation site | Complete | Complete (landing + 5 pages) |
