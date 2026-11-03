@@ -343,6 +343,10 @@ Add as non-blocking CI step.
 
 **Effort:** 1 day | **Deps:** doc-gen4 compatibility with Lean 4.27.0
 
+> **Loop 121:** still open. `doc-gen4` is not in `.lake/packages/` —
+> adding it is a new dependency (network fetch + `lakefile.lean` +
+> `lake-manifest.json` change), needs maintainer approval. Not attempted.
+
 ### 5.3 Automated spec status tracking
 
 Create script to generate `SPEC_STATUS.md` from Lean source:
@@ -401,6 +405,14 @@ Per `impl/roadmap.md`:
 
 **Total:** 12 months | **Deps:** 6.1, 6.2 for Lean-to-Rust extraction
 
+> **Loop 121 measured state:** the Cargo workspace builds clean — `cargo
+> fmt --check` 0, `clippy --all-targets -- -D warnings` 0 (2 lints fixed
+> in `compiler/src/lexer/mod.rs`), `cargo test --workspace` 218 passed
+> (30 + 133 + 55). Crates present: `compiler` (lexer/parser/ast/codegen/
+> diagnostic/typeck), `runtime` (actor/memory/scheduler/sync/io/...),
+> `cli`. Coverage of `impl/roadmap.md` phases is a maintainer/Era-2
+> assessment, not a sprint task.
+
 ### 6.4 Standard library
 
 | Component | Effort |
@@ -411,6 +423,12 @@ Per `impl/roadmap.md`:
 | Concurrency primitives (spawn, send, recv) | 2-3 weeks |
 
 **Total:** 7-11 weeks | **Deps:** 6.3
+
+> **Loop 121 measured state:** seed exists — `Morph/Stdlib.lean` (187
+> lines: `checkedAdd` with i64 bounds, core-type/collection/IO/concurrency
+> sections per ADR-012) — but it is unwired: nothing imports it
+> (`Morph.lean`/`Main.lean` don't reference it). Era-2 track (G-5); not a
+> current-core defect. Wiring it in is a maintainer call, not taken here.
 
 ---
 

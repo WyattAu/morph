@@ -1,4 +1,4 @@
-# Research Loops 103–120 — HIR Statement Coverage, Status Regen, G-6 Analysis, Closeout, CI Repair, Roadmap Reconciliation, Runtime CI
+# Research Loops 103–121 — HIR Statement Coverage, Status Regen, G-6 Analysis, Closeout, CI Repair, Roadmap Reconciliation, Runtime CI, Sprint Sweep
 
 > Loops 103–110 shipped batch specs (BatchBCD/BatchFGH/BatchHIJ/P1–P5) with
 > briefs + ADR records but no heartbeat entries. Loop 111 closed
@@ -225,3 +225,25 @@ missing-boilerplate warnings stay accepted baseline; `PATH_FORWARD`
 (cache keys include the manifest, elan cached); `ROADMAP.md` §3.2/§4.2
 updated to match. All baselines (roadmap, packet, changelog) moved
 106 → 105.
+
+## Loop 121 — Sprint sweep: scratch cleanup, coverage gate, states recorded (this pass)
+
+**Problem.** Three leftover items from the sprint tables: (1) Sprint 1's
+scratch cleanup missed eleven tracked root files (`probe5/6/10–18.lean`,
+`TestVars.lean` — `#check`/experiment fragments, unreferenced, outside
+the build glob); (2) the coverage gate was hollow — `scripts/tests/
+pytest.ini` (which overrides `pyproject.toml` by rootdir proximity)
+pinned `--cov-fail-under=48` while the stated target is 95%; (3)
+`ROADMAP.md` §5.2/§6.3/§6.4 had no measured state.
+
+**Work.** `git rm` the twelve scratch files. Measured coverage properly
+(`coverage run` from root collects nothing — no source there; from
+`scripts/` with pytest-cov: **96.08%**) and hardened the effective gate
+48 → 95 in `pytest.ini` (plus `pyproject.toml` for consistency) — passes
+with margin. Cross-ref total 1704 → 1700 is expected: the script checks
+imports in the deleted `TestVars.lean` (4 imports), 0 fail either way. Recorded: §5.2 open (no `doc-gen4` dep; new dependency
+needs maintainer approval); §6.3 measured (workspace builds, 218 Rust
+tests green); §6.4 seed noted (`Morph/Stdlib.lean`, 187 lines, unwired
+— wiring is a maintainer call); G-7 checklist gained the index/specs
+re-stamp step (`SPECIFICATION_INDEX.md` + `site/docs/specs.html` stamp
+predates the tree: "170 modules" vs 104 md files).

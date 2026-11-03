@@ -27,7 +27,11 @@ Preconditions (all true as of loop 116): `lake build Morph Morph.Tests`
 2. `git tag 0.1.0` on the verified commit; push tag.
 3. Billing resolved (G-1) → CI/Pages run on the tag; confirm green.
 4. Send audit invites with packet + snapshot + timeline (G-3).
-5. Announce (release notes = `CHANGELOG.md` 0.1.0 section).
+5. Re-stamp release-pinned numbers: `SPECIFICATION_INDEX.md` and
+   `site/docs/specs.html` still carry the 0.1.0 stamp ("170 spec
+   modules, 1,094 spec theorems" vs 104 md files on disk) — update to
+   measured values or mark the stamp historical (loop 121).
+6. Announce (release notes = `CHANGELOG.md` 0.1.0 section).
 
 Do NOT tag a commit with failing checks; do NOT fold post-0.1.0 loop work
 (HIR `ifStmt`/`matchStmt`, `runDoWhile` pins — all `Unreleased`) into

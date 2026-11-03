@@ -75,7 +75,7 @@ First versioned release: the `morph` CLI over the verified pipeline.
 - `HARD-GATES.md` G-6 desugar-faithfulness analysis (loop 115): three
   `doWhile` desugar candidates refuted/recorded, `forLoop` second
   rejection leg (expression position, no `HIR.Expr` iteration form).
-- Docs heartbeat extended to `docs/RESEARCH-LOOPS-103-120.md`.
+- Docs heartbeat extended to `docs/RESEARCH-LOOPS-103-121.md`.
 
 ## [Unreleased] — loop 112: HIR statement coverage
 
@@ -94,4 +94,4 @@ First versioned release: the `morph` CLI over the verified pipeline.
   (no semantics change).
 - `HARD-GATES.md` G-6 decided: `doWhile` / `forLoop` stay `none` with
   pinned reasons; G-8 root-caused to `TMPDIR` harness artifact.
-- Docs heartbeat `docs/RESEARCH-LOOPS-103-120.md` added.
+- Docs heartbeat `docs/RESEARCH-LOOPS-103-121.md` added.
