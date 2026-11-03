@@ -89,4 +89,4 @@ First versioned release: the `morph` CLI over the verified pipeline.
   (no semantics change).
 - `HARD-GATES.md` G-6 decided: `doWhile` / `forLoop` stay `none` with
   pinned reasons; G-8 root-caused to `TMPDIR` harness artifact.
-- Docs heartbeat `docs/RESEARCH-LOOPS-103-112.md` added.
+- Docs heartbeat `docs/RESEARCH-LOOPS-103-116.md` added.

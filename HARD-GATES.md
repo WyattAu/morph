@@ -12,7 +12,26 @@
 | G-4 | Rust runtime (`compiler/`, `runtime/`, `cli/`) completion | Era-2+ 12-month track; needs backend/ISA decisions (ADRs) | Era-1 exit + backend ADR | Sprint 1 checks whether the workspace builds; no feature work here |
 | G-5 | Standard library (§6.4: core types, collections, IO, concurrency) | Era-2 track, 7–11 weeks, needs runtime (G-4) | G-4 + Era-1 exit | Not started; not a current-core defect |
 | G-6 | HIR `forLoop`/`doWhile` lowering | `doWhile` at-least-once vs `whileLoop`; `forLoop` iterator anonymous + unreachable (loop 78b) — no faithful 1:1 map on current evidence | A desugar-faithfulness proof vs surface semantics | Decided loop 112, analysis loop 115 (below): both stay `none` with pinned theorems (`toHIRStmt_doWhile_none`, `toHIR_forLoop_none`, plus `runDoWhile_*` characterization pins in `Morph.Interp`); `ifStmt`/`matchStmt` closed 1:1 in loop 112 |
-| G-7 | Morph 0.1 *release* publication | Release process is a maintainer action (tag, announce) | Maintainer cuts the release | This pass prepares everything releasable (version, changelog, stability policy all present) |
+| G-7 | Morph 0.1 *release* publication | Release process is a maintainer action (tag, announce) | Maintainer cuts the release | This pass prepares everything releasable (version, changelog, stability policy all present); checklist below |
+
+## G-7 release checklist (loop 117, for the maintainer)
+
+Preconditions (all true as of loop 116): `lake build Morph Morph.Tests`
+0/0, 0 sorries/stubs, pytest 836, lint 0/106, cross-refs 1704/0,
+`CHANGELOG.md` 0.1.0 section accurate, `STABILITY.md` present,
+`docs/AUDIT-PACKET-0.1.md` current.
+
+1. `export TMPDIR=/tmp; bash scripts/regression-snapshot.sh` — confirm
+   no regressions; keep the snapshot JSON as the tag's metrics record
+   (ships to auditors per `docs/AUDIT-INVITES-0.1.md` item 3).
+2. `git tag 0.1.0` on the verified commit; push tag.
+3. Billing resolved (G-1) → CI/Pages run on the tag; confirm green.
+4. Send audit invites with packet + snapshot + timeline (G-3).
+5. Announce (release notes = `CHANGELOG.md` 0.1.0 section).
+
+Do NOT tag a commit with failing checks; do NOT fold post-0.1.0 loop work
+(HIR `ifStmt`/`matchStmt`, `runDoWhile` pins — all `Unreleased`) into
+0.1.0 notes. They belong to the next release section.
 ## G-6 analysis (loop 115) — why the rejection stands
 
 **`doWhile`.** Three desugar candidates were checked against `runDoWhile`
