@@ -1,7 +1,7 @@
 # External audit packet — Morph 0.1.0
 
 Review scope for an outside auditor. All claims below reproduce from a clean
-checkout (see §5). Metrics current as of loop 116 (2026-11-03); the
+checkout (see §5). Metrics re-verified loop 125 (2026-11-03); the
 tag-time regression snapshot JSON ships with the release materials (see
 `docs/AUDIT-INVITES-0.1.md`).
 
@@ -49,7 +49,7 @@ compatibility promises are `STABILITY.md`.
 - `morph check` checks elaboration only; checking against an expected type
   needs type-syntax parsing (named future work, `CHANGELOG.md`).
 - The Python spec-lint tooling (`scripts/spec_tools/`): 836 tests, 96%
-  coverage, 0 lint errors, 105 lint warnings (19 waived), 0 broken cross-refs.
+  coverage (96.14% measured loop 125), 0 lint errors, 105 lint warnings (19 waived), 0 broken cross-refs.
   Warnings are the accepted baseline, not failures (zero-warning gate
   covers Lean only).
 
@@ -70,7 +70,7 @@ lake build Morph Morph.Tests  # 0 warnings, 0 errors (454 jobs)
 lake build morph              # the CLI
 unset TMPDIR; python3 -m pytest -q            # 836 passed
 python3 scripts/spec_tools/cli/main.py lint spec  # 0 errors, 105 warnings (baseline; 19 waived)
-bash scripts/cross-ref-validate.sh               # 1704 pass / 0 fail
+bash scripts/cross-ref-validate.sh               # 1700 pass / 0 fail
 bash scripts/regression-snapshot.sh              # metrics + no-regression verdict
 ```
 
@@ -82,7 +82,15 @@ Entry points for reviewers: `Main.lean` (CLI) → `Morph/Driver.lean`
 `Morph/Frontend/HIRLower.lean`, `Morph/Frontend/HIRInterp.lean`;
 golden error coverage in `Morph/Tests/Driver.lean`, `Morph/Tests/Typing.lean`.
 
-## 6. Hard gate
+## 6. Era-2 scope for auditors to react to
+
+- `docs/ERA2-BACKEND-SCOPE.md` (post-audit Stages A–D, open audit
+  questions) + `docs/STAGEA-PREP-125.md` (Year-1 design-only positions:
+  strict-subset `morph build` contract, verified-lowering default, MIR
+  small-step gap). No Era-2 implementation lands until the audit
+  publishes (Year-1 freeze).
+
+## 7. Hard gate
 
 **Sending review invitations is the hard gate for this sprint and is NOT
 done here.** The packet above is the prep; invites (recipients, access,
