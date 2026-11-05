@@ -492,3 +492,174 @@ precondition so the exit is maintainer-action-only.
 
 **Not done (gates, noted):** G-1/G-3/G-7 — maintainer/external only;
 no code or proof work remains for Era-1 exit.
+
+## Loop 134 — Era-2 unfreeze + Stage A1 execution groundwork (this pass)
+
+**Request:** finish Era 1; if not closable in-round, unfreeze Era 2.
+**Verdict:** Era-1 exit cannot close in-round (G-1 billing, G-3 audit,
+G-7 tag/announce are all maintainer/external-only). Per maintainer
+directive the Year-1 freeze is lifted: `docs/ERA2-UNFREEZE.md` records
+the decision, `docs/YEAR2-KICKOFF.md` + `docs/ERA2-BACKEND-SCOPE.md`
+headers updated from blocked-queue to build-order (defaults D-2/D-4
+unchanged, one-directional preservation unchanged).
+
+**Work (Stage A1).** New `Morph/MIRExecLemmas.lean` (imports
+`Morph.MIR` + `Morph.Store`, `open Morph.Core` so `Value`/`Typ`
+resolve): `execInstrsFull_nil`/`cons`/`append` composition,
+`evalInstrFull_*_agrees` (const/copy/unop/binop env-projection
+agreement with the pure oracle) + `*_store` (pure success never touches
+the store), `execBlockFuel_return` + `findBlock_singleton` +
+`execFunc_single_block` (two-fuel single-block `return_` reduction —
+the exact shape Stage-A2 `compile_correct` concludes with).
+
+**Not done (gates, noted):** G-1/G-3/G-7 unchanged (maintainer-only).
+Build + commit blocked this pass: `/tmp` full, so `lake env lean` and
+the pre-commit hook (mktemp) cannot run — re-run `lake build Morph`
+and commit when space is freed; no code beyond the new lemma file and
+the three docs updates in this loop.
+
+## Loop 135 — Stage A1 proof-hardening + build wiring (this pass)
+
+**Request:** proceed all (all sprints, max rigor; skip hard gates by
+noting). **Verdict:** G-1/G-3/G-7 remain maintainer-only — noted, not
+attempted. In-repo track proceeds.
+
+**Work.**
+- Hardened `Morph/MIRExecLemmas.lean` proof shapes: `*_store` lemmas
+  now `simp only [evalInstrFull] at h` before case-splitting (equation-
+  lemma reduction instead of raw `unfold`, which left an unreduced
+  `match Instr.copy …` scrutinee shadowing `dst`/`src` and broke `rw`).
+  `copy`/`unop`/`binop` agreement lemmas now case-split first, then
+  `simp [evalInstrFull, evalInstr, h]` — no pre-unfold.
+- Wired into the build: `Morph.lean` now imports
+  `Morph.MIRExecLemmas` so `lake build` checks it.
+- Roadmap two-track amendments landed (loop 134): `YEAR2-KICKOFF` §1/§3,
+  `ERA2-BACKEND-SCOPE` staging label, `STAGEA-PREP-125` historical
+  banner, `FIVE-YEAR-ROADMAP` Y1 + D-1, `LONGTERM-ROADMAP` Era-1,
+  `HARD-GATES` parallel-track note, `PATH_FORWARD` baseline refresh
+  pointer. D-2 (verified lowering) + D-4 (strict subset) unchanged.
+- Stage A2 scoped (not yet coded, zero-`sorry` gate forbids stubs):
+  straight-line `compile_correct` = `lowerProgram_WF` (done, Sprint 11)
+  + A1 exec lemmas (this loop) + per-construct env-relation bridge
+  (`lowerExpr`/`lowerStmts` vs `evalHIR`/`runHIRStmts`, one-directional,
+  fuel-explicit, strict-subset contract). Next file builds on A1's
+  `execInstrsFull_append` + `execFunc_single_block`.
+
+**Not done (gates, noted):** G-1/G-3/G-7 (maintainer-only).
+**Blocked (infra, noted not skipped):** `lake env lean` / `lake build`
+verification + `git commit` — runner wedged (even trivial commands
+time out after two 280s+ `lake env lean` attempts; likely orphaned lake
+jobs). Re-run `lake build Morph` and commit all loop 134–135 edits
+when the runner recovers. No new `sorry`/stubs added.
+
+## Loop 136 — Stage A1 re-harden + A2 bridge scope (this pass)
+
+**Request:** proceed all (all sprints, max rigor; skip hard gates by
+noting). **Verdict:** G-1/G-3/G-7 maintainer-only — noted, not
+attempted. Terminal still wedged (even `echo alive` times out), so
+all work below is file-side; no build/commit attempted this pass.
+
+**Work.**
+- `Morph.lean`: removed duplicated `- /` close (`- /\n- /` → `- /`)
+  that would have broken the root-module parse once the runner
+  recovers.
+- `Morph/MIRExecLemmas.lean` re-hardened without Lean feedback,
+  against the `Morph.MIR` definitions read file-side:
+  `execInstrsFull_append` nil case is now `simp [execInstrsFull]`
+  (not bare `rfl`: `[] ++ l₂` + the `some fenv` match need reduction);
+  cons case is `cases h : …` then `simp [h]` / `simp [h, ih]` (bare
+  `rfl` / `exact ih` cannot fire while the scrutinee still occurs in
+  the goal). `*_store` lemmas drop the fragile
+  `Option.bind_some`-named steps for plain `simp [hsrc] at h`-style
+  reduction (bind-lemma names differ across toolchains; `simp` closes
+  `some`/`none` binds on its own). Agreement + `execBlockFuel_return`
+  / `findBlock_singleton` / `execFunc_single_block` shapes re-checked
+  against `evalInstrFull` / `execInstrsFull` / `execBlockFuel` /
+  `findBlock` / `execFunc` — no statement changes, proofs only.
+- Stage A2 bridge scoped file-side (not coded — zero-`sorry` gate
+  forbids stub files). Sources: `HIRToMIR.lowerExpr` / `lowerBlock` /
+  `lowerStmts` / `lowerProgram` + `lowerProgram_WF` (Sprint 11),
+  `HIREval.evalHIR` (fuel-bounded big-step, `evalHIR 256` at statement
+  level) + `HIRInterp.runHIRStmts` / `runHIRProgram` (1024 fuel, HEnv
+  first-match-wins, `updateHEnv` no-introduction). Next preservation
+  file proves, per construct, HIR-success ⇒ MIR-agreement under an
+  env relation (HIR id ↦ value vs register ↦ same value, `ρ` /
+  `RanIn`-style covering), composing via A1 `execInstrsFull_append`
+  and concluding via `execFunc_single_block`; one-directional,
+  fuel-explicit, strict-subset (D-4), verified-lowering default (D-2).
+  Control flow (`whileLoop`/`match`/calls/multi-block CFG) stays out.
+
+**Not done (gates, noted):** G-1/G-3/G-7 (maintainer-only).
+**Blocked (infra, noted not skipped):** `lake build Morph` +
+`git commit` for loops 134–136 — runner still wedged. Re-run build
+then commit when it recovers. No new `sorry`/stubs added; no new
+`.lean` files created this pass.
+
+## Loop 137 — A2 env-relation groundwork (file-side, this pass)
+
+**Request:** continue (all sprints, max rigor; gates noted not
+attempted). Terminal still presumed wedged, so file-side only.
+
+**Work — read `HIRToMIR` 370–700 (`RanIn` / freshness / use-check).**
+- `RanIn ρ acc`: every register bound in `ρ` is in ambient `acc`
+  (params ++ prefix defs). Lowering extends both in lockstep (`let`
+  binds init result, appends its defs) — the invariant the A2 env
+  relation inherits: HIR id ↦ value agrees with register ↦ same value
+  wherever `ρ` covers the id, under `FreshAbove ρ supply`.
+- `lower_mono` (supply only grows) + `lower_result_lt` (result `< s'`
+  under `FreshAbove`) give freshness the bridge needs: child results
+  stay below the next supply, so appended trailing `const`/`unop`/
+  `binop` defs never collide with live registers.
+- `lower_useCheck` concludes with `blockUseGo` directly (plus
+  result-either-available-or-defined), composing via
+  `blockUseGo_append` / `blockUseGo_mono` — the same combinators A1
+  mirrors at execution level with `execInstrsFull_append`. So the A2
+  per-construct bridge (`lit`/`var`/`unop`/`binop`/`let`/`block` /
+  `exprStmt`/`varDecl`/`assign`/`returnStmt`/`nop`) follows the exact
+  case tree of `lower_useCheck`: same induction, but the conclusion is
+  env-agreement (`execInstrsFull` from a related `FullEnv` yields the
+  `evalHIR` literal in the result register, store unchanged) instead of
+  use-coverage. `lowerProgram_WF` + A1 lemmas are the base; no new
+  axioms, one-directional, fuel-explicit, strict-subset.
+
+**Not done (gates, noted):** G-1/G-3/G-7 maintainer-only.
+**Blocked (infra):** build + commit for loops 134–137. No `sorry`/
+stubs; no new `.lean` files.
+
+## Loop 138 — `HIRToMIR` statement half read; A2 statement finalized (this pass)
+
+**Request:** continue (all sprints, max rigor; gates noted not
+attempted). File-side only; terminal still presumed wedged.
+
+**Work — read `HIRToMIR` 699–995 (statement lowering + program closure).**
+- `lowerStmts ρ supply lastVal (s :: rest)` cases: `exprStmt` lowers
+  head expr, threads its register in as the rest's `lastVal`;
+  `varDecl` lowers init, extends `ρ` with `(id, va)` (freshness via
+  `lower_result_lt`, runtime no-shadowing via first-match-wins
+  `getBv?`/`lookupHEnv`); `assign` lowers expr, moves the binding via
+  `updAssoc` (in-place update, covered by `updAssoc_mem`);
+  `returnStmt` lowers expr and closes (`Option.map_some` shape);
+  `nop` is the identity. `break`/`continue`/`whileLoop`/`ifStmt`/
+  `matchStmt` lower to `none` — strict-subset (D-4) at the statement
+  level too.
+- Program closure: `lowerProgram prog = some ⟨"main", [], [⟨0,
+  [.const 0 .unit] ++ is, .return_ v⟩], 0, .unitType⟩` — one block,
+  leading unit `const` (register 0), trailing `return_ v`. That is the
+  exact shape A1's `execFunc_single_block` consumes, so the
+  `compile_correct` conclusion is: for every `prog` with
+  `lowerStmts [] 1 0 prog.stmts = some (ρ', v, is, s')` (all embedded
+  exprs FirstOrder) and `runHIRProg…` success, `execFunc (fuel + 2)`
+  of the lowered func yields `v`'s literal — via the statement-level
+  env relation (`(id, u) ∈ ρ'` mirrors `(id, lit)` in `HEnv` with the
+  same value) threaded through the literal/cons-identity echo of
+  `lowerStmts_useCheck`.
+- Statement-bridge obligations, concretely, per `lowerStmts` case:
+  `nop` = env identity; `exprStmt` = expr bridge (child `is`) +
+  continue with `lastVal := v0`; `varDecl` = expr bridge + push
+  `(id, v)` on both sides; `assign` = expr bridge + `updateHEnv` (no
+  introduction) matches `updAssoc`-covered relation; `returnStmt` =
+  expr bridge + result is `v` (A1 `execBlockFuel_return` closes).
+
+**Not done (gates, noted):** G-1/G-3/G-7 maintainer-only.
+**Blocked (infra):** build + commit for loops 134–138. No `sorry`/
+stubs; no new `.lean` files.

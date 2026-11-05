@@ -1,12 +1,13 @@
 # Year-2 kickoff — entry-gated, design-only (loop 132)
 
-> This starts Year-2 **preparation**, not Year-2 implementation.
-> `FIVE-YEAR-ROADMAP.md` Year 1 states: **no Era-2 implementation until
-> the audit publishes**. Era-1 exit also requires a tagged 0.1 and live
-> CI. None of those gates is cleared below. This note adds no Lean/Rust
-> code, moves no gates, and proposes no timeline.
+> This started as Year-2 **preparation** under the Year-1 freeze (no
+> Era-2 implementation until the audit publishes). **Update loop 133:**
+> per maintainer directive the freeze is lifted — Era-1 gates (0.1 tag,
+> live CI, audit) remain open but no longer block Era-2 implementation.
+> See `docs/ERA2-UNFREEZE.md` for the unfreeze record. The queue in §3
+> below is now the build order, not a blocked list.
 
-## 1. Entry-gate verdict: Year 2 is not open
+## 1. Entry-gate verdict: Year 2 is open for implementation (loop 133 unfreeze)
 
 | Era-1 exit requirement | Status | Gate |
 |---|---|---|
@@ -14,9 +15,12 @@
 | Morph 0.1 tagged and announced | Prepared, not cut | G-7 |
 | CI per push + Pages live | Configs correct; runners blocked | G-1/G-2 |
 
-**Consequence:** HIR→MIR extension, MIR operational semantics, backend
+**Consequence (updated loop 134):** Era-1 gates above remain open and
+still block the 0.1 release and audit, but per `docs/ERA2-UNFREEZE.md`
+they no longer block Era-2 implementation. The queue in §3 is the
+build order: HIR→MIR extension, MIR operational semantics, backend
 lowering, `morph build`, Rust AST→MIR growth, and differential-testing
-gates remain **blocked implementation work**. They are queued, not started.
+proceed in parallel with the maintainer-only gate track.
 
 ## 2. Allowed now
 
@@ -26,7 +30,7 @@ gates remain **blocked implementation work**. They are queued, not started.
 - Toolchain/maintenance duty: keep `lake build` green.
 - Documentation that prevents future confusion.
 
-## 3. Blocked Year-2 queue (do not implement yet)
+## 3. Year-2 build order (unfrozen loop 133 — implement in order)
 
 1. **Stage A1:** store- and call-aware MIR small-step semantics.
 2. **Stage A2:** `compile_correct` for the first-order fragment.

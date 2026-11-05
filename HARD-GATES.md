@@ -3,6 +3,11 @@
 > Everything this core pass cannot proceed past, with what unblocks it.
 > Skipped per directive; recorded, never silently dropped. Updated as
 > sprints run.
+>
+> Parallel-track note (loop 134, `docs/ERA2-UNFREEZE.md`): G-1/G-3/G-7
+> remain open and still block the 0.1 release and audit, but no longer
+> block Era-2 Stage A/B implementation. Gate track (maintainer-only)
+> and implementation track (in-repo) proceed in parallel.
 
 | # | Gate | Blocked by | Unblocks when | Disposition |
 |---|---|---|---|---|

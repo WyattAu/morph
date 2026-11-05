@@ -1,10 +1,14 @@
 # Year-1 Stage-A design prep (loop 125, design-only)
 
-> Year-1 rule: **no Era-2 implementation until the audit publishes**
-> (`FIVE-YEAR-ROADMAP.md` Y1, `ERA2-BACKEND-SCOPE.md` header). This note
-> is the design work the auditors react to — it moves no gates, adds no
-> code, and proposes no timeline. It answers the two open audit questions
-> in `ERA2-BACKEND-SCOPE.md` with a conservative default per decision
+> Historical note (loop 134): this was written under the Year-1 rule
+> (**no Era-2 implementation until the audit publishes**). Per
+> `docs/ERA2-UNFREEZE.md` that freeze is lifted — this note is now the
+> design record the auditors react to *and* the basis Stage A builds on.
+> Positions below (D-2 verified lowering, D-4 strict subset) are unchanged.
+>
+> Original header: this note moved no gates, added no code, and proposed
+> no timeline. It answers the two open audit questions in
+> `ERA2-BACKEND-SCOPE.md` with a conservative default per decision
 > D-2/D-4, plus the MIR semantics gap that Stage A must close.
 
 ## 1. Supported-fragment contract (audit question 2)

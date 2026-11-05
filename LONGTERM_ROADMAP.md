@@ -96,7 +96,9 @@ ambition until the gates are green and the depth re-audit is done.
 
 **Exit criteria:** CI green per push; 0 sorry/0 warnings/0 broken links;
 HIR end-to-end behind a flag; Morph 0.1 released; one external audit
-published. **If missed:** do not start Era 2's backend work.
+published. **If missed (amended loop 133 per `docs/ERA2-UNFREEZE.md`):**
+Era-2 backend work proceeds in parallel with the open gates; gates still
+block release/audit, not implementation.
 
 ---
 

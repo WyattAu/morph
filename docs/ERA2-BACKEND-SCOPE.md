@@ -1,9 +1,10 @@
 # Era 2 backend — scoping (loop 97)
 
 Started at maintainer direction with the roadmap's Era-1 exit gate still
-open (external audit unpublished). **No Era-2 implementation lands until the
-audit publishes** — this document is the scope the audit can react to, so
-reviewers see where the pipeline is headed.
+open (external audit unpublished). **Update loop 133:** the Year-1 freeze
+is lifted per maintainer directive (`docs/ERA2-UNFREEZE.md`) — Era-1 gates
+stay open but no longer block implementation. This document remains the
+scope the audit reacts to, and is now also the Stage A–D build order.
 
 ## Where the pipeline stands (grounded)
 
@@ -42,7 +43,7 @@ reviewers see where the pipeline is headed.
    against `Morph.Executable`/`execMain`, with executable counterexamples
    for rejected programs.
 
-## Suggested staging (post-audit)
+## Staging (build order since loop-133 unfreeze; also the scope the audit reacts to)
 
 - Stage A: HIR→MIR for the loop-88 first-order fragment (no control flow
   beyond `whileLoop`), MIR small-step semantics, `compile_correct` for

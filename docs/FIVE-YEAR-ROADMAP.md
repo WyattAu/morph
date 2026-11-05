@@ -58,13 +58,17 @@ the Year 2–3 technical spine.
   announce. **Era-1 exit criteria check** (CI per push; 0/0/0; HIR
   end-to-end behind `--hir`; 0.1 released; one audit published).
 - Q3–Q4: audit-finding remediation + maintenance (toolchain-churn duty:
-  keep `lake build` green against Lean/mathlib updates). Explicitly
-  **no Era-2 implementation** until the audit publishes; design work
-  (backend ADR drafts, translation-validation position) may proceed
-  because it is what the auditors react to.
+  keep `lake build` green against Lean/mathlib updates). **Amendment
+  loop 133 (`docs/ERA2-UNFREEZE.md`):** the "no Era-2 implementation
+  until audit publishes" rule is lifted by maintainer directive — Stage
+  A/B implementation proceeds in parallel with the gate track. Original
+  rule kept as history; audit design work (backend ADR drafts,
+  translation-validation position) remains what the auditors react to.
 
 **Exit criteria:** Era-1 gates all green; 0.1 tagged; audit findings
-triaged with owners. **If missed:** Year 2 does not start.
+triaged with owners. **If missed (amended loop 133):** Year 2 proceeds
+under `docs/ERA2-UNFREEZE.md` in parallel with the open gates; the gates
+still block release/audit, not implementation.
 
 ## Year 2 (2027-11 → 2028-11): the verified compiler core
 
@@ -163,7 +167,7 @@ programmers. These are tracked, not scheduled.
 
 | # | Decision | Due | Decides | Default if missed |
 |---|---|---|---|---|
-| D-1 | Billing / CI runners | Y1 Q1 | Whether any gate is observable | Plan clock pauses; maintenance only |
+| D-1 | Billing / CI runners | Y1 Q1 | Whether any gate is observable | Plan clock pauses; maintenance only (loop 133: clock paused, then unfreeze lifted the implementation freeze — gates still block release) |
 | D-2 | Translation validation vs verified lowering | Y1 (audit) | Backend ADR shape | Verified lowering (conservative) |
 | D-3 | Backend target + language (LLVM/Cranelift; C++ question) | Y2 H1 | Stage B direction | Single Rust-native backend, straight-line only |
 | D-4 | Supported-fragment contract for `morph build` | Y2 H1 | What `compile_correct` covers | Strict explicitly-listed subset |

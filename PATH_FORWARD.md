@@ -6,9 +6,15 @@
 
 Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 
+> Loop-134 note: the table below is the 2026-05-15 post-audit baseline
+> (6 sorries, 787 theorems). Measured current (loop 133): 0 sorry /
+> 0 stubs, 2081 theorems repo-wide / 1633 in `Specs/`, 104 `spec/*.md`,
+> 68 Lean spec modules, `lake build Morph Morph.Tests` green when `/tmp`
+> is writable. Full refresh of this execution view follows Stage A2.
+
 ---
 
-## Current Baseline (post-audit, 2026-05-15)
+## Current Baseline (post-audit, 2026-05-15; updated loop 134 — see note)
 
 | Metric | Value | Status |
 |--------|-------|--------|
