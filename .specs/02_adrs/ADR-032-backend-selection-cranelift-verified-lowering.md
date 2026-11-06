@@ -138,6 +138,31 @@ this ADR for the LLVM encoder (which shares ADR-011 stages 1–3 unchanged).
   MIR; `codegen` lowers CLIF via Cranelift. The differential bridge
   (MIR-oracle vs CLIF-oracle) is the Rust pipeline growth item's first
   consumer.
+
+  > **Amendment (loop 144, 2026-11-06) — consequence corrected, decision
+  > unchanged.** This bullet assumed the Rust `compiler` crate's IR is a
+  > transcription of Lean's `Morph.MIR`. It is not: `compiler/src/codegen/
+  > morph_ir.rs` defines a *stack machine* with locals and upvalues
+  > (`PushInt`, `LoadLocal`, `StoreUpvalue`, `Add`, …), while Lean's MIR is
+  > SSA over `ValId`s with blocks and terminators. A Rust MIR→CLIF pass would
+  > therefore be a second independent lowering from a different input
+  > language, doubling the unverified surface §2 set out to minimise — the
+  > opposite of this ADR's own criterion.
+  >
+  > Corrected seam, per §2's goal of no marshalling at the proved/trusted
+  > boundary: the **Lean executable renders CLIF text** from the proved
+  > lowering (`Main.lean` already hosts the command table), and the Rust side
+  > only parses that text (`cranelift-reader`), lowers it
+  > (`cranelift-codegen`) and links. The AST→MorphIR lowering is then off the
+  > Stage B path entirely. The trusted surface at the seam becomes "the
+  > renderer is faithful", for which Lean proves injectivity
+  > (`render_parse_id`) — weaker than marshalling correctness, stronger than
+  > review, and loud on failure.
+  >
+  > Scope, work breakdown, and the three audit questions this raises (text
+  > boundary acceptability, fixed-width range contract, `div`/`mod`
+  > exclusion) are in `docs/STAGEB-SCOPE.md`. Cranelift-first, verified
+  > lowering, and D-2/D-4 all stand.
 - The audit packet's TCB section gains, at its next refresh: the Cranelift
   dependency, the encoder crate, and the linker/runtime in the path.
 - Kill criteria for this decision: (a) audit feedback rejecting D-2 — TV is

@@ -918,3 +918,56 @@ form. Both were found by compiling, not by reading.
 **Result.** `Morph/HIRToMIRTotal.lean`, 926 lines, zero `sorry`, zero warnings,
 `lake env lean` exit 0. A2 exit met: forward totality proved at program level
 with no MIR-success hypothesis, and no failure-coincidence claim made anywhere.
+
+## Loop 144 — Stage B scope, and four measured MIR/CLIF mismatches
+
+**Work.** Scoped Stage B (`docs/STAGEB-SCOPE.md`) against ADR-032 and
+`STAGEA-PREP` §1. No code: the point was to find what "MIR→CLIF verified
+lowering" actually costs by comparing the two value domains, instead of
+assuming they compose.
+
+**Four mismatches, measured.**
+
+1. `Value.int : Int` is unbounded and `Executable.evalBinop` does plain `Int`
+   arithmetic; CLIF i64/i32 wrap. MIR→CLIF is therefore *not* value-preserving
+   in general, and the theorem needs a range hypothesis on **intermediate**
+   values. That fixes the statement shape: by simulation over the instruction
+   list, because a hypothesis about the values inside `execFunc`'s opaque result
+   cannot be re-established per step.
+2. Division. `#eval` says Lean's `Int` pair is Euclidean — `-7/2 = -4`,
+   `-7%2 = 1`, `7/-2 = -3` — while CLIF's `sdiv`/`srem` truncate: `-7/2 = -3`,
+   `-7%2 = -1`. They agree only on non-negative operands, which is exactly what
+   a differential corpus of positive literals would have covered. Worth
+   measuring precisely because testing would not have found it.
+3. Division by zero is *defined* as `0` in MIR (`Executable.lean:84-85`) and
+   traps in CLIF, so a direct `sdiv` would turn a defined MIR result into a
+   machine trap. `div`/`mod` are rejected by the encoder in B1; the guarded
+   Euclidean sequence is the way back in.
+4. Shifts are unbounded in Lean and require `n < 64` in CLIF; and `Instr.const`
+   admits string/float/pointer/tuple/closure payloads with no Stage B encoding.
+   The last is syntactic, which is the good case — the encoder rejects rather
+   than miscompiles.
+
+**The architecture finding.** ADR-032's consequences say "`compiler` emits CLIF
+from MIR", assuming the Rust crate's IR transcribes Lean's. It does not:
+`compiler/src/codegen/morph_ir.rs` is a stack machine with locals and upvalues
+(`LoadLocal`, `StoreUpvalue`, `PushStr`), Lean's MIR is SSA over `ValId`s with
+blocks and terminators, and neither expresses the other's constructs. A Rust
+MIR→CLIF pass would be a second independent lowering from a different input
+language — doubling the unverified surface ADR-032 exists to minimise.
+Corrected seam, as a dated amendment in the ADR: the **Lean executable renders
+CLIF text** (`Main.lean` already hosts the command table), and Cranelift parses
+and lowers it; `compiler/src/codegen` leaves the Stage B path.
+`render_parse_id` proves the renderer injective, which is the strongest thing
+provable about a boundary Lean cannot see across, and the scope doc describes it
+as exactly that rather than as verified marshalling.
+
+**Exit criterion, restated.** Stage B's proved half is B1–B5: the CLIF model
+with an explicit `wrap`, the encoder for the reduced subset, per-operator
+agreement lemmas, `clif_correct` composing with `compile_total`, and the
+render/parse round-trip. B6–B8 (the flag, the Cranelift driver, the differential
+corpus) are trusted and gated as such.
+
+**Result.** No Lean changed, so nothing to re-elaborate. New:
+`docs/STAGEB-SCOPE.md`; amended: ADR-032 consequences, and the Stage B line in
+`docs/ERA2-BACKEND-SCOPE.md`.
