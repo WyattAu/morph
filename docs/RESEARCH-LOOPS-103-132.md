@@ -811,3 +811,15 @@ inspected one constructor at a time; the eleven impossible arms are all
 warnings, `lake env lean` exit 0 and `lake build Morph` green. What remains is
 lifting this to statements and programs (that would let `compile_correct` drop
 its MIR-success hypothesis) and the control-flow fragment.
+
+**Follow-on corollary.** `lower_total_lit` is the form the statement layer
+needs: the source value is supplied as the literal `w` ("the surrounding run
+produced `w`") rather than existentially quantified, and the conclusion is the
+three facts a statement-level induction can paste together — the emitted code
+runs, the result register holds `w`, the store is untouched. `lowerStmts_total`
+is then a mirror of `lowerStmts_correct` with its MIR-success hypothesis
+replaced by an appeal to this lemma at each expression leaf, and its
+`RelEnv henv' ρ' fenv'.env` conclusion conditioned on the HIR run actually
+producing a value (with fuel exhausted the source stops early, so the
+environment relation has accumulated bindings the run never made — the MIR
+totality fact survives, the agreement fact does not).

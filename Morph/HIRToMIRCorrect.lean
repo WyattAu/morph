@@ -2623,4 +2623,23 @@ theorem lower_total :
     simp only [lowerBlock, hfail] at h
     simp at h
 
+/-- The usable form of `lower_total`, with the source value already known to be
+`w`: the emitted code runs to an environment holding `w` in the result register
+and leaves the store untouched. This is the shape the statement layer needs,
+where the value is pinned by the surrounding run rather than existentially
+quantified. -/
+theorem lower_total_lit (ρ : List (HIR.Id × ValId)) (supply : Nat) (e : HIR.Expr)
+    (v : ValId) (is : List Instr) (s' : Nat)
+    (h : lowerExpr ρ supply e = some (v, is, s')) (hs : IsStraight e)
+    (hf : FreshAbove ρ supply) (henv : HEnv) (fenv : FullEnv)
+    (hrel : RelEnv henv ρ fenv.env) (fuel : Nat) (w : Value)
+    (heval : evalHIR fuel henv e = some (HIR.Expr.lit w)) :
+    ∃ fenv', execInstrsFull fenv is = some fenv' ∧ fenv'.env v = some w ∧
+      fenv'.store = fenv.store := by
+  obtain ⟨-, fenv', hexec, hstore, w', hr, hreg⟩ :=
+    lower_total.1 ρ supply e v is s' h hs hf henv fenv hrel fuel (.lit w) heval
+  have hw : w' = w := (HIR.Expr.lit.inj hr).symm
+  subst hw
+  exact ⟨fenv', hexec, hreg, hstore⟩
+
 end Morph.HIRToMIRCorrect
