@@ -971,3 +971,34 @@ corpus) are trusted and gated as such.
 **Result.** No Lean changed, so nothing to re-elaborate. New:
 `docs/STAGEB-SCOPE.md`; amended: ADR-032 consequences, and the Stage B line in
 `docs/ERA2-BACKEND-SCOPE.md`.
+
+## Loop 145 — Stage B item B1: the CLIF target model
+
+**Work.** Landed `Morph/ClifTarget.lean`, the model the Stage B lowering will be
+proved against (scope doc §4.1): ten instructions (`iconst`, `iadd`, `isub`,
+`imul`, `icmp`, `band`, `bor`, `bnot`, `ishl`, `sshr`), a single-block `Func`
+with one return register, a partial register file, and `run`/`runInstrs`.
+
+Two decisions inside it, both consequences of loop 144's measurements:
+
+- `wrap` makes fixed width explicit, and `wrap_eq_self` is the only fact the
+  theorem will need from it — the range hypothesis converts to an equality
+  exactly there. `wrap_bounds` is its companion so a step-wise simulation can
+  re-establish the invariant when a clause introduces a fresh value.
+- `ishl`/`sshr` stall outside `0 ≤ n < 64` in the model rather than inventing a
+  convention CLIF does not have; the B3 agreement lemma discharges the check
+  from the fragment's amount hypothesis. `sshr` is `Int` division by `2^n`,
+  which is sound because Lean's Euclidean division by a positive divisor *is*
+  floor division — the same argument as loop 144 §1.2, used in the opposite
+  direction.
+
+**Toolchain notes.** `norm_num` is not available in this import closure
+(`Morph.MIR` does not pull Mathlib); `decide` proves the 64-bit numerals and
+`omega` does the interval arithmetic, so the wrap lemmas need neither. `Value`
+lives in `Morph.Core`, not at the root — an unqualified reference fails and
+takes every subsequent `Env`/`.int` annotation with it, which is what the first
+elaboration of this file actually reported.
+
+**Result.** `lake env lean Morph/ClifTarget.lean` exit 0, zero warnings, no
+`sorry`. B2 (the encoder), B3 (per-operator agreement), B4 (`clif_correct`) and
+B5 (render/parse) remain; nothing here lowers MIR yet.
