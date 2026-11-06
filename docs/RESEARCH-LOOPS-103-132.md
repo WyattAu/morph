@@ -717,3 +717,54 @@ into the umbrella import if desired.
 `.lean` files. Environment note: the machine was heavily
 oversubscribed (load 20–47 on 6 cores), so each `lean` invocation
 took 4–14 minutes instead of ~3.
+
+## Loop 140 — statement and program halves land: `lowerStmts_correct`, `compile_correct`
+
+**Request:** continue (all sprints, max rigor; gates noted not attempted).
+
+**Work — the statement layer is proved; `Morph/HIRToMIRCorrect.lean` is
+2.1k lines, zero `sorry`, zero warnings, `lake env lean` exit 0.**
+
+- `StraightStmts budget ss` — the statement fragment the lowering accepts
+  (`exprStmt`, `varDecl`, `assign`, `returnStmt`, `nop`; control flow is
+  rejected), each expression carrying both `IsStraight` and a
+  `SLWeight e < budget` budget. Projections (`StraightStmts_exprStmt`,
+  `_varDecl`, `_assign`, `_returnStmt`, `_nop`) instead of `cases`, for the
+  same reason the `IsStraight_*` lemmas exist: `cases` eliminates locals the
+  arm still needs.
+- `evalHIR_budget` / `evalHIR_256` — the runner evaluates every expression
+  position with a *fixed* `evalHIR 256`, so an unspecified fuel is useless to
+  it. `SLWeight` (one unit per construct, `.block` pays the sum of its
+  elements) bounds what an expression can demand, proved by induction on the
+  budget with the subterm successes as an existential hypothesis — the first
+  attempt inducted on the successful run's fuel and got the wrong direction
+  (`max fuel weight ≤ 256` is false for large `fuel`), which is exactly the
+  kind of mistake only a compile catches.
+- `lowerStmts_correct` — if `lowerStmts ρ supply lastVal ss` succeeds, the
+  emitted code runs, then `runHIRStmts` reaches a value that the lowering's
+  result register holds, the store is untouched, and `RelEnv` still ties the
+  final HIR environment to the final `ρ`. The accumulator invariant is a
+  *register plus the literal in it* (`fenv.env lastVal = some acc`), so
+  `exprStmt` can replace it with the new expression's register while
+  `varDecl`/`assign` pass it through unchanged, exactly mirroring
+  `runHIRStmts`' own accumulator.
+- Assignment needed real bookkeeping: `rhoLookup_updAssoc_id` (the assigned
+  name reads back as the new register),
+  `rhoLookup_updAssoc_ne` (every other name is untouched), their `updateHEnv`
+  twins `lookupHEnv_updateHEnv_id` / `_ne`, and `RelEnv_update` gluing them.
+  The first attempt wrote this with `subst`, which silently eliminated the
+  local named `id` and left the *identity function* in its place — the
+  `Id`-shadowing trap in a new disguise. Rewritten with explicit `show`-based
+  equation lemmas for `updAssoc`/`rhoLookup`, no substitution.
+- `compile_correct` — `lowerProgram`'s shape (prologue `const 0 .unit`,
+  single block, `return_ v`) feeds A1's `execFunc_single_block`:
+  after `execInstrsFull_prologue` runs the prologue (`Env.update (fun _ =>
+  none) 0 .unit`), the statement bridge supplies the HIR side and the
+  register `v` read out of the final env is the same value. Stated
+  conditioned on MIR success, honestly — one direction only (D-2/D-4).
+
+**Honest scope.** Still not claimed: that the lowered code *cannot* fail
+(needs a totality converse: pure-instruction execution succeeds whenever the
+source evaluates — the natural next theorem), and the control-flow
+statements remain out of the fragment by design. G-1/G-3/G-7 remain
+maintainer-only, not attempted.
