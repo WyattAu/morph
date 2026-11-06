@@ -768,3 +768,46 @@ took 4–14 minutes instead of ~3.
 source evaluates — the natural next theorem), and the control-flow
 statements remain out of the fragment by design. G-1/G-3/G-7 remain
 maintainer-only, not attempted.
+
+## Loop 141 — the converse: `lower_total`
+
+**Request:** continue (all sprints, max rigor; gates noted not attempted).
+
+**Work — `lower_total` proves the lowered code never stalls on the fragment.**
+
+`lower_correct` consumes MIR success, so on its own it cannot say whether the
+emitted instructions get *stuck*: every instruction can fail on an unbound
+source register or an ill-typed operator application, and the forward theorem
+is silent about which of those the lowering rules out. `lower_total` proves
+the other direction for the straight-line fragment: if `evalHIR` succeeds, the
+emitted code runs, the store is untouched, and the result register holds the
+source value.
+
+The statement needs care in one place. `evalHIR` on a variable read returns
+whatever the environment holds — which need not be a literal, while the
+lowering emits *no instructions* for a read, so there is nothing to stall on.
+Stating the HIR hypothesis as "evaluates to a literal" would therefore be
+false for a `let`-bound non-literal; stating it parametrically, with the
+conclusion "runs, and *when* the value is a literal the register holds it",
+is both true and sufficient. A second conjunct records that in this fragment
+the value is always a literal, which is what makes the parametric form usable
+in the `let` case: the body's environment relation `RelEnv` demands literal
+bindings, so the init's literal-ness has to be recovered from the induction
+hypothesis rather than assumed.
+
+Machinery: `execInstrsFull_singleton` (a successful step gives a successful
+one-instruction run — the forward proof only needed the converse),
+decomposition lemmas for successful `evalHIR` on `unop`/`binop`/`let`/`block`
+(the forward proof had the step form and needed the inverse), and
+`mapM_cons_inv` for the block case. `getLast!_eq_getLastD` reconciles the two
+"last element" notions `evalHIR` and `block_eval_of_mapM` use.
+
+Cost of honesty: the `unop`/`binop` inversions enumerate `HIR.Expr`'s twelve
+constructors, since a `match` on the *result* of an evaluation has to be
+inspected one constructor at a time; the eleven impossible arms are all
+`none = some _`.
+
+**Result.** `Morph/HIRToMIRCorrect.lean`, 2.6k lines, zero `sorry`, zero
+warnings, `lake env lean` exit 0 and `lake build Morph` green. What remains is
+lifting this to statements and programs (that would let `compile_correct` drop
+its MIR-success hypothesis) and the control-flow fragment.
