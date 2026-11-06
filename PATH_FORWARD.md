@@ -12,6 +12,21 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 > 68 Lean spec modules, `lake build Morph Morph.Tests` green when `/tmp`
 > is writable. Full refresh of this execution view follows Stage A2.
 
+> Stage A2 status (loops 139–142, 2026-11-06): the HIR→MIR bridge is in the
+> tree — `Morph/HIRToMIRCorrect.lean` (2682 lines, 0 `sorry`, 0 warnings)
+> proves `lower_correct`, `lowerStmts_correct`, `compile_correct`,
+> `compile_correct_env` (forward: MIR success implies the source agrees,
+> with the environment relation and store preserved) and `lower_total`,
+> `lower_total_lit` (converse: HIR success implies the emitted code runs,
+> expressions only). Fragment is `IsStraight` — single function, single
+> block, no calls, no control flow. **A2 exit is not met yet**: per
+> `ERA2-UNFREEZE.md`'s safeguard, `compile_correct` must be
+> one-directional in the form "HIR success implies MIR runs and agrees",
+> which the current program-level statements do not yet state because they
+> take MIR success as a hypothesis. Remaining: `lowerExpr_total` →
+> `lowerStmts_total` → `compile_total`, then the full refresh of this
+> file.
+
 ---
 
 ## Current Baseline (post-audit, 2026-05-15; updated loop 134 — see note)

@@ -24,6 +24,23 @@ compatibility promises are `STABILITY.md`.
   `Stmt.ifStmt`/`Stmt.matchStmt` with 1:1 lowering; `doWhile`/`forLoop`
   stay rejected with pinned theorems and a recorded desugar-faithfulness
   analysis (`HARD-GATES.md` G-6, loop 115).
+- **HIR→MIR bridge.** `Morph/HIRToMIRCorrect.lean` (loops 139–142)
+  connects the HIR evaluator to the MIR executor on the straight-line
+  fragment: `lower_correct` (expressions), `lowerStmts_correct`
+  (statements, carrying the environment relation and store preservation),
+  `compile_correct` and `compile_correct_env` (programs: `lowerProgram`
+  accepting a program whose emitted instructions run implies `execFunc`
+  returns the HIR value and the final environment agrees on every binding,
+  not just the result register). `lower_total` and `lower_total_lit` are
+  the converse at expression level: if the HIR evaluates, the emitted
+  code runs and leaves the store untouched. **Scope:** `IsStraight` only —
+  single function, single block, no calls, no control flow. `lam`, `app`,
+  `whileLoop` and `match` are rejected by the lowering, and MIR's `.call`
+  rule is `none` (`Morph/MIR.lean`), so no claim is made about functions
+  calling functions. The program-level theorems take MIR success as a
+  hypothesis; the hypothesis-free `compile_total` is open work, so no
+  failure-coincidence claim is made anywhere (per the `ERA2-UNFREEZE`
+  safeguard).
 - **Type soundness.** Progress + preservation in
   `Morph/Proofs/TypeSoundness/`; bidirectional checking mode
   (`Morph/Specs/TypeSystem/InferenceSound.lean`).
