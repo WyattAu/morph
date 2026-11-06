@@ -37,9 +37,15 @@ compatibility promises are `STABILITY.md`.
   single function, single block, no calls, no control flow. `lam`, `app`,
   `whileLoop` and `match` are rejected by the lowering, and MIR's `.call`
   rule is `none` (`Morph/MIR.lean`), so no claim is made about functions
-  calling functions. The program-level theorems take MIR success as a
-  hypothesis; the hypothesis-free `compile_total` is open work, so no
-  failure-coincidence claim is made anywhere (per the `ERA2-UNFREEZE`
+  calling functions. Both directions are now stated: the `compile_correct`
+  pair takes MIR success and concludes source agreement, while
+  `compile_total` (A2 exit, loop 143) takes the source run and concludes
+  `execFunc` returns the same value, with no MIR-success hypothesis. What is
+  deliberately *not* proved is unconditional machine totality:
+  `MIR.evalUnOp`/`evalBinOp` are partial exactly where the HIR oracle is
+  (`evalUnop_glue`, `evalBinop_glue`), so a mistyped `unop` stalls both
+  sides and an always-runs claim would be false without a typing hypothesis.
+  No failure-coincidence claim is made anywhere (per the `ERA2-UNFREEZE`
   safeguard).
 - **Type soundness.** Progress + preservation in
   `Morph/Proofs/TypeSoundness/`; bidirectional checking mode

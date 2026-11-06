@@ -498,11 +498,12 @@ theorem lower_total :
     simp only [lowerBlock, hfail] at h
     simp at h
 
-/-- The usable form of `lower_total`, with the source value already known to be
-`w`: the emitted code runs to an environment holding `w` in the result register
-and leaves the store untouched. This is the shape the statement layer needs,
-where the value is pinned by the surrounding run rather than existentially
-quantified. -/
+/-- `lower_total` with the source value pinned: when the source evaluates to
+the literal `w`, the emitted code runs to an environment holding `w` in the
+result register and leaves the store untouched. A derived corollary — the
+statement layer ends up using the existential form, because an intermediate
+`exprStmt` in a fragment sequence may evaluate to a non-literal that a later
+statement overwrites via the runner's accumulator. -/
 theorem lower_total_lit (ρ : List (HIR.Id × ValId)) (supply : Nat) (e : HIR.Expr)
     (v : ValId) (is : List Instr) (s' : Nat)
     (h : lowerExpr ρ supply e = some (v, is, s')) (hs : IsStraight e)
@@ -517,5 +518,412 @@ theorem lower_total_lit (ρ : List (HIR.Id × ValId)) (supply : Nat) (e : HIR.Ex
   subst hw
   exact ⟨fenv', hexec, hreg, hstore⟩
 
+/-! ## Statement-level totality
+
+`lowerStmts_correct` consumes MIR success. This section supplies it: when the
+HIR statement machine reaches a value on the straight-line fragment, the
+emitted instruction sequence *runs*, and the resulting register file still
+agrees with the source environment.
+
+The statement carries the source run as a hypothesis rather than concluding
+machine totality unconditionally, and that is not a convenience. `MIR.evalUnOp`
+and `MIR.evalBinOp` are partial in exactly the way their HIR counterparts are
+(`evalUnop_glue`/`evalBinop_glue`): applying `unop` to a mistyped literal
+stalls on both sides, and no typing hypothesis is available here to exclude it.
+So "the emitted code always runs" is false as stated, while "the emitted code
+runs whenever the source does" is both true and the direction the D-2/D-4
+contract requires. Machine failure still carries no claim about the source,
+per the `ERA2-UNFREEZE` guardrail.
+-/
+
+/-- The runner never produces a value at zero fuel: its first equation is the
+stuck case, whatever the statement list is. -/
+theorem runHIRStmts_zero_stuck (henv : HEnv) (ss : List HIR.Stmt) (acc : HFlow)
+    (henv' : HEnv) (out : HFlow)
+    (hrun : runHIRStmts 0 henv ss acc = (out, henv')) : out = .stuck := by
+  have hz : runHIRStmts 0 henv ss acc = (.stuck, henv) := rfl
+  rw [hz] at hrun
+  exact (Prod.mk.inj hrun).1.symm
+
+/-- Statement-level totality: when `lowerStmts` succeeds on the fragment and
+the HIR statement machine reaches a value, the emitted instructions run to a
+final environment that holds that value in the result register, leaves the
+store alone, and still agrees with the source environment. -/
+theorem lowerStmts_total :
+    ∀ (ρ : List (HIR.Id × ValId)) (supply : Nat) (lastVal : ValId)
+      (ss : List HIR.Stmt) (ρ' : List (HIR.Id × ValId)) (v : ValId)
+      (is : List Instr) (s' : Nat),
+      lowerStmts ρ supply lastVal ss = some (ρ', v, is, s') →
+      StraightStmts 256 ss → FreshAbove ρ supply → lastVal < supply →
+      ∀ (acc : Value) (henv : HEnv) (fenv : FullEnv),
+      RelEnv henv ρ fenv.env → fenv.env lastVal = some acc →
+      ∀ (fuel : Nat) (henv' : HEnv) (out : HFlow) (w : Value),
+      runHIRStmts fuel henv ss (.value (.lit acc)) = (out, henv') →
+      runValue? out = some (.lit w) →
+      ∃ fenv', execInstrsFull fenv is = some fenv' ∧ fenv'.env v = some w ∧
+        fenv'.store = fenv.store ∧ RelEnv henv' ρ' fenv'.env := by
+  intro ρ supply lastVal ss
+  induction ss generalizing ρ supply lastVal with
+  | nil =>
+    intro ρ' v is s' h _hss _hf _hlast acc henv fenv hrel hacc fuel henv' out w hrun hval
+    simp only [lowerStmts] at h
+    have hp : (ρ, lastVal, ([] : List Instr), supply) = (ρ', v, is, s') :=
+      Option.some.inj h
+    have hρ' : ρ' = ρ :=
+      (congrArg (fun p : List (HIR.Id × ValId) × ValId × List Instr × Nat => p.1) hp).symm
+    have hv : v = lastVal :=
+      (congrArg (fun p : List (HIR.Id × ValId) × ValId × List Instr × Nat => p.2.1) hp).symm
+    have his : is = [] :=
+      (congrArg (fun p : List (HIR.Id × ValId) × ValId × List Instr × Nat => p.2.2.1) hp).symm
+    cases fuel with
+    | zero =>
+      have hout := runHIRStmts_zero_stuck henv _ _ henv' out hrun
+      rw [hout] at hval
+      simp [runValue?] at hval
+    | succ f =>
+      have hstep : runHIRStmts (Nat.succ f) henv ([] : List HIR.Stmt) (.value (.lit acc))
+          = (.value (.lit acc), henv) := rfl
+      rw [hstep] at hrun
+      have hout : out = .value (.lit acc) := (congrArg Prod.fst hrun).symm
+      have hhenv : henv' = henv := (congrArg Prod.snd hrun).symm
+      subst hout
+      have hw : w = acc := (HIR.Expr.lit.inj (Option.some.inj hval)).symm
+      refine ⟨fenv, ?_, ?_, rfl, ?_⟩
+      · rw [his]; exact execInstrsFull_nil fenv
+      · rw [hv, hw]; exact hacc
+      · rw [hρ', hhenv]; exact hrel
+  | cons st rest ih =>
+    cases st with
+    | exprStmt e =>
+      intro ρ' v is s' h hss hf hlast acc henv fenv hrel hacc fuel henv' out w hrun hval
+      obtain ⟨hstr, _hb, hss'⟩ := StraightStmts_exprStmt hss
+      simp only [lowerStmts] at h
+      cases he : lowerExpr ρ supply e with
+      | none => rw [he] at h; simp at h
+      | some p =>
+        obtain ⟨v0, ie, s1⟩ := p
+        rw [he] at h
+        simp only [] at h
+        cases hr : lowerStmts ρ s1 v0 rest with
+        | none => rw [hr] at h; simp at h
+        | some q =>
+          obtain ⟨ρ'', v', ie', s2⟩ := q
+          rw [hr] at h
+          simp only [] at h
+          have hp : (ρ'', v', ie ++ ie', s2) = (ρ', v, is, s') := Option.some.inj h
+          have hρ' : ρ' = ρ'' :=
+            (congrArg (fun p : List (HIR.Id × ValId) × ValId × List Instr × Nat => p.1) hp).symm
+          have hv : v = v' :=
+            (congrArg (fun p : List (HIR.Id × ValId) × ValId × List Instr × Nat => p.2.1) hp).symm
+          have his : is = ie ++ ie' :=
+            (congrArg (fun p : List (HIR.Id × ValId) × ValId × List Instr × Nat => p.2.2.1) hp).symm
+          cases fuel with
+          | zero =>
+            have hout := runHIRStmts_zero_stuck henv _ _ henv' out hrun
+            rw [hout] at hval
+            simp [runValue?] at hval
+          | succ f =>
+            have hstep : runHIRStmts (Nat.succ f) henv (.exprStmt e :: rest)
+                (.value (.lit acc)) =
+                (match evalHIR 256 henv e with
+                  | none => (HFlow.stuck, henv)
+                  | some v => runHIRStmts f henv rest (.value v)) := rfl
+            rw [hstep] at hrun
+            cases hev : evalHIR 256 henv e with
+            | none =>
+              rw [hev] at hrun
+              have hout : out = .stuck := (congrArg Prod.fst hrun).symm
+              rw [hout] at hval
+              simp [runValue?] at hval
+            | some r =>
+              rw [hev] at hrun
+              obtain ⟨fenv1, hexec1, hstore1, wE, hrE, hregE⟩ :=
+                (lower_total.1 ρ supply e v0 ie s1 he hstr hf henv fenv hrel 256 r hev).2
+              rw [hrE] at hrun
+              have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+              have hf1 : FreshAbove ρ s1 := FreshAbove.mono ρ supply s1 hs1 hf
+              have hrel1 : RelEnv henv ρ fenv1.env :=
+                RelEnv_exec henv ρ supply e v0 ie s1 he fenv fenv1 hrel hf hexec1
+              have hlast1 : v0 < s1 := lower_result_lt.1 ρ supply e v0 ie s1 he hf
+              obtain ⟨fenv', hexec', hreg', hstore', hrel'⟩ :=
+                ih ρ s1 v0 ρ'' v' ie' s2 hr hss' hf1 hlast1 wE henv fenv1 hrel1 hregE
+                  f henv' out w hrun hval
+              refine ⟨fenv', ?_, ?_, ?_, ?_⟩
+              · rw [his, execInstrsFull_append, hexec1]; exact hexec'
+              · rw [hv]; exact hreg'
+              · rw [hstore', hstore1]
+              · rw [hρ']; exact hrel'
+    | varDecl id τ init =>
+      intro ρ' v is s' h hss hf hlast acc henv fenv hrel hacc fuel henv' out w hrun hval
+      obtain ⟨hstr, _hb, hss'⟩ := StraightStmts_varDecl hss
+      simp only [lowerStmts] at h
+      cases he : lowerExpr ρ supply init with
+      | none => rw [he] at h; simp at h
+      | some p =>
+        obtain ⟨va, ia, s1⟩ := p
+        rw [he] at h
+        simp only [] at h
+        cases hr : lowerStmts ((id, va) :: ρ) s1 lastVal rest with
+        | none => rw [hr] at h; simp at h
+        | some q =>
+          obtain ⟨ρ'', v', ia', s2⟩ := q
+          rw [hr] at h
+          simp only [] at h
+          have hp : (ρ'', v', ia ++ ia', s2) = (ρ', v, is, s') := Option.some.inj h
+          have hρ' : ρ' = ρ'' :=
+            (congrArg (fun p : List (HIR.Id × ValId) × ValId × List Instr × Nat => p.1) hp).symm
+          have hv : v = v' :=
+            (congrArg (fun p : List (HIR.Id × ValId) × ValId × List Instr × Nat => p.2.1) hp).symm
+          have his : is = ia ++ ia' :=
+            (congrArg (fun p : List (HIR.Id × ValId) × ValId × List Instr × Nat => p.2.2.1) hp).symm
+          cases fuel with
+          | zero =>
+            have hout := runHIRStmts_zero_stuck henv _ _ henv' out hrun
+            rw [hout] at hval
+            simp [runValue?] at hval
+          | succ f =>
+            have hstep : runHIRStmts (Nat.succ f) henv (.varDecl id τ init :: rest)
+                (.value (.lit acc)) =
+                (match evalHIR 256 henv init with
+                  | none => (HFlow.stuck, henv)
+                  | some v => runHIRStmts f ((id, v) :: henv) rest (.value (.lit acc))) := rfl
+            rw [hstep] at hrun
+            cases hev : evalHIR 256 henv init with
+            | none =>
+              rw [hev] at hrun
+              have hout : out = .stuck := (congrArg Prod.fst hrun).symm
+              rw [hout] at hval
+              simp [runValue?] at hval
+            | some r =>
+              rw [hev] at hrun
+              obtain ⟨fenv1, hexec1, hstore1, wE, hrE, hregE⟩ :=
+                (lower_total.1 ρ supply init va ia s1 he hstr hf henv fenv hrel 256 r hev).2
+              rw [hrE] at hrun
+              have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+              have hva : va < s1 := lower_result_lt.1 ρ supply init va ia s1 he hf
+              have hf1 : FreshAbove ((id, va) :: ρ) s1 := by
+                intro j u hmem
+                rcases List.mem_cons.mp hmem with heq | hmem
+                · cases heq
+                  exact hva
+                · exact Nat.lt_of_lt_of_le (hf j u hmem) hs1
+              have hrel1 : RelEnv henv ρ fenv1.env :=
+                RelEnv_exec henv ρ supply init va ia s1 he fenv fenv1 hrel hf hexec1
+              have hrel2 : RelEnv ((id, .lit wE) :: henv) ((id, va) :: ρ) fenv1.env := by
+                intro j u hlook
+                by_cases hid : id = j
+                · subst hid
+                  have hu : u = va := by
+                    have hh : rhoLookup ((id, va) :: ρ) id = some va :=
+                      rhoLookup_cons_head id va ρ
+                    rw [hh] at hlook
+                    exact (Option.some.inj hlook).symm
+                  subst hu
+                  exact ⟨wE, by simp [lookupHEnv], hregE⟩
+                · have hlook' : rhoLookup ρ j = some u := by
+                    rw [rhoLookup_cons_ne hid] at hlook
+                    exact hlook
+                  obtain ⟨w', hlookH, hreg⟩ := hrel1 j u hlook'
+                  exact ⟨w', by rw [lookupHEnv_cons_ne hid]; exact hlookH, hreg⟩
+              have hacc1 : fenv1.env lastVal = some acc := by
+                rw [lower_preserv_regs ρ supply init va ia s1 he fenv fenv1 hexec1 lastVal hlast]
+                exact hacc
+              have hlast1 : lastVal < s1 := Nat.lt_of_lt_of_le hlast hs1
+              obtain ⟨fenv', hexec', hreg', hstore', hrel'⟩ :=
+                ih ((id, va) :: ρ) s1 lastVal ρ'' v' ia' s2 hr hss' hf1 hlast1 acc
+                  ((id, .lit wE) :: henv) fenv1 hrel2 hacc1 f henv' out w hrun hval
+              refine ⟨fenv', ?_, ?_, ?_, ?_⟩
+              · rw [his, execInstrsFull_append, hexec1]; exact hexec'
+              · rw [hv]; exact hreg'
+              · rw [hstore', hstore1]
+              · rw [hρ']; exact hrel'
+    | assign id e =>
+      intro ρ' v is s' h hss hf hlast acc henv fenv hrel hacc fuel henv' out w hrun hval
+      obtain ⟨hstr, _hb, hss'⟩ := StraightStmts_assign hss
+      simp only [lowerStmts] at h
+      cases he : lowerExpr ρ supply e with
+      | none => rw [he] at h; simp at h
+      | some p =>
+        obtain ⟨v0, ie, s1⟩ := p
+        rw [he] at h
+        simp only [] at h
+        cases hr : lowerStmts (updAssoc ρ id v0) s1 lastVal rest with
+        | none => rw [hr] at h; simp at h
+        | some q =>
+          obtain ⟨ρ'', v', ie', s2⟩ := q
+          rw [hr] at h
+          simp only [] at h
+          have hp : (ρ'', v', ie ++ ie', s2) = (ρ', v, is, s') := Option.some.inj h
+          have hρ' : ρ' = ρ'' :=
+            (congrArg (fun p : List (HIR.Id × ValId) × ValId × List Instr × Nat => p.1) hp).symm
+          have hv : v = v' :=
+            (congrArg (fun p : List (HIR.Id × ValId) × ValId × List Instr × Nat => p.2.1) hp).symm
+          have his : is = ie ++ ie' :=
+            (congrArg (fun p : List (HIR.Id × ValId) × ValId × List Instr × Nat => p.2.2.1) hp).symm
+          cases fuel with
+          | zero =>
+            have hout := runHIRStmts_zero_stuck henv _ _ henv' out hrun
+            rw [hout] at hval
+            simp [runValue?] at hval
+          | succ f =>
+            have hstep : runHIRStmts (Nat.succ f) henv (.assign id e :: rest)
+                (.value (.lit acc)) =
+                (match evalHIR 256 henv e with
+                  | none => (HFlow.stuck, henv)
+                  | some v => runHIRStmts f (updateHEnv henv id v) rest
+                      (.value (.lit acc))) := rfl
+            rw [hstep] at hrun
+            cases hev : evalHIR 256 henv e with
+            | none =>
+              rw [hev] at hrun
+              have hout : out = .stuck := (congrArg Prod.fst hrun).symm
+              rw [hout] at hval
+              simp [runValue?] at hval
+            | some r =>
+              rw [hev] at hrun
+              obtain ⟨fenv1, hexec1, hstore1, wE, hrE, hregE⟩ :=
+                (lower_total.1 ρ supply e v0 ie s1 he hstr hf henv fenv hrel 256 r hev).2
+              rw [hrE] at hrun
+              have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+              have hva : v0 < s1 := lower_result_lt.1 ρ supply e v0 ie s1 he hf
+              have hf1 : FreshAbove (updAssoc ρ id v0) s1 := by
+                intro j u hmem
+                rcases updAssoc_mem ρ id v0 j u hmem with ⟨-, hwu⟩ | hmem
+                · rw [hwu]
+                  exact hva
+                · exact Nat.lt_of_lt_of_le (hf j u hmem) hs1
+              have hrel1 : RelEnv henv ρ fenv1.env :=
+                RelEnv_exec henv ρ supply e v0 ie s1 he fenv fenv1 hrel hf hexec1
+              have hrel2 : RelEnv (updateHEnv henv id (.lit wE)) (updAssoc ρ id v0) fenv1.env :=
+                RelEnv_update ρ henv fenv1.env id v0 wE hrel1 hregE
+              have hacc1 : fenv1.env lastVal = some acc := by
+                rw [lower_preserv_regs ρ supply e v0 ie s1 he fenv fenv1 hexec1 lastVal hlast]
+                exact hacc
+              have hlast1 : lastVal < s1 := Nat.lt_of_lt_of_le hlast hs1
+              obtain ⟨fenv', hexec', hreg', hstore', hrel'⟩ :=
+                ih (updAssoc ρ id v0) s1 lastVal ρ'' v' ie' s2 hr hss' hf1 hlast1 acc
+                  (updateHEnv henv id (.lit wE)) fenv1 hrel2 hacc1 f henv' out w hrun hval
+              refine ⟨fenv', ?_, ?_, ?_, ?_⟩
+              · rw [his, execInstrsFull_append, hexec1]; exact hexec'
+              · rw [hv]; exact hreg'
+              · rw [hstore', hstore1]
+              · rw [hρ']; exact hrel'
+    | returnStmt e =>
+      intro ρ' v is s' h hss hf hlast acc henv fenv hrel hacc fuel henv' out w hrun hval
+      obtain ⟨hstr, _hb⟩ := StraightStmts_returnStmt hss
+      simp only [lowerStmts] at h
+      cases he : lowerExpr ρ supply e with
+      | none => rw [he] at h; simp at h
+      | some p =>
+        obtain ⟨ve, ie, s1⟩ := p
+        rw [he] at h
+        have hp : (ρ, ve, ie, s1) = (ρ', v, is, s') := Option.some.inj h
+        have hρ' : ρ' = ρ :=
+          (congrArg (fun p : List (HIR.Id × ValId) × ValId × List Instr × Nat => p.1) hp).symm
+        have hv : v = ve :=
+          (congrArg (fun p : List (HIR.Id × ValId) × ValId × List Instr × Nat => p.2.1) hp).symm
+        have his : is = ie :=
+          (congrArg (fun p : List (HIR.Id × ValId) × ValId × List Instr × Nat => p.2.2.1) hp).symm
+        cases fuel with
+        | zero =>
+          have hout := runHIRStmts_zero_stuck henv _ _ henv' out hrun
+          rw [hout] at hval
+          simp [runValue?] at hval
+        | succ f =>
+          have hstep : runHIRStmts (Nat.succ f) henv (.returnStmt e :: rest)
+              (.value (.lit acc)) =
+              (match evalHIR 256 henv e with
+                | none => (HFlow.stuck, henv)
+                | some v => (HFlow.returned v, henv)) := rfl
+          rw [hstep] at hrun
+          cases hev : evalHIR 256 henv e with
+          | none =>
+            rw [hev] at hrun
+            have hout : out = .stuck := (congrArg Prod.fst hrun).symm
+            rw [hout] at hval
+            simp [runValue?] at hval
+          | some r =>
+            rw [hev] at hrun
+            have hout : out = .returned r := (congrArg Prod.fst hrun).symm
+            have hhenv : henv' = henv := (congrArg Prod.snd hrun).symm
+            subst hout
+            have hrl : r = .lit w := Option.some.inj hval
+            obtain ⟨fenv', hexec', hstore', wE, hrE, hregE⟩ :=
+              (lower_total.1 ρ supply e ve ie s1 he hstr hf henv fenv hrel 256 r hev).2
+            have hwE : w = wE := by
+              rw [hrl] at hrE
+              exact HIR.Expr.lit.inj hrE
+            subst hwE
+            refine ⟨fenv', ?_, ?_, hstore', ?_⟩
+            · rw [his]; exact hexec'
+            · rw [hv]; exact hregE
+            · rw [hρ', hhenv]
+              exact RelEnv_exec henv ρ supply e ve ie s1 he fenv fenv' hrel hf hexec'
+    | nop =>
+      intro ρ' v is s' h hss hf hlast acc henv fenv hrel hacc fuel henv' out w hrun hval
+      have hss' := StraightStmts_nop hss
+      simp only [lowerStmts] at h
+      cases fuel with
+      | zero =>
+        have hout := runHIRStmts_zero_stuck henv _ _ henv' out hrun
+        rw [hout] at hval
+        simp [runValue?] at hval
+      | succ f =>
+        have hstep : runHIRStmts (Nat.succ f) henv (.nop :: rest) (.value (.lit acc))
+            = runHIRStmts f henv rest (.value (.lit acc)) := rfl
+        rw [hstep] at hrun
+        exact ih ρ supply lastVal ρ' v is s' h hss' hf hlast acc henv fenv hrel hacc
+          f henv' out w hrun hval
+    | «break» =>
+      intro ρ' v is s' h hss _ _ _ _ _ _ _ _ _ _ _ _ _
+      nomatch hss
+    | «continue» =>
+      intro ρ' v is s' h hss _ _ _ _ _ _ _ _ _ _ _ _ _
+      nomatch hss
+    | whileLoop cond body =>
+      intro ρ' v is s' h hss _ _ _ _ _ _ _ _ _ _ _ _ _
+      nomatch hss
+    | ifStmt cond th el =>
+      intro ρ' v is s' h hss _ _ _ _ _ _ _ _ _ _ _ _ _
+      nomatch hss
+    | matchStmt scrut arms =>
+      intro ρ' v is s' h hss _ _ _ _ _ _ _ _ _ _ _ _ _
+      nomatch hss
+
+/-- Program-level totality (A2's exit statement): when `lowerProgram` accepts a
+straight-line program and the HIR statement machine reaches a literal value,
+the emitted single-block function *runs* and returns that same value.
+
+Together with `compile_correct_env` this closes the gap in both halves: the
+source run implies a matching machine run (here), and a machine run implies a
+matching source run (`lower_correct`, `compile_correct`). Nothing is claimed
+about machine failure. -/
+theorem compile_total (prog : HIR.Program) (func : Func) (store : Store)
+    (h : lowerProgram prog = some func) (hss : StraightStmts 256 prog.stmts)
+    (fuelH : Nat) (henv' : HEnv) (out : HFlow) (w : Value)
+    (hrun : runHIRStmts fuelH [] prog.stmts (.value (.lit .unit)) = (out, henv'))
+    (hval : runValue? out = some (.lit w)) :
+    execFunc 2 func ⟨fun _ => none, store⟩ = some w := by
+  simp only [lowerProgram] at h
+  cases hs : lowerStmts [] 1 0 prog.stmts with
+  | none => rw [hs] at h; simp at h
+  | some p =>
+    obtain ⟨ρ', v, is, s'⟩ := p
+    rw [hs] at h
+    simp only [] at h
+    have hfunc : func = ⟨"main", [], [⟨0, [.const 0 .unit] ++ is, .return_ v⟩], 0, .unitType⟩ :=
+      (Option.some.inj h).symm
+    have hlt : (0 : ValId) < 1 := Nat.zero_lt_one
+    obtain ⟨fenv'', hexec, hreg, -, -⟩ :=
+      lowerStmts_total [] 1 0 prog.stmts ρ' v is s' hs hss (FreshAbove_nil 1) hlt
+        (.unit) [] ⟨Morph.MIR.Env.update (fun _ => none) 0 .unit, store⟩
+        (RelEnv_nil [] _) (prologue_env_zero store) fuelH henv' out w hrun hval
+    have hall : execInstrsFull ⟨fun _ => none, store⟩ ([.const 0 .unit] ++ is) = some fenv'' :=
+      execInstrsFull_prologue store is fenv'' hexec
+    rw [hfunc]
+    rw [execFunc_single_block (fuel := 0) _ ⟨0, [.const 0 .unit] ++ is, .return_ v⟩ _ v
+      rfl rfl rfl]
+    rw [hall]
+    exact hreg
 
 end Morph.HIRToMIRCorrect

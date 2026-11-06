@@ -866,3 +866,55 @@ That is a session of its own; not started here rather than left half-proved.
 warnings, `lake env lean` exit 0. Under the load this machine was carrying
 (28 on 6 cores) a single elaboration of the file took ~9 minutes, which is the
 practical limit on how many proof-fix cycles fit in one sitting.
+
+## Loop 143 — A2 exit (`compile_total`), and why the Loop-142 plan was impossible
+
+**Correction first.** Loop 142 recorded a plan for `lowerStmts_total`: a second
+17-arm expression induction (`lowerExpr_total`) proving MIR totality with no HIR
+hypothesis, keyed on a `Bound ρ fenv.env` side condition. That theorem is
+**false**, so the plan would have spent a session on an unprovable goal. The
+reason is the oracle: `MIR.evalUnOp`/`evalBinOp` are `Option`-valued, and
+`evalUnop_glue`/`evalBinop_glue` say they stall *exactly* when
+`Executable.evalUnop`/`evalBinop` stall. A program applying `unop` to a
+mistyped literal therefore stalls in MIR, and no condition on the register file
+can exclude it — what would be needed is a typing hypothesis the bridge does
+not have. `Bound` was additionally unnecessary for the registers it was
+introduced for: every register an emitted instruction reads is either written
+earlier in the same instruction list (handed over by the induction hypothesis)
+or comes from `ρ`. The operator oracle, not the register file, is the
+unfixable half.
+
+**What is true, and is what the safeguard asks for.** Carry the source run as a
+hypothesis, so a source-side stall is excluded by the hypothesis instead of
+asserted against the machine:
+
+- `lowerStmts_total` — `lowerStmts_correct` with `execInstrsFull fenv is =
+  some fenv'` moved from hypothesis to conclusion, and
+  `runHIRStmts fuel henv ss (.value (.lit acc)) = (out, henv')` plus
+  `runValue? out = some (.lit w)` supplied in its place. Each arm splits the
+  source run: at `fuel = 0`, and at an expression that fails to evaluate, the
+  run is stuck, so the value hypothesis is contradicted; otherwise
+  `lower_total`'s second component produces the head instructions' run, the
+  induction hypothesis produces the tail's, and `execInstrsFull_append`
+  composes them.
+- `compile_total` — the exit statement. `lowerProgram prog = some func`, the
+  `StraightStmts 256` fragment contract, and a source run reaching `w` give
+  `execFunc 2 func ⟨fun _ => none, store⟩ = some w`.
+
+`lower_total_lit` turned out not to be the form the statement layer wants after
+all. An intermediate expression statement may evaluate to a non-literal that a
+later statement overwrites (the runner substitutes each fresh value into the
+accumulator), so the head expression has no fixed literal to hand the lemma.
+The sound form is still a literal — `lower_total`'s first conjunct proves it —
+but the witness has to come from the lemma, so the arms use the existential
+form. `lower_total_lit` stays as a derived corollary, not as the layer's tool.
+
+**Two Lean notes, each worth one elaboration cycle (≈5 min under load).**
+`obtain` patterns that discard a component (`⟨-, h⟩`) do not bind the remaining
+names in this environment. `obtain` on an equality of pairs does not introduce
+its components either; `congrArg Prod.fst`/`snd` plus `subst` is the reliable
+form. Both were found by compiling, not by reading.
+
+**Result.** `Morph/HIRToMIRTotal.lean`, 926 lines, zero `sorry`, zero warnings,
+`lake env lean` exit 0. A2 exit met: forward totality proved at program level
+with no MIR-success hypothesis, and no failure-coincidence claim made anywhere.

@@ -15,8 +15,17 @@ work that the freeze had queued.
 
 Per `docs/YEAR2-KICKOFF.md` §3 (the five-item blocked queue):
 
-1. Stage A1: store- and call-aware MIR small-step semantics.
-2. Stage A2: `compile_correct` for the first-order fragment.
+1. Stage A1: store- and call-aware MIR small-step semantics. — **partial:**
+   store-aware done (store preservation through `evalInstrFull` /
+   `execInstrsFull` in `Morph/MIRExecLemmas.lean`); call-aware **not** done —
+   `evalInstrFull`'s `.call` rule is `none`, so calls have no semantics yet.
+2. Stage A2: `compile_correct` for the first-order fragment. — **done
+   (loop 143):** `compile_total` in `Morph/HIRToMIRTotal.lean` states the
+   direction this file's safeguard names — a source run reaching `w` implies
+   `execFunc 2 func … = some w`, no MIR-success hypothesis. `lowerStmts_total`
+   supplies the statement step it composes from. The converse of the flow
+   relation (`MIR` fails implies `HIR` fails) is still never claimed, and
+   cannot be: the operator oracles are partial on both sides.
 3. Backend ADR (LLVM vs Cranelift, TCB, verified-lowering vs translation validation).
 4. Stage B: single-backend straight-line lowering + flagged `morph build`.
 5. Rust pipeline growth (AST→MIR, differential testing advisory).

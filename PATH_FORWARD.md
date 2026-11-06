@@ -12,20 +12,27 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 > 68 Lean spec modules, `lake build Morph Morph.Tests` green when `/tmp`
 > is writable. Full refresh of this execution view follows Stage A2.
 
-> Stage A2 status (loops 139–142, 2026-11-06): the HIR→MIR bridge is in the
-> tree — `Morph/HIRToMIRCorrect.lean` (2682 lines, 0 `sorry`, 0 warnings)
-> proves `lower_correct`, `lowerStmts_correct`, `compile_correct`,
-> `compile_correct_env` (forward: MIR success implies the source agrees,
-> with the environment relation and store preserved) and `lower_total`,
-> `lower_total_lit` (converse: HIR success implies the emitted code runs,
-> expressions only). Fragment is `IsStraight` — single function, single
-> block, no calls, no control flow. **A2 exit is not met yet**: per
-> `ERA2-UNFREEZE.md`'s safeguard, `compile_correct` must be
-> one-directional in the form "HIR success implies MIR runs and agrees",
-> which the current program-level statements do not yet state because they
-> take MIR success as a hypothesis. Remaining: `lowerExpr_total` →
-> `lowerStmts_total` → `compile_total`, then the full refresh of this
-> file.
+> Stage A2 status (loops 139–143, 2026-11-06): **A2 exit met.** The HIR→MIR
+> bridge is `Morph/HIRToMIRCorrect.lean`, an umbrella over
+> `Morph/HIRToMIRCore.lean` (2175 lines, forward direction) and
+> `Morph/HIRToMIRTotal.lean` (926 lines, converse); 0 `sorry`, 0 warnings,
+> `lake env lean` exit 0 on both. Forward: `lower_correct`,
+> `lowerStmts_correct`, `compile_correct`, `compile_correct_env` — MIR
+> success implies the source agrees, with the environment relation and store
+> preserved. Converse, which is what the A2 exit criterion names:
+> `lower_total`/`lower_total_lit` (expressions), `lowerStmts_total`
+> (statements) and `compile_total` (programs) — a source run reaching `w`
+> implies `execFunc 2 func … = some w`, with **no MIR-success hypothesis**.
+> Fragment is `IsStraight`/`StraightStmts 256`: single function, single
+> block, no calls, no control flow. Nothing is claimed about machine
+> failure: `MIR.evalUnOp`/`evalBinOp` are partial in exactly the way the HIR
+> oracle is (`evalUnop_glue`), so a mistyped `unop` stalls both sides — which
+> is why forward totality carries the source run as a hypothesis instead of
+> asserting unconditional machine totality (that statement is false; see
+> loop 143 in `docs/RESEARCH-LOOPS-103-132.md`).
+>
+> Remaining on this view: the metrics table below is still the loop-134
+> baseline and has not been re-measured.
 
 ---
 
