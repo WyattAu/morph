@@ -663,3 +663,57 @@ attempted). File-side only; terminal still presumed wedged.
 **Not done (gates, noted):** G-1/G-3/G-7 maintainer-only.
 **Blocked (infra):** build + commit for loops 134–138. No `sorry`/
 stubs; no new `.lean` files.
+
+## Loop 139 — `lower_correct` closed: the Era-2 Stage A expr bridge is proved
+
+**Request:** continue (all sprints, max rigor; gates noted not attempted).
+
+**Work — `Morph/HIRToMIRCorrect.lean` now ends in a proved
+`lower_correct` (zero `sorry`, zero warnings, `EXIT:0` from
+`lake env lean`).** Both halves of one `lowerExpr.mutual_induct`, 17
+arms:
+
+- Expr half: `lowerExpr ρ supply e = some (v, is, s') → IsStraight e →
+  FreshAbove ρ supply → RelEnv henv ρ fenv.env →
+  execInstrsFull fenv is = some fenv' → ∃ w fuel,
+  evalHIR fuel henv e = some (.lit w) ∧ fenv'.env v = some w ∧
+  fenv'.store = fenv.store`.
+- Block half is stated at `mapM` level
+  (`es.mapM (evalHIR fuel henv) = some (vs.map HIR.Expr.lit)` plus
+  `fenv'.env v = some (vs.getLastD .unit)`), converted back to
+  `.block` evaluation with `block_eval_of_mapM` +
+  `getLast_map_lit`; an empty block lowers to `(supply, [], supply)`
+  and is the `some .unit` base case.
+
+**New glue the proof needed (all in the same file):**
+- `RelEnv_exec` / `lower_preserv_regs` /
+  `lowerBlock_preserv_regs` — the env relation and any register
+  below a sub-expression's starting supply survive running its
+  emitted code (`execInstrsFull_preservLow` + `lower_isPure` +
+  `lower_defs_gt`). This is what lets `ihB` see `fenv1.env` and lets
+  the emitted `.binop` read `va` out of `fenv2`.
+- `IsStraight_*` projection lemmas (`_unop_sub`, `_binop_sub_l/_r`,
+  `_let_init/_body`, `_block_mem`) so arms never `cases` the
+  `IsStraight` proof — that eliminated locals (`u`, `s`, `vb`, `vb'`)
+  and broke the arms, whereas projections leave them intact.
+- Step lemmas `evalHIR_unop_step` / `_binop_step` / `_let_step`,
+  `evalInstrFull_unop_result` / `_binop_result`,
+  `execInstrsFull_singleton_elim`, `mapM_evalHIR_mono`,
+  `mapM_cons_eq`, `getLastD_cons_of_ne`; fuel stays existential and
+  is shared across subterms with `evalHIR_mono` (no length-based
+  bound — `.let` emits no instruction, so length is the wrong
+  metric).
+
+**Honest scope.** The bridge is one-directional (D-2/D-4) and
+conditioned on MIR success: it does *not* claim `execInstrsFull`
+succeeds whenever `evalHIR` does, and it does not claim the reverse
+implication (a MIR run that succeeds on ill-typed input has no
+guarantee). Statement/program half (`lowerStmts`, `lowerProgram`,
+`compile_correct`) remains the next sprint, as does wiring the module
+into the umbrella import if desired.
+
+**Not done (gates, noted):** G-1 (billing/CI), G-3 (audit), G-7
+(tag/announce) — maintainer/external only, not attempted. No new
+`.lean` files. Environment note: the machine was heavily
+oversubscribed (load 20–47 on 6 cores), so each `lean` invocation
+took 4–14 minutes instead of ~3.
