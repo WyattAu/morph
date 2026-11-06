@@ -823,3 +823,46 @@ replaced by an appeal to this lemma at each expression leaf, and its
 producing a value (with fuel exhausted the source stops early, so the
 environment relation has accumulated bindings the run never made — the MIR
 totality fact survives, the agreement fact does not).
+
+## Loop 142 — program-level environment agreement, and what `lowerStmts_total` really costs
+
+**Work.** `compile_correct_env` carries `lowerStmts_correct`'s last two
+components out to the program level: the final machine environment satisfies
+`RelEnv` against the source-interpreted environment, and the store is
+untouched — what a caller needs to keep executing after the call, not just to
+read the return value. Small: the statement theorem already had the facts; the
+program theorem just wasn't asking for them.
+
+**Finding — `lowerStmts_total` is not the mirror I assumed.** The plan written
+up under Loop 141 was "replace `lowerStmts_correct`'s MIR-success hypothesis
+with an appeal to `lower_total_lit` at each expression leaf". That does not
+work, and it is worth recording why so the next attempt doesn't repeat it.
+
+`lower_total` proves *MIR runs* from *HIR succeeds*: the emitted code's runtime
+success is a conclusion drawn from source-side evidence. At the statement layer
+that evidence is not available — `runHIRStmts` returns a flow and an
+environment whether or not the source evaluated, and when its fuel runs out
+mid-program the source has simply stopped, while the emitted code must still
+run (that is the point of the theorem). So MIR totality at the statement layer
+cannot be inherited from the expression-layer totality theorem; it needs its own
+expression-level theorem with no HIR hypothesis at all:
+
+  `lowerExpr_total : lowerExpr ρ supply e = some (v, is, s') → IsStraight e →
+     FreshAbove ρ supply → (every register named by ρ is bound in fenv) →
+     ∃ fenv', execInstrsFull fenv is = some fenv'`
+
+which is a second full 17-arm `lowerExpr.mutual_induct`, one where each
+instruction's success obligation is discharged syntactically — the register it
+reads is either written earlier in `is` or comes from `ρ` — rather than handed
+over by the source run. The statement-level theorem then mirrors
+`lowerStmts_correct` with `lower_total_lit` for value agreement and
+`lowerExpr_total` for totality, and its `RelEnv` conclusion stays conditioned
+on the run producing a value, for the fuel-exhaustion reason recorded under
+Loop 141.
+
+That is a session of its own; not started here rather than left half-proved.
+
+**Result.** `Morph/HIRToMIRCorrect.lean`, 2.7k lines, zero `sorry`, zero
+warnings, `lake env lean` exit 0. Under the load this machine was carrying
+(28 on 6 cores) a single elaboration of the file took ~9 minutes, which is the
+practical limit on how many proof-fix cycles fit in one sitting.

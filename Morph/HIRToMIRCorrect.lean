@@ -2133,6 +2133,43 @@ theorem compile_correct (prog : HIR.Program) (func : Func) (store : Store)
     exact hreg
   exact ⟨w, fuelH, henv', out, hrun2, hrun, hval, hreg⟩
 
+/-- `compile_correct` with the whole environment relation carried out: the
+final machine environment agrees with what the source-interpreted environment
+binds, not just on the result register, and the store is untouched. This is
+what a caller needs to keep going after the call rather than just to read the
+return value. -/
+theorem compile_correct_env (prog : HIR.Program) (func : Func) (store : Store)
+    (h : lowerProgram prog = some func) (hss : StraightStmts 256 prog.stmts)
+    (ρ' : List (HIR.Id × ValId)) (v : ValId) (is : List Instr) (s' : Nat)
+    (hs : lowerStmts [] 1 0 prog.stmts = some (ρ', v, is, s'))
+    (fenv'' : FullEnv)
+    (hexec : execInstrsFull ⟨Morph.MIR.Env.update (fun _ => none) 0 .unit, store⟩ is
+      = some fenv'') :
+    ∃ (w : Value) (fuelH : Nat) (henv' : HEnv) (out : HFlow),
+      execFunc 2 func ⟨fun _ => none, store⟩ = some w ∧
+      runHIRStmts fuelH [] prog.stmts (.value (.lit .unit)) = (out, henv') ∧
+      runValue? out = some (.lit w) ∧ fenv''.env v = some w ∧
+      RelEnv henv' ρ' fenv''.env ∧ fenv''.store = store := by
+  simp only [lowerProgram] at h
+  rw [hs] at h
+  simp only [] at h
+  have hfunc : func = ⟨"main", [], [⟨0, [.const 0 .unit] ++ is, .return_ v⟩], 0, .unitType⟩ :=
+    (Option.some.inj h).symm
+  have hlt : (0 : ValId) < 1 := Nat.zero_lt_one
+  obtain ⟨w, fuelH, henv', out, hrun, hval, hreg, hstore, hrel⟩ :=
+    lowerStmts_correct [] 1 0 prog.stmts ρ' v is s' hs hss (FreshAbove_nil 1) hlt
+      (.unit) [] ⟨Morph.MIR.Env.update (fun _ => none) 0 .unit, store⟩
+      (RelEnv_nil [] _) (prologue_env_zero store) fenv'' hexec
+  have hall : execInstrsFull ⟨fun _ => none, store⟩ ([.const 0 .unit] ++ is) = some fenv'' :=
+    execInstrsFull_prologue store is fenv'' hexec
+  have hrun2 : execFunc 2 func ⟨fun _ => none, store⟩ = some w := by
+    rw [hfunc]
+    rw [execFunc_single_block (fuel := 0) _ ⟨0, [.const 0 .unit] ++ is, .return_ v⟩ _ v
+      rfl rfl rfl]
+    rw [hall]
+    exact hreg
+  exact ⟨w, fuelH, henv', out, hrun2, hrun, hval, hreg, hrel, hstore⟩
+
 
 /-! ## Totality: the lowered code never stalls
 
