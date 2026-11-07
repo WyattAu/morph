@@ -3,6 +3,7 @@ members = [
     "compiler",
     "runtime",
     "cli",
+    "codegen",
 ]
 resolver = "2"
 

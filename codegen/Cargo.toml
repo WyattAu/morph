@@ -1,0 +1,17 @@
+[package]
+name = "morph-codegen"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Stage B Cranelift driver: reads the CLIF that `morph build` emits"
+
+[[bin]]
+name = "morph-clif"
+path = "src/main.rs"
+
+[dependencies]
+cranelift-codegen = "0.137.1"
+cranelift-module = "0.137.1"
+cranelift-native = "0.137.1"
+cranelift-object = "0.137.1"
+cranelift-reader = "0.137.1"

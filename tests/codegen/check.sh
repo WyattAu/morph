@@ -2,7 +2,7 @@
 #
 # Accept: `morph run` prints the manifest value, `morph build --codegen=cranelift`
 # exits 0, writes the artifact, and the artifact never returns the prologue's
-# register (loop 151: `%v0` is undefined in the text).
+# register (loop 151: `v0` is undefined in the text).
 #
 # Reject: `morph build` exits 1, prints exactly the recorded message, and writes
 # no artifact.
@@ -40,8 +40,8 @@ while IFS=$'\t' read -r file want; do
     fail "corpus/$file" "build exited 0 but wrote no artifact"
     continue
   fi
-  if grep -q 'return %v0' "$af"; then
-    fail "corpus/$file" "artifact returns %v0, which no instruction defines"
+  if grep -q 'return v0' "$af"; then
+    fail "corpus/$file" "artifact returns v0, which no instruction defines"
     continue
   fi
   echo "ok       corpus/$file: $want"

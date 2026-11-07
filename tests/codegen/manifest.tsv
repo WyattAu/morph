@@ -1,6 +1,6 @@
 # Stage B codegen corpus: programs the Cranelift subset accepts.
 # Columns: file<TAB>expected `morph run` output (the value a native run must match).
-# The artifact check is structural: exit 0, artifact written, no `return %v0`.
+# The artifact check is structural: exit 0, artifact written, no `return v0`.
 literal.hum	5
 mul_add.hum	7
 sub.hum	7

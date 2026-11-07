@@ -78,7 +78,7 @@ Returning register 0 is refused for the same reason seen from the other side: a
 program whose value is unit returns the prologue's own register, and since CLIF
 has no unit value that register is never defined in the text. B4's *model* can
 represent this — the trace starts at an environment where 0 already holds unit —
-but a function `-> i64` that reads an undefined `%v0` is not CLIF, so the printer
+but a function `-> i64` that reads an undefined `v0` is not CLIF, so the printer
 refuses it rather than write an artifact no reader can accept. This is the same
 shape as the encoder's other narrowing decisions: the model admits more than the
 text does, deliberately and visibly. -/

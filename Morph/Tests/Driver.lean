@@ -495,12 +495,12 @@ return names it. -/
 
 -- Golden: an in-subset program emits this artifact, exactly.
 example : buildClif "let y = 5; y" ==
-    .value "function %main() -> i64 {\nblock0:\n  %v1 = iconst.i64 5\n  return %v1\n}\n" := by
+    .value "function %main() -> i64 {\nblock0:\n  v1 = iconst.i64 5\n  return v1\n}\n" := by
   native_decide
 
 -- Golden: arithmetic encodes to one instruction per operator.
 example : buildClif "let x = 2; let y = 3; x * y + 1" ==
-    .value "function %main() -> i64 {\nblock0:\n  %v1 = iconst.i64 2\n  %v2 = iconst.i64 3\n  %v3 = imul %v1, %v2\n  %v4 = iconst.i64 1\n  %v5 = iadd %v3, %v4\n  return %v5\n}\n" := by
+    .value "function %main() -> i64 {\nblock0:\n  v1 = iconst.i64 2\n  v2 = iconst.i64 3\n  v3 = imul v1, v2\n  v4 = iconst.i64 1\n  v5 = iadd v3, v4\n  return v5\n}\n" := by
   native_decide
 
 -- Golden: `div` is outside the D-4 subset (loop 146: section 1.2's truncation
@@ -511,7 +511,7 @@ example : buildClif "let x = 7 / 2; x" ==
       "codegen: the CLIF subset cannot encode this program (boolean- or unit-valued programs, div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)" := by
   native_decide
 
--- Golden: a program whose value is unit is refused (loop 151). `return %v0`
+-- Golden: a program whose value is unit is refused (loop 151). `return v0`
 -- would name the prologue's register, which no instruction defines, so the text
 -- would not be CLIF. The model can express it; the printer does not pretend to.
 example : buildClif "let y = 5;" ==

@@ -1343,3 +1343,67 @@ Morph/Tests/Driver.lean` exit 0 (new boolean golden); `lake build morph` exit 0;
 **Note on the disk.** Free space came back to ~1.4 GB during this loop (it had
 been at 27 MB), which is why B7 becomes worth attempting next; the earlier
 corruption warning still stands.
+## Loop 153 — B7 and B8: the artifact compiles, links, and agrees natively
+
+**First: the printer was wrong, and nothing had checked it.** Pointing
+`cranelift-reader` at our own output:
+
+```
+$ morph-clif mul_add.clif
+morph-clif: CLIF reader rejected the artifact: 3: expected block header
+```
+
+The text printed `%v1 = iconst.i64 2`. CLIF spells SSA values `v1`; the `%` is
+the *function* name in a `function %main() -> i64 {` header. That is the
+wasm-text habit, and it survived B5 precisely because B5 proved the round trip
+at the *token* level and recorded the text layer as "not inverted, trusted
+reader". The trust was in the reader being the authority — but nobody had asked
+it. Two lessons worth more than the fix: "delegated to a trusted component" is not
+the same as "accepted by it", and the first honest test of a printer is to feed its
+output to the real parser. Fixed by dropping the `%` in `Instr.text` and
+`renderFunc`; the token-level proofs are untouched, because `Tok.reg` never had a
+`%`. A hand-written module confirmed the desired syntax first, so the fix was
+aimed at a known-good target.
+
+**B7, the driver.** New workspace member `codegen/` (package `morph-codegen`, bin
+`morph-clif`), pinning `cranelift-codegen`/`-reader`/`-object`/`-module`/`-native`
+at `0.137.1` — the newest *stable* line; `0.138.0-rc.1` is a prerelease and is
+not what a pinned, audited backend should be. It reads the artifact, requires
+exactly one function of type `() -> i64`, compiles it, emits an object, links it
+against an embedded two-line C runner and prints both paths.
+
+Two choices that matter for the trust story: the function's own name never
+reaches the object (the symbol comes from `declare_function("morph_main", …)`, so
+the artifact stays a plain CLIF module and no text rewriting precedes the
+reader); and the runner calls that symbol and prints the i64, so the program's
+value is observable without exit-code truncation.
+
+**B8, the differential.** `tests/codegen/native.sh` runs, for every accepted
+corpus program: `morph build` → `morph-clif` → run the native executable →
+compare stdout to the value `morph run` printed. That is the whole of Stage B's
+unguarded surface in one line: the Lean value is produced by the verified
+evaluator, the native value by Cranelift plus `cc`, and they must be equal.
+
+```
+ok       literal.hum: native 5 = lean 5
+ok       mul_add.hum: native 7 = lean 7
+...
+ok       large.hum: native 1000000000 = lean 1000000000
+ok       negative_chain.hum: native -86 = lean -86
+---
+9/9 programs agree natively
+```
+
+Nine of nine, including a negative value and one above 32 bits (a truncating
+backend would show up there). This is evidence, not proof: ADR-032 §3's trust
+boundary is unchanged, and the corpus is small and straight-line.
+
+**Result.** `cargo build` and `cargo clippy --all-targets` clean (one `unused_mut`
+fixed), `cargo fmt --check` clean, `tests/codegen/check.sh` 16/16,
+`tests/codegen/native.sh` 9/9, `lake build morph` exit 0.
+
+**Incidental.** The repo's untracked `.cargo/config.toml` sets
+`target-dir = ~/.cache/cargo-target`, which is why no `target/` appears in the
+tree and why the harness resolves the binary from `cargo metadata` rather than
+assuming `./target/debug`. Free space recovered to ~29 GB, so G-9 (disk) closed
+itself; G-1/G-3/G-7 remain skipped.

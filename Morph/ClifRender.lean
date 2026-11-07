@@ -29,19 +29,24 @@ artifact can be read against something stated rather than assumed.
 ```
 function %main() -> i64 {        -- one single-block function, one i64 result
 block0:                          -- the fragment has a single block, numbered 0
-  %v0 = iconst.i64 42            -- iconst, immediate in i64 range
-  %v1 = iadd %v0, %v0            -- iadd isub imul band bor ishl sshr
-  %v2 = icmp slt %v1, %v0        -- icmp with eq ne slt sle sgt sge
-  %v3 = bnot %v2                 -- bnot, one operand
-  return %v3                     -- returns one register
+  v0 = iconst.i64 42             -- iconst, immediate in i64 range
+  v1 = iadd v0, v0               -- iadd isub imul band bor ishl sshr
+  v2 = icmp slt v1, v0           -- icmp with eq ne slt sle sgt sge
+  v3 = bnot v2                   -- bnot, one operand
+  return v3                      -- returns one register
 }
 ```
 
-An instruction is `%dst = <op> <operands>`, registers are `%v<n>` with `<n>`
+An instruction is `v<dst> = <op> <operands>`, registers are bare `v<n>` with `<n>`
 decimal, and an immediate is an optional `-` followed by decimals. `icmp` carries
 its condition as an infix keyword. Nothing else is emitted, so anything else must
 be rejected by the reader; the token-level analogue of that rejection is the
 `none` case of `parseInstr`.
+
+The `%` is on the *function* name only: CLIF spells SSA values `v0`, and spells a
+function `%name` in a `function` header. Printing `%v0` (the wasm-text habit)
+makes the artifact unreadable by `cranelift-reader`, which reports it as a
+malformed block — found in loop 153 by pointing the reader at the output.
 
 The layout here matches the fragment, not CLIF at large: one block, straight-line
 instructions, one `return`. A `Func` with more blocks cannot be expressed, which
@@ -196,22 +201,22 @@ theorem parseFunc_toksFunc_append (f : Func) (t : Tok) :
 
 /-- Text of one instruction, in the grammar at the top of the file. -/
 def Instr.text : Instr → String
-  | .iconst d v => s!"  %v{d} = iconst.i64 {v}"
-  | .iadd d l r => s!"  %v{d} = iadd %v{l}, %v{r}"
-  | .isub d l r => s!"  %v{d} = isub %v{l}, %v{r}"
-  | .imul d l r => s!"  %v{d} = imul %v{l}, %v{r}"
-  | .icmp d c l r => s!"  %v{d} = icmp {c.text} %v{l}, %v{r}"
-  | .band d l r => s!"  %v{d} = band %v{l}, %v{r}"
-  | .bor d l r => s!"  %v{d} = bor %v{l}, %v{r}"
-  | .bnot d s => s!"  %v{d} = bnot %v{s}"
-  | .ishl d l r => s!"  %v{d} = ishl %v{l}, %v{r}"
-  | .sshr d l r => s!"  %v{d} = sshr %v{l}, %v{r}"
+  | .iconst d v => s!"  v{d} = iconst.i64 {v}"
+  | .iadd d l r => s!"  v{d} = iadd v{l}, v{r}"
+  | .isub d l r => s!"  v{d} = isub v{l}, v{r}"
+  | .imul d l r => s!"  v{d} = imul v{l}, v{r}"
+  | .icmp d c l r => s!"  v{d} = icmp {c.text} v{l}, v{r}"
+  | .band d l r => s!"  v{d} = band v{l}, v{r}"
+  | .bor d l r => s!"  v{d} = bor v{l}, v{r}"
+  | .bnot d s => s!"  v{d} = bnot v{s}"
+  | .ishl d l r => s!"  v{d} = ishl v{l}, v{r}"
+  | .sshr d l r => s!"  v{d} = sshr v{l}, v{r}"
 
 /-- The CLIF text for a function. Not proved to be its own inverse here: the
 reader of this text is `cranelift-reader`, a trusted component per ADR-032 §3. -/
 def renderFunc (f : Func) : String :=
   "function %main() -> i64 {\nblock0:\n" ++
     String.intercalate "\n" (f.instrs.map Instr.text) ++
-    "\n  return %v" ++ toString f.retSrc ++ "\n}\n"
+    "\n  return v" ++ toString f.retSrc ++ "\n}\n"
 
 end Morph.Clif

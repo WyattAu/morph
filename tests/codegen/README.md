@@ -7,8 +7,16 @@ today; nothing needs `cargo`.
 
 ```bash
 lake build morph                          # .lake/build/bin/morph
-tests/codegen/check.sh [morph_bin]
+cargo build -p morph-codegen              # morph-clif (target dir: `cargo metadata`)
+tests/codegen/check.sh [morph_bin]        # Lean side only, no cargo needed
+tests/codegen/native.sh                   # Lean -> native differential (needs cc)
 ```
+
+`native.sh` is the value differential: for each accepted program it runs
+`morph build`, then `morph-clif` on the artifact, then the linked executable, and
+compares its stdout to the recorded Lean value. Those two numbers coming from
+independent implementations is the entire evidence base for the trusted half of
+Stage B.
 
 ## What the harness checks
 
@@ -19,8 +27,8 @@ For every row of `manifest.tsv`:
    pipeline, so the recorded column *is* the expectation);
 2. `morph build --codegen=cranelift <file>` exits 0 and writes `<stem>.clif`
    next to the input;
-3. the artifact never contains `return %v0`. Register 0 is the unit prologue's
-   destination and is never defined in the text, so a return of `%v0` is not
+3. the artifact never contains `return v0`. Register 0 is the unit prologue's
+   destination and is never defined in the text, so a return of `v0` is not
    CLIF (loop 151).
 
 For every row of `rejects.tsv`, `morph build` exits 1, prints exactly the

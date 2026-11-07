@@ -284,8 +284,8 @@ verified marshalling.
 | B4 | `clif_simulate` + `clif_correct` (met, loop 148) | composes with `compile_total`; no failure-coincidence claim |
 | B5 | `renderClif`/`parseClif` + `render_parse_id` (met at token level, loop 149) | round-trip proved; grammar documented |
 | B6 | `morph build --codegen=cranelift` in `Main.lean` behind the flag (met, loop 150) | in-subset file → exit 0 + `.clif` artifact; out-of-subset → exit 1 with the D-4 message; both golden-tested |
-| B7 | Rust `codegen` driver: `cranelift-reader` → `cranelift-codegen` → object → link | builds and runs the B6 golden corpus |
-| B8 | differential bridge: native result vs `morph run` result over the corpus | corpus green; corpus contents listed in the packet |
+| B7 | Rust `codegen` driver: `cranelift-reader` → `cranelift-codegen` → object → link (met, loop 153) | builds and runs the B6 golden corpus |
+| B8 | differential bridge: native result vs `morph run` result over the corpus (met, loop 153) | 9/9 accepted programs agree; corpus listed in §7 |
 | B9 | audit-packet refresh: Cranelift version pinned, TCB section updated | packet names the new trusted components |
 
 **Status (loop 148):** B1 is `Morph/ClifTarget.lean`, B2/B3 are
@@ -340,7 +340,7 @@ destination: B4's trace starts at an environment where 0 already holds unit.
 
 **A defect found by writing the corpus, fixed (loop 151).** A program whose value
 is unit (`let y = 5;`, or the empty program) lowers to `return_ 0` — the
-prologue's own register — and the first emitter printed `return %v0`, naming a
+prologue's own register — and the first emitter printed `return v0`, naming a
 value no instruction defines. B4's *model* is fine with that (its trace starts at
 an environment where 0 already holds unit), but the text is not CLIF, and
 `cranelift-reader` would reject it. `emitBlock` now refuses `retSrc = 0`
@@ -351,7 +351,7 @@ the model, alongside the prologue and §3's reject list.
 **The corpus (loop 152)** is `tests/codegen/`: nine accepted programs with their
 measured `morph run` values and seven rejects, one per gate, each pinned to its
 exact stderr message. `tests/codegen/check.sh` runs them against the Lean binary
-alone — build exit code, artifact presence, absence of `return %v0`, and the
+alone — build exit code, artifact presence, absence of `return v0`, and the
 messages — so the fixtures are green before B7 consumes them. Building it found
 the second text-level defect: a boolean-valued program printed `return %v3` from
 an `icmp` in a function declared `-> i64`, which CLIF will not accept (no implicit
@@ -370,11 +370,26 @@ text to `clifArtifactPath path` (`main.hum` → `main.clif`, only the last path
 component's extension touched) and returns 0; every other outcome prints to
 stderr and returns 1, with no artifact left behind.
 
+**B7 and B8 (loop 153)** are `codegen/` (package `morph-codegen`, bin
+`morph-clif`, Cranelift pinned at the stable `0.137.1`) and
+`tests/codegen/native.sh`. The driver reads the artifact, compiles it, emits an
+object, links it against an embedded C runner calling `morph_main`, and the
+harness runs it: 9/9 accepted programs produce exactly the value `morph run`
+printed, including a negative value and one above 32 bits.
+
+The first thing pointing the reader at our own output did was reject it: the
+printer wrote `%v1` (wasm style) where CLIF wants `v1`, so the artifact was never
+readable. B5 proved the *token* round trip and delegated the text to
+`cranelift-reader` — but delegating to a trusted reader is not the same as having
+it accept the text, and nothing had asked. That is the sharpest lesson of the
+stage and it is recorded in the file and the loop log; the fix is one character
+class, and the token-level proofs never saw it.
+
 B1–B6 are pure Lean and are the Stage B exit. B5 is what makes B6's artifact
-meaningful, and B6 is where the proof stops being only a proof. B7–B8 are the
-unverified half and are gated as trusted code, with the differential corpus as
-their only evidence — which is what ADR-032 §3 already says, now with a work
-breakdown under it.
+meaningful, B6 is where the proof stops being only a proof, and B7–B8 are the
+unverified half, gated as trusted code with the differential corpus as their only
+evidence — which is what ADR-032 §3 already says, now with a work breakdown and a
+running harness under it.
 
 B1–B6 carry no `sorry` at any point; each lands green or not at all. This is the
 same discipline Stage A used, and it is why Stage A did not need a
