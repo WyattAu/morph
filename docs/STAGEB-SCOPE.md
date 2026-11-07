@@ -263,21 +263,25 @@ verified marshalling.
 | B1 | CLIF model + `wrap` lemmas + `runClif` | `lake env lean` clean, no `sorry`, `wrap_eq_self` proved |
 | B2 | `translate`/`emitClif` for the §3 IN set, rejects elsewhere | every §3 reject has a `none`/error case |
 | B3 | per-operator agreement lemmas | each IN operator has one, `rfl`-adjacent where possible |
-| B4 | `clif_simulate` + `clif_correct` | composes with `compile_total`; no failure-coincidence claim |
+| B4 | `clif_simulate` + `clif_correct` (met, loop 148) | composes with `compile_total`; no failure-coincidence claim |
 | B5 | `renderClif`/`parseClif` + `render_parse_id` | round-trip proved; grammar documented |
 | B6 | `morph build --codegen=cranelift` in `Main.lean` behind the flag | in-subset file → exit 0 + `.clif` artifact; out-of-subset → exit 1 with the D-4 message; both golden-tested |
 | B7 | Rust `codegen` driver: `cranelift-reader` → `cranelift-codegen` → object → link | builds and runs the B6 golden corpus |
 | B8 | differential bridge: native result vs `morph run` result over the corpus | corpus green; corpus contents listed in the packet |
 | B9 | audit-packet refresh: Cranelift version pinned, TCB section updated | packet names the new trusted components |
 
-**Status (loop 147):** B1 is `Morph/ClifTarget.lean`, B2/B3 are
-`Morph/ClifLower.lean`, all green with no `sorry` and no warnings. B4 is
-**partial**: `Morph/ClifSimulate.lean` has the typed-trace `Step` relation,
-`step_simulate`/`step_evalInstr` (both directions of one step) and
-`run_simulate` (the fold), but not yet the `Trace`→`evalInstrFull` bridge that
-composes with `compile_total`, nor the `blockEncode` inversion to `Clif.run`.
-The range hypothesis is a *premise* of B4, carried by `Step`: nothing yet proves
-that a source program stays in range.
+**Status (loop 148):** B1 is `Morph/ClifTarget.lean`, B2/B3 are
+`Morph/ClifLower.lean`, B4 is `Morph/ClifSimulate.lean` +
+`Morph/ClifCorrect.lean`; all green with no `sorry` and no warnings. B4 is
+**met**: `clif_correct` turns an encoded block plus a `Trace` into a statement
+about `Clif.run`, and `clif_correct_program` composes it with `compile_total`
+into one conjunction over the same HIR value — `execFunc 2 (lowerProgram prog) =
+some (.int n) ∧ Clif.run cf = some (.int n)`. Two caveats are recorded in the
+files rather than hidden: the range/typing hypothesis is a *premise* of B4,
+carried by `Step` (nothing proves that a source program stays in range), and
+`lowerProgram`'s `.const 0 .unit` prologue is *dropped* from the emitted
+function, with `Trace` starting at `update (fun _ => none) 0 .unit` and
+transported to the empty register file by `AgreesOnValues`.
 Two model details settled while doing B3 and worth recording: `bnot` is the i64
 complement (`-a - 1`) and therefore pairs with `.notb`, not with `.not`, which
 is boolean negation; `sshr` computes `Int.shiftRight`, the oracle's own

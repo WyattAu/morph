@@ -1090,3 +1090,58 @@ inside it, which is why the `.notb` case failed while every binop case passed.
 to preserve the store, then the block and `execFunc` wrapper), which is what
 composes with `compile_total`; and the `blockEncode` inversion that turns
 `run_simulate` into a statement about `Clif.run`.
+## Loop 148 — Stage B item B4 closed: store bridge and program composition
+
+**Work.** Two additions, both pure Lean.
+
+1. *The store bridge* (`Morph/ClifSimulate.lean`). The fragment's instructions are
+   pure — no `load`/`store`, no `alloc`, no `call` — so they act on the register
+   file and leave `store` alone. `step_execInstrFull` states that: one `Step`
+   implies the corresponding `MIR.evalInstrFull` transition, *pairing the same
+   store on both sides*, and `trace_execInstrsFull` folds it over `Trace` to
+   `MIR.execInstrsFull`. This is what a `Trace` has to say before
+   `execInstrsFull_prologue` can be applied, and it is the last gap between the
+   CLIF model and the statement layer of `compile_total`.
+
+2. *The prologue transport.* `lowerProgram` prefixes the body with
+   `.const 0 .unit`; CLIF has no unit value, so the encoder emits the body after
+   the prologue and `Trace` starts at `update (fun _ => none) 0 .unit` while
+   `Clif.run` starts at `fun _ => none`. `trace_transport` bridges them through
+   `AgreesOnValues`, which is preserved by identical updates and holds for the
+   prologue because `.unit` is a value no `Step` ever reads. The prologue is
+   *dropped* from the emitted function, not mistranslated, and the note is in the
+   file's header rather than only here.
+
+`clif_correct` (block level) then composes these: encoder inversion
+(`blockEncode_return`) → transport → `run_simulate` → `Clif.run`. And
+`Morph/ClifCorrect.lean` states the program level as a **conjunction**:
+`execFunc 2 (lowerProgram prog) = some (.int n) ∧ Clif.run cf = some (.int n)`,
+with the MIR conjunct discharged by `compile_total` and the CLIF conjunct by
+`clif_correct`, over the same `n` from the same HIR run. Neither conclusion is
+compared to the other directly, so one side cannot hide a bug in the other, and
+no failure-coincidence claim is made in either direction.
+
+**What remains a premise.** `Trace` still carries the fragment's typing
+certificate — integer operands, in-range results, shift amounts in `[0,64)`.
+Nothing here proves that a given program satisfies it; that is the fragment's
+obligation and is stated as such in the file header. So B4 says: *if* the body
+stays inside the fragment and the encoder accepts it, the CLIF model returns what
+the MIR returns. It does not say every lowering lands in the fragment.
+
+**Tactic notes worth keeping.**
+- `cases h : instrEncodes instrs` **generalizes the goal**, replacing
+  `instrEncodes instrs` by the constructor term; a branch must therefore close the
+  *generalized* goal (`exact ⟨rfl, rfl⟩`, not `⟨hc, rfl⟩`). `rw [← h1, ← h2]`
+  then `exact ⟨rfl, rfl⟩` is the form that works.
+- `simp only` matches syntactically: it will not whnf `Option.map f (some cs)` to
+  `some (f cs)`, so expose the redex first (`Option.some.inj` on the equation,
+  typed by ascription). `change` on an untyped `{…}` literal fails with
+  "expected type is not known"; `change … (Func.mk cs ret) …` does not.
+- A structure literal's projections do not reduce where a constructor
+  application's do; destruct the structure (`cases cf with | mk is rc`) instead of
+  projecting from a literal.
+
+**Result.** `lake env lean Morph/ClifSimulate.lean` exit 0, no warnings, no
+`sorry`; `lake build Morph.ClifCorrect` exit 0 (339 s). B4 is met at the body
+level and at the program level. The prologue gap is documented rather than
+papered over; `Trace`-coverage is B8's job, not B4's.
