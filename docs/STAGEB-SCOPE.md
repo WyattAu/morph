@@ -283,7 +283,7 @@ verified marshalling.
 | B3 | per-operator agreement lemmas | each IN operator has one, `rfl`-adjacent where possible |
 | B4 | `clif_simulate` + `clif_correct` (met, loop 148) | composes with `compile_total`; no failure-coincidence claim |
 | B5 | `renderClif`/`parseClif` + `render_parse_id` (met at token level, loop 149) | round-trip proved; grammar documented |
-| B6 | `morph build --codegen=cranelift` in `Main.lean` behind the flag | in-subset file → exit 0 + `.clif` artifact; out-of-subset → exit 1 with the D-4 message; both golden-tested |
+| B6 | `morph build --codegen=cranelift` in `Main.lean` behind the flag (met, loop 150) | in-subset file → exit 0 + `.clif` artifact; out-of-subset → exit 1 with the D-4 message; both golden-tested |
 | B7 | Rust `codegen` driver: `cranelift-reader` → `cranelift-codegen` → object → link | builds and runs the B6 golden corpus |
 | B8 | differential bridge: native result vs `morph run` result over the corpus | corpus green; corpus contents listed in the packet |
 | B9 | audit-packet refresh: Cranelift version pinned, TCB section updated | packet names the new trusted components |
@@ -327,12 +327,34 @@ rather than an assumption. If a later stage wants the byte-level round trip for
 its own sake, the missing piece is a tokenizer, and it would be new untrusted
 surface rather than new assurance about the compiler.
 
-B1–B5 are pure Lean and are the Stage B exit. B5 is Lean too and is what makes
-B6's artifact meaningful. B6–B8 are the unverified half and are gated as
-trusted code, with the differential corpus as their only evidence — which is
-what ADR-032 §3 already says, now with a work breakdown under it.
+**B6 (loop 150)** is `Morph/ClifEmit.lean` plus a `buildClif` in
+`Morph/Driver.lean` and one arm in `Main.lean`. The interesting decision is the
+one about the prologue: `lowerProgram` always emits `.const 0 .unit` first so
+that register 0 holds unit, and CLIF has no unit value. Rather than invent an
+encoding for it, `emitBlock` *requires* that instruction and drops it, so the
+artifact is `blockEncode` of the body alone — `emitBlock_prologue` and
+`emitClif_lowered` are `rfl`, i.e. the emitter is definitionally the verified
+encoder on the shape `lowerProgram` produces, with no prologue instruction in
+the text. Dropping it is sound because register 0 is that instruction's own
+destination: B4's trace starts at an environment where 0 already holds unit.
 
-B1–B5 carry no `sorry` at any point; each lands green or not at all. This is the
+Three rejections are distinct, because they mean different things to a user:
+outside the HIR fragment (stage A's gate), outside the stage-B MIR fragment
+(`lowerProgram` returned `none`), and inside MIR but unencodable (`blockEncode`
+returned `none` — exactly §3's reject list). Each has a golden test, and so does
+the accept path, byte for byte, in `Morph/Tests/Driver.lean`. What the tests pin
+is the `Outcome`, which is also the exit code: `Main.lean` writes the `.value`
+text to `clifArtifactPath path` (`main.hum` → `main.clif`, only the last path
+component's extension touched) and returns 0; every other outcome prints to
+stderr and returns 1, with no artifact left behind.
+
+B1–B6 are pure Lean and are the Stage B exit. B5 is what makes B6's artifact
+meaningful, and B6 is where the proof stops being only a proof. B7–B8 are the
+unverified half and are gated as trusted code, with the differential corpus as
+their only evidence — which is what ADR-032 §3 already says, now with a work
+breakdown under it.
+
+B1–B6 carry no `sorry` at any point; each lands green or not at all. This is the
 same discipline Stage A used, and it is why Stage A did not need a
 "sorry-temporarily" exception.
 

@@ -301,6 +301,7 @@ example : usage =
     "  check <expr>  print the inferred type or the type error\n" ++
     "  run <file>    run the statement program in a file\n" ++
     "  run --hir <file>  run the file through the HIR lowering\n" ++
+    "  build --codegen=cranelift <file>  emit a CLIF artifact for the file\n" ++
     "  fmt <file>    format the statement program in a file\n" ++
     "  doc <file>    render the file's /// docs as Markdown\n" ++
     "  version       print the Morph version\n" := by
@@ -482,5 +483,56 @@ example : isTypeError (checkSource "1 + true") = true := by
 
 example : isValue (checkSource "let x = 5 in x + 1") = true := by
   native_decide
+
+/-! ## `build --codegen=cranelift` goldens (stage B / item B6)
+
+`buildClif` is the pipeline the CLI command runs; `Main.lean` writes the
+`.value` text next to the input and exits 0, and prints any other outcome to
+stderr and exits 1. So pinning the `Outcome` pins both the artifact text and the
+exit code. The artifact below is the whole stage-B story in four lines: the unit
+prologue is gone (it cannot be encoded), register 1 holds the literal, and the
+return names it. -/
+
+-- Golden: an in-subset program emits this artifact, exactly.
+example : buildClif "let y = 5; y" ==
+    .value "function %main() -> i64 {\nblock0:\n  %v1 = iconst.i64 5\n  return %v1\n}\n" := by
+  native_decide
+
+-- Golden: arithmetic encodes to one instruction per operator.
+example : buildClif "let x = 2; let y = 3; x * y + 1" ==
+    .value "function %main() -> i64 {\nblock0:\n  %v1 = iconst.i64 2\n  %v2 = iconst.i64 3\n  %v3 = imul %v1, %v2\n  %v4 = iconst.i64 1\n  %v5 = iadd %v3, %v4\n  return %v5\n}\n" := by
+  native_decide
+
+-- Golden: `div` is outside the D-4 subset (loop 146: section 1.2's truncation
+-- and trap semantics have no agreement lemma yet), so it is rejected, not
+-- mistranslated.
+example : buildClif "let x = 7 / 2; x" ==
+    .unsupported
+      "codegen: the CLIF subset cannot encode this program (div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)" := by
+  native_decide
+
+-- Golden: a program outside the HIR fragment is rejected before MIR.
+example : buildClif "let y = 5; match none { case none => { y = 1; } }" ==
+    .unsupported
+      "codegen: program leaves the HIR fragment (stage B compiles first-order let/assign/return programs only)" := by
+  native_decide
+
+-- Golden: codegen fails exactly like `run` on unparseable input.
+example : buildClif "1 +" == .parseFailed "line 1, col 1: failed to parse" := by
+  native_decide
+
+/-! ### The artifact path
+
+The extension is replaced, not appended, so `morph build` on `main.hum` leaves a
+`main.clif` and the input's dots survive (`Compiler.v2.hum` → `Compiler.v2.clif`). -/
+
+example : clifArtifactPath "main.hum" = "main.clif" := by native_decide
+
+example : clifArtifactPath "src/Main.hum" = "src/Main.clif" := by native_decide
+
+example : clifArtifactPath "src/Compiler.v2.hum" = "src/Compiler.v2.clif" := by
+  native_decide
+
+example : clifArtifactPath "Makefile" = "Makefile.clif" := by native_decide
 
 end Morph.Tests.Driver

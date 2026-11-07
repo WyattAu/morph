@@ -1179,3 +1179,67 @@ iota reduction.
 
 **Gate note.** G-1 (billing/CI) and G-3 (external audit) remain skipped as
 instructed; B6–B8 carry the differential corpus that G-3 would otherwise want.
+## Loop 150 — Stage B item B6: `morph build --codegen=cranelift`
+
+**Work.** `Morph/ClifEmit.lean` (emitter + characterizations), `buildClif` and
+`clifArtifactPath` in `Morph/Driver.lean`, one arm in `Main.lean`, goldens in
+`Morph/Tests/Driver.lean`.
+
+The pipeline is `parseProgram → toHIRProgram → lowerProgram → emitClif`, i.e.
+B4's proved path with the simulator replaced by the encoder. What the CLI writes
+is `renderFunc` of `blockEncode` of the block, and what it rejects is what
+`blockEncode` rejects — the D-4 subset, not an approximation of it.
+
+**The prologue decision.** `lowerProgram` always emits `.const 0 .unit` first,
+and CLIF has no unit value. `emitBlock` requires that instruction and drops it,
+and the characterization is `rfl` on exactly that shape:
+
+- `emitBlock_prologue : emitBlock ⟨id, .const 0 .unit :: body, .return_ src⟩ = blockEncode ⟨id, body, .return_ src⟩`
+- `emitClif_lowered : emitClif ⟨"main", [], [⟨0, .const 0 .unit :: body, .return_ v⟩], 0, .unitType⟩ = (blockEncode …).map renderFunc`
+
+So the emitter is definitionally the encoder on real input; there is no third
+path through the code that the proofs do not see. Dropping register 0 is sound
+because it is that instruction's own destination (B4 starts the trace with 0 ↦
+unit). A *converse* lemma ("any `some` comes from such a block") was attempted
+and dropped: it needs a 15-way case split on `Value` to prove
+`b.instrs = .const 0 .unit :: body`, and its only use is on `lowerProgram`
+output, where `emitBlock_prologue` already gives the conclusion directly. Two
+`rfl` lemmas that state the fact on the reachable shape beat one induction that
+nobody calls.
+
+**Three rejections, three messages.** Outside HIR (`toHIRProgram = none`),
+outside the MIR fragment (`lowerProgram = none`), and inside MIR but
+unencodable (`blockEncode = none`). Collapsing them would have been less code
+and less information: the third is the one a user can act on by rewriting an
+operator, the first two are "not stage B yet".
+
+**Verified end-to-end, not only in Lean.** `lake build morph`, then the real
+binary:
+
+- `let y = 5; y` → exit 0, `main.clif` = `function %main() -> i64 { block0: %v1 =
+  iconst.i64 5; return %v1 }` (prologue absent, as designed);
+- `let x = 2; let y = 3; x * y + 1` → five instructions, `imul` then `iadd`;
+- `let x = 7 / 2; x` → exit 1, D-4 message, **no artifact written**;
+- `let y = 5; match none { … }` → exit 1, HIR-fragment message;
+- `1 +` → exit 1, the parser's own message.
+
+The goldens in `Morph/Tests/Driver.lean` pin the `Outcome` (hence the text, the
+stream and the exit code) with `native_decide`, including `clifArtifactPath`
+(`main.hum` → `main.clif`, `Compiler.v2.hum` → `Compiler.v2.clif`, `Makefile` →
+`Makefile.clif`).
+
+**Parser note, stated with its uncertainty.** A parse error surfaced at a
+*comment* line, which in Lean means the term above it was unterminated rather
+than the comment being bad. Collapsing the multi-line `++` inside `.value (…)`
+to a single string made the file elaborate, so that string is now one line; but a
+minimal reproduction of both suspicion candidates — the multi-line `++` and the
+comment's `§`/apostrophe — parses cleanly on its own, so the *cause* was not
+isolated and this note records the fix, not a diagnosis. The general lesson holds
+regardless: when the reported position is not code, suspect the term above it.
+
+**Result.** `lake env lean Morph/ClifEmit.lean` exit 0; `lake env lean
+Morph/Tests/Driver.lean` exit 0; `lake build morph` exit 0.
+
+**Gate note.** G-1/G-3/G-7 remain skipped. B7 (the Rust driver behind
+`cranelift-reader`) is what turns this text into an object file; it consumes the
+artifact, so the emitter's shape is its input contract.

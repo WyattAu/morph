@@ -9,6 +9,7 @@ import Morph.Frontend.HIRLower
 import Morph.Frontend.HIRInterp
 import Morph.Frontend.DocComment
 import Morph.TypeChecker
+import Morph.ClifEmit
 import Morph.Specs.MorphLanguage.Spec
 
 /-!
@@ -141,6 +142,7 @@ def usage : String :=
   "  check <expr>  print the inferred type or the type error\n" ++
   "  run <file>    run the statement program in a file\n" ++
   "  run --hir <file>  run the file through the HIR lowering\n" ++
+  "  build --codegen=cranelift <file>  emit a CLIF artifact for the file\n" ++
   "  fmt <file>    format the statement program in a file\n" ++
   "  doc <file>    render the file's /// docs as Markdown\n" ++
   "  version       print the Morph version\n"
@@ -159,6 +161,52 @@ processing — it never fails, even on unparseable files. -/
 def docSource (src : String) : Outcome :=
   .value (Morph.Frontend.DocComment.renderMarkdown
     (Morph.Frontend.DocComment.extract src))
+
+/-- **The codegen pipeline** (stage B, item B6): source text in, CLIF text out.
+
+Parse, lower to the HIR fragment, lower to a single-block MIR function, encode
+the block, render. It is `run --hir`'s front end with `Morph.Codegen.emitClif`
+in place of the interpreter, so totality is inherited from the same components:
+every stage returns an `Option`/`Outcome`, and nothing here can diverge.
+
+The three rejections are distinct on purpose — they mean different things to a
+user, and each is golden-tested:
+
+- outside the HIR fragment (closures, stores, control flow beyond the
+  straight-line fragment): stage A's gate;
+- outside the stage-B MIR fragment: `lowerProgram` returned `none`;
+- inside MIR but not encodable: `blockEncode` returned `none`, which is exactly
+  the D-4 subset's reject list (`docs/STAGEB-SCOPE.md` §3). -/
+def buildClif (src : String) : Outcome :=
+  match Morph.Frontend.parseProgram src with
+  | .error errs => .parseFailed (renderErrors errs)
+  | .ok prog =>
+      match Morph.Frontend.HIRLower.toHIRProgram prog with
+      | none => .unsupported
+          "codegen: program leaves the HIR fragment (stage B compiles first-order let/assign/return programs only)"
+      | some hprog =>
+          match Morph.HIRToMIR.lowerProgram hprog with
+          | none => .unsupported
+              "codegen: program is outside the stage-B MIR fragment (straight-line statements only; see docs/STAGEB-SCOPE.md §3)"
+          | some func =>
+              match Morph.Codegen.emitClif func with
+              | some text => .value text
+              | none => .unsupported
+                  "codegen: the CLIF subset cannot encode this program (div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)"
+
+/-- Where `build` writes its artifact: the input's extension replaced by `clif`
+(`main.hum` → `main.clif`), or `.clif` appended when the name has no extension.
+Only the last path component is consulted, so dots in directory names survive. -/
+def clifArtifactPath (path : String) : String :=
+  match (path.splitOn "/").reverse with
+  | [] => path ++ ".clif"
+  | base :: dirs =>
+      let stem :=
+        match base.splitOn "." with
+        | [] => base
+        | [_] => base
+        | segs => String.intercalate "." segs.dropLast
+      String.intercalate "/" (dirs.reverse ++ [stem ++ ".clif"])
 
 /-- The text the CLI prints for an outcome (the exit code is `Main.lean`'s
 decision: values exit 0, everything else exits 1). -/
