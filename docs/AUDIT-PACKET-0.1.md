@@ -93,9 +93,16 @@ lake build Morph Morph.Tests  # 0 warnings, 0 errors (454 jobs)
 lake build morph              # the CLI
 unset TMPDIR; python3 -m pytest -q            # 836 passed
 python3 scripts/spec_tools/cli/main.py lint spec  # 0 errors, 105 warnings (baseline; 19 waived)
-bash scripts/cross-ref-validate.sh               # 1700 pass / 0 fail
-bash scripts/regression-snapshot.sh              # metrics + no-regression verdict
+bash scripts/cross-ref-validate.sh               # 1700 pass / 0 failbash scripts/regression-snapshot.sh             # metrics + no-regression verdict
+cargo build -p morph-codegen                  # morph-clif (stage B item B7)
+tests/codegen/check.sh                       # 16/16: corpus accept/reject, Lean only
+tests/codegen/native.sh                      # 9/9: Lean value vs native value
 ```
+
+The Stage B section (§6) is newer than the §2 metric counts: those were re-verified
+at loop 125 and do not include the `Clif*` modules (loops 144–153). Re-running
+`scripts/regression-snapshot.sh` refreshes them; no claim in §6 depends on the
+counts.
 
 Note (G-8): run pytest with a clean `TMPDIR` — `TMPDIR=$PWD/.tmp`
 breaks one waiver test (harness artifact, not a product defect).
@@ -105,7 +112,50 @@ Entry points for reviewers: `Main.lean` (CLI) → `Morph/Driver.lean`
 `Morph/Frontend/HIRLower.lean`, `Morph/Frontend/HIRInterp.lean`;
 golden error coverage in `Morph/Tests/Driver.lean`, `Morph/Tests/Typing.lean`.
 
-## 6. Era-2 scope for auditors to react to
+## 6. Era-2 Stage B: what the Cranelift path claims (added loop 153)
+
+The freeze on Era-2 implementation was lifted by maintainer directive
+(`docs/ERA2-UNFREEZE.md`, loop 133), and Stage B is the first thing that landed
+under it. Scope, subset and reject list: `docs/STAGEB-SCOPE.md`.
+
+**Proved (B1–B6, pure Lean, 0 `sorry`).**
+
+- The CLIF model (`Morph/ClifTarget.lean`) covers exactly the ten instructions
+the encoder emits, each with an agreement lemma against the MIR oracle
+(`Morph/ClifLower.lean`, B3), and the simulation is stated as a *trace*
+(`Morph/ClifSimulate.lean`, B4): a typed step certificate in, `Clif.run` on the
+same values out, transported to `execFunc` via `AgreesOnValues`.
+- `clif_correct_program` (`Morph/ClifCorrect.lean`) composes that with
+`compile_total` into one conjunction over the same HIR value. It is a
+conjunction on purpose: no claim is made that a MIR failure implies a CLIF
+failure (the `ERA2-UNFREEZE` safeguard).
+- The printer/parser (`Morph/ClifRender.lean`, B5) round-trips at the *token*
+level (`parseFunc_toksFunc`, `parseFunc_toksFunc_append`). The text layer is
+delegated to `cranelift-reader`.
+- The emitter (`Morph/ClifEmit.lean`, B6) is `rfl`-equal to `blockEncode` on the
+shape `lowerProgram` produces, minus the unit prologue (CLIF has no unit value).
+
+**Evidence only (B7–B8).** `codegen/` (bin `morph-clif`, package
+`morph-codegen`) pins `cranelift-codegen` / `-reader` / `-object` / `-module` /
+`-native` at **0.137.1** (newest stable line; `0.138.0-rc.1` is a prerelease and
+was not taken). It reads the artifact, compiles it, emits an object, links
+against a two-line C runner calling `morph_main`, and `tests/codegen/native.sh`
+compares each native program's stdout against the value `morph run` printed:
+**9/9 agree**, including a negative value and one above 32 bits.
+
+New trusted components: `cranelift-reader`, `cranelift-codegen`,
+`cranelift-object`, `cranelift-module`, `cranelift-native`, the system `cc`, and
+the embedded C runner (`codegen/src/main.rs`).
+
+**Precedent worth an auditor's attention.** The printer originally wrote `%v1`
+where CLIF spells `v1`, so no artifact was readable; B5's proofs covered the
+token stream and had delegated the text to the reader without ever asking it.
+Both defects of this stage (that spelling, and a unit-valued program printing an
+undefined `v0`) were found by *running the pipeline*, not by proofs, and both are
+now pinned by goldens or corpus rows. Mappings that say "delegated to a trusted
+component" should be read as "unchecked by us", not "accepted by it".
+
+## 7. Era-2 scope for auditors to react to
 
 - `docs/ERA2-BACKEND-SCOPE.md` (post-audit Stages A–D, open audit
   questions) + `docs/STAGEA-PREP-125.md` (Year-1 design-only positions:
@@ -113,7 +163,7 @@ golden error coverage in `Morph/Tests/Driver.lean`, `Morph/Tests/Typing.lean`.
   small-step gap). No Era-2 implementation lands until the audit
   publishes (Year-1 freeze).
 
-## 7. Hard gate
+## 8. Hard gate
 
 **Sending review invitations is the hard gate for this sprint and is NOT
 done here.** The packet above is the prep; invites (recipients, access,
