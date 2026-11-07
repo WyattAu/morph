@@ -264,7 +264,7 @@ verified marshalling.
 | B2 | `translate`/`emitClif` for the §3 IN set, rejects elsewhere | every §3 reject has a `none`/error case |
 | B3 | per-operator agreement lemmas | each IN operator has one, `rfl`-adjacent where possible |
 | B4 | `clif_simulate` + `clif_correct` (met, loop 148) | composes with `compile_total`; no failure-coincidence claim |
-| B5 | `renderClif`/`parseClif` + `render_parse_id` | round-trip proved; grammar documented |
+| B5 | `renderClif`/`parseClif` + `render_parse_id` (met at token level, loop 149) | round-trip proved; grammar documented |
 | B6 | `morph build --codegen=cranelift` in `Main.lean` behind the flag | in-subset file → exit 0 + `.clif` artifact; out-of-subset → exit 1 with the D-4 message; both golden-tested |
 | B7 | Rust `codegen` driver: `cranelift-reader` → `cranelift-codegen` → object → link | builds and runs the B6 golden corpus |
 | B8 | differential bridge: native result vs `morph run` result over the corpus | corpus green; corpus contents listed in the packet |
@@ -290,7 +290,26 @@ primitive, so the shift agreement is definitional. `.shl` spells its power as
 are not interchangeable under `rfl` in every position, and a syntactic match is
 cheaper than a bridge lemma.
 
-B1–B4 are pure Lean and are the Stage B exit. B5 is Lean too and is what makes
+**B5 (loop 149)** is `Morph/ClifRender.lean`. The round trip is proved at the
+*token* level — `parseFunc_toksFunc : parseFunc (toksFunc f) = some f`, with the
+stream framed by a `function` marker, an instruction count, and the returned
+register — and `parseFunc_toksFunc_append` closes the other direction: nothing
+may follow the return, so the printer's image is exactly the parser's domain.
+The token units are self-delimiting (each carries its payload and its name fixes
+its arity), which is why the parser is total, structural in its fuel, and
+invertible without backtracking; the grammar is written out at the top of the
+file.
+
+The *text* half is deliberately not a round trip. `renderFunc` emits the CLIF
+the artifact ships, and its reader is `cranelift-reader`, already trusted per
+ADR-032 §3; a Lean re-implementation of the CLIF lexer would put more code in
+the TCB, not less. What is proved is that the units we emit are the units we
+mean, and the grammar is stated so the text can be read against a specification
+rather than an assumption. If a later stage wants the byte-level round trip for
+its own sake, the missing piece is a tokenizer, and it would be new untrusted
+surface rather than new assurance about the compiler.
+
+B1–B5 are pure Lean and are the Stage B exit. B5 is Lean too and is what makes
 B6's artifact meaningful. B6–B8 are the unverified half and are gated as
 trusted code, with the differential corpus as their only evidence — which is
 what ADR-032 §3 already says, now with a work breakdown under it.

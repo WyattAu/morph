@@ -1145,3 +1145,37 @@ the MIR returns. It does not say every lowering lands in the fragment.
 `sorry`; `lake build Morph.ClifCorrect` exit 0 (339 s). B4 is met at the body
 level and at the program level. The prologue gap is documented rather than
 papered over; `Trace`-coverage is B8's job, not B4's.
+## Loop 149 — Stage B item B5: the printed form and its token stream
+
+**Work.** `Morph/ClifRender.lean`. `toksInstr`/`toksFunc` print a `Func` as a
+`List Tok` of self-delimiting units; `parseInstr`/`parseInstrs`/`parseFunc` read it
+back. Proved:
+
+- `parseInstr_toksInstr` — one instruction, with the tail carried through.
+- `parseInstrs_toksInstrs` — the body, with `is.length` as the exact fuel.
+- `parseFunc_toksFunc` — **B5's round trip**: `parseFunc (toksFunc f) = some f`.
+- `parseFunc_toksFunc_append` — nothing may follow the return, so the printer's
+  image is not merely accepted but accepted at exactly its own length.
+
+**Why tokens and not bytes.** The units carry their payloads and each name fixes
+its arity, so the parser needs no backtracking and no separators; that is what
+makes totality and invertibility provable rather than merely true. The text
+layer (`renderFunc`) is emitted for `cranelift-reader`, which ADR-032 §3 already
+counts as trusted. Proving `parse (render f) = f` would mean writing a CLIF lexer
+in Lean — new TCB for no new assurance about the compiler, since the reader of
+the artifact is the Rust one either way. The grammar is written out at the top of
+the file so the text is read against a specification; the round trip is stated
+where it means something, which is the token stream.
+
+**Tactic notes.** `::` binds tighter than `++`, so `a :: b ++ c` parses as
+`(a :: b) ++ c`: an append written at the end of a printed stream lands *outside*
+the cons, and a `show` in the "obvious" shape silently states a different goal
+(and then `rw` cannot find its pattern). Write the tail in parentheses. A `match` on `some x` whose pattern needs a three-element list does
+not reduce while an `++ [t]` is still in the scrutinee; `rfl` proves the list
+identity (`[a, b] ++ [t] = [a, b, t]` holds definitionally) and one `rw` gets the
+iota reduction.
+
+**Result.** `lake build Morph.ClifRender` exit 0, no warnings, no `sorry`.
+
+**Gate note.** G-1 (billing/CI) and G-3 (external audit) remain skipped as
+instructed; B6–B8 carry the differential corpus that G-3 would otherwise want.
