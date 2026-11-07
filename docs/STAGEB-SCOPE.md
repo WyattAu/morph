@@ -270,8 +270,14 @@ verified marshalling.
 | B8 | differential bridge: native result vs `morph run` result over the corpus | corpus green; corpus contents listed in the packet |
 | B9 | audit-packet refresh: Cranelift version pinned, TCB section updated | packet names the new trusted components |
 
-**Status (loop 146):** B1 is `Morph/ClifTarget.lean`, B2/B3 are
-`Morph/ClifLower.lean`; all three are green with no `sorry` and no warnings.
+**Status (loop 147):** B1 is `Morph/ClifTarget.lean`, B2/B3 are
+`Morph/ClifLower.lean`, all green with no `sorry` and no warnings. B4 is
+**partial**: `Morph/ClifSimulate.lean` has the typed-trace `Step` relation,
+`step_simulate`/`step_evalInstr` (both directions of one step) and
+`run_simulate` (the fold), but not yet the `Trace`→`evalInstrFull` bridge that
+composes with `compile_total`, nor the `blockEncode` inversion to `Clif.run`.
+The range hypothesis is a *premise* of B4, carried by `Step`: nothing yet proves
+that a source program stays in range.
 Two model details settled while doing B3 and worth recording: `bnot` is the i64
 complement (`-a - 1`) and therefore pairs with `.notb`, not with `.not`, which
 is boolean negation; `sshr` computes `Int.shiftRight`, the oracle's own
