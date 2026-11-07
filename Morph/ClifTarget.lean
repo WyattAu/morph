@@ -28,6 +28,12 @@ Two design points that exist to make the Stage B theorem statable:
   lemma discharges the check from the fragment's amount hypothesis rather than
   leaving it implicit.
 
+`sshr` computes `Int.shiftRight`, the same primitive the MIR oracle uses for
+`.shr`, so the arithmetic-shift agreement is definitional rather than a proof
+about division. `bnot` is the i64 bitwise complement (hence `-a - 1` under two's
+complement), which pairs with MIR's `.notb`; MIR's `.not` is *boolean* negation
+and needs a different CLIF idiom, so the encoder rejects it.
+
 Nothing here lowers MIR yet (B2) and nothing here proves agreement with MIR
 (B3/B4); this file is the target the lowering is proved against.
 -/
@@ -82,8 +88,9 @@ inductive Cond where
 
 /-- The CLIF instruction subset of Stage B. Every constructor has (or will have)
 a per-operator agreement lemma in `Morph/ClifLower.lean`; `iconst` takes an
-`Int` because the encoder only emits integer and 0/1 constants (`bool` is an
-`i8` 0/1 and is materialised as `.bool` in the model's `Env`). -/
+`Int` because `Value` payloads other than integers have no encoding in this
+subset, so the encoder rejects `.const` with a non-integer payload rather than
+inventing one. -/
 inductive Instr where
   | iconst (dst : Reg) (v : Int)
   | iadd (dst : Reg) (l r : Reg)
@@ -137,13 +144,13 @@ def evalCond (c : Cond) (v1 v2 : Value) : Option Value :=
   match v1, v2 with
   | .int a, .int b =>
     some (.bool (match c with
-      | .eq => a == b | .ne => a != b
+      | .eq => a == b | .ne => !(a == b)
       | .slt => a < b | .sle => a ≤ b
       | .sgt => a > b | .sge => a ≥ b))
   | .bool a, .bool b =>
     match c with
       | .eq => some (.bool (a == b))
-      | .ne => some (.bool (a != b))
+      | .ne => some (.bool !(a == b))
       | _ => none
   | _, _ => none
 
@@ -181,18 +188,21 @@ def step (env : Env) : Instr → Option Env
     let b ← asBool (← env r)
     some (env.set dst (.bool (a || b)))
   | .bnot dst src => do
-    let a ← asBool (← env src)
-    some (env.set dst (.bool (!a)))
+    let a ← asInt (← env src)
+    some (env.set dst (.int (wrap (-a - 1))))
   | .ishl dst l r => do
     let a ← asInt (← env l)
     let n ← shiftAmount (← env r)
-    some (env.set dst (.int (wrap (a * (2 : Int) ^ n))))
+    -- `Int.pow 2 n` is `2 ^ n`; it is spelled the oracle's way so the agreement
+    -- lemma needs no power-conversion bridge.
+    some (env.set dst (.int (wrap (a * Int.pow 2 n))))
   | .sshr dst l r => do
     let a ← asInt (← env l)
     let n ← shiftAmount (← env r)
-    -- Arithmetic (floor) shift right: `Int`'s Euclidean division by a positive
-    -- divisor is floor division, which is what `sshr` computes.
-    some (env.set dst (.int (a / (2 : Int) ^ n)))
+    -- `Int.shiftRight` is floor division by `2^n` (`Int.shiftRight_eq_div_pow`),
+    -- which is what an arithmetic shift right computes; it cannot overflow, so
+    -- unlike `ishl` there is no `wrap` here.
+    some (env.set dst (.int (Int.shiftRight a n)))
 
 /-- Run a straight-line instruction list. -/
 def runInstrs (env : Env) : List Instr → Option Env

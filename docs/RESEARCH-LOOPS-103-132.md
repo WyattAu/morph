@@ -1002,3 +1002,51 @@ elaboration of this file actually reported.
 **Result.** `lake env lean Morph/ClifTarget.lean` exit 0, zero warnings, no
 `sorry`. B2 (the encoder), B3 (per-operator agreement), B4 (`clif_correct`) and
 B5 (render/parse) remain; nothing here lowers MIR yet.
+
+## Loop 146 — Stage B items B2/B3: the encoder and per-operator agreement
+
+**Work.** `Morph/ClifLower.lean`: the MIR→CLIF encoder (`instrEncode`,
+`instrEncodes`, `blockEncode`), its rejection lemmas, and thirteen `agree_*`
+theorems — one per instruction in the fragment — each stating that the CLIF step
+produces exactly the environment `MIR.evalInstr` produces.
+
+**Fragment.** `const` (integer payloads), `.add/.sub/.mul`, the six int
+comparisons, `.and/.or` on booleans, `.shl`, `.shr`, `.notb`, all in
+single-block `return`-terminated bodies. Comparisons and boolean operators need
+**no** hypothesis — they are exact for every input; arithmetic carries an i64
+range hypothesis on the *result*, and shifts need the amount in `[0,64)`.
+
+**Rejections, each with its reason in the file.** `.div`/`.mod` (Euclidean vs
+truncating, `x/0 = 0` vs trap), `.andb`/`.orb`/`.xorb` (the oracle defines them
+by **parity**, not bitwise — they agree with `band`/`bor` only on `{0,1}`),
+`.not` (boolean negation is not `bnot`), `.copy` (CLIF has no copy: needs a
+rename pass or a materialised zero register), non-integer `const` payloads, and
+all memory/call/`phi` instructions.
+
+**Three corrections the lemmas forced on B1's model**, all caught by the
+per-operator proofs rather than by review:
+
+1. `bnot` was boolean negation. CLIF's `bnot` is the i64 complement, which is
+   `.notb`'s meaning (`-a - 1` under two's complement); boolean negation has no
+   single-instruction encoding in this subset, so it is the *encoder* that must
+   reject `.not`.
+2. `sshr` was `a / 2^n`. Both `Int./` and `Int.shiftRight` are floor division by
+   a positive divisor, so the arithmetic was right — but the oracle *is*
+   `Int.shiftRight`, so using the same primitive makes the agreement
+   definitional instead of a proof about division. `sshr` also needs no `wrap`:
+   shifting right cannot overflow.
+3. `.ne` was `a != b`. The oracle returns `!(a == b)`, and `bne` does not
+   unfold to `!(==)` definitionally here.
+
+**Toolchain notes.** `Int.pow 2 n` and `(2 : Int)^n` are *not* interchangeable
+under `rfl` inside a nested `Option`/register argument, even though the bare
+equation closes by `rfl` — the fix is to spell the model's shift the way the
+oracle spells it, not to add a bridge. `Int.shiftRight_eq_div_pow` is the
+lemma connecting the two readings. `MIR.Env.update` (which tests `x == dst`) and
+`Clif.Env.set` (which tests `x = dst`) are equal by `Nat`'s lawful `BEq`, which
+is what lets agreement be plain env equality with no renaming relation.
+
+**Result.** `lake env lean Morph/ClifLower.lean` exit 0, zero warnings, no
+`sorry`; `Morph.ClifTarget` rebuilt clean after the model corrections. B4
+(`clif_simulate`/`clif_correct`, needing a range invariant threaded through the
+instruction fold) and B5 (render/parse) remain.

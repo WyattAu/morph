@@ -270,6 +270,16 @@ verified marshalling.
 | B8 | differential bridge: native result vs `morph run` result over the corpus | corpus green; corpus contents listed in the packet |
 | B9 | audit-packet refresh: Cranelift version pinned, TCB section updated | packet names the new trusted components |
 
+**Status (loop 146):** B1 is `Morph/ClifTarget.lean`, B2/B3 are
+`Morph/ClifLower.lean`; all three are green with no `sorry` and no warnings.
+Two model details settled while doing B3 and worth recording: `bnot` is the i64
+complement (`-a - 1`) and therefore pairs with `.notb`, not with `.not`, which
+is boolean negation; `sshr` computes `Int.shiftRight`, the oracle's own
+primitive, so the shift agreement is definitional. `.shl` spells its power as
+`Int.pow 2 n` — the oracle's spelling — because `Int.pow 2 n` and `(2 : Int)^n`
+are not interchangeable under `rfl` in every position, and a syntactic match is
+cheaper than a bridge lemma.
+
 B1–B4 are pure Lean and are the Stage B exit. B5 is Lean too and is what makes
 B6's artifact meaningful. B6–B8 are the unverified half and are gated as
 trusted code, with the differential corpus as their only evidence — which is
