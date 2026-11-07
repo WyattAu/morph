@@ -95,10 +95,22 @@ def instrEncode : Morph.MIR.Instr → Option Instr
   | .unop dst op src _τ => unopInstr op dst src
   | _ => none
 
-/-- Encode a straight-line instruction list. -/
+/-- Encode a straight-line instruction list. Written as an explicit two-way
+match rather than a `do` block so `instrEncodes_cons` below is invertible. -/
 def instrEncodes : List Morph.MIR.Instr → Option (List Instr)
   | [] => some []
-  | i :: is => instrEncode i >>= fun c => instrEncodes is >>= fun cs => some (c :: cs)
+  | i :: is =>
+    match instrEncode i, instrEncodes is with
+    | some c, some cs => some (c :: cs)
+    | _, _ => none
+
+/-- The cons case of the encoder, in the direction the simulation needs. -/
+theorem instrEncodes_cons {i : Morph.MIR.Instr} {is : List Morph.MIR.Instr}
+    {cs : List Instr} :
+    instrEncodes (i :: is) = some cs ↔
+      ∃ c cs', instrEncode i = some c ∧ instrEncodes is = some cs' ∧ cs = c :: cs' := by
+  cases hc : instrEncode i <;> cases hs : instrEncodes is <;>
+    simp [instrEncodes, hc, hs, eq_comm]
 
 /-- Encode a single-block function: its `return` register becomes the model's
 return register. Multi-block bodies are rejected — the Stage B fragment is

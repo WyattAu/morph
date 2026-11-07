@@ -1050,3 +1050,43 @@ is what lets agreement be plain env equality with no renaming relation.
 `sorry`; `Morph.ClifTarget` rebuilt clean after the model corrections. B4
 (`clif_simulate`/`clif_correct`, needing a range invariant threaded through the
 instruction fold) and B5 (render/parse) remain.
+
+## Loop 147 — Stage B item B4: the typed-trace simulation
+
+**Work.** `Morph/ClifSimulate.lean`: `ValInRange` (i64-range int, or bool),
+a 14-constructor `Step` relation recording what the fragment's typing judgement
+knows, a `Trace` of such steps, and three theorems —
+
+- `step_simulate` : one `Step` is exactly the CLIF instruction the encoder emits.
+- `step_evalInstr` : one `Step` is the MIR transition it claims to be.
+- `run_simulate` : a `Trace` plus its encoding yields the same environment
+  (`clif_simulate`, folded over the instruction list).
+
+**Why a certificate and not a hypothesis on `evalInstrFull`.** The obvious
+statement — "if `evalInstrFull` succeeds then the CLIF step matches" — is not
+provable at this layer: success does not expose the operand *values*, and the
+range hypothesis is about them. Recovering them means inverting the `do`-chain
+(`Option.bind`) case by case, which only re-derives what the caller already knew.
+`Step` records it instead, the same shape as `StraightStmts` in Stage A: the
+fragment owes the certificate, and the file proves the certificate suffices.
+This is a premise, not a conclusion — in-range intermediates are still the
+fragment's obligation, discharged outside Lean for now.
+
+**Encoding change.** `instrEncodes` was a `do`-block; it is now an explicit
+two-way `match` so `instrEncodes_cons` is invertible (`cases ... <;> simp`),
+which is what the fold needs. Same function, easier to reason about.
+
+**Two tactic lessons.** `simp_all` cannot substitute `c` from
+`henc : instrEncode i = some c` because the equation it produces is oriented
+`constructor = c`, so it rewrites the wrong way and leaves `match c with …`
+stuck; `simp only […, Option.some.injEq] at henc ⊢` followed by `subst henc`
+does the substitution explicitly. And a `do`-block definition needs to be named
+in the simp set itself: unfolding `evalInstr` does not unfold `evalUnOp` nested
+inside it, which is why the `.notb` case failed while every binop case passed.
+
+**Result.** `lake env lean Morph/ClifSimulate.lean` exit 0, zero warnings, no
+`sorry`; `Morph.ClifLower` still builds. **Not yet done:** the bridge from a
+`Trace` to `MIR.execInstrsFull`/`evalInstrFull` (pure instructions must be shown
+to preserve the store, then the block and `execFunc` wrapper), which is what
+composes with `compile_total`; and the `blockEncode` inversion that turns
+`run_simulate` into a statement about `Clif.run`.
