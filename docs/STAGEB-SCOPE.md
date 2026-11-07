@@ -338,6 +338,16 @@ encoder on the shape `lowerProgram` produces, with no prologue instruction in
 the text. Dropping it is sound because register 0 is that instruction's own
 destination: B4's trace starts at an environment where 0 already holds unit.
 
+**A defect found by writing the corpus, fixed (loop 151).** A program whose value
+is unit (`let y = 5;`, or the empty program) lowers to `return_ 0` — the
+prologue's own register — and the first emitter printed `return %v0`, naming a
+value no instruction defines. B4's *model* is fine with that (its trace starts at
+an environment where 0 already holds unit), but the text is not CLIF, and
+`cranelift-reader` would reject it. `emitBlock` now refuses `retSrc = 0`
+(`emitBlock_unit`), so the model/emitter gap is visible and rejectable rather
+than deferred to the reader. This is the third place the text is narrower than
+the model, alongside the prologue and §3's reject list.
+
 Three rejections are distinct, because they mean different things to a user:
 outside the HIR fragment (stage A's gate), outside the stage-B MIR fragment
 (`lowerProgram` returned `none`), and inside MIR but unencodable (`blockEncode`

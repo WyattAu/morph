@@ -1243,3 +1243,56 @@ Morph/Tests/Driver.lean` exit 0; `lake build morph` exit 0.
 **Gate note.** G-1/G-3/G-7 remain skipped. B7 (the Rust driver behind
 `cranelift-reader`) is what turns this text into an object file; it consumes the
 artifact, so the emitter's shape is its input contract.
+## Loop 151 — Stage B: a unit-valued program emitted a non-CLIF artifact
+
+**Found by** writing the stage-B corpus, not by reading the code: the first
+in-subset example to try was a program with no trailing expression.
+
+```
+$ morph build --codegen=cranelift unit.hum     # let y = 5;
+wrote unit.clif
+$ cat unit.clif
+function %main() -> i64 {
+block0:
+  %v1 = iconst.i64 5
+  return %v0
+}
+```
+
+`%v0` is the prologue's register. In B4's *model* that is coherent — the trace
+starts at `update (fun _ => none) 0 .unit`, so register 0 is bound before the
+block runs — but no instruction in the text defines it, so the function is not
+CLIF: `cranelift-reader` reports an undefined value. `emitBlock`'s earlier gate
+checked the prologue's *presence* and dropped it without checking whether the
+returned register survived.
+
+**Fix.** `emitBlock` refuses `src = 0`, since with the prologue present register
+0 is exactly "the program's value is unit". `emitBlock_unit` states it, and the
+existing characterizations gained the matching `src ≠ 0` premise
+(`emitBlock_prologue`, `emitClif_lowered`), so nothing about the verified
+encoding moved. The encoder rejection message now names unit-valued programs
+first, and two goldens pin it (`let y = 5;` and the empty program).
+
+**Why not encode unit.** There is nothing to encode it *to*: the function is
+`-> i64` and CLIF has no unit value, so any spelling would be an invented
+convention that B4's model does not claim. Rejection is the honest option and
+keeps the rule the rest of Stage B follows — the text is narrower than the
+model, and every narrowing is a case the CLI refuses by name.
+
+**Incidental, and worth recording: the disk.** The machine is at 100% (under
+100 MB free, load 20–60 from an unrelated build). A rebuild failed with
+`failed to read file …/ClifEmit.olean, invalid header`: the earlier olean was
+exactly 4096 bytes, i.e. truncated when the disk filled mid-write. Deleting the
+stale olean and rebuilding fixed it. Two consequences: build artifacts should be
+distrusted after a space failure, and B7 (which compiles `cranelift-codegen`,
+needing GBs of `target/`) cannot be built on this machine until space exists.
+
+**Result.** `lake env lean Morph/ClifEmit.lean` exit 0; `lake env lean
+Morph/Tests/Driver.lean` exit 0; `lake build morph` exit 0; `unit.hum` and the
+empty program exit 1 with the new message and leave no artifact.
+
+**Gate note.** B7 is now blocked by *disk*, not by design: `cargo` reports
+`database or disk is full` on the crate cache, `target/` would need GBs, and the
+free space is under 300 MB. Recorded as infrastructure gate G-9 (local disk
+capacity), skipped like G-1/G-3/G-7; the driver's design is written down in
+Stage B's notes and the corpus is being built Lean-side, which needs no space.

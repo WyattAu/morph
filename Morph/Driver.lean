@@ -192,7 +192,7 @@ def buildClif (src : String) : Outcome :=
               match Morph.Codegen.emitClif func with
               | some text => .value text
               | none => .unsupported
-                  "codegen: the CLIF subset cannot encode this program (div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)"
+                  "codegen: the CLIF subset cannot encode this program (unit-valued programs, div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)"
 
 /-- Where `build` writes its artifact: the input's extension replaced by `clif`
 (`main.hum` → `main.clif`), or `.clif` appended when the name has no extension.

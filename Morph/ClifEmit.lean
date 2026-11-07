@@ -38,12 +38,22 @@ open Morph.MIR
 
 The prologue is required, not merely tolerated: a block that does not start with
 `.const 0 .unit` did not come from `lowerProgram`, and encoding it would emit a
-function whose register 0 is read but never bound. -/
+function whose register 0 is read but never bound.
+
+Returning register 0 is refused for the same reason seen from the other side: a
+program whose value is unit returns the prologue's own register, and since CLIF
+has no unit value that register is never defined in the text. B4's *model* can
+represent this — the trace starts at an environment where 0 already holds unit —
+but a function `-> i64` that reads an undefined `%v0` is not CLIF, so the printer
+refuses it rather than write an artifact no reader can accept. This is the same
+shape as the encoder's other narrowing decisions: the model admits more than the
+text does, deliberately and visibly. -/
 def emitBlock (b : Block) : Option Morph.Clif.Func :=
   match b.terminator with
   | .return_ src =>
       match b.instrs with
-      | .const 0 .unit :: body => Morph.Clif.blockEncode ⟨b.id, body, .return_ src⟩
+      | .const 0 .unit :: body =>
+          if src = 0 then none else Morph.Clif.blockEncode ⟨b.id, body, .return_ src⟩
       | _ => none
   | _ => none
 
@@ -66,17 +76,25 @@ the prologue dropped. -/
 
 /-- On the shape `lowerProgram` produces, the emitter *is* the encoder of the
 prologue-free body. This is the lemma the gate above rests on: the prologue
-disappears from the artifact and nothing else about the body changes. -/
-theorem emitBlock_prologue (id : Nat) (body : List Instr) (src : Nat) :
+disappears from the artifact and nothing else about the body changes. The
+`src ≠ 0` premise is the unit case, which `emitBlock` refuses. -/
+theorem emitBlock_prologue (id : Nat) (body : List Instr) (src : Nat) (hsrc : src ≠ 0) :
     emitBlock ⟨id, .const 0 .unit :: body, .return_ src⟩
-      = Morph.Clif.blockEncode ⟨id, body, .return_ src⟩ := rfl
+      = Morph.Clif.blockEncode ⟨id, body, .return_ src⟩ := by
+  simp only [emitBlock]
+  exact if_neg hsrc
 
 /-- Composing the shape with the emitter: on a lowered function the artifact is
 `blockEncode`'s rendering, with no prologue instruction in it. -/
-theorem emitClif_lowered (body : List Instr) (v : Nat) :
+theorem emitClif_lowered (body : List Instr) (v : Nat) (hv : v ≠ 0) :
     emitClif ⟨"main", [], [⟨0, .const 0 .unit :: body, .return_ v⟩], 0, .unitType⟩
-      = (Morph.Clif.blockEncode ⟨0, body, .return_ v⟩).map Morph.Clif.renderFunc :=
-  rfl
+      = (Morph.Clif.blockEncode ⟨0, body, .return_ v⟩).map Morph.Clif.renderFunc := by
+  simp [emitClif, emitFunc, emitBlock_prologue 0 body v hv]
+
+/-- A unit-valued program is refused: its value is the prologue's register. -/
+theorem emitBlock_unit (id : Nat) (body : List Instr) :
+    emitBlock ⟨id, .const 0 .unit :: body, .return_ 0⟩ = none := by
+  simp [emitBlock]
 
 /-- A successful emission is a single block, the entry block, carrying the
 prologue. -/
