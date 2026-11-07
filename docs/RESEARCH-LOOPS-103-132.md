@@ -1296,3 +1296,50 @@ empty program exit 1 with the new message and leave no artifact.
 free space is under 300 MB. Recorded as infrastructure gate G-9 (local disk
 capacity), skipped like G-1/G-3/G-7; the driver's design is written down in
 Stage B's notes and the corpus is being built Lean-side, which needs no space.
+## Loop 152 — the corpus finds an ill-typed artifact (and stage B gets fixtures)
+
+**The corpus.** `tests/codegen/` now holds nine accepted programs and seven
+rejects, with `check.sh` verifying them against the Lean binary alone: the
+recorded `morph run` value, build exit 0, artifact written, no `return %v0`, and
+for rejects the exact stderr message and no artifact. 16/16 green. Values were
+measured and pasted; two rejects (`unary_minus`, `control_flow`) were classified
+by measuring which gate fires rather than by assuming.
+
+**The defect.** `let a = 3; let b = 5; a < b` was accepted and emitted
+
+```
+function %main() -> i64 {
+block0:
+  %v1 = iconst.i64 3
+  %v2 = iconst.i64 5
+  %v3 = icmp slt %v1, %v2
+  return %v3
+}
+```
+
+`run` prints `true`, and `Morph/ClifTarget.lean`'s `icmp` yields `.bool`, so B4's
+model is consistent — but the *text* declares `-> i64` and returns an i8, and CLIF
+has no implicit widening. `cranelift-codegen`'s verifier would have rejected it.
+
+**Fix.** `allI64`: the body must contain no truth-valued MIR instruction
+(`binop` with `eq/neq/lt/leq/gt/geq/and/or`, or `unop .not`). `emitBlock` refuses
+otherwise and the encoder message now says "boolean- or unit-valued programs".
+Three `rfl` corollaries (`allI64_no_lt/_and/_not`) show the gate is not vacuous,
+and the characterizations gained the matching `allI64 body = true` premise.
+
+**Why conservative rather than exact.** The exact test is "is the *returned*
+register i64-typed", which needs a type per register (`lastDef` plus a type for
+each instruction). The conservative test refuses a program that computes a
+comparison and returns an integer. I chose sound-and-coarse: it cannot let an
+ill-typed artifact out, its cost is a refused program rather than a wrong one, and
+the corpus records the case (`rejects/boolean_value.hum` plus the note in the
+README). The exact test is what a later type pass buys, and the corpus has a row
+to prove it when it lands.
+
+**Result.** `lake env lean Morph/ClifEmit.lean` exit 0; `lake env lean
+Morph/Tests/Driver.lean` exit 0 (new boolean golden); `lake build morph` exit 0;
+`tests/codegen/check.sh` 16/16.
+
+**Note on the disk.** Free space came back to ~1.4 GB during this loop (it had
+been at 27 MB), which is why B7 becomes worth attempting next; the earlier
+corruption warning still stands.

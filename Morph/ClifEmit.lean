@@ -34,6 +34,40 @@ namespace Morph.Codegen
 
 open Morph.MIR
 
+/-- Whether every instruction in a body produces an i64. `icmp` and the boolean
+`band`/`bor` produce i8 truth values, and CLIF has no implicit widening, so a
+body containing one is not printable under the `-> i64` signature `renderFunc`
+declares.
+
+This is a *conservative* test: a program that computes a comparison and then
+returns an integer is refused too, because the printer carries no per-register
+type. Exact would mean a type pass over the body (`lastDef` + a type per
+instruction); conservative-but-sound is the right trade until the corpus shows a
+case that needs the difference. -/
+def allI64 : List Instr → Bool
+  | [] => true
+  | i :: rest =>
+      (match i with
+        | .binop _ op _ _ _ =>
+            (match op with
+              | .eq => false | .neq => false | .lt => false
+              | .leq => false | .gt => false | .geq => false
+              | .and => false | .or => false
+              | _ => true)
+        | .unop _ op _ _ => (match op with | .not => false | .notb => true)
+        | _ => true) && allI64 rest
+
+/-- The corollaries that make the gate non-vacuous: any comparison, boolean
+`and`/`or`, or boolean `.not` makes the body unprintable. -/
+theorem allI64_no_lt (is : List Instr) (d l r : ValId) (τ : Morph.Core.Typ) :
+    allI64 (.binop d .lt l r τ :: is) = false := rfl
+
+theorem allI64_no_and (is : List Instr) (d l r : ValId) (τ : Morph.Core.Typ) :
+    allI64 (.binop d .and l r τ :: is) = false := rfl
+
+theorem allI64_no_not (is : List Instr) (d s : ValId) (τ : Morph.Core.Typ) :
+    allI64 (.unop d .not s τ :: is) = false := rfl
+
 /-- Encode a lowered block, dropping `lowerProgram`'s unit prologue.
 
 The prologue is required, not merely tolerated: a block that does not start with
@@ -53,7 +87,9 @@ def emitBlock (b : Block) : Option Morph.Clif.Func :=
   | .return_ src =>
       match b.instrs with
       | .const 0 .unit :: body =>
-          if src = 0 then none else Morph.Clif.blockEncode ⟨b.id, body, .return_ src⟩
+          if src = 0 then none
+          else if allI64 body then Morph.Clif.blockEncode ⟨b.id, body, .return_ src⟩
+          else none
       | _ => none
   | _ => none
 
@@ -78,23 +114,33 @@ the prologue dropped. -/
 prologue-free body. This is the lemma the gate above rests on: the prologue
 disappears from the artifact and nothing else about the body changes. The
 `src ≠ 0` premise is the unit case, which `emitBlock` refuses. -/
-theorem emitBlock_prologue (id : Nat) (body : List Instr) (src : Nat) (hsrc : src ≠ 0) :
+theorem emitBlock_prologue (id : Nat) (body : List Instr) (src : Nat) (hsrc : src ≠ 0)
+    (hall : allI64 body = true) :
     emitBlock ⟨id, .const 0 .unit :: body, .return_ src⟩
       = Morph.Clif.blockEncode ⟨id, body, .return_ src⟩ := by
   simp only [emitBlock]
-  exact if_neg hsrc
+  rw [if_neg hsrc, if_pos hall]
 
 /-- Composing the shape with the emitter: on a lowered function the artifact is
 `blockEncode`'s rendering, with no prologue instruction in it. -/
-theorem emitClif_lowered (body : List Instr) (v : Nat) (hv : v ≠ 0) :
+theorem emitClif_lowered (body : List Instr) (v : Nat) (hv : v ≠ 0)
+    (hall : allI64 body = true) :
     emitClif ⟨"main", [], [⟨0, .const 0 .unit :: body, .return_ v⟩], 0, .unitType⟩
       = (Morph.Clif.blockEncode ⟨0, body, .return_ v⟩).map Morph.Clif.renderFunc := by
-  simp [emitClif, emitFunc, emitBlock_prologue 0 body v hv]
+  simp [emitClif, emitFunc, emitBlock_prologue 0 body v hv hall]
 
 /-- A unit-valued program is refused: its value is the prologue's register. -/
 theorem emitBlock_unit (id : Nat) (body : List Instr) :
     emitBlock ⟨id, .const 0 .unit :: body, .return_ 0⟩ = none := by
   simp [emitBlock]
+
+/-- A boolean-valued program is refused: the text's signature is `-> i64`. -/
+theorem emitBlock_bool {id : Nat} {body : List Instr} {src : Nat}
+    (hall : allI64 body = false) :
+    emitBlock ⟨id, .const 0 .unit :: body, .return_ src⟩ = none := by
+  by_cases hsrc : src = 0
+  · simp [emitBlock, hsrc]
+  · simp [emitBlock, hsrc, hall]
 
 /-- A successful emission is a single block, the entry block, carrying the
 prologue. -/

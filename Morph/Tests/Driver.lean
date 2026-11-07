@@ -508,7 +508,7 @@ example : buildClif "let x = 2; let y = 3; x * y + 1" ==
 -- mistranslated.
 example : buildClif "let x = 7 / 2; x" ==
     .unsupported
-      "codegen: the CLIF subset cannot encode this program (unit-valued programs, div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)" := by
+      "codegen: the CLIF subset cannot encode this program (boolean- or unit-valued programs, div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)" := by
   native_decide
 
 -- Golden: a program whose value is unit is refused (loop 151). `return %v0`
@@ -516,12 +516,20 @@ example : buildClif "let x = 7 / 2; x" ==
 -- would not be CLIF. The model can express it; the printer does not pretend to.
 example : buildClif "let y = 5;" ==
     .unsupported
-      "codegen: the CLIF subset cannot encode this program (unit-valued programs, div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)" := by
+      "codegen: the CLIF subset cannot encode this program (boolean- or unit-valued programs, div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)" := by
   native_decide
 
 example : buildClif "" ==
     .unsupported
-      "codegen: the CLIF subset cannot encode this program (unit-valued programs, div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)" := by
+      "codegen: the CLIF subset cannot encode this program (boolean- or unit-valued programs, div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)" := by
+  native_decide
+
+-- Golden: a boolean-valued program is refused (loop 152). `run` prints `true`,
+-- but `icmp` produces an i8 truth value and the printed signature is `-> i64`,
+-- with no widening instruction in the modelled subset.
+example : buildClif "let a = 3; let b = 5; a < b" ==
+    .unsupported
+      "codegen: the CLIF subset cannot encode this program (boolean- or unit-valued programs, div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)" := by
   native_decide
 
 -- Golden: a program outside the HIR fragment is rejected before MIR.

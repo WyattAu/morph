@@ -348,6 +348,18 @@ an environment where 0 already holds unit), but the text is not CLIF, and
 than deferred to the reader. This is the third place the text is narrower than
 the model, alongside the prologue and §3's reject list.
 
+**The corpus (loop 152)** is `tests/codegen/`: nine accepted programs with their
+measured `morph run` values and seven rejects, one per gate, each pinned to its
+exact stderr message. `tests/codegen/check.sh` runs them against the Lean binary
+alone — build exit code, artifact presence, absence of `return %v0`, and the
+messages — so the fixtures are green before B7 consumes them. Building it found
+the second text-level defect: a boolean-valued program printed `return %v3` from
+an `icmp` in a function declared `-> i64`, which CLIF will not accept (no implicit
+widening). `allI64` now refuses any body containing a truth-valued instruction,
+which is conservative — a program that compares and then returns an integer is
+refused too — and that conservatism is recorded in the corpus README rather than
+hidden.
+
 Three rejections are distinct, because they mean different things to a user:
 outside the HIR fragment (stage A's gate), outside the stage-B MIR fragment
 (`lowerProgram` returned `none`), and inside MIR but unencodable (`blockEncode`
