@@ -181,6 +181,24 @@ are syntactic and therefore rejectable.
 Every reject is a `none` (or a typed `CodegenError`) with a golden test, like
 `lowerExpr`'s `none` cases and the `--hir` path's exit-1 message.
 
+**Where the shipped encoder is narrower than this table (loops 146, 148).** The
+table is the *contract*; `Morph/ClifLower.lean` is what exists, and it rejects
+four rows the table marks IN. Each rejection is deliberate, and each has an
+agreement lemma that would otherwise have to paper over a real semantic
+difference:
+
+| Row above | What the encoder does | Why |
+| --- | --- | --- |
+| `.andb`/`.orb`/`.xorb` | rejects | the MIR oracle defines them by **parity**, so they agree with `band`/`bor` only on `{0,1}`; `xorb` has no CLIF spelling in the subset at all |
+| `.not` (unop) | rejects | `.not` is boolean negation on a `bool` value; `bnot` is the i64 complement, a different function. `.notb` is the row that pairs with `bnot` |
+| `copy` | rejects | CLIF has no copy: an elision needs the two registers to be *identified* afterwards, which is a renaming pass, not an instruction |
+| `const` with a `bool` payload | rejects | `iconst.i8` is a different value domain from `Value.bool`; the agreement lemma would claim `band`-on-i8 equals `and`-on-bool, which is true only for the free theorem, not for the model as built |
+
+So Stage B's actual input gate is narrower than the table and B6's golden tests
+must be written against the encoder, not against the table. The table is kept as
+the contract to grow into; the four gaps are what a Stage C (bool/i8 domain) or a
+renaming pass would close.
+
 ## 4. Target theorem statements (design, not implemented)
 
 Names are proposals; nothing below exists in the tree yet.
