@@ -58,10 +58,15 @@ scope the audit reacts to, and is now also the Stage A–D build order.
   because the Rust `MorphIR` is a stack machine, not a transcription of Lean's
   SSA MIR. Audit packet refreshed (loop 154).
 - Stage C: calls/control flow, `morph test`, ABI lemmas load-bearing. — scope
-  **written** (loop 155, `docs/STAGEC-SCOPE.md`): control flow needs phi-aware
-  execution and a `StraightStmts` extension before any lowering, CLIF needs a
-  block model, and `morph test` is an independent CLI item (C9). Implementation
-  not started.
+  **written** (loop 155, revised loop 159, `docs/STAGEC-SCOPE.md`): control flow
+  needed phi-aware execution and a new fragment predicate (`BranchStmts`, beside
+  `StraightStmts` rather than inside it), CLIF needs a block model *with block
+  arguments* — a terminator with no arguments cannot carry the join's value —
+  and `morph test` is an independent CLI item (C9). Items C1 (edge-aware
+  executor), C2a (fragment predicate) and C2b (`if` lowering) are **done**
+  (loops 156–158); the revision splits the target side into C4a (model, base
+  case reproduces B4) and **C4b (multi-block MIR→CLIF correctness)**, which the
+  loop-154 table was missing and which is the critical path for C5–C8.
 - Stage D: concurrency/memory/security proofs, 1.0 standard freeze.
 
 ## Open questions for the audit (not decisions)

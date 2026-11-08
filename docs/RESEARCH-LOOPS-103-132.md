@@ -1643,3 +1643,54 @@ Found along the way: `BlockId` exists in both `Morph.Core` (memory blocks) and
 `Morph.MIR` (basic blocks), so a file that opens both must qualify — the new
 code uses `MIR.BlockId`. Next: C3 (the preservation theorem) or C2c (binding
 merges), in either order; C4 (CLIF blocks) can run in parallel with both.
+
+## Loop 159 — scope revision: the CLIF model needed block arguments, and C4b was missing
+
+Reading `Morph/ClifCorrect.lean` and `Morph/ClifTarget.lean` again against the
+loop-154 sketch of the CLIF block model produced two corrections, both recorded
+in `docs/STAGEC-SCOPE.md` (§1.4, §4.3, §5.1).
+
+**The sketch could not express a merge.** It proposed
+`Term.jump (target : BlockId)` / `Term.brif (cond) (tt ff : BlockId)` with no
+`Block` parameter list. The whole reason Stage C needs a join block is that the
+`if`'s value has to cross an edge into it; a terminator with no arguments has
+nowhere to put the value. CLIF's mechanism is the block argument —
+`jump block3(v1)` into `block3(v1: i64):`, and `brif v0, block1(v1), block2(v2)`
+with per-edge argument lists — and Cranelift's verifier requires that SSA shape.
+A slot-reading model (one register file shared by all blocks) would have been
+easier to prove and would have described a machine we do not emit. So `Block`
+gains `params`, `jump`/`brif` gain argument lists, and `retSrc` leaves the
+`Func` structure (`.ret` carries its register). The central lemma of C4b is
+therefore **phi ↔ block argument**: MIR's `phi dst pred src` at the join is
+`jump join(src)` plus `join(dst: i64):`, executed by parameter binding, not by
+an instruction. That is also what makes the §3 "one-armed `if`" row expressible
+— the untaken side passes the pre-branch value as a `brif` edge argument.
+
+**The work-item table had no multi-block MIR→CLIF theorem.** C1–C9 contained
+C4 (model), C5 (emitter), C6 (corpus) and nothing proving that a multi-block MIR
+function and its CLIF encoding return the same value — the block-level B4. As
+written, the branching path would have been *proved* to MIR and *evidenced*
+from there, while the straight-line path is proved end to end: a narrower proof
+for a wider fragment, which principle 1 of `docs/FIVE-YEAR-ROADMAP.md` forbids.
+C4 is now C4a (model, with the base case reproducing B4) and C4b (the missing
+arrow). C6's corpus is evidence for parse-and-run; it is not a substitute.
+
+**Ordering settled.** C4a → C4b is the critical path for everything on the
+target side; C3 is the long pole and independent of it, so they run in
+parallel. C2c is not on C3's critical path (`ArmStmts` is the hypothesis), so it
+waits behind C6 and the refusal gets pinned as a `rejects.tsv` row. Two hedges
+are recorded before C3's main theorem is stated: an inert program parameter on
+`execFuncFrom` (so C8's `Instr.call` is additive rather than a restatement of
+C3), and fuel through `blockBound` rather than a literal (so C7 adds a
+constructor instead of repairing constants).
+
+**Also corrected as stale:** §2 prerequisite 2 had `StraightStmts` gaining
+`ifStmt`; the tree did the opposite (a separate `BranchStmts`) and the reason is
+now written down — `StraightStmts` is `compile_total`'s hypothesis, so extending
+it would have left a red tree until C3. §4.1/§4.2 now match what actually
+landed (`execFuncFrom`, `lowerStmtsCFG`) instead of the plan's names.
+
+**No decision duplicated.** ADR-032 already records D-2/D-4 as confirmed, so
+this revision does not open a new ADR; it narrows D-4's listing for control flow
+in §3 and adds the audit question (Q5) about whether that listing should also
+exist as a document-level fragment table.
