@@ -1543,3 +1543,48 @@ runs — the test can fail.
 **Result.** `lake build Morph.Tests` green (287 jobs), `Morph/MIR.lean` and
 `Morph/Tests/MIR.lean` elaborate with zero warnings, no `sorry`. C2 (the
 `StraightStmts`/`lowerStmts` extension for `ifStmt`) is now unblocked.
+
+## Loop 157 — C2a: a fragment that admits `if` without breaking `compile_total`
+
+C2 is "`if` in `StraightStmts` and `lowerStmts`". The first half of that sentence
+is a trap: `StraightStmts` is `compile_total`'s hypothesis, so adding an `ifStmt`
+constructor to it creates an `if` case in that theorem *the moment the
+constructor exists*, and the tree is red until C3 lands. Two-phase commits are
+not a thing here — every commit builds green.
+
+**Resolution:** a new predicate, `Morph/HIRToMIRBranch.lean`.
+
+- `BranchStep budget s` — one non-terminal statement: the Stage A cases
+  (`exprStmt`/`varDecl`/`assign`/`nop`) plus `ifStmt`, whose arms are
+  `BranchStmts` (mutually recursive, so nesting is inside the fragment by
+  construction).
+- `BranchStmts budget ss` — the list structure, with `returnStmt` as a
+  *terminal* constructor that constrains no tail, mirroring both `runStmts`
+  (which stops at a `return`) and `lowerStmts` (which never lowers the tail).
+  Making `returnStmt` a step instead would have been simpler to write and wrong:
+  a terminal shape is not a step.
+- `straightStmts_to_branch` — every Stage A program is a Stage C program, so C3
+  covers the old fragment rather than replacing it. This is the property an
+  auditor should check first, because "Stage C extends Stage A" is the claim
+  the roadmap makes.
+- Three compile-time boundary facts: a two-arm `return` program is in; nested
+  `if`s are in; `¬ BranchStmts 256 [whileLoop …]` is provable, so `while`'s
+  absence is a theorem, not a comment.
+
+**Two toolchain facts worth recording** (both cost a build cycle):
+
+- a `mutual` block rejects `/--` doc comments between its declarations — the
+  layout parser expects a declaration keyword next. Section comments (`/-! -/`)
+  before and plain prose after are fine.
+- `decide` cannot discharge `SLWeight e < 256`: `SLWeight` is a plain `def`, and
+  `decide`'s reduction does not unfold it, so it reports the instance stuck on
+  `SLWeight … |>.succ.ble 256`. `simp [SLWeight]` does.
+
+**Why this is a commit and not a draft.** It is the contract C2b and C3 are
+written against, it is checked by the compiler in three directions (in, nested,
+out), and it changes nothing that already builds: `StraightStmts`,
+`lowerStmts` and `compile_total` are untouched.
+
+**Result.** `lake build Morph.HIRToMIRBranch` green, zero warnings, no `sorry`.
+C2b (`lowerStmts` for `if`, merge block, phi per merged binding) is next, and it
+is the first Stage C item that produces MIR with more than one block.

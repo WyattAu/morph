@@ -195,7 +195,8 @@ soundness lemma that any `ClifStepRel` run is realized by `run fuel`).
 | # | Item | Kind | Depends on |
 | --- | --- | --- | --- |
 | C1 | Edge-aware executor: `execInstrsFullFrom`, `execBlockFrom`, `execFuncFrom`, phi hit/miss lemmas, diamond tests | pure Lean, no corpus change — **done, loop 156** | — |
-| C2 | `StraightStmts` + `lowerStmts` for `ifStmt`, incl. merge/phi construction and the two-arm projections | pure Lean | C1 |
+| C2a | Fragment predicate: `BranchStmts`/`BranchStep` (`Morph/HIRToMIRBranch.lean`), superset embedding from `StraightStmts`, boundary examples | pure Lean — **done, loop 157** | C1 |
+| C2b | `lowerStmts` for `ifStmt`: two arm blocks + merge block, phi construction per merged binding | pure Lean | C2a |
 | C3 | `lowerStmts_if_correct` (§4.2) and the `if` case of the preservation bridge | pure Lean | C1, C2 |
 | C4 | CLIF block model: `Term`, block list, `ClifStepRel`, `run` over blocks, single-block base case reproved through the new surface | pure Lean | — (parallel with C1–C3) |
 | C5 | Multi-block `emitFunc` + `lowerProgram` extended to CFGs; golden artifacts for one `if` function | Lean + goldens | C2, C4 |
