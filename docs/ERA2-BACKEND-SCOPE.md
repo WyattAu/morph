@@ -51,12 +51,17 @@ scope the audit reacts to, and is now also the Stage A–D build order.
 - Stage B: backend ADR + single-backend lowering for straight-line code,
   `morph build` behind a flag. — ADR **done** (ADR-032, loop 134: Cranelift,
   verified lowering, D-2/D-4 confirmed); scope **written** (loop 144,
-  `docs/STAGEB-SCOPE.md`: measured MIR-vs-CLIF semantic gaps, the reduced
-  D-4 subset, target theorem statements, work items B1–B9); implementation
-  **not started**, and the ADR's "Rust emits CLIF" consequence is amended
-  there to "Lean renders CLIF, Cranelift parses it" because the Rust
-  `MorphIR` is a stack machine, not a transcription of Lean's SSA MIR.
-- Stage C: calls/control flow, `morph test`, ABI lemmas load-bearing.
+  `docs/STAGEB-SCOPE.md`); implementation **done** (loops 146–153, items B1–B9):
+  proved MIR→CLIF for straight-line code, `morph build --codegen=cranelift`,
+  and a 9/9 native differential under the trusted half. The ADR's "Rust emits
+  CLIF" consequence is amended there to "Lean renders CLIF, Cranelift parses it"
+  because the Rust `MorphIR` is a stack machine, not a transcription of Lean's
+  SSA MIR. Audit packet refreshed (loop 154).
+- Stage C: calls/control flow, `morph test`, ABI lemmas load-bearing. — scope
+  **written** (loop 155, `docs/STAGEC-SCOPE.md`): control flow needs phi-aware
+  execution and a `StraightStmts` extension before any lowering, CLIF needs a
+  block model, and `morph test` is an independent CLI item (C9). Implementation
+  not started.
 - Stage D: concurrency/memory/security proofs, 1.0 standard freeze.
 
 ## Open questions for the audit (not decisions)

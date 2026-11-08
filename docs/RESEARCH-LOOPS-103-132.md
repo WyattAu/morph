@@ -1407,3 +1407,81 @@ fixed), `cargo fmt --check` clean, `tests/codegen/check.sh` 16/16,
 tree and why the harness resolves the binary from `cargo metadata` rather than
 assuming `./target/debug`. Free space recovered to ~29 GB, so G-9 (disk) closed
 itself; G-1/G-3/G-7 remain skipped.
+
+## Loop 154 — B9: the audit packet learns what stage B added
+
+Closing item of Stage B, and the only one that is prose. `docs/AUDIT-PACKET-0.1.md`
+gains a §6 between the golden-coverage section and the hard-gate section (old §7
+becomes §8), covering:
+
+- **trusted components, named.** `cranelift-reader`, `cranelift-codegen`,
+  `cranelift-object`, `cranelift-module`, `cranelift-native` at 0.137.1, the
+  system `cc`, and the embedded C runner in `codegen/src/main.rs`. An auditor
+  cannot size a TCB that lists "Cranelift" as one word.
+- **proved vs evidenced**, since Stage B's own scope note distinguishes them and
+  the packet is where that distinction is easiest to lose.
+- **the two defects that proofs missed**, as a precedent rather than an
+  anecdote: `%v1` (wasm spelling) and an undefined `v0` for unit programs. Both
+  were found by running the pipeline. The sentence the section lands on is
+  "a mapping that says 'delegated to a trusted component' should be read as
+  'unchecked by us', not 'accepted by it'".
+- **stale-count honesty**: §2's 2081-theorem metric predates the `Clif*`
+  modules. Rather than re-run the snapshot and inflate the packet, §6 says the
+  counts are loop-125 numbers and that no claim depends on them. (Re-running is
+  one command; saying so is cheaper than a number that will drift again.)
+
+§5's reproduction block gains `cargo build -p morph-codegen`,
+`tests/codegen/check.sh`, `tests/codegen/native.sh`, so every Stage B claim has a
+command an auditor can paste.
+
+**Result.** Commit `14f641f`, 7/7 pre-commit checks. Stage B (B1–B9) is closed:
+all nine items are in `docs/STAGEB-SCOPE.md` §5 as met, and the exit criterion
+of the stage — a proved lowering for straight-line code with a differential
+harness under the unproved half — holds.
+
+## Loop 155 — Stage C scope: control flow is a semantics problem first
+
+Stage C per the roadmap is "calls/control flow, `morph test`, ABI lemmas
+load-bearing". Scoping it before writing code (the loop-144 pattern) turned up
+one fact that reorders the stage: **the first item is not codegen**.
+
+- HIR already *has* branching semantics (`Morph/Interp.lean:101` `ifStmt`,
+  `:93` `whileLoop`, flow values `broke`/`continued`). The oracle is not the
+  gap.
+- `lowerStmts` rejects control flow (`Morph/HIRToMIR.lean:334`), but that is the
+  smaller half: `StraightStmts` (`Morph/HIRToMIRCore.lean:1584`) has no
+  constructor for `if`, and it is the predicate `compile_total` takes as a
+  hypothesis. Adding `if` to the lowerer without extending the predicate would
+  produce programs that lower and are covered by no theorem. Contract and
+  implementation have to move together.
+- MIR can *express* branching — `execBlockFuel` follows `goto`/`branch` — but it
+  cannot *execute a merge*: `phi` is `none` in both executors
+  (`Morph/MIR.lean:451,530`), and `execInstrsFull` runs a block without knowing
+  which edge was taken. Every `if` merges a value, so edge-parameterised
+  execution (`prev : Option BlockId`, `phi` fires when `prev = some pred`) is the
+  prerequisite for the entire stage.
+- The CLIF model has no blocks at all (`Morph/ClifTarget.lean:110`, `run:214`),
+  and `emitFunc` rejects multi-block functions. The printer, by contrast, already
+  writes a block header — the text layer is ahead of the model, the reverse of
+  Stage B's situation.
+- Fuel: `compile_total` concludes `execFunc 2 func`, which is exactly a
+  single-block run. Branching needs fuel derived from the oracle's own fuel, so
+  the stage needs one arithmetic lemma ("a program of `k` statement steps runs
+  within `2k + 2` blocks") cited everywhere rather than re-derived.
+- `tests/codegen/manifest.tsv` has no branch in it, so branch lowering will have
+  no evidence until C6 lands.
+
+`docs/STAGEC-SCOPE.md` records this as nine work items (C1–C9), with C1
+edge-environment semantics, C4 CLIF blocks running in parallel, and C9
+`morph test` deliberately independent: it is a CLI command over the existing
+oracle and shares no machinery with codegen, so it can ship while the hard items
+are open — flagged in the note as exactly that, rather than as progress on
+Stage C proper.
+
+Two decisions the note makes but does not hide: B4's single-block trace theorem
+is **not** rewritten (the block statement is new, and its base case must
+reproduce B4), and `switch`/`matchStmt` stay rejected until a pattern compiler
+exists, since a jump table is the only construct that would want one.
+
+**Result.** Scope note only, no code, no gate moved. `morph test` (C9) and C1 are
+the two items that can start independently.
