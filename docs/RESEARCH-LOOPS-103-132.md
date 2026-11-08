@@ -1897,3 +1897,45 @@ the fuel induction. The pieces are stated so none of them changes shape.
 
 **Result.** `lake env lean Morph/ClifCfgSimulate.lean` green, no warnings; full
 build and commit gate to follow.
+
+## Loop 164 — C4b, MIR side: the phi phase has a canonical form
+
+`Morph/ClifCfgSimulate.lean`. `execInstrsFullFrom` fires phis while walking a
+block's instruction list, one at a time, in the order they appear. The encoder
+reads them as a list. Comparing the two needed a normal form:
+
+- `splitPhis_reconstruct` — a block **is** its leading phis followed by the rest,
+  so looking at the pair loses nothing. This needed `phiInfo_toInstr` (a `Phi` is
+  a projection of the instruction it came from).
+- `phiFoldEnv` — the phi phase as a fold over `List Phi`: a matching phi writes
+  its destination into the running environment, a non-matching one is skipped,
+  and an unbound `src` fails — MIR's own condition.
+- `execInstrsFullFrom_phiList` — the walk over the re-emitted phi list is exactly
+  that fold, with the store untouched.
+- `execInstrsFullFrom_split` — the walk over *any* block is the fold over its
+  leading phis followed by the walk over the rest, in the folded environment.
+  This is the shape the simulation composes: the fold supplies the parameters,
+  and `trace_runInstrs_agree` applies to the rest.
+
+**The fold is deliberately sequential.** Each phi reads its `src` from the
+environment the previous phi produced, because that is what MIR does. The encoder
+reads its arguments *once*, from the entry environment. The two agree only when
+no phi reads a register another phi writes — a property of this lowering (arm
+temporaries are never merge destinations), not of the definitions. Keeping the
+fold sequential makes that a stated hypothesis for the next lemma instead of a
+fact hidden inside a definition.
+
+**Toolchain notes.** `split` cannot split `phiInfo`'s match on an opaque
+instruction — rewriting `phiInfo` at a hypothesis reduces it to `none = some q`
+and loses the constructor. The working idiom is `cases i <;> simp only [phiInfo]
+at h <;> (try (cases h; rfl)) <;> simp_all`, which closes all non-phi
+constructors and the phi one. Also: `splitPhis`'s `match` tells you *which*
+branch was taken but not that `i = toInstr q`, so the equation has to be rewritten
+in explicitly; without it the phi equation lemma does not match syntactically.
+
+**Result.** `lake env lean Morph/ClifCfgSimulate.lean` green, no warnings.
+
+**Still open:** the correspondence between `phiFoldEnv` and `bindParams` +
+`paramsOf` (needs the no-read-of-a-write hypothesis made explicit, plus
+uniqueness of a `(dst, pred)` phi from `noDupPairs`), the terminator lemma, and
+the fuel induction.

@@ -255,5 +255,123 @@ theorem params_bound_get? (ps : List Phi) (pred : Morph.MIR.BlockId)
     bindParams_get? (paramsOf_nodup ps) hbind i d v hd hv
   exact ⟨str, harg, by rw [hbound, hval]⟩
 
+/-! ## The MIR side of the phi phase
+
+`execInstrsFullFrom` walks a block's instructions and fires a `phi` when the
+incoming edge matches it. The encoder instead reads the leading phis *as a list*
+(`splitPhis`) and turns them into parameters. To compare the two, this section
+gives the walk a canonical form over that list:
+
+- `splitPhis_reconstruct` — the block's instructions really are its leading phis
+  followed by the rest, so nothing is lost by looking at the pair;
+- `phiFoldEnv` — the phi phase as a fold, which is the shape the parameter
+  binding has;
+- `execInstrsFullFrom_phiList` — the walk over the re-emitted phis is that fold;
+- `execInstrsFullFrom_split` — the walk over any block is the fold over its
+  leading phis followed by the walk over the rest, which is what lets the phi
+  phase be separated from the straight-line body.
+
+The fold keeps MIR's sequential reading: each phi's `src` is looked up in the
+environment the *previous* phi produced. That is deliberate — the encoder reads
+its arguments only once, from the entry environment, so the correspondence
+between them needs the hypothesis that no phi reads a register another phi
+writes. Stating the fold sequentially makes that hypothesis a factual
+requirement rather than something baked into a definition.
+-/
+
+/-- The instruction a `Phi` was read from. -/
+def toInstr (q : Phi) : Morph.MIR.Instr := .phi q.dst q.pred q.src
+
+/-- `phiInfo` is a projection, so re-emitting its result gives the instruction
+back. -/
+theorem phiInfo_toInstr {i : Morph.MIR.Instr} {q : Phi} (h : phiInfo i = some q) :
+    i = toInstr q := by
+  cases i <;> simp only [phiInfo] at h <;> (try (cases h; rfl)) <;> simp_all
+
+/-- **Nothing is lost by splitting.** A block is its leading phis followed by the
+rest of its instructions. -/
+theorem splitPhis_reconstruct (is : List Morph.MIR.Instr) :
+    is = (splitPhis is).1.map toInstr ++ (splitPhis is).2 := by
+  induction is with
+  | nil => rfl
+  | cons i is ih =>
+    cases hi : phiInfo i with
+    | none => simp [splitPhis, hi]
+    | some q =>
+      simp only [splitPhis, hi, List.map_cons, List.cons_append]
+      rw [← ih, phiInfo_toInstr hi]
+
+/-- The phi phase as a fold: a phi whose predecessor matches the incoming edge
+writes its destination in the running environment; every other phi is skipped.
+`none` when a matching phi reads an unbound register, which is MIR's own
+condition for the step to fail. -/
+def phiFoldEnv (p : Morph.MIR.BlockId) (env : Morph.MIR.Env) : List Phi → Option Morph.MIR.Env
+  | [] => some env
+  | q :: qs =>
+    if q.pred = p then
+      match env q.src with
+      | none => none
+      | some v => phiFoldEnv p (env.update q.dst v) qs
+    else phiFoldEnv p env qs
+
+/-- **The walk over the phis is the fold.** Arriving from `p`, executing the
+re-emitted phi list leaves the store untouched and produces exactly
+`phiFoldEnv`'s environment. -/
+theorem execInstrsFullFrom_phiList (p : Morph.MIR.BlockId) (fenv : Morph.MIR.FullEnv) :
+    ∀ phis : List Phi,
+      Morph.MIR.execInstrsFullFrom (some p) fenv (phis.map toInstr) =
+        (match phiFoldEnv p fenv.env phis with
+         | none => none
+         | some env' => some ⟨env', fenv.store⟩)
+  | [] => by
+    simp only [List.map_nil, phiFoldEnv, Morph.MIR.execInstrsFullFrom_nil]
+  | q :: qs => by
+    simp only [List.map_cons, toInstr, phiFoldEnv]
+    by_cases hp : q.pred = p
+    · rw [if_pos hp]
+      rw [Morph.MIR.execInstrsFullFrom_phi_hit q.dst q.pred p q.src (qs.map toInstr) fenv hp]
+      cases hsrc : fenv.env q.src with
+      | none => simp
+      | some v =>
+        exact execInstrsFullFrom_phiList p ⟨fenv.env.update q.dst v, fenv.store⟩ qs
+    · rw [if_neg hp]
+      rw [Morph.MIR.execInstrsFullFrom_phi_miss q.dst q.pred p q.src (qs.map toInstr) fenv hp]
+      exact execInstrsFullFrom_phiList p fenv qs
+
+/-- **The walk splits at the leading phis.** Executing a block arriving from `p`
+is the same as running the phi fold first and then walking the rest of the block
+in the folded environment. This is the canonical form the simulation composes
+with: the fold is where the parameters come from, the walk over the rest is where
+`trace_runInstrs_agree` applies. -/
+theorem execInstrsFullFrom_split (p : Morph.MIR.BlockId) :
+    ∀ (fenv : Morph.MIR.FullEnv) (is : List Morph.MIR.Instr),
+      Morph.MIR.execInstrsFullFrom (some p) fenv is =
+        (match phiFoldEnv p fenv.env (splitPhis is).1 with
+         | none => none
+         | some env' =>
+           Morph.MIR.execInstrsFullFrom (some p) ⟨env', fenv.store⟩ (splitPhis is).2)
+  | fenv, is => by
+    cases is with
+    | nil => simp [splitPhis, phiFoldEnv, Morph.MIR.execInstrsFullFrom]
+    | cons i is' =>
+      cases hi : phiInfo i with
+      | none =>
+        simp only [splitPhis, hi, phiFoldEnv]
+      | some q =>
+        simp only [splitPhis, hi]
+        rw [phiInfo_toInstr hi]
+        simp only [toInstr]
+        rw [phiFoldEnv]
+        by_cases hp : q.pred = p
+        · rw [if_pos hp]
+          rw [Morph.MIR.execInstrsFullFrom_phi_hit q.dst q.pred p q.src is' fenv hp]
+          cases hsrc : fenv.env q.src with
+          | none => simp
+          | some v =>
+            exact execInstrsFullFrom_split p ⟨fenv.env.update q.dst v, fenv.store⟩ is'
+        · rw [if_neg hp]
+          rw [Morph.MIR.execInstrsFullFrom_phi_miss q.dst q.pred p q.src is' fenv hp]
+          exact execInstrsFullFrom_split p fenv is'
+
 end Cfg
 end Morph.Clif
