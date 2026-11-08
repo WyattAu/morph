@@ -153,6 +153,7 @@ redoing arithmetic.
 | `whileLoop c body` | **IN (C7)** | needs back edges + a loop-carried register: phi on the header, and fuel in the theorem |
 | `break`/`continue` | **IN (C7)** with `whileLoop` | `Flow.broke`/`.continued` map to `jump` to the loop's exit/header |
 | `doWhile` | **IN (C7)** | same as `whileLoop`, one fewer edge |
+| literal `bool` condition (`.const (.bool b)`) | **reject at codegen** | the CLIF subset has no boolean constant (`Morph/ClifEmit.lean` already lists it with division and `copy`), so `instrEncodes` refuses it; the HIR and MIR paths accept the same program. Computed conditions (`x < y` → `icmp`) are in. Widening means a `bconst`/`iconst.i8` instruction in the model and its render/parse rows, not a lowering change |
 | `matchStmt` with literal/constructor patterns | **reject** | needs the pattern compiler; the one place a jump table (`switch`) would be justified, and so the last thing to enter |
 | `switch` (MIR terminator) | **reject** | no oracle at MIR level; `matchStmt` will lower to branches first |
 | `Instr.call` | **IN (C8)**, after control flow | `evalInstrFull` has no program (§1.3); CLIF `call` needs ABI/layout lemmas |
@@ -269,8 +270,8 @@ before it.
 | C2b | `lowerStmtsCFG`/`lowerProgramCFG`: arm blocks + join, value phi per edge, `ArmStmts` refusal of binding arms | pure Lean — **done, loop 158** | C2a |
 | C2c | Binding merges: `varDecl`/`assign` inside arms, one phi per merged binding at the join | pure Lean | C2b |
 | C3 | `lowerStmts_if_correct` (§4.2), `blockBound` + its bound lemma (§4.4), and the `if` case of the preservation bridge | pure Lean | C1, C2 |
-| C4a | CLIF block model: `Term` with arguments, `Block` with params, block list, `ClifStepRel`, `run` over blocks, single-block base case reproved through the new surface | pure Lean | — (parallel with C1–C3) |
-| C4b | **Multi-block MIR→CLIF correctness** — the Stage C counterpart of B4: a block-level MIR trace plus the encoder yields a `Clif.run` that returns the same value; contains the phi↔block-argument lemma | pure Lean | C4a |
+| C4a | CLIF block model: `Term` with arguments, `Block` with params, block list, `ClifStepRel`, `run` over blocks, single-block base case reproved through the new surface — **done, loop 160** (`Morph/ClifBlocks.lean`); `ClifStepRel` is deferred to C4b, which is where it is used | pure Lean | — (parallel with C1–C3) |
+| C4b | **Multi-block MIR→CLIF correctness** — the Stage C counterpart of B4: a block-level MIR trace plus the encoder yields a `Clif.run` that returns the same value; contains the phi↔block-argument lemma. Encoder **done, loop 160** (`encodeFunc` in `Morph/ClifCfgEncode.lean`: phi↔parameter, per-edge arguments, refusals); the theorem and the trace relation are pending | pure Lean | C4a |
 | C5 | Multi-block `emitFunc` + `lowerProgram` extended to CFGs; golden artifacts for one `if` function | Lean + goldens | C2, C4a |
 | C6 | Corpus: branch programs in `tests/codegen` (`if` with a value, `if` with a `return`, nested `if`), `native.sh` rows; refusal rows in `rejects.tsv` for binding arms and `matchStmt` | harness | C5, C4b |
 | C7 | `whileLoop`/`break`/`continue`/`doWhile`: loop-carried phi, bound-dependent fuel, preservation | pure Lean | C3, C4b |

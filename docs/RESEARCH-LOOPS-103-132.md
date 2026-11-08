@@ -1694,3 +1694,64 @@ landed (`execFuncFrom`, `lowerStmtsCFG`) instead of the plan's names.
 this revision does not open a new ADR; it narrows D-4's listing for control flow
 in §3 and adds the audit question (Q5) about whether that listing should also
 exist as a document-level fragment table.
+
+## Loop 160 — C4a and the CFG encoder: a phi per edge is one parameter, not two
+
+`Morph/ClifBlocks.lean` (C4a) and `Morph/ClifCfgEncode.lean` (C4b's encoder).
+
+**The model.** `Morph.Clif.Cfg` adds `Term` (`ret`/`jump`/`brif`, with one
+argument list per target, so `brif` has two), `Block` (`id`, `params`,
+`instrs`, `term`), a `Func` of blocks plus an entry label, and a fuel-indexed
+`run` that counts *blocks*, not instructions. The environment is threaded from
+block to block with the target's parameters shadowing it; the docstring states
+the two consequences of that choice (dominance is not enforced; parameter
+binding is a shadow, which is exactly what the phi↔argument correspondence
+needs). Entry parameters can never be bound, so they are unreadable — a
+well-formedness obligation of the emitter, matching MIR's `phi` predecessor.
+
+`run_singleBlockFunc` is the base case the scope demanded: on a one-block
+function with `.ret`, `Cfg.run` equals Stage B's `Morph.Clif.run`. The
+single-block surface is untouched, so B4 stays a theorem about it.
+
+**The encoder.** `encodeFunc` maps a MIR CFG to `Cfg.Func`: leading phis become
+parameters, the rest is `instrEncodes`, `return_`/`goto`/`branch` become
+`ret`/`jump`/`brif` with per-edge arguments, `switch` is refused, the unit
+prologue is stripped from the entry block as `emitBlock` does.
+
+**The finding.** The C2b lowering emits *one phi per predecessor with the same
+destination* — `phi 6 1 4`, `phi 6 2 5` — which is MIR's form (a phi per edge).
+Mapping each phi to its own parameter produced `params := [6, 6]` on the join
+while each edge passed a single argument, so the arity check refused every
+`if`. The two forms are not isomorphic:
+
+```
+MIR:    join has one phi per predecessor, all with dst 6
+CLIF:   join has one parameter (6), fed by 4 from one edge and 5 from the other
+```
+
+So `paramsOf` merges by destination in first-appearance order, and `edgeArgs`
+reads, for each parameter, the phi that names the source edge for it. The
+encoder also refuses two phis with the same destination *and* the same
+predecessor (`noDupPairs`), because the edge's argument would be ambiguous; and
+it refuses a parameter with no phi for an edge rather than emitting a short
+argument list, which would turn a lowering bug into a runtime arity mismatch.
+
+**The narrowing.** Literal boolean conditions (`if true { … }`) do not encode:
+`.const (.bool b)` has no CLIF instruction in the subset, which
+`Morph/ClifEmit.lean` already documents alongside division and `copy`. The HIR
+and MIR paths run the same program fine, so this is a codegen-fragment
+restriction, now pinned as a `native_decide` refusal and recorded as a §3 row.
+Computed conditions (`1 < 2` → `icmp`) are in. Widening means a `bconst` /
+`iconst.i8` instruction with its render/parse rows, not a lowering change.
+
+**Evidence.** Five `native_decide` facts on real lowerings through
+`lowerProgramCFG` → `encodeFunc` → `Cfg.run`: `if 1 < 2 { 10 } else { 20 }` is
+10, `if 2 < 1 {…}` is 20, `if …; 0 + 5` is 5 (the join's own execution, so the
+parameter really carried the arm's value), the literal-bool program is `none`,
+and `switch`/late-phi encoders refuse. Plus four model-level examples in
+`ClifBlocks` (diamond true/false, integer condition, arity mismatch, missing
+argument).
+
+**Result.** `lake build Morph.ClifCfgEncode` green, zero warnings, no `sorry`.
+Next: C4b's theorem (needs a block-level MIR trace relation and the fuel bound
+from §4.4), and C3's `blockBound` in parallel.
