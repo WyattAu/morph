@@ -1852,3 +1852,48 @@ half done and the branch path's evidence is C6's 13 native rows, not a theorem.
 
 **Result.** `lake build Morph` green (467 jobs), `lake build Morph.Tests` green
 (292 jobs), no `sorry`, no warnings.
+
+## Loop 163 — C4b, second half: the pieces of the simulation
+
+`Morph/ClifCfgSimulate.lean`. The binding lemma said *what* the join's
+parameters hold once bound; the simulation needs three things it did not give:
+
+1. **The instructions after the phis run in the second environment.**
+   `trace_runInstrs_agree`: a `Trace`, its encoding, and an environment agreeing
+   with the MIR one produce an agreeing result. The proof never inspects an
+   instruction — `step_transport` gives the same `Step` in the agreeing
+   environment, `step_simulate` gives the CLIF instruction for it — which is why
+   it composes with the phi phase without a case analysis per opcode.
+2. **The edge's arguments are aligned with the parameters.**
+   `argsFor_get?` (with `edgeArg?`): the argument at a parameter's index is the
+   `src` of the phi the encoder selected. This is the link from the encoder's
+   `find?` to the `zip` the binding lemma consumes, and it is the lemma that
+   would have caught the loop-160 mistake (one argument per *phi*) on paper
+   rather than in an arity mismatch.
+3. **Binding and evaluation are positional.** `evalArgs_get?`,
+   `evalArgs_length`, `evalArgs_get?_isSome` and `bindParams_get?` restate the
+   three lists — parameters, argument registers, argument values — in index
+   form, so no list-length bookkeeping is needed to compose them.
+
+They compose into `params_bound_get?`: for every parameter of the join, the
+environment holds `edgeArg?`'s value **as read before binding**. That ordering
+matters and is now a theorem rather than a reading of the code: `evalArgs` runs
+on the entry environment while `bindParams` writes afterwards, so a parameter
+that shadows a register the edge also reads still takes the edge's value.
+
+**Toolchain notes worth keeping.** `List.get?` does not exist in this Lean build;
+the accessor is `GetElem?`, so the lemmas are `List.getElem?_cons_zero` /
+`_cons_succ` / `_nil` and the syntax is `xs[i]?`. `List.mem_of_getElem?` is the
+membership lemma, and it returns a `Prop`, not a pair — the `.1` idiom from
+`List.of_mem_zip` does not apply. `evalArgs`'s `do`-chain must be inverted with
+`cases` on each `Option` (a scratch `evalArgs_cons`), because `split` only splits
+`if`/`match`, not `Option.bind`.
+
+**Still open:** the MIR-side phi fold (`execInstrsFullFrom` walks the leading
+phis sequentially, reading each `src` from the environment the previous phi left
+behind; matching it needs a `splitPhis` reconstruction lemma and either source/
+destination disjointness or a sequential formulation), the terminator lemma, and
+the fuel induction. The pieces are stated so none of them changes shape.
+
+**Result.** `lake env lean Morph/ClifCfgSimulate.lean` green, no warnings; full
+build and commit gate to follow.

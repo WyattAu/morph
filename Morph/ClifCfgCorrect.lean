@@ -18,7 +18,7 @@ correctness theorem for that translation has two halves:
 2. **Simulation.** The block's remaining instructions and its terminator step in
    lockstep with the CLIF model, under the value-agreement relation Stage B
    already uses (`Morph/ClifSimulate.lean`). That needs a block-level trace
-   relation, not just the bindings, and is the next file.
+   relation, not just the bindings, and lives in `Morph/ClifCfgSimulate.lean`.
 
 Why split it: the binding half is where a *silent* error would live. If
 `paramsOf` and `edgeArgs` disagreed — one parameter per phi rather than per
