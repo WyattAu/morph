@@ -1805,3 +1805,50 @@ left to mislead the next proof.
 `sorry`, no warnings. `morph build` golden for the branch text plus three
 refusal goldens (binding arm, `while`, literal boolean condition) are in
 `Morph/Tests/Driver.lean`.
+
+## Loop 162 — C4b, first half: the merge is now a checked binding
+
+`Morph/ClifCfgCorrect.lean`. The phi↔block-argument correspondence has two
+halves; this is the binding one, and it is the half where a silent error would
+live.
+
+**What is proved.**
+
+- `bindParams_nodup_mem` — for a duplicate-free parameter list, every
+  `(parameter, argument)` pair the encoder zipped is what the resulting
+  environment holds.
+- `bindParams_not_mem` — binding parameters leaves every other register alone,
+  which is what lets the simulation thread one environment across a block
+  boundary.
+- `paramsOf_nodup` — the encoder's parameter list has no repeats by
+  construction (the fold appends a destination only when absent), which is
+  exactly the hypothesis the binding lemma needs. This required a local
+  `nodup_append_singleton` because the toolchain has no `Nodup (l ++ [x])`
+  lemma that applies to a rewritten goal; the attempt is recorded because it
+  cost two rounds of `rw` placement (`at h ⊢` fails when only `h` matches).
+- `edgeArgs_length` — an encoded edge passes exactly one argument per parameter.
+
+**A definition changed to make the proof possible.** `bindParams` was written
+with `do`-notation; a `do` block elaborates to `Option.bind` and does not
+reduce in a hypothesis, so every case needed a `simp` lemma about `bind` and
+none of the lemmas were invertible. It is now an explicit two-way match — the
+same idiom `instrEncodes` already documents ("written as an explicit two-way
+match rather than a `do` block so `instrEncodes_cons` is invertible"). The
+behaviour is identical; only the shape changed, and no theorem depended on it.
+
+**Shadowing is the mechanism, not a detail.** `bindParams` binds parameters by
+`Env.set`, so a parameter takes the edge's value even when an earlier block
+wrote that register. That is what the phi↔argument correspondence needs: MIR's
+`phi dst pred src` writes `dst` in a *global* environment, and the CLIF join
+must bind `dst` from the edge instead — if the parameter did not shadow, the
+join would read the stale value the non-taken arm's numbering happened to leave
+behind. The two "not enforced" notes in `ClifBlocks` (dominance, shadow
+semantics) are the price of the model that makes this true.
+
+**What is not proved:** the simulation — that a block's instructions and
+terminator step in lockstep with the CLIF model under `AgreesOnValues`. That
+needs a block-level trace relation and is the next file. Until it lands, C4b is
+half done and the branch path's evidence is C6's 13 native rows, not a theorem.
+
+**Result.** `lake build Morph` green (467 jobs), `lake build Morph.Tests` green
+(292 jobs), no `sorry`, no warnings.

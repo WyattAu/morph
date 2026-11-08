@@ -119,9 +119,10 @@ shadow the incoming environment (`Env.set`), which is what makes a join
 parameter take the value of the edge that was actually taken. -/
 def bindParams (env : Env) : List Reg → List Value → Option Env
   | [], [] => some env
-  | r :: rs, v :: vs => do
-    let env' ← bindParams env rs vs
-    some (env'.set r v)
+  | r :: rs, v :: vs =>
+    match bindParams env rs vs with
+    | none => none
+    | some env' => some (env'.set r v)
   | _, _ => none
 
 /-- What a block does when it finishes: return a value, or transfer along an

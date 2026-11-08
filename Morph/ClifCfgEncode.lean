@@ -93,6 +93,19 @@ def noDupPairs (phis : List Phi) : Bool :=
   phis.all fun p =>
     (phis.filter (fun q => q.dst == p.dst && q.pred == p.pred)).length == 1
 
+/-- One argument per parameter, built left to right. Written with an explicit
+two-way match rather than a `do` block (as `instrEncodes` is) so `argsFor_length`
+is invertible case by case. -/
+def argsFor (ps : List Phi) (pred : Morph.MIR.BlockId) : List ValId → Option (List Reg)
+  | [] => some []
+  | d :: ds =>
+    match ps.find? (fun p => p.dst == d && p.pred == pred) with
+    | none => none
+    | some p =>
+      match argsFor ps pred ds with
+      | none => none
+      | some rest => some (p.src :: rest)
+
 /-- The arguments an edge into `target` passes, coming from `pred`: for each of
 the join's parameters, the `src` of the phi that names `pred` for it. A
 parameter with no phi for this edge fails the encoding — the edge would have no
@@ -100,8 +113,7 @@ value to pass, and emitting fewer arguments would defer a lowering bug to a
 runtime arity mismatch. -/
 def edgeArgs (f : Morph.MIR.Func) (target pred : Morph.MIR.BlockId) : Option (List Reg) := do
   let ps ← targetPhis f target
-  (paramsOf ps).mapM fun d =>
-    (ps.find? (fun p => p.dst == d && p.pred == pred)).map (fun p => p.src)
+  argsFor ps pred (paramsOf ps)
 
 /-- Encode a MIR terminator. `switch` is refused (scope §3: no MIR-level oracle
 for it; `matchStmt` will lower to branches first). -/
