@@ -10,6 +10,8 @@ import Morph.Frontend.HIRInterp
 import Morph.Frontend.DocComment
 import Morph.TypeChecker
 import Morph.ClifEmit
+import Morph.HIRToMIRBranch
+import Morph.ClifCfgEncode
 import Morph.Specs.MorphLanguage.Spec
 
 /-!
@@ -186,8 +188,21 @@ def buildClif (src : String) : Outcome :=
           "codegen: program leaves the HIR fragment (stage B compiles first-order let/assign/return programs only)"
       | some hprog =>
           match Morph.HIRToMIR.lowerProgram hprog with
-          | none => .unsupported
-              "codegen: program is outside the stage-B MIR fragment (straight-line statements only; see docs/STAGEB-SCOPE.md §3)"
+          | none =>
+              -- Stage C: control flow does not lower to a single block, so a
+              -- straight-line refusal falls through to the CFG lowering rather
+              -- than reporting unsupported. Straight-line programs keep the
+              -- proved Stage B path (`lowerProgram` + `emitClif`); only the
+              -- branching one takes this branch, and its text is checked by
+              -- C6's native rows until C4b's theorem lands.
+              match Morph.HIRToMIRCorrect.lowerProgramCFG hprog with
+              | none => .unsupported
+                  "codegen: program is outside the branch fragment (straight-line statements or if with non-binding arms; see docs/STAGEC-SCOPE.md §3)"
+              | some func =>
+                  match Morph.Clif.Cfg.emitCfg func with
+                  | some text => .value text
+                  | none => .unsupported
+                      "codegen: the CLIF block subset cannot encode this program (switch, non-leading phi, missing edge argument, bool constants)"
           | some func =>
               match Morph.Codegen.emitClif func with
               | some text => .value text

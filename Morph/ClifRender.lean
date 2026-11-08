@@ -2,7 +2,7 @@
 SPDX-License-Identifier: Apache-2.0
 -/
 
-import Morph.ClifTarget
+import Morph.ClifBlocks
 
 /-!
 # Stage B item B5: the printed form and its inverse
@@ -27,8 +27,8 @@ artifact can be read against something stated rather than assumed.
 ## Grammar
 
 ```
-function %main() -> i64 {        -- one single-block function, one i64 result
-block0:                          -- the fragment has a single block, numbered 0
+function %main() -> i64 {        -- one function, one i64 result
+block0:                          -- Stage B: a single block, numbered 0
   v0 = iconst.i64 42             -- iconst, immediate in i64 range
   v1 = iadd v0, v0               -- iadd isub imul band bor ishl sshr
   v2 = icmp slt v1, v0           -- icmp with eq ne slt sle sgt sge
@@ -219,4 +219,66 @@ def renderFunc (f : Func) : String :=
     String.intercalate "\n" (f.instrs.map Instr.text) ++
     "\n  return v" ++ toString f.retSrc ++ "\n}\n"
 
+end Morph.Clif
+
+/-! ## Stage C: the multi-block form
+
+`docs/STAGEC-SCOPE.md` §4.3. The grammar above is Stage B's: one block, no
+parameters, no terminator but `return`. A branching function adds exactly three
+things, and the token layer above is *not* extended to cover them — that layer
+exists to prove the Stage B round trip, and widening it would mean re-proving
+B5 for a fragment the reader (`cranelift-reader`) already owns. What is printed
+here is checked by C6's native rows instead.
+
+```
+block1(v4: i64):                 -- parameters, with types
+  v5 = iconst.i64 10
+  jump block3(v5)                -- an edge carries arguments, untyped
+block3(v6: i64):
+  brif v3, block1(v7), block2(v8)  -- one argument list per target
+  return v6
+```
+
+Two details that are easy to get wrong and are not stylistic: a parameter list
+carries `: i64` (the header declares types) while edge arguments do not; and
+`brif` takes an argument list *per target*, which is how the two arms of an `if`
+pass different values to the same join parameter.
+-/
+
+namespace Morph.Clif
+namespace Cfg
+
+/-- A parameter list, with the type every value in this subset has. -/
+def paramSuffix (params : List Reg) : String :=
+  match params with
+  | [] => ""
+  | _ => "(" ++ String.intercalate ", " (params.map (fun p => "v" ++ toString p ++ ": i64")) ++ ")"
+
+/-- An edge's argument list, without types. -/
+def argSuffix (args : List Reg) : String :=
+  match args with
+  | [] => ""
+  | _ => "(" ++ String.intercalate ", " (args.map (fun a => "v" ++ toString a)) ++ ")"
+
+/-- Text of one terminator. -/
+def termText : Term → String
+  | .ret src => "  return v" ++ toString src
+  | .jump t args => "  jump block" ++ toString t ++ argSuffix args
+  | .brif c tt ta ff fa =>
+    "  brif v" ++ toString c ++ ", block" ++ toString tt ++ argSuffix ta ++
+      ", block" ++ toString ff ++ argSuffix fa
+
+/-- Text of one block: header with parameters, instructions, terminator. -/
+def blockText (b : Block) : String :=
+  "block" ++ toString b.id ++ paramSuffix b.params ++ ":\n" ++
+    (if b.instrs.isEmpty then ""
+     else String.intercalate "\n" (b.instrs.map Morph.Clif.Instr.text) ++ "\n") ++
+    termText b.term
+
+/-- The CLIF text for a multi-block function. -/
+def funcText (f : Func) : String :=
+  "function %main() -> i64 {\n" ++
+    String.intercalate "\n" (f.blocks.map blockText) ++ "\n}\n"
+
+end Cfg
 end Morph.Clif

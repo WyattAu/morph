@@ -129,14 +129,16 @@ theorem straightStmts_to_branch {budget : Nat} :
 /-! ## The lowering -/
 
 /-- The block a worker was asked to fill, plus every block it produced beyond
-that one. `instrs`/`term` are the filled block's body; `blocks` are the others,
-in reverse emission order. -/
+that one. `instrs`/`term` are the filled block's body; `blocks` are the others in
+*forward emission order* — `lowerProgramCFG` reverses them for printing, and the
+last element is the block that holds the list's completed terminator, which is
+what the `if` case needs as a phi predecessor. -/
 structure Lowered where
   /-- Instructions of the caller-owned block. -/
   instrs : List Instr
   /-- Terminator of the caller-owned block. -/
   term   : Terminator
-  /-- Other blocks, reverse emission order. -/
+  /-- Other blocks, forward emission order (last = the list's exit block). -/
   blocks : List Block
   /-- The statement list's value (the runner's accumulator). -/
   val    : ValId
@@ -191,10 +193,19 @@ def lowerStmtsCFG (bId : MIR.BlockId) (cont : Option MIR.BlockId)
       let bJoin := nextB + 2
       let Lt ← lowerStmtsCFG bThen (some bJoin) true ρ s1 (nextB + 3) lastVal th
       let Le ← lowerStmtsCFG bElse (some bJoin) true ρ Lt.supply Lt.next lastVal el
-      -- The merged value: one phi per incoming edge, both writing `vm`.
+      -- The merged value: one phi per incoming edge, both writing `vm`. The
+      -- edge's *source* is the block that jumps to the join, which is the arm's
+      -- own block only when the arm emitted none of its own. An arm holding a
+      -- nested `if` ends in that `if`'s join, and that block is the predecessor
+      -- — using `bThen` there would name a block whose terminator branches into
+      -- the arm's first block instead, so the phi would never fire and the join
+      -- would return an unbound register (found in loop 161 by encoding
+      -- `if (1 < 2) { if (3 < 4) { 7 } else { 8 } } else { 9 }`).
+      let thenExit := (Lt.blocks.getLast?.map (fun b => b.id)).getD bThen
+      let elseExit := (Le.blocks.getLast?.map (fun b => b.id)).getD bElse
       let vm := Le.supply
       let phis : List Instr :=
-        [.phi vm bThen Lt.val, .phi vm bElse Le.val]
+        [.phi vm thenExit Lt.val, .phi vm elseExit Le.val]
       let Lr ← lowerStmtsCFG bJoin cont arm ρ (vm + 1) Le.next vm rest
       some { instrs := ic
              term := .branch vc bThen bElse
@@ -303,6 +314,42 @@ example :
     (lowerProgramCFG ifThenAdd).bind
         (fun f => execFuncFrom 3 f ⟨fun _ => none, Store.empty⟩)
       == some (.int 5) := by
+  native_decide
+
+/-! ## Nested arms: the phi's predecessor
+
+The edge into a join comes from the block that actually jumps there. A flat arm
+is one block, so that block is the arm's entry; an arm holding a nested `if`
+ends in that `if`'s join instead. Naming the arm's entry unconditionally left the
+outer phi unfired, so the join returned an unbound register — a lowering bug
+found in loop 161 by trying to *encode* the program, not by any test that ran
+the flat shape. These two are the regression tests. -/
+
+/-- An `if` in the then-arm: the outer join takes its value from the inner
+join's edge, so the outer phi must name that block. -/
+def nestedThenProg : HIR.Program :=
+  ⟨[.ifStmt (.lit (.bool true))
+      [.ifStmt (.lit (.bool false)) [.exprStmt (.lit (.int 7))]
+        [.exprStmt (.lit (.int 8))]]
+      [.exprStmt (.lit (.int 9))]]⟩
+
+example :
+    (lowerProgramCFG nestedThenProg).bind
+        (fun f => execFuncFrom 6 f ⟨fun _ => none, Store.empty⟩)
+      == some (.int 8) := by
+  native_decide
+
+/-- The same shape in the else-arm, so the fix is not specific to one edge. -/
+def nestedElseProg : HIR.Program :=
+  ⟨[.ifStmt (.lit (.bool false))
+      [.exprStmt (.lit (.int 9))]
+      [.ifStmt (.lit (.bool true)) [.exprStmt (.lit (.int 7))]
+        [.exprStmt (.lit (.int 8))]]]⟩
+
+example :
+    (lowerProgramCFG nestedElseProg).bind
+        (fun f => execFuncFrom 6 f ⟨fun _ => none, Store.empty⟩)
+      == some (.int 7) := by
   native_decide
 
 end Morph.HIRToMIRCorrect

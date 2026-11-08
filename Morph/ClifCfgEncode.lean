@@ -4,6 +4,7 @@ SPDX-License-Identifier: Apache-2.0
 
 import Morph.ClifBlocks
 import Morph.ClifLower
+import Morph.ClifRender
 import Morph.HIRToMIRBranch
 
 /-!
@@ -136,6 +137,11 @@ def encodeFunc (f : Morph.MIR.Func) : Option Func := do
   let bs ← f.blocks.mapM fun b =>
     encodeBlock f (if b.id == f.entry then stripPrologue b else b)
   some ⟨bs, f.entry⟩
+
+/-- The artifact text for a lowered MIR function: encode to the block model, then
+render. This is the CFG counterpart of `Morph.Codegen.emitClif`. -/
+def emitCfg (f : Morph.MIR.Func) : Option String :=
+  (encodeFunc f).map funcText
 
 /-! ## Evidence on real lowerings
 

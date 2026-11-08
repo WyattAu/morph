@@ -556,4 +556,38 @@ example : clifArtifactPath "src/Compiler.v2.hum" = "src/Compiler.v2.clif" := by
 
 example : clifArtifactPath "Makefile" = "Makefile.clif" := by native_decide
 
+/-! ### Stage C: branching programs
+
+The straight-line path above is unchanged; a program with control flow falls
+through to `lowerProgramCFG` and the block model. The golden pins the text
+shape — blocks, parameters, one argument list per edge — and the refusals pin
+what is still outside the fragment. -/
+
+-- Golden: an `if` with a computed condition emits four blocks, a `brif` with one
+-- argument list per target, and a join whose parameter is returned.
+example : buildClif "if (1 < 2) { 10 } else { 20 }" ==
+    .value "function %main() -> i64 {\nblock0:\n  v1 = iconst.i64 1\n  v2 = iconst.i64 2\n  v3 = icmp slt v1, v2\n  brif v3, block1, block2\nblock3(v6: i64):\n  return v6\nblock2:\n  v5 = iconst.i64 20\n  jump block3(v5)\nblock1:\n  v4 = iconst.i64 10\n  jump block3(v4)\n}\n" := by
+  native_decide
+
+-- Golden: a binding arm is outside the branch fragment until C2c (a merge needs
+-- one phi per merged binding).
+example : buildClif "if (1 < 2) { let x = 1; } else { 2 }" ==
+    .unsupported
+      "codegen: program is outside the branch fragment (straight-line statements or if with non-binding arms; see docs/STAGEC-SCOPE.md §3)" := by
+  native_decide
+
+-- Golden: a loop is outside the branch fragment (C7).
+example : buildClif "while (1 < 2) { 1 }" ==
+    .unsupported
+      "codegen: program is outside the branch fragment (straight-line statements or if with non-binding arms; see docs/STAGEC-SCOPE.md §3)" := by
+  native_decide
+
+-- Golden: a literal boolean condition lowers fine and *encodes* not at all —
+-- the CLIF subset has no boolean constant (the `bconst` widening is named in
+-- docs/STAGEC-SCOPE.md §3).
+example : buildClif "if (true) { 10 } else { 20 }" ==
+    .unsupported
+      "codegen: the CLIF block subset cannot encode this program (switch, non-leading phi, missing edge argument, bool constants)" := by
+  native_decide
+
 end Morph.Tests.Driver

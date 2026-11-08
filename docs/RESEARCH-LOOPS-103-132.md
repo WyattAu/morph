@@ -1755,3 +1755,53 @@ argument).
 **Result.** `lake build Morph.ClifCfgEncode` green, zero warnings, no `sorry`.
 Next: C4b's theorem (needs a block-level MIR trace relation and the fuel bound
 from §4.4), and C3's `blockBound` in parallel.
+
+## Loop 161 — C5/C6: a branch runs natively, and the nested-arm phi was wrong
+
+The branch path now reaches machine code: `morph build --codegen=cranelift` on
+`if (1 < 2) { 10 } else { 20 }` writes CLIF text, `morph-clif` compiles it, and
+the native binary prints the same value the verified evaluator prints. Corpus
+`13/13` (9 straight-line + 4 branch).
+
+**The text layer** (`Morph/ClifRender.lean`): `Cfg.funcText` prints
+`block1(v4: i64):` (types on parameters), `jump block3(v5)` (no types on edge
+arguments), and `brif v3, block1(v7), block2(v8)` — one argument list *per
+target*, which is how two arms pass different values to one join parameter. The
+Stage B token layer is deliberately not extended: it exists to prove B5's round
+trip, and widening it would mean re-proving B5 for a syntax `cranelift-reader`
+already owns. `emitCfg` composes `encodeFunc` with the printer, and
+`buildClif` now falls through to it only when `lowerProgram` refuses, so
+straight-line programs keep the *proved* Stage B path.
+
+**Cranelift accepted the text on the first try**, including the three things the
+Stage B corpus never exercised: forward block references (`brif` to a block
+defined later in the text), block parameters with types, and `brif` on the i8
+that a bare `icmp` produces.
+
+**The bug.** `if (1 < 2) { if (3 < 4) { 7 } else { 8 } } else { 9 }` failed to
+encode, and the reason was in C2b, not in the encoder: the join's phis used the
+arm's *entry* block as their predecessor (`phi vm bThen …`), which is only the
+block that jumps to the join when the arm is flat. An arm holding a nested `if`
+ends in that `if`'s join, so the outer phi named a block whose terminator
+branches into the arm instead, the phi never fired, and the join returned an
+unbound register. That is a silent-wrong-answer bug for nested arms, and no
+existing C2b test caught it because they all used one-block arms. Fixed by
+taking the predecessor from the arm's last emitted block
+(`Lt.blocks.getLast?.map (·.id)).getD bThen`), with the reason written at the
+site and two `native_decide` regression tests (`nestedThenProg`,
+`nestedElseProg`) that now execute 8 and 7.
+
+Worth recording: the bug was found by *encoding* the program, not by running the
+MIR. `execFuncFrom` would have returned `none` on the same program, but nothing
+in the tree ran a nested-arm program until the corpus did. C6 is not polish.
+
+**Also found and fixed:** `Lowered.blocks` was documented "reverse emission
+order" while the code appends in forward order (`lowerProgramCFG` reverses for
+printing). The predecessor fix depends on that order — `getLast?` is the exit
+block only if the list is forward — so the docstring is corrected rather than
+left to mislead the next proof.
+
+**Result.** `lake build Morph.Tests` green (292 jobs), `native.sh` 13/13, no
+`sorry`, no warnings. `morph build` golden for the branch text plus three
+refusal goldens (binding arm, `while`, literal boolean condition) are in
+`Morph/Tests/Driver.lean`.

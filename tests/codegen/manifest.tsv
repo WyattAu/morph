@@ -10,3 +10,7 @@ negative.hum	-7
 large.hum	1000000000
 chain.hum	60
 negative_chain.hum	-86
+if_true.hum	10
+if_false.hum	20
+if_nested.hum	7
+if_return.hum	10
