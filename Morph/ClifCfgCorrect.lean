@@ -183,5 +183,60 @@ theorem paramsOf_nodup (phis : List Phi) : (paramsOf phis).Nodup := by
       rw [if_neg he]
       exact nodup_append_singleton hacc hnot
 
+/-- Distributing the existential `List.mem_cons` leaves inside `paramsOf`'s fold
+guard. Proved by hand so the closing bookkeeping of `paramsOfAux_mem` does not
+depend on which distribution lemmas the toolchain exports. -/
+private theorem exists_or_dst (p : Phi) (ps : List Phi) (d : ValId) :
+    (∃ q, (q = p ∨ q ∈ ps) ∧ q.dst = d) ↔ (p.dst = d ∨ ∃ q ∈ ps, q.dst = d) := by
+  constructor
+  · rintro ⟨q, hq | hq, hqd⟩
+    · subst hq; exact Or.inl hqd
+    · exact Or.inr ⟨q, hq, hqd⟩
+  · rintro (h | ⟨q, hq, hqd⟩)
+    · exact ⟨p, Or.inl rfl, h⟩
+    · exact ⟨q, Or.inr hq, hqd⟩
+
+/-- **Which destinations the merge contains.** `paramsOf` folds with a `mem`
+guard, so this says the guard changes only how often a destination appears, never
+whether it does: every parameter comes from a phi, and with `paramsOf_nodup` from
+exactly one. -/
+theorem paramsOfAux_mem (l : List Phi) :
+    ∀ (acc : List ValId) (d : ValId),
+      d ∈ l.foldl (fun acc p => if acc.elem p.dst then acc else acc ++ [p.dst]) acc ↔
+        d ∈ acc ∨ ∃ p ∈ l, p.dst = d
+  | acc, d => by
+    induction l generalizing acc with
+    | nil => simp
+    | cons p ps ih =>
+      rw [List.foldl_cons]
+      by_cases he : acc.elem p.dst
+      · rw [if_pos he, ih]
+        constructor
+        · rintro (h | ⟨q, hq, hqd⟩)
+          · exact Or.inl h
+          · exact Or.inr ⟨q, List.mem_cons_of_mem _ hq, hqd⟩
+        · rintro (h | ⟨q, hq, hqd⟩)
+          · exact Or.inl h
+          · rcases List.mem_cons.mp hq with rfl | hq'
+            · exact Or.inl (hqd ▸ List.elem_iff.mp he)
+            · exact Or.inr ⟨q, hq', hqd⟩
+      · rw [if_neg he, ih (acc ++ [p.dst]), List.mem_append, List.mem_singleton]
+        simp only [List.mem_cons]
+        rw [exists_or_dst p ps d]
+        constructor
+        · rintro ((h | h) | h)
+          · exact Or.inl h
+          · exact Or.inr (Or.inl h.symm)
+          · exact Or.inr (Or.inr h)
+        · rintro (h | h | h)
+          · exact Or.inl (Or.inl h)
+          · exact Or.inl (Or.inr h.symm)
+          · exact Or.inr h
+
+/-- The merge's parameters are exactly the destinations its phis define. -/
+theorem paramsOf_mem (ps : List Phi) (d : ValId) :
+    d ∈ paramsOf ps ↔ ∃ p ∈ ps, p.dst = d := by
+  simpa [paramsOf] using paramsOfAux_mem ps [] d
+
 end Cfg
 end Morph.Clif
