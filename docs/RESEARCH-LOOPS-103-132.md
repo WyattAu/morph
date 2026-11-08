@@ -1939,3 +1939,21 @@ in explicitly; without it the phi equation lemma does not match syntactically.
 `paramsOf` (needs the no-read-of-a-write hypothesis made explicit, plus
 uniqueness of a `(dst, pred)` phi from `noDupPairs`), the terminator lemma, and
 the fuel induction.
+
+## Loop 165 — sequencing: Stage C finishes before anything else starts
+
+Maintainer direction: wait until Stage C is finished before starting work
+outside it. That changes one thing in the plan and nothing in the order of the
+items themselves.
+
+`C9` (`morph test`) was the one item argued to ship early, on the grounds that it
+is independent and pilot-facing. It is deferred to Stage C exit. The argument
+that loses is not technical: shipping a driver command while C3 and C4b are open
+makes the roadmap's H1 look partly delivered next to a proof that is not, which
+is the shape the plan forbids (roadmap principle 1 — a narrower proof must never
+stand for a wider fragment than it covers).
+
+What does *not* move: C6's `rejects.tsv` rows are Stage C items (they pin the
+refusals the stage makes), so they stay. The order inside Stage C is unchanged:
+C4b (three lemmas) → hedges (program parameter, `blockBound`) → C3 → C2c → C7 →
+C8 → C9.

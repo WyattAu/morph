@@ -276,12 +276,17 @@ before it.
 | C6 | Corpus: branch programs in `tests/codegen` (`if` with a value, `if` with a `return`, nested `if`), `native.sh` rows; refusal rows in `rejects.tsv` for binding arms and `matchStmt` — **first three groups done, loop 161**: 4 rows (`if_true`, `if_false`, `if_nested`, `if_return`), 13/13 native. `rejects.tsv` rows still pending | harness | C5, C4b |
 | C7 | `whileLoop`/`break`/`continue`/`doWhile`: loop-carried phi, bound-dependent fuel, preservation | pure Lean | C3, C4b |
 | C8 | `Instr.call`: program-in-executor semantics, single-function calls, ABI/layout lemmas, CLIF `call`/`sig` | Lean + ADR | C4b |
-| C9 | `morph test`: run an in-source suite through `runHIRStmts` and report pass/fail per case; no new semantics | Lean CLI | — (independent) |
+| C9 | `morph test`: run an in-source suite through `runHIRStmts` and report pass/fail per case; no new semantics — **deferred to Stage C exit (loop 165)** | Lean CLI | — (independent, but sequenced last by maintainer direction) |
 
-C9 is deliberately independent: `morph test` is a driver command over the
-existing oracle, so it can ship while C1–C3 are still in progress, and it is
-the piece pilots ask for first. It touches `Main.lean` + `Driver.lean` only,
-in the same style as `check`/`run`.
+C9 is technically independent — `morph test` is a driver command over the
+existing oracle, so it *could* ship while C1–C3 are in progress — but it is
+**sequenced last**. Maintainer direction (loop 165): finish Stage C before
+starting anything outside it, so the stage's claim ("control flow and calls
+proved, not merely evidenced") lands as one thing rather than arriving beside a
+half-open proof. The earlier note's argument for shipping it early was about
+pilot access, not about the proof; it loses to a single coherent stage exit.
+C6's `rejects.tsv` rows are part of Stage C and are therefore *not* deferred —
+they pin refusals the stage actually makes.
 
 ### 5.1 C4b exists because the table was missing it (loop 159)
 
