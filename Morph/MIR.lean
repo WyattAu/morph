@@ -533,13 +533,88 @@ def evalInstrFull (fenv : FullEnv) : Instr → Option FullEnv
 def findBlock (f : Func) (bid : BlockId) : Option Block :=
   f.blocks.find? (fun b => b.id == bid)
 
-/-- Execute a single block: walk instructions, then handle the terminator. -/
+/-- Execute a block's straight-line instruction list. (The block's
+terminator is `execBlockFuel`'s business, not this function's.) -/
 def execInstrsFull (fenv : FullEnv) : List Instr → Option FullEnv
   | [] => some fenv
   | i :: is =>
       match evalInstrFull fenv i with
       | none => none
       | some fenv' => execInstrsFull fenv' is
+
+/-! ## Edge-aware execution (Stage C item C1)
+
+`execInstrsFull` runs a block without being told which edge was taken, so every
+`phi` stalls there (`evalInstrFull` returns `none` for it). Branching programs
+merge values with `phi`, and `Instr.phi` already records the predecessor in its
+`pred` field, so the only missing datum is the block we arrived from.
+`execInstrsFullFrom` adds exactly that parameter.
+
+The Stage A/B executors are deliberately left untouched: every theorem that
+names `execFunc`/`execBlockFuel` keeps applying to the fragment it was proved
+for, and no agreement lemma is needed to say so — the old code does not change.
+-/
+
+/-- Edge-aware instruction execution. `phi dst pred src` reads `src` when the
+block was entered from `pred`, and is skipped otherwise — including at the entry
+block (`prev = none`), whose phis are dead. Every other instruction defers to
+`evalInstrFull`. -/
+def execInstrsFullFrom (prev : Option BlockId) (fenv : FullEnv) :
+    List Instr → Option FullEnv
+  | [] => some fenv
+  | .phi dst pred src :: rest =>
+      match prev with
+      | none => execInstrsFullFrom prev fenv rest
+      | some p =>
+          if pred = p then
+            match fenv.env src with
+            | none => none
+            | some v =>
+                execInstrsFullFrom prev ⟨fenv.env.update dst v, fenv.store⟩ rest
+          else execInstrsFullFrom prev fenv rest
+  | i :: rest =>
+      match evalInstrFull fenv i with
+      | none => none
+      | some fenv' => execInstrsFullFrom prev fenv' rest
+
+@[simp] theorem execInstrsFullFrom_nil (prev : Option BlockId) (fenv : FullEnv) :
+    execInstrsFullFrom prev fenv [] = some fenv := rfl
+
+/-- A phi in the entry block never fires: there is no edge to match. -/
+@[simp] theorem execInstrsFullFrom_phi_none (dst : ValId) (pred : BlockId)
+    (src : ValId) (rest : List Instr) (fenv : FullEnv) :
+    execInstrsFullFrom none fenv (.phi dst pred src :: rest) =
+      execInstrsFullFrom none fenv rest := rfl
+
+/-- Arriving from the phi's own predecessor binds it. -/
+theorem execInstrsFullFrom_phi_hit (dst : ValId) (pred p : BlockId) (src : ValId)
+    (rest : List Instr) (fenv : FullEnv) (h : pred = p) :
+    execInstrsFullFrom (some p) fenv (.phi dst pred src :: rest) =
+      (match fenv.env src with
+       | none => none
+       | some v => execInstrsFullFrom (some p)
+           ⟨fenv.env.update dst v, fenv.store⟩ rest) := by
+  subst h
+  simp [execInstrsFullFrom]
+
+/-- Arriving from any other block leaves the phi unexecuted, which is what makes
+a merge block well-defined: only the incoming edge's phi runs. -/
+theorem execInstrsFullFrom_phi_miss (dst : ValId) (pred p : BlockId) (src : ValId)
+    (rest : List Instr) (fenv : FullEnv) (h : pred ≠ p) :
+    execInstrsFullFrom (some p) fenv (.phi dst pred src :: rest) =
+      execInstrsFullFrom (some p) fenv rest := by
+  simp [execInstrsFullFrom, h]
+
+/-- A non-phi instruction steps identically with or without an edge parameter. -/
+theorem execInstrsFullFrom_nonphi (prev : Option BlockId) (fenv : FullEnv)
+    {i : Instr} {rest : List Instr} (h : ∀ dst pred src, i ≠ .phi dst pred src) :
+    execInstrsFullFrom prev fenv (i :: rest) =
+      (match evalInstrFull fenv i with
+       | none => none
+       | some fenv' => execInstrsFullFrom prev fenv' rest) := by
+  cases i with
+  | phi dst pred src => exact absurd rfl (h dst pred src)
+  | _ => rfl
 
 /-- Execute a single block: walk instructions, then handle the terminator. -/
 def execBlockFuel (fuel : Nat) (f : Func) (b : Block) (fenv : FullEnv) : Option Value :=
@@ -579,6 +654,61 @@ def execFunc (fuel : Nat) (f : Func) (fenv : FullEnv) : Option Value :=
   execBlockFuel fuel f
     { id := f.entry, instrs := [], terminator := .goto f.entry }
     fenv
+
+/-- Edge-aware block execution: the same walk as `execBlockFuel`, with the
+predecessor threaded into the instructions (`phi` fires on the matching edge)
+and into the successor call (`prev := some b.id`). -/
+def execBlockFrom (fuel : Nat) (f : Func) (prev : Option BlockId) (b : Block)
+    (fenv : FullEnv) : Option Value :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
+      match execInstrsFullFrom prev fenv b.instrs with
+      | none => none
+      | some fenv' =>
+          match b.terminator with
+          | .return_ v => fenv'.env v
+          | .goto t =>
+              match findBlock f t with
+              | some b' => execBlockFrom fuel f (some b.id) b' fenv'
+              | none => none
+          | .branch cond tt ff =>
+              match fenv'.boolOf cond with
+              | some true =>
+                  match findBlock f tt with
+                  | some b' => execBlockFrom fuel f (some b.id) b' fenv'
+                  | none => none
+              | some false =>
+                  match findBlock f ff with
+                  | some b' => execBlockFrom fuel f (some b.id) b' fenv'
+                  | none => none
+              | none => none
+          | .switch _ _ _ => none
+
+/-- Execute a function from its entry block, edge-aware. Unlike `execFunc` the
+entry block is dispatched directly rather than through a synthetic
+`goto`-block, so one block of straight-line code costs one unit of fuel. -/
+def execFuncFrom (fuel : Nat) (f : Func) (fenv : FullEnv) : Option Value :=
+  match findBlock f f.entry with
+  | some b => execBlockFrom fuel f none b fenv
+  | none => none
+
+/-- Entry dispatch is the only difference between `execFuncFrom` and a direct
+`execBlockFrom` call: there is no synthetic block in between. -/
+theorem execFuncFrom_eq (fuel : Nat) (f : Func) (b : Block) (fenv : FullEnv)
+    (h : findBlock f f.entry = some b) :
+    execFuncFrom fuel f fenv = execBlockFrom fuel f none b fenv := by
+  simp [execFuncFrom, h]
+
+/-- One straight-line block, entered with no predecessor: run its instructions
+then read the return register. This is the shape every Stage A/B function has,
+and the base case C4's block statement has to reproduce. -/
+theorem execBlockFrom_return (f : Func) (prev : Option BlockId) (b : Block)
+    (v : ValId) (fenv : FullEnv) :
+    execBlockFrom 1 f prev ⟨b.id, b.instrs, .return_ v⟩ fenv =
+      (match execInstrsFullFrom prev fenv b.instrs with
+       | none => none
+       | some fenv' => fenv'.env v) := rfl
 
 end Morph.MIR
 

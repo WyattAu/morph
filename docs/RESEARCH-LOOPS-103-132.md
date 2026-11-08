@@ -1485,3 +1485,61 @@ exists, since a jump table is the only construct that would want one.
 
 **Result.** Scope note only, no code, no gate moved. `morph test` (C9) and C1 are
 the two items that can start independently.
+
+## Loop 156 — C1: MIR learns which edge it came from
+
+The first Stage C item, and the one the scope note said had to precede any
+lowering: a merge block needs `phi`, and `phi` needs the incoming block.
+
+**What landed** (`Morph/MIR.lean`):
+
+- `execInstrsFullFrom (prev : Option BlockId)` — a `phi dst pred src` reads
+  `src` when `prev = some pred` and is skipped otherwise. `pred` was already in
+  the instruction, so no data was added, only the edge.
+- `execBlockFrom fuel f prev b fenv` — `execBlockFuel`'s walk with `prev`
+  threaded into the successor call (`some b.id`).
+- `execFuncFrom fuel f fenv` — dispatches the entry block directly.
+- Four lemmas: `execInstrsFullFrom_nil`, `_phi_none` (entry phis are dead),
+  `_phi_hit`, `_phi_miss`, plus `execInstrsFullFrom_nonphi`,
+  `execFuncFrom_eq` (entry dispatch adds no synthetic block) and
+  `execBlockFrom_return` (the one-block shape C4's CLIF statement must
+  reproduce).
+
+**The decision that made this additive.** `execInstrsFull`, `execBlockFuel` and
+`execFunc` are unchanged — not redefined as wrappers, not edited at all. The
+scope note had asked for a compatibility lemma between the old and new
+executors; keeping the old code intact makes that lemma unnecessary, because
+everything proved about `execFunc` still applies to exactly the code it was
+proved about. The alternative (one executor with an edge parameter, old name
+defined as the `none` case) would have been shorter by one definition and would
+have broken every proof that unfolds `execFunc`.
+
+**Fuel accounting changed, deliberately.** `execFunc` spends two units per
+straight-line program: one on the synthetic `goto`-entry block, one on the real
+block. `execFuncFrom` dispatches the entry directly, so the same program costs
+one. New executor, new accounting — but the constant now has to be derived once
+for branching programs (§1.5 of the scope), so starting it from the honest value
+rather than inheriting an artefact is worth the asymmetry.
+
+**The test that matters** (`Morph/Tests/MIR.lean`): a diamond
+
+```
+block 0: cond = true            branch cond, block1, block2
+block 1: v4 = 10                goto block3
+block 2: v5 = 20                goto block3
+block 3: phi v2 pred=1 v4 ; phi v2 pred=2 v5 ; return v2
+```
+
+- `execFuncFrom 3 fDiamond = some 10`
+- with the condition flipped, `some 20`
+- `execFunc 4 fDiamond = none` — the *old* executor stalls at the merge, which
+  is the measured reason C1 could not be skipped
+- an entry-block phi whose source is undefined is skipped, not stalled
+
+Both phis write the same destination from different registers, so a merge that
+fired every phi instead of only the incoming edge's would return 20 in both
+runs — the test can fail.
+
+**Result.** `lake build Morph.Tests` green (287 jobs), `Morph/MIR.lean` and
+`Morph/Tests/MIR.lean` elaborate with zero warnings, no `sorry`. C2 (the
+`StraightStmts`/`lowerStmts` extension for `ifStmt`) is now unblocked.

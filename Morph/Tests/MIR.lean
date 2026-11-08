@@ -200,4 +200,64 @@ example : evalBinOp .mul (.int 6) (.int 7) == some (.int 42) := by
   native_decide
 example : evalUnOp .notb (.int 0) == some (.int (-1)) := by native_decide
 
+/-! ## Edge-aware execution (Stage C item C1)
+
+`execInstrsFull`/`execFunc` are unchanged and still stall on `phi`. The
+`...From` executors take the incoming block, which is what a merge block needs.
+The diamond below is the smallest program where a *wrong* phi rule is
+observable: the two arms write different registers, and the join block carries
+one phi per edge into the same destination, so a merge that fired *every* phi
+rather than only the incoming edge's would return 20 in both runs.
+-/
+
+/-- `cond ? 10 : 20` as a diamond: block 0 branches on value 0, blocks 1/2 set
+registers 4/5, block 3 merges them into 2 by phi. -/
+def fDiamondBlocks : List Block :=
+  [⟨0, [.const 0 (.bool true)], .branch 0 1 2⟩,
+   ⟨1, [.const 4 (.int 10)], .goto 3⟩,
+   ⟨2, [.const 5 (.int 20)], .goto 3⟩,
+   ⟨3, [.phi 2 1 4, .phi 2 2 5], .return_ 2⟩]
+
+def fDiamond : Func where
+  name := "diamond"
+  params := []
+  blocks := fDiamondBlocks
+  entry := 0
+  retType := Typ.intType
+
+/-- The true arm wins: `10`. -/
+example : execFuncFrom 3 fDiamond ⟨fun _ => none, Store.empty⟩ == some (.int 10) := by
+  native_decide
+
+/-- Flip the condition (`const 0 (.bool false)`) and the false arm's phi fires. -/
+def fDiamondFalse : Func :=
+  { fDiamond with
+    blocks := [⟨0, [.const 0 (.bool false)], .branch 0 1 2⟩,
+               ⟨1, [.const 4 (.int 10)], .goto 3⟩,
+               ⟨2, [.const 5 (.int 20)], .goto 3⟩,
+               ⟨3, [.phi 2 1 4, .phi 2 2 5], .return_ 2⟩] }
+
+example : execFuncFrom 3 fDiamondFalse ⟨fun _ => none, Store.empty⟩ == some (.int 20) := by
+  native_decide
+
+/-- The same program under the edge-blind executor stalls at the merge, which is
+why C1 had to come before any `if` lowering. -/
+example : execFunc 4 fDiamond ⟨fun _ => none, Store.empty⟩ == none := by
+  native_decide
+
+/-- Entry-block phis never fire: value 7 is never defined, and `prev = none`
+skips the phi instead of stalling on it. -/
+def fEntryPhi : Func where
+  name := "entryPhi"
+  params := []
+  blocks := [⟨0, [.phi 1 0 7, .const 2 (.int 42)], .return_ 2⟩]
+  entry := 0
+  retType := Typ.intType
+
+example : execFuncFrom 1 fEntryPhi ⟨fun _ => none, Store.empty⟩ == some (.int 42) := by
+  native_decide
+
+example : execFuncFrom 1 fEntryPhi ⟨fun _ => none, Store.empty⟩ != none := by
+  native_decide
+
 end Morph.Tests.MIR

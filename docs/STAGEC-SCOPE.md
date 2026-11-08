@@ -99,11 +99,15 @@ polish — it is the only evidence the new path will have.
 
 ## 2. The three prerequisites, in dependency order
 
-1. **Edge environments** (§1.3). New `execBlockFuelFrom (prev)`; `phi` reads
-   `src` when `prev = some pred` and is skipped otherwise; `switch` stays
-   rejected until it has a spec. Affects: `Morph/MIR.lean`, `MIRExecLemmas`,
-   and any theorem that unfolds `execFunc` (they keep working — entry `prev` is
-   `none` and no straight-line function has phis).
+1. **Edge environments** (§1.3). — **landed, loop 156**: `execInstrsFullFrom`,
+   `execBlockFrom`, `execFuncFrom` in `Morph/MIR.lean`. `phi` reads `src` when
+   `prev = some pred` and is skipped otherwise; `switch` stays rejected until it
+   has a spec. `execInstrsFull`/`execBlockFuel`/`execFunc` are byte-for-byte
+   unchanged, so the compatibility lemma this item originally called for turned
+   out to be unnecessary: nothing already proved was touched. `execFuncFrom`
+   dispatches the entry block directly instead of through a synthetic
+   `goto`-block, so a straight-line function costs one unit of fuel here rather
+   than two.
 2. **Fragment algebra** (§1.2). `StraightStmts` gains `ifStmt` (condition
    `IsStraight`, both arms recursive, budget threaded), and the projections and
    inversion lemmas that the preservation proof consumes.
@@ -190,7 +194,7 @@ soundness lemma that any `ClifStepRel` run is realized by `run fuel`).
 
 | # | Item | Kind | Depends on |
 | --- | --- | --- | --- |
-| C1 | Edge-aware executor: `execBlockFrom`, `phi`, `execBlockFuel` compatibility lemma | pure Lean, no corpus change | — |
+| C1 | Edge-aware executor: `execInstrsFullFrom`, `execBlockFrom`, `execFuncFrom`, phi hit/miss lemmas, diamond tests | pure Lean, no corpus change — **done, loop 156** | — |
 | C2 | `StraightStmts` + `lowerStmts` for `ifStmt`, incl. merge/phi construction and the two-arm projections | pure Lean | C1 |
 | C3 | `lowerStmts_if_correct` (§4.2) and the `if` case of the preservation bridge | pure Lean | C1, C2 |
 | C4 | CLIF block model: `Term`, block list, `ClifStepRel`, `run` over blocks, single-block base case reproved through the new surface | pure Lean | — (parallel with C1–C3) |
