@@ -1588,3 +1588,58 @@ out), and it changes nothing that already builds: `StraightStmts`,
 **Result.** `lake build Morph.HIRToMIRBranch` green, zero warnings, no `sorry`.
 C2b (`lowerStmts` for `if`, merge block, phi per merged binding) is next, and it
 is the first Stage C item that produces MIR with more than one block.
+
+## Loop 158 — C2b: `if` becomes four blocks and a phi
+
+The first Stage C item that emits MIR with more than one block.
+
+**The lowering** (`Morph/HIRToMIRBranch.lean`): one worker, `lowerStmtsCFG`,
+fills a caller-owned block and returns the rest.
+
+```
+entry:  <condition instrs>   branch vc, then, else
+then:   <arm>                goto join            (or `return`, if the arm returned)
+else:   <arm>                goto join
+join:   phi vm then v_then
+        phi vm else v_else
+        <rest of the list, in the join block>
+        return vm            (or `goto cont`, when the list is an arm)
+```
+
+Two parameters carry the design. `cont : Option MIR.BlockId` says what a
+completed list does — `none` returns the accumulated value (a program body),
+`some b` jumps to `b` (an arm, or a body tail after a join). That is what lets
+one function serve both the program body and an arm, including a nested `if`
+inside an arm, without a second copy of the statement walk. `arm : Bool` makes
+an arm refuse `varDecl`/`assign`.
+
+**Why binding arms are refused rather than approximated.** An arm that rebinds
+changes the register file; the join would then need a phi *per merged binding*,
+matching ids across two lists that can differ in length and order (`varDecl`
+pushes, `assign` updates in place). Emitting the value phi and reusing the outer
+register file would silently resolve a post-`if` lookup to the pre-`if` binding
+— a miscompile, not a rejection. So `lowerStmtsCFG` returns `none`, `ArmStmts`
+is the grammar that says which arms cannot reach that path, and the gap is
+named as C2c. This is the same discipline as `lowerExpr`'s `none` cases and as
+Stage B's four encoder narrowings: refuse loudly, widen later with the proof.
+
+**One supply counter for both arms.** The then-arm allocates from `s1`; the
+else-arm starts from the then-arm's final supply. Two arms cannot define the
+same register, so a future binding merge will not have to disambiguate register
+names across edges. Registers cost nothing here and the alternative is a class
+of bug that only shows up when the two arms happen to allocate the same number.
+
+**Evidence, and its limit.** Four `native_decide` facts: the lowered `if true {
+10 } else { 20 }` is four blocks; it returns 10; flipping the constructor to
+`false` returns 20; and the same program followed by `+ 5` returns 5, with the
+value phi still executed at the join (the accumulator rule makes the *last*
+expression the value, not the `if`). The arms differ deliberately, so a phi rule
+that picked the wrong edge would fail the true/false pair. What is *not*
+established: agreement with the HIR oracle. That is C3, and these tests would
+pass even if the lowering agreed with a wrong oracle.
+
+**Result.** `lake build Morph.HIRToMIRBranch` green, zero warnings, no `sorry`.
+Found along the way: `BlockId` exists in both `Morph.Core` (memory blocks) and
+`Morph.MIR` (basic blocks), so a file that opens both must qualify — the new
+code uses `MIR.BlockId`. Next: C3 (the preservation theorem) or C2c (binding
+merges), in either order; C4 (CLIF blocks) can run in parallel with both.
