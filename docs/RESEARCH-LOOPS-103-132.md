@@ -2129,3 +2129,39 @@ with `rfl`s. A `cases prev` leaves `hfold`'s `match` unreduced; retype it
 
 **Still open.** C4b's single-block certificate step, the fuel induction, and the
 composed `cfg_correct`; then C3 → C2c → C7 → C8 → C9.
+
+## Loop 171 — C4b path certificate: BlockStep/BlockPath + MIR realization
+
+**Goal.** State the block-level MIR trace C4b consumes and prove its MIR half.
+
+**Did.** `Morph/ClifCfgSimulate.lean`, new section "The path certificate":
+`execBlockFrom_succ` (one fuel unit unfolds to walk + terminator, by `rfl` —
+probed first that both literal `1` and variable `fuel + 1` reduce),
+`BlockStep` (fold result + `Trace` over the body + store + no-mid-phis),
+`BlockPath` (`ret`/`goto`/`branchTrue`/`branchFalse`; `switch` excluded, edges
+split so neither realization cases on a boolean), `pathFuel` (one unit per
+block), `blockPath_exec` (a path runs in `execBlockFrom` to the same value —
+the induction consumes `block_exec_of_cert` per step and `hs.hstore` at edges).
+
+**Also.** `Step.const_unit` in `Morph/ClifSimulate.lean`: the entry prologue
+(`.const dst .unit`) as a fragment step. It reads nothing, so `step_transport`
+is unconditional (`agrees_update`); it has no encoder case, so
+`step_simulate`'s new arm is vacuous (closed by `reduceCtorEq`, tail guarded
+with `all_goals`). Without it no `Trace` can cover a lowered entry block and
+no entry `BlockStep` could exist.
+
+**Findings (toolchain).** Prop-valued `structure`/`inductive` with data fields
+is rejected at the projection — annotate `: Type` (needed anyway: induction
+must eliminate into `Sort`). `induction ... with` names attach to explicit
+args only; index instantiations come back inaccessible beside stale ambients —
+`rename_i` (in context order) recovers them deterministically. `rw` does not
+iota-reduce a match on a rewritten constructor; `simp only` with the equation
+does. `pathFuel` needs application syntax (`BlockPath.pathFuel` does not
+resolve from `def pathFuel`).
+
+**Result.** `lake env lean` green on `Morph/ClifSimulate.lean`,
+`Morph/ClifCfgSimulate.lean`, no warnings.
+
+**Still open.** C4b's CLIF realization (`blockPath_runFuel`: peeling the entry
+prologue `Trace` step, per-edge `agrees_after_edge`, `runFuel` induction) and
+the composed `cfg_correct`; then C3 → C2c → C7 → C8 → C9.

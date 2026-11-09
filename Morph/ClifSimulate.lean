@@ -60,10 +60,14 @@ own; the side condition is proved by assumption. -/
 
 /-- One fragment step: the operand shapes, the range fact for the written value,
 and the environment transition. Every constructor corresponds to one `agree_*`
-lemma and one `instrEncode` case. -/
+lemma and one `instrEncode` case — except `const_unit`, the entry prologue:
+it reads nothing, so transport is unconditional, but it has no CLIF counterpart
+(`instrEncode` rejects it) and the encoder drops it (`stripPrologue`). -/
 inductive Step : Morph.MIR.Env → Morph.MIR.Instr → Morph.MIR.Env → Prop where
   | const {m : Morph.MIR.Env} {dst : ValId} {n : Int} (hval : ValInRange (.int n)) :
       Step m (.const dst (.int n)) (m.update dst (.int n))
+  | const_unit {m : Morph.MIR.Env} {dst : ValId} :
+      Step m (.const dst .unit) (m.update dst .unit)
   | add {m : Morph.MIR.Env} {dst l r : ValId} {τ : Typ} {a b : Int}
       (hl : m l = some (.int a)) (hr : m r = some (.int b))
       (hval : ValInRange (.int (a + b))) :
@@ -126,9 +130,10 @@ theorem step_simulate {m m' : Morph.MIR.Env} {i : Morph.MIR.Instr} {c : Instr}
   -- Reduce `instrEncode` on the constructor, then substitute `c` so that the
   -- `match c` inside `step` reduces; `simp_all` alone rewrites the wrong way.
   cases h <;>
-    (simp only [instrEncode, binopInstr, unopInstr, Option.some.injEq] at henc ⊢
-     subst henc
-     simp_all [step, asInt, asBool, evalCond, shiftAmount, update_eq_set])
+    (simp only [instrEncode, binopInstr, unopInstr, Option.some.injEq, reduceCtorEq] at henc ⊢
+     all_goals
+       (subst henc
+        simp_all [step, asInt, asBool, evalCond, shiftAmount, update_eq_set]))
 
 /-- A `Step` is the MIR transition it records, against the pure evaluator. -/
 theorem step_evalInstr {m m' : Morph.MIR.Env} {i : Morph.MIR.Instr}
@@ -252,6 +257,8 @@ theorem step_transport {m₁ m₂ m₁' : Morph.MIR.Env} {i : Morph.MIR.Instr}
   cases h with
   | const hval =>
     exact ⟨_, .const hval, agrees_update hag _ _⟩
+  | const_unit =>
+    exact ⟨_, .const_unit, agrees_update hag _ _⟩
   | add hl hr hval =>
     exact ⟨_, .add (hag _ _ hl (by simp)) (hag _ _ hr (by simp)) hval,
       agrees_update hag _ _⟩

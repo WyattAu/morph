@@ -802,5 +802,141 @@ theorem encodeBlock_inv {f : Morph.MIR.Func} {b : Morph.MIR.Block} {cb : Block}
           simp only [ht, Option.bind_some, Option.some.injEq] at h
           exact ⟨cs, t, rfl, rfl, rfl, rfl, h.symm⟩
 
+/-! ## The path certificate: block steps compose
+
+A `BlockPath` is the block-level MIR trace C4b is stated against (scope §4.3):
+the per-block certificate is a fold result plus a `Trace` over the body, and
+the path threads them across terminators. Two realizations follow in the next
+two loops:
+
+- `blockPath_exec` (this loop, MIR side): a path runs in `execBlockFrom` with
+  one fuel unit per block. C3 composes preservation with paths instead of
+  restating it against the executor.
+- The CLIF realization (next): the same path runs in `runFuel` to the same
+  value, through the encoder. Their composition is `cfg_correct`.
+
+The `ret` case carries `w ≠ .unit`: the CLIF realization routes the return
+through `AgreesOnValues`, which only transports non-unit values. A unit
+return needs exact equality rather than agreement and is outside the
+certificate's scope (lowered `if` values are integers).
+-/
+
+/-- One fuel unit unfolds to a walk plus a terminator step. -/
+theorem execBlockFrom_succ (fuel : Nat) (f : Morph.MIR.Func)
+    (prev : Option Morph.MIR.BlockId) (b : Morph.MIR.Block)
+    (fenv : Morph.MIR.FullEnv) :
+    Morph.MIR.execBlockFrom (fuel + 1) f prev b fenv =
+      (match Morph.MIR.execInstrsFullFrom prev fenv b.instrs with
+       | none => none
+       | some fenv' =>
+         match b.terminator with
+         | .return_ v => fenv'.env v
+         | .goto t =>
+             match Morph.MIR.findBlock f t with
+             | some b' => Morph.MIR.execBlockFrom fuel f (some b.id) b' fenv'
+             | none => none
+         | .branch cond tt ff =>
+             match fenv'.boolOf cond with
+             | some true =>
+                 match Morph.MIR.findBlock f tt with
+                 | some b' => Morph.MIR.execBlockFrom fuel f (some b.id) b' fenv'
+                 | none => none
+             | some false =>
+                 match Morph.MIR.findBlock f ff with
+                 | some b' => Morph.MIR.execBlockFrom fuel f (some b.id) b' fenv'
+                 | none => none
+             | none => none
+         | .switch _ _ _ => none) := rfl
+
+/-- One certified block step: the phi fold and a `Trace` over the body fix the
+walk, with the store threaded untouched and no phi past the leading run. -/
+structure BlockStep (f : Morph.MIR.Func) (prev : Option Morph.MIR.BlockId)
+    (b : Morph.MIR.Block) (fenv fenv' : Morph.MIR.FullEnv) : Type where
+  mid : Morph.MIR.Env
+  hfold : match prev with
+    | none => mid = fenv.env
+    | some p => phiFoldEnv p fenv.env (splitPhis b.instrs).1 = some mid
+  htr : Trace (splitPhis b.instrs).2 mid fenv'.env
+  hstore : fenv'.store = fenv.store
+  hnoPhi : ∀ i ∈ (splitPhis b.instrs).2, ∀ dst pred src, i ≠ .phi dst pred src
+
+/-- A block-level MIR trace: certified steps threaded across terminators to a
+returned value. `switch` has no constructor (scope excludes it); the two
+branch edges are separate constructors so neither realization cases on a
+boolean. -/
+inductive BlockPath (f : Morph.MIR.Func) : Option Morph.MIR.BlockId →
+    Morph.MIR.Block → Morph.MIR.FullEnv → Value → Type where
+  | ret {prev b fenv fenv' v w} (hs : BlockStep f prev b fenv fenv')
+      (hterm : b.terminator = .return_ v) (hval : fenv'.env v = some w)
+      (hne : w ≠ .unit) :
+      BlockPath f prev b fenv w
+  | goto {prev b fenv fenv' t b' w} (hs : BlockStep f prev b fenv fenv')
+      (hterm : b.terminator = .goto t)
+      (hfind : Morph.MIR.findBlock f t = some b')
+      (hrest : BlockPath f (some b.id) b' fenv' w) :
+      BlockPath f prev b fenv w
+  | branchTrue {prev b fenv fenv' c tt ff b' w}
+      (hs : BlockStep f prev b fenv fenv')
+      (hterm : b.terminator = .branch c tt ff)
+      (hbool : fenv'.boolOf c = some true)
+      (hfind : Morph.MIR.findBlock f tt = some b')
+      (hrest : BlockPath f (some b.id) b' fenv' w) :
+      BlockPath f prev b fenv w
+  | branchFalse {prev b fenv fenv' c tt ff b' w}
+      (hs : BlockStep f prev b fenv fenv')
+      (hterm : b.terminator = .branch c tt ff)
+      (hbool : fenv'.boolOf c = some false)
+      (hfind : Morph.MIR.findBlock f ff = some b')
+      (hrest : BlockPath f (some b.id) b' fenv' w) :
+      BlockPath f prev b fenv w
+
+/-- One fuel unit per block on the path. -/
+def pathFuel {f : Morph.MIR.Func} {prev : Option Morph.MIR.BlockId}
+    {b : Morph.MIR.Block} {fenv : Morph.MIR.FullEnv} {w : Value} :
+    BlockPath f prev b fenv w → Nat
+  | .ret _ _ _ _ => 1
+  | .goto _ _ _ hrest => pathFuel hrest + 1
+  | .branchTrue _ _ _ _ hrest => pathFuel hrest + 1
+  | .branchFalse _ _ _ _ hrest => pathFuel hrest + 1
+
+/-- **A path runs in the edge-aware executor.** One fuel unit per block: the
+certificate fixes the walk (`block_exec_of_cert`), the terminator selects the
+continuation, and the induction consumes the rest. -/
+theorem blockPath_exec {f : Morph.MIR.Func} {prev : Option Morph.MIR.BlockId}
+    {b : Morph.MIR.Block} {fenv : Morph.MIR.FullEnv} {w : Value}
+    (hp : BlockPath f prev b fenv w) :
+    Morph.MIR.execBlockFrom (pathFuel hp) f prev b fenv = some w := by
+  induction hp with
+  | ret hs hterm hval hne =>
+    rename_i p b' fe fe' v' w'
+    have hw := block_exec_of_cert p fe b'.instrs hs.hfold hs.htr hs.hnoPhi
+    have h1 : pathFuel (BlockPath.ret hs hterm hval hne) = 0 + 1 := rfl
+    rw [h1, execBlockFrom_succ, hw]
+    simp only [hterm]
+    exact hval
+  | goto hs hterm hfind hrest ih =>
+    rename_i p b' fe fe' t' b'' w'
+    have hw := block_exec_of_cert p fe b'.instrs hs.hfold hs.htr hs.hnoPhi
+    have h1 : pathFuel (BlockPath.goto hs hterm hfind hrest) = pathFuel hrest + 1 := rfl
+    rw [h1, execBlockFrom_succ, hw]
+    simp only [hterm, hfind, ← hs.hstore]
+    exact ih
+  | branchTrue hs hterm hbool hfind hrest ih =>
+    rename_i p b' fe fe' c' tt' ff' b'' w'
+    have hw := block_exec_of_cert p fe b'.instrs hs.hfold hs.htr hs.hnoPhi
+    have h1 : pathFuel (BlockPath.branchTrue hs hterm hbool hfind hrest) =
+        pathFuel hrest + 1 := rfl
+    rw [h1, execBlockFrom_succ, hw]
+    simp only [hterm, hbool, hfind, ← hs.hstore]
+    exact ih
+  | branchFalse hs hterm hbool hfind hrest ih =>
+    rename_i p b' fe fe' c' tt' ff' b'' w'
+    have hw := block_exec_of_cert p fe b'.instrs hs.hfold hs.htr hs.hnoPhi
+    have h1 : pathFuel (BlockPath.branchFalse hs hterm hbool hfind hrest) =
+        pathFuel hrest + 1 := rfl
+    rw [h1, execBlockFrom_succ, hw]
+    simp only [hterm, hbool, hfind, ← hs.hstore]
+    exact ih
+
 end Cfg
 end Morph.Clif
