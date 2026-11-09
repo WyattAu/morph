@@ -554,5 +554,119 @@ theorem params_hold_fold_of_checks (ps : List Phi) (pred : Morph.MIR.BlockId)
   params_hold_fold ps pred hargs heval hbind
     (noDupPairs_huniq ps hnd pred) (noPhiChain_hsep ps hnc pred) hfold hreg
 
+/-! ## The terminator and the agreement across an edge
+
+The phi phase ends with two environments — MIR's folded `m'` and the block
+model's bound `env'` — that agree on the join's parameters (`params_hold_fold`)
+and are untouched elsewhere (`phiFoldEnv_not_dst`, `bindParams_not_mem`). This
+section turns that into the full agreement the next block's body needs, and
+pins what each encoded terminator shape is:
+
+- `encodeTerm_return/goto/branch` invert `encodeTerm`, so the fuel induction
+  can case on the MIR terminator and know the CLIF terminator's shape.
+- `runTerm_return_agree` says a `return` reads the same value on both sides,
+  and `boolOf_asBool_agree` says a `branch` takes the same edge — both through
+  the value agreement the body phase maintains.
+- `agrees_after_edge` propagates the agreement across the join: on parameters
+  by equality with the fold, off parameters by both sides being untouched.
+  This is the lemma the fuel induction consumes at every `goto`/`branch`.
+- `hreg_of_agree` discharges the pointwise-equality hypothesis from agreement
+  for non-unit sources, which is what lowered code carries (arm values are
+  integers, never the unit prologue register).
+-/
+
+/-- `encodeTerm` on a `return` block. -/
+theorem encodeTerm_return {f : Morph.MIR.Func} {b : Morph.MIR.Block} {src : ValId}
+    (h : b.terminator = .return_ src) : encodeTerm f b = some (.ret src) := by
+  simp [encodeTerm, h]
+
+/-- `encodeTerm` on a `goto` block, with the edge's arguments. -/
+theorem encodeTerm_goto {f : Morph.MIR.Func} {b : Morph.MIR.Block}
+    {t : Morph.MIR.BlockId} {args : List Reg}
+    (h : b.terminator = .goto t)
+    (he : edgeArgs f t b.id = some args) :
+    encodeTerm f b = some (.jump t args) := by
+  simp [encodeTerm, h, he]
+
+/-- `encodeTerm` on a `branch` block, with both edges' arguments. -/
+theorem encodeTerm_branch {f : Morph.MIR.Func} {b : Morph.MIR.Block}
+    {c : ValId} {tt ff : Morph.MIR.BlockId} {argsT argsF : List Reg}
+    (h : b.terminator = .branch c tt ff)
+    (heT : edgeArgs f tt b.id = some argsT)
+    (heF : edgeArgs f ff b.id = some argsF) :
+    encodeTerm f b = some (.brif c tt argsT ff argsF) := by
+  simp [encodeTerm, h, heT, heF]
+
+/-- A `return` reads the same value on both sides. -/
+theorem runTerm_return_agree {m : Morph.MIR.Env} {env : Env}
+    (hag : AgreesOnValues m env)
+    {v : ValId} {w : Value} (h : m v = some w) (hne : w ≠ .unit) :
+    runTerm env (.ret v) = some (.ret w) := by
+  have he : env v = some w := hag v w h hne
+  simp only [runTerm, he, Option.map_some]
+
+/-- A boolean the MIR block branched on reads the same in an agreeing
+environment, so both sides take the same edge. -/
+theorem boolOf_asBool_agree {m : Morph.MIR.Env} {env : Env}
+    (hag : AgreesOnValues m env)
+    {c : ValId} {b : Bool} (h : m c = some (.bool b)) :
+    (env c >>= asBool) = some b := by
+  rw [hag c (.bool b) h (by simp)]
+  rfl
+
+/-- A non-unit `src` read is an equality: agreement reproduces the exact option,
+which discharges the pointwise hypothesis the merge lemmas take. -/
+theorem hreg_of_agree {m : Morph.MIR.Env} {env : Env}
+    (hag : AgreesOnValues m env)
+    {r : ValId} {v : Value} (h : m r = some v) (hne : v ≠ .unit) :
+    env r = m r := by
+  rw [hag r v h hne, h]
+
+/-- **Agreement propagates across a join.** On parameters the two sides are
+equal (`params_hold_fold`); off parameters neither side moved
+(`phiFoldEnv_not_dst`, `bindParams_not_mem`), so the entry agreement carries.
+The fuel induction applies this at every `goto`/`branch` edge. -/
+theorem agrees_after_edge (ps : List Phi) (pred : Morph.MIR.BlockId)
+    {args : List Reg} {vs : List Value} {env env' : Env} {m m' : Morph.MIR.Env}
+    (hargs : argsFor ps pred (paramsOf ps) = some args)
+    (heval : evalArgs env args = some vs)
+    (hbind : bindParams env (paramsOf ps) vs = some env')
+    (huniq : ∀ q ∈ ps, q.pred = pred → ∀ q' ∈ ps, q'.pred = pred →
+      q.dst = q'.dst → q.src = q'.src)
+    (hsep : ∀ q ∈ ps, q.pred = pred → ∀ q' ∈ ps, q'.pred = pred → q.src ≠ q'.dst)
+    (hfold : phiFoldEnv pred m ps = some m')
+    (hreg : ∀ q ∈ ps, q.pred = pred → env q.src = m q.src)
+    (hag : AgreesOnValues m env) :
+    AgreesOnValues m' env' := by
+  intro x v hxv hne
+  by_cases hx : x ∈ paramsOf ps
+  · have heq := params_hold_fold ps pred hargs heval hbind huniq hsep hfold hreg x hx
+    rw [heq]
+    exact hxv
+  · have hdst : ∀ q ∈ ps, q.pred = pred → q.dst ≠ x := by
+      intro q hq hp hcon
+      exact hx ((paramsOf_mem ps x).mpr ⟨q, hq, hcon⟩)
+    have hm : m' x = m x := phiFoldEnv_not_dst pred ps m m' hfold x hdst
+    have he : env' x = env x := bindParams_not_mem hbind hx
+    rw [hm] at hxv
+    rw [he]
+    exact hag x v hxv hne
+
+/-- **Agreement propagates across every join the encoder emits.** The checks
+are exactly the fold's hypotheses, as in `params_hold_fold_of_checks` — so the
+fuel induction needs no extra assumptions on encoder output. -/
+theorem agrees_after_edge_of_checks (ps : List Phi) (pred : Morph.MIR.BlockId)
+    (hnd : noDupPairs ps = true) (hnc : noPhiChain ps = true)
+    {args : List Reg} {vs : List Value} {env env' : Env} {m m' : Morph.MIR.Env}
+    (hargs : argsFor ps pred (paramsOf ps) = some args)
+    (heval : evalArgs env args = some vs)
+    (hbind : bindParams env (paramsOf ps) vs = some env')
+    (hfold : phiFoldEnv pred m ps = some m')
+    (hreg : ∀ q ∈ ps, q.pred = pred → env q.src = m q.src)
+    (hag : AgreesOnValues m env) :
+    AgreesOnValues m' env' :=
+  agrees_after_edge ps pred hargs heval hbind
+    (noDupPairs_huniq ps hnd pred) (noPhiChain_hsep ps hnc pred) hfold hreg hag
+
 end Cfg
 end Morph.Clif

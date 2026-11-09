@@ -2050,3 +2050,29 @@ lemmas take `q`/`q'` explicitly. `by simp [hcon]` closes
 **Still open.** C4b's terminator lemma (`encodeTerm` ↔ `return`/`goto`/`branch`),
 the fuel induction (`execBlockFrom`/`execBlockFromIn` vs `runFuel`), and the
 composed `cfg_correct`; then C3 → C2c → C7 → C8 → C9.
+
+## Loop 168 — C4b terminator lemma: encodeTerm inversions + agreement across the join
+
+**Goal.** Close the terminator half of C4b, leaving only the fuel induction and
+the composed `cfg_correct`.
+
+**Did.** `Morph/ClifCfgSimulate.lean`, new section "The terminator and the
+agreement across an edge": `encodeTerm_return/goto/branch` (inversions pinning
+each MIR terminator to its CLIF shape with the edge's arguments),
+`runTerm_return_agree` (a `return` reads the same value through agreement),
+`boolOf_asBool_agree` (both sides take the same `branch` edge),
+`hreg_of_agree` (non-unit `src` reads are option-equalities, discharging the
+merge lemmas' pointwise hypothesis), `agrees_after_edge` (agreement propagates
+across a join: equality on parameters via `params_hold_fold`, untouched
+elsewhere via `phiFoldEnv_not_dst`/`bindParams_not_mem`) plus the
+`_of_checks` form consuming the encoder's gates directly.
+
+**Findings (toolchain).** `Option.map f (some w)` needs `Option.map_some` in
+the `simp only` set — definitional iota alone does not close it after a
+hypothesis rewrite. `unfold runTerm` exposes the raw `match` rather than the
+applied equation; `simp only [runTerm]` reduces it.
+
+**Result.** `lake env lean` green on `Morph/ClifCfgSimulate.lean`, no warnings.
+
+**Still open.** C4b's fuel induction (`execBlockFrom`/`execBlockFromIn` vs
+`runFuel`) and the composed `cfg_correct`; then C3 → C2c → C7 → C8 → C9.
