@@ -141,9 +141,13 @@ def runTerm (env : Env) : Term → Option Outcome
     let args ← evalArgs env (if b then ta else fa)
     some (.next (if b then tt else ff) args)
 
-/-- Execute a block: its instructions, then its terminator. -/
-def runBlock (env : Env) (b : Block) : Option Outcome :=
-  (runInstrs env b.instrs) >>= fun env' => runTerm env' b.term
+/-- Execute a block: its instructions, then its terminator. Returns the
+post-body environment alongside the outcome, because an edge transfer binds the
+target's parameters onto it — the environment is threaded from one block into
+the next, with the parameters shadowing it (a value defined in a block that
+dominates another is readable there). -/
+def runBlock (env : Env) (b : Block) : Option (Env × Outcome) :=
+  (runInstrs env b.instrs) >>= fun env' => (runTerm env' b.term).map (env', ·)
 
 /-- The block with the given label, if any. -/
 def findBlock (f : Func) (id : BlockId) : Option Block :=
@@ -151,16 +155,20 @@ def findBlock (f : Func) (id : BlockId) : Option Block :=
 
 /-- Run from `b` with `fuel` block traversals left. Each block costs one unit —
 the model counts blocks, not instructions, so the bound a theorem needs is a
-bound on the path length (scope §4.4). -/
+bound on the path length (scope §4.4). The successor starts from the
+predecessor's *post-body* environment with its parameters bound over it, which
+is what makes this the model MIR's edge-aware executor corresponds to: both
+thread the block's writes into the next block, and both give the edge's values
+priority through shadowing (`bindParams` here, the phi fold there). -/
 def runFuel : Nat → Func → Block → Env → Option Value
   | 0, _, _, _ => none
   | fuel + 1, f, b, env => do
-    let o ← runBlock env b
+    let (envPost, o) ← runBlock env b
     match o with
     | .ret v => some v
     | .next t args => do
       let b' ← findBlock f t
-      let env' ← bindParams env b'.params args
+      let env' ← bindParams envPost b'.params args
       runFuel fuel f b' env'
 
 /-- Run a function from an empty register file. A declared entry parameter can
@@ -174,12 +182,12 @@ def run (fuel : Nat) (f : Func) : Option Value :=
 /-- One step of `runFuel`, in the form the proofs use. -/
 theorem runFuel_succ (fuel : Nat) (f : Func) (b : Block) (env : Env) :
     runFuel (fuel + 1) f b env =
-      ((runBlock env b).bind fun o =>
+      ((runBlock env b).bind fun (envPost, o) =>
         match o with
         | .ret v => some v
         | .next t args =>
           (findBlock f t).bind fun b' =>
-            (bindParams env b'.params args).bind fun env' => runFuel fuel f b' env') :=
+            (bindParams envPost b'.params args).bind fun env' => runFuel fuel f b' env') :=
   rfl
 
 /-- The single-block function shape: no parameters, one block, `.ret`. -/

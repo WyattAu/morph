@@ -2076,3 +2076,29 @@ applied equation; `simp only [runTerm]` reduces it.
 
 **Still open.** C4b's fuel induction (`execBlockFrom`/`execBlockFromIn` vs
 `runFuel`) and the composed `cfg_correct`; then C3 → C2c → C7 → C8 → C9.
+
+## Loop 169 — C4b threading fix: the successor starts from the post-body environment
+
+**Goal.** Unblock the fuel induction: state the edge transfer so MIR and CLIF
+thread the same environment.
+
+**Found.** `runFuel` bound the successor's parameters onto the predecessor's
+*pre-body* environment, discarding body writes — while MIR's `execBlockFrom`
+threads the post-body `fenv'` and the module docstring promises post-body
+threading ("a value defined in a block that dominates another is readable
+there"). On the `ifLt` diamond the join's non-parameter registers diverged
+(MIR saw the arm's writes, CLIF saw the entry's), so no full-agreement
+induction could cross a join.
+
+**Did.** `Morph/ClifBlocks.lean`: `runBlock` returns `Option (Env × Outcome)`,
+`runFuel` binds onto `envPost`, `runFuel_succ` restated (`rfl`), doc notes the
+threading contract. `run_singleBlockFunc` proof and all five `run` pins
+re-checked by the kernel — unchanged behavior on straight-line shapes.
+
+**Result.** `lake env lean` green on `Morph/ClifBlocks.lean`;
+`Morph.ClifCfgEncode`, `Morph.ClifCfgSimulate`, `Morph.ClifRender` rebuild
+green (the `runLowered` pins re-ran under the new threading).
+
+**Still open.** C4b's body bridge (phi-free `execInstrsFullFrom` =
+`execInstrsFull`), the single-block certificate step, the fuel induction, and
+the composed `cfg_correct`; then C3 → C2c → C7 → C8 → C9.
