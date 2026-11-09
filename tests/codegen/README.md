@@ -51,7 +51,7 @@ Each row is a different gate, and the messages differ on purpose:
 | `unit_value.hum`, `empty.hum` | emitter | value is unit; the function is `-> i64` and CLIF has no unit |
 | `boolean_value.hum` | emitter | value is a bool; `icmp` produces i8 and there is no widening in the modelled subset |
 | `division.hum` | encoder | `div`/`mod` semantics (truncation, division by zero) have no agreement lemma yet |
-| `unary_minus.hum` | MIR fragment | the surface parses and evaluates it, but lowering does not produce the straight-line fragment |
+| `unary_minus.hum` | branch fragment | straight-line lowering fails, so `build` falls through to the CFG lowering (loop 161), which also refuses it; the recorded message is the CFG gate's |
 | `control_flow.hum` | HIR fragment | `match` with arms is outside stage A's straight-line fragment |
 | `parse_error.hum` | parser | ordinary syntax error, reported by the parser |
 

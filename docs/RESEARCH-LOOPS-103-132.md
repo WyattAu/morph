@@ -2214,3 +2214,31 @@ warnings; `lake build Morph` (468 jobs) + `lake build Morph.Tests`
 
 **Still open.** C5/C6 completion, C3, C7, C8; C9 at Stage C exit. G-1/G-3/G-7
 skipped per standing directive.
+
+## Loop 173 — C5/C6 completion: the corpus pins the Stage C refusals
+
+**Goal.** Close C5/C6: the `rejects.tsv` rows for binding arms and
+`matchStmt`, and whatever else the corpus needs to go green.
+
+**Did.** Two new reject rows, both refused by the branch-fragment gate with
+the message the `buildClif` golden already pins:
+`rejects/binding_arm.hum` (`if (1 < 2) { let x = 1; } else { 2 }`) and
+`rejects/match_stmt.hum`
+(`let y = 5; match 1 { case 1 => { y = 1; } } y` — a match on a literal,
+chosen because it *clears* the HIR gate and is refused by the CFG lowering,
+whereas the old `control_flow.hum` match is refused one level earlier).
+Measured both messages with a fresh `lake build morph` binary, per the
+corpus README (measure, don't guess).
+
+**Also fixed.** `rejects/unary_minus.hum` was stale: loop 161's CFG
+fallthrough moved its refusal from the stage-B MIR message to the
+branch-fragment message, and nobody updated the row. Updated the row and
+the README gate table (`MIR fragment` → `branch fragment`, with the
+fallthrough reason). No Lean change — the behavior was intended, the pin
+was not.
+
+**Result.** `tests/codegen/check.sh` 22/22 (13 manifest + 9 rejects),
+`tests/codegen/native.sh` 13/13. C5/C6 closed.
+
+**Still open.** C3, C7, C8; C9 at Stage C exit. G-1/G-3/G-7 skipped per
+standing directive.
