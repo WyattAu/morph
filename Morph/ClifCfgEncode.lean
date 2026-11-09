@@ -153,11 +153,17 @@ def encodeBlock (f : Morph.MIR.Func) (b : Morph.MIR.Block) : Option Block := do
     let t ← encodeTerm f b
     some ⟨b.id, paramsOf phis, is, t⟩
 
+/-- Encode one MIR block as the function encoder sees it: the entry block
+without its unit prologue, every other block as it stands. Named (rather than
+inlined in `encodeFunc`) so the block-lookup proof names the same function
+instead of duplicating the strip conditional. -/
+def encodeBlockAt (f : Morph.MIR.Func) (b : Morph.MIR.Block) : Option Block :=
+  encodeBlock f (if b.id == f.entry then stripPrologue b else b)
+
 /-- Encode a MIR function into the CLIF block model, dropping the unit prologue
 from the entry block (as `emitBlock` does for the single-block emitter). -/
 def encodeFunc (f : Morph.MIR.Func) : Option Func := do
-  let bs ← f.blocks.mapM fun b =>
-    encodeBlock f (if b.id == f.entry then stripPrologue b else b)
+  let bs ← f.blocks.mapM (encodeBlockAt f)
   some ⟨bs, f.entry⟩
 
 /-- The artifact text for a lowered MIR function: encode to the block model, then

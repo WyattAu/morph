@@ -2165,3 +2165,52 @@ resolve from `def pathFuel`).
 **Still open.** C4b's CLIF realization (`blockPath_runFuel`: peeling the entry
 prologue `Trace` step, per-edge `agrees_after_edge`, `runFuel` induction) and
 the composed `cfg_correct`; then C3 → C2c → C7 → C8 → C9.
+## Loop 172 — C4b closed: the CLIF realization + `cfg_correct`
+
+**Goal.** Prove `blockPath_runFuel` (a certified path runs in `runFuel` to
+the same value) and the composed `cfg_correct`. Closes C4b.
+
+**Did.** `Morph/ClifCfgSimulate.lean`, section "The CLIF realization and the
+composed bridge": helpers `evalArgs_complete` / `bindParams_complete`
+(totality from the checks), `agrees_prologue_trans`
+(`agrees_update` past the dropped `.const unit`), `trace_cons_inv` /
+`trace_prologue_peel` (peel one step off a cons-`Trace`), `phiInfo_some`,
+`splitPhis_nil_of_noPhi`, `stripPrologue_cases` / `_id` / `_term_ifEntry` /
+`_id_ifEntry`, `boolOf_some`, `args_mem_src`, `mapM_find?_preserved`,
+`findBlock_encodeBlock` (CLIF `findBlock` follows MIR `findBlock` because
+encoding preserves labels), `blockStep_body` (body simulation, entry peel
+included); then `blockPath_runFuel` (`ret`/`goto`/`branchTrue`/`branchFalse`
+— body via `blockStep_body`, terminator via the outcome lemmas, each edge
+via `agrees_after_edge_of_checks` with `hsrc` discharging the edge reads)
+and `cfg_correct` (MIR half by `blockPath_exec`, CLIF half by
+`blockPath_runFuel`, entry agreement via `hs.hfold`).
+
+**Also.** `encodeBlockAt` in `Morph/ClifCfgEncode.lean`: the per-block
+function the encoder actually maps (entry stripped, others as-is), named
+once so `encodeFunc` and `findBlock_encodeBlock` share the conditional
+instead of duplicating it.
+
+**Findings (toolchain).** `if x == y` elaborates the condition to
+`(x == y) = true`; full `simp` normalizes it (`beq_iff_eq` family),
+orphaning hypotheses in the un-normalized form — use `simp only` with
+explicit closers, or normalize the hypotheses first. `do`-notation is
+`Bind.bind`, not `Option.bind`: `simp only [Option.bind_some]` cannot fire
+on it, full `simp` unfolds the instance, and `rfl` does not close
+`Bind.bind none` (trailing `simp` does). `rw`'s auto-`rfl` is
+reducible-only (`rw [hfb]` left an `Option.map_some` goal; `simp [hfb]`
+closed it). `unfold f` fails when `f` does not occur — `targetPhis`'s body
+uses `List.find?` directly, never `findBlock`. `findBlock` is `find?` by
+delta, so a type ascription (`have hfb : ... := hfind`) bridges them
+silently. Reduce the outer bind (`simp only [Option.bind_some]` after
+`hrun`) *before* rewriting terms under the bound variable. `List.find?_some`
+plus `simpa` proves the successor identity (MemoryModel precedent).
+`Option.some.inj` needs the outer `.symm` when the equation is built
+`some-ctor = some-var`. Proof goals over paths are existential per edge
+(`refine ⟨v, ?_⟩`).
+
+**Result.** `lake env lean` green on `Morph/ClifCfgSimulate.lean`, no
+warnings; `lake build Morph` (468 jobs) + `lake build Morph.Tests`
+(292 jobs) green, no `sorry`. **C4b closed.**
+
+**Still open.** C5/C6 completion, C3, C7, C8; C9 at Stage C exit. G-1/G-3/G-7
+skipped per standing directive.

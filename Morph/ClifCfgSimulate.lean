@@ -849,7 +849,8 @@ theorem execBlockFrom_succ (fuel : Nat) (f : Morph.MIR.Func)
          | .switch _ _ _ => none) := rfl
 
 /-- One certified block step: the phi fold and a `Trace` over the body fix the
-walk, with the store threaded untouched and no phi past the leading run. -/
+walk, with the store threaded untouched and no phi past the leading run.
+`hmem` ties the step to the function the CLIF realization looks up. -/
 structure BlockStep (f : Morph.MIR.Func) (prev : Option Morph.MIR.BlockId)
     (b : Morph.MIR.Block) (fenv fenv' : Morph.MIR.FullEnv) : Type where
   mid : Morph.MIR.Env
@@ -859,52 +860,73 @@ structure BlockStep (f : Morph.MIR.Func) (prev : Option Morph.MIR.BlockId)
   htr : Trace (splitPhis b.instrs).2 mid fenv'.env
   hstore : fenv'.store = fenv.store
   hnoPhi : ∀ i ∈ (splitPhis b.instrs).2, ∀ dst pred src, i ≠ .phi dst pred src
+  hmem : Morph.MIR.findBlock f b.id = some b
 
 /-- A block-level MIR trace: certified steps threaded across terminators to a
 returned value. `switch` has no constructor (scope excludes it); the two
 branch edges are separate constructors so neither realization cases on a
-boolean. -/
+boolean.
+
+The `mid` index is the step's fold result — the environment the CLIF
+realization's agreement is stated against. Edge constructors carry the
+successor step explicitly (`hs'`), so the fold result the edge agreement
+concludes is definitionally the sub-path's index. `hsrc` keeps every edge-
+read register non-unit (the CLIF edge reads through value agreement, which is
+blind to `.unit`); `hnoEntry` keeps successors off the entry block, whose
+encoding strips the prologue (loops lift it in C7). -/
 inductive BlockPath (f : Morph.MIR.Func) : Option Morph.MIR.BlockId →
-    Morph.MIR.Block → Morph.MIR.FullEnv → Value → Type where
+    Morph.MIR.Block → Morph.MIR.FullEnv → Morph.MIR.Env → Value → Type where
   | ret {prev b fenv fenv' v w} (hs : BlockStep f prev b fenv fenv')
       (hterm : b.terminator = .return_ v) (hval : fenv'.env v = some w)
       (hne : w ≠ .unit) :
-      BlockPath f prev b fenv w
-  | goto {prev b fenv fenv' t b' w} (hs : BlockStep f prev b fenv fenv')
+      BlockPath f prev b fenv hs.mid w
+  | goto {prev b fenv fenv' fenv'' t b' w} (hs : BlockStep f prev b fenv fenv')
       (hterm : b.terminator = .goto t)
       (hfind : Morph.MIR.findBlock f t = some b')
-      (hrest : BlockPath f (some b.id) b' fenv' w) :
-      BlockPath f prev b fenv w
-  | branchTrue {prev b fenv fenv' c tt ff b' w}
+      (hsrc : ∀ q ∈ (splitPhis b'.instrs).1, q.pred = b.id →
+        ∃ v, fenv'.env q.src = some v ∧ v ≠ .unit)
+      (hnoEntry : b'.id ≠ f.entry)
+      (hs' : BlockStep f (some b.id) b' fenv' fenv'')
+      (hrest : BlockPath f (some b.id) b' fenv' hs'.mid w) :
+      BlockPath f prev b fenv hs.mid w
+  | branchTrue {prev b fenv fenv' fenv'' c tt ff b' w}
       (hs : BlockStep f prev b fenv fenv')
       (hterm : b.terminator = .branch c tt ff)
       (hbool : fenv'.boolOf c = some true)
       (hfind : Morph.MIR.findBlock f tt = some b')
-      (hrest : BlockPath f (some b.id) b' fenv' w) :
-      BlockPath f prev b fenv w
-  | branchFalse {prev b fenv fenv' c tt ff b' w}
+      (hsrc : ∀ q ∈ (splitPhis b'.instrs).1, q.pred = b.id →
+        ∃ v, fenv'.env q.src = some v ∧ v ≠ .unit)
+      (hnoEntry : b'.id ≠ f.entry)
+      (hs' : BlockStep f (some b.id) b' fenv' fenv'')
+      (hrest : BlockPath f (some b.id) b' fenv' hs'.mid w) :
+      BlockPath f prev b fenv hs.mid w
+  | branchFalse {prev b fenv fenv' fenv'' c tt ff b' w}
       (hs : BlockStep f prev b fenv fenv')
       (hterm : b.terminator = .branch c tt ff)
       (hbool : fenv'.boolOf c = some false)
       (hfind : Morph.MIR.findBlock f ff = some b')
-      (hrest : BlockPath f (some b.id) b' fenv' w) :
-      BlockPath f prev b fenv w
+      (hsrc : ∀ q ∈ (splitPhis b'.instrs).1, q.pred = b.id →
+        ∃ v, fenv'.env q.src = some v ∧ v ≠ .unit)
+      (hnoEntry : b'.id ≠ f.entry)
+      (hs' : BlockStep f (some b.id) b' fenv' fenv'')
+      (hrest : BlockPath f (some b.id) b' fenv' hs'.mid w) :
+      BlockPath f prev b fenv hs.mid w
 
 /-- One fuel unit per block on the path. -/
 def pathFuel {f : Morph.MIR.Func} {prev : Option Morph.MIR.BlockId}
-    {b : Morph.MIR.Block} {fenv : Morph.MIR.FullEnv} {w : Value} :
-    BlockPath f prev b fenv w → Nat
+    {b : Morph.MIR.Block} {fenv : Morph.MIR.FullEnv} {mid : Morph.MIR.Env}
+    {w : Value} : BlockPath f prev b fenv mid w → Nat
   | .ret _ _ _ _ => 1
-  | .goto _ _ _ hrest => pathFuel hrest + 1
-  | .branchTrue _ _ _ _ hrest => pathFuel hrest + 1
-  | .branchFalse _ _ _ _ hrest => pathFuel hrest + 1
+  | .goto _ _ _ _ _ _ hrest => pathFuel hrest + 1
+  | .branchTrue _ _ _ _ _ _ _ hrest => pathFuel hrest + 1
+  | .branchFalse _ _ _ _ _ _ _ hrest => pathFuel hrest + 1
 
 /-- **A path runs in the edge-aware executor.** One fuel unit per block: the
 certificate fixes the walk (`block_exec_of_cert`), the terminator selects the
 continuation, and the induction consumes the rest. -/
 theorem blockPath_exec {f : Morph.MIR.Func} {prev : Option Morph.MIR.BlockId}
-    {b : Morph.MIR.Block} {fenv : Morph.MIR.FullEnv} {w : Value}
-    (hp : BlockPath f prev b fenv w) :
+    {b : Morph.MIR.Block} {fenv : Morph.MIR.FullEnv} {mid : Morph.MIR.Env}
+    {w : Value} (hp : BlockPath f prev b fenv mid w) :
     Morph.MIR.execBlockFrom (pathFuel hp) f prev b fenv = some w := by
   induction hp with
   | ret hs hterm hval hne =>
@@ -914,29 +936,633 @@ theorem blockPath_exec {f : Morph.MIR.Func} {prev : Option Morph.MIR.BlockId}
     rw [h1, execBlockFrom_succ, hw]
     simp only [hterm]
     exact hval
-  | goto hs hterm hfind hrest ih =>
-    rename_i p b' fe fe' t' b'' w'
+  | goto hs hterm hfind hsrc hnoEntry hs' hrest ih =>
+    rename_i p b' fe fe' fe'' t' b'' w'
     have hw := block_exec_of_cert p fe b'.instrs hs.hfold hs.htr hs.hnoPhi
-    have h1 : pathFuel (BlockPath.goto hs hterm hfind hrest) = pathFuel hrest + 1 := rfl
+    have h1 : pathFuel (BlockPath.goto hs hterm hfind hsrc hnoEntry hs' hrest) =
+        pathFuel hrest + 1 := rfl
     rw [h1, execBlockFrom_succ, hw]
     simp only [hterm, hfind, ← hs.hstore]
     exact ih
-  | branchTrue hs hterm hbool hfind hrest ih =>
-    rename_i p b' fe fe' c' tt' ff' b'' w'
+  | branchTrue hs hterm hbool hfind hsrc hnoEntry hs' hrest ih =>
+    rename_i p b' fe fe' fe'' c' tt' ff' b'' w'
     have hw := block_exec_of_cert p fe b'.instrs hs.hfold hs.htr hs.hnoPhi
-    have h1 : pathFuel (BlockPath.branchTrue hs hterm hbool hfind hrest) =
+    have h1 : pathFuel (BlockPath.branchTrue hs hterm hbool hfind hsrc hnoEntry hs' hrest) =
         pathFuel hrest + 1 := rfl
     rw [h1, execBlockFrom_succ, hw]
     simp only [hterm, hbool, hfind, ← hs.hstore]
     exact ih
-  | branchFalse hs hterm hbool hfind hrest ih =>
-    rename_i p b' fe fe' c' tt' ff' b'' w'
+  | branchFalse hs hterm hbool hfind hsrc hnoEntry hs' hrest ih =>
+    rename_i p b' fe fe' fe'' c' tt' ff' b'' w'
     have hw := block_exec_of_cert p fe b'.instrs hs.hfold hs.htr hs.hnoPhi
-    have h1 : pathFuel (BlockPath.branchFalse hs hterm hbool hfind hrest) =
+    have h1 : pathFuel (BlockPath.branchFalse hs hterm hbool hfind hsrc hnoEntry hs' hrest) =
         pathFuel hrest + 1 := rfl
     rw [h1, execBlockFrom_succ, hw]
     simp only [hterm, hbool, hfind, ← hs.hstore]
     exact ih
+
+/-! ## Small completions: the transfer always succeeds
+
+`evalArgs` succeeds when every argument register is bound, and `bindParams`
+succeeds when the lengths match. The CLIF realization uses both at every edge:
+the agreement plus `hsrc` binds every argument, and the encoder's arity
+(`argsFor_length`) matches the parameter list. -/
+
+/-- `evalArgs` succeeds when every argument register is bound. -/
+theorem evalArgs_complete {env : Env} : ∀ (rs : List Reg),
+    (∀ r ∈ rs, ∃ v, env r = some v) → ∃ vs, evalArgs env rs = some vs
+  | [], _ => ⟨[], rfl⟩
+  | r :: rs, h => by
+    obtain ⟨v, hv⟩ := h r List.mem_cons_self
+    obtain ⟨vs, hvs⟩ := evalArgs_complete rs
+      (fun r' hr' => h r' (List.mem_cons_of_mem _ hr'))
+    exact ⟨v :: vs, by simp [evalArgs, hv, hvs]⟩
+
+/-- `bindParams` succeeds when the lengths match. -/
+theorem bindParams_complete (env : Env) : ∀ (ps : List Reg) (vs : List Value),
+    ps.length = vs.length → ∃ env', bindParams env ps vs = some env'
+  | [], [], _ => ⟨env, rfl⟩
+  | [], _ :: _, h => by simp at h
+  | _ :: _, [], h => by simp at h
+  | r :: rs, v :: vs', h => by
+    simp only [List.length_cons, Nat.succ.injEq] at h
+    obtain ⟨e, he⟩ := bindParams_complete env rs vs' h
+    exact ⟨e.set r v, by simp [bindParams, he]⟩
+
+/-- The prologue's agreement reaches any environment the entry agreed with: a
+unit write is invisible except at register 0, which the conclusion's value
+cannot be. -/
+theorem agrees_prologue_trans {m₁ m₂ : Morph.MIR.Env}
+    (hag : AgreesOnValues m₁ m₂) :
+    AgreesOnValues (m₁.update 0 .unit) m₂ := by
+  intro x v hx hne
+  rw [update_eq_set] at hx
+  unfold Env.set at hx
+  by_cases hxd : x = 0
+  · subst hxd
+    simp at hx
+    subst hx
+    exact absurd rfl hne
+  · simp [hxd] at hx
+    exact hag x v hx hne
+
+/-! ## The entry prologue, peeled from a trace
+
+The entry block's body starts with `.const 0 .unit`, which `Step.const_unit`
+covers and the encoding drops. Peeling that first step leaves a `Trace` over
+the encoded-source body starting from the prologue environment — the shape
+`trace_runInstrs_agree` consumes. -/
+
+/-- A `Trace` over a cons splits into its first step and the rest. -/
+theorem trace_cons_inv {i : Morph.MIR.Instr} {is : List Morph.MIR.Instr}
+    {m m' : Morph.MIR.Env} (htr : Trace (i :: is) m m') :
+    ∃ m₁, Step m i m₁ ∧ Trace is m₁ m' := by
+  match htr with
+  | .cons hstep htr' => exact ⟨_, hstep, htr'⟩
+
+/-- Peeling the prologue step. Only `const_unit` can match it. -/
+theorem trace_prologue_peel {m m' : Morph.MIR.Env} {rest : List Morph.MIR.Instr}
+    (htr : Trace (.const 0 .unit :: rest) m m') :
+    ∃ m₁, m₁ = m.update 0 .unit ∧ Trace rest m₁ m' := by
+  obtain ⟨m₁, hstep, htr'⟩ := trace_cons_inv htr
+  match hstep with
+  | .const_unit => exact ⟨_, rfl, htr'⟩
+
+/-- `phiInfo` only fires on `phi`. -/
+theorem phiInfo_some {i : Morph.MIR.Instr} {q : Phi} (h : phiInfo i = some q) :
+    ∃ dst pred src, i = .phi dst pred src := by
+  cases i with
+  | phi dst pred src => exact ⟨dst, pred, src, rfl⟩
+  | const _ _ => simp [phiInfo] at h
+  | copy _ _ => simp [phiInfo] at h
+  | unop _ _ _ _ => simp [phiInfo] at h
+  | binop _ _ _ _ _ => simp [phiInfo] at h
+  | load _ _ _ => simp [phiInfo] at h
+  | store _ _ _ => simp [phiInfo] at h
+  | alloc _ _ _ => simp [phiInfo] at h
+  | free _ => simp [phiInfo] at h
+  | call _ _ _ => simp [phiInfo] at h
+  | allocClosure _ _ _ => simp [phiInfo] at h
+  | callClosure _ _ _ => simp [phiInfo] at h
+
+/-- A body with no phi anywhere has no leading phis. -/
+theorem splitPhis_nil_of_noPhi {L : List Morph.MIR.Instr}
+    (h : ∀ i ∈ L, ∀ dst pred src, i ≠ .phi dst pred src) :
+    (splitPhis L).1 = [] := by
+  cases L with
+  | nil => rfl
+  | cons i is =>
+    cases hi : phiInfo i with
+    | none => simp [splitPhis, hi]
+    | some q =>
+      obtain ⟨dst, pred, src, rfl⟩ := phiInfo_some hi
+      exact absurd rfl (h _ List.mem_cons_self dst pred src)
+
+/-- The encoder's strip fires exactly on a prologue head, and only then. -/
+theorem stripPrologue_cases (b : Morph.MIR.Block) :
+    (∃ rest, b.instrs = .const 0 .unit :: rest ∧ (stripPrologue b).instrs = rest) ∨
+    stripPrologue b = b := by
+  unfold stripPrologue
+  split
+  · next rest h => exact Or.inl ⟨rest, h, rfl⟩
+  · exact Or.inr rfl
+
+/-- Stripping preserves the block label. -/
+theorem stripPrologue_id (b : Morph.MIR.Block) : (stripPrologue b).id = b.id := by
+  unfold stripPrologue
+  split <;> rfl
+
+/-- Stripping preserves the terminator. -/
+theorem stripPrologue_term (b : Morph.MIR.Block) :
+    (stripPrologue b).terminator = b.terminator := by
+  unfold stripPrologue
+  split <;> rfl
+
+/-- The encoded-source block shares the real block's terminator. -/
+theorem stripTerm_ifEntry (b : Morph.MIR.Block) (e : Morph.MIR.BlockId) :
+    (if b.id == e then stripPrologue b else b).terminator = b.terminator := by
+  cases he : (b.id == e) <;> simp [stripPrologue_term]
+
+/-- The encoded-source block shares the real block's label. -/
+theorem stripId_ifEntry (b : Morph.MIR.Block) (e : Morph.MIR.BlockId) :
+    (if b.id == e then stripPrologue b else b).id = b.id := by
+  cases he : (b.id == e) <;> simp [stripPrologue_id]
+
+/-- `boolOf` records a boolean environment entry. -/
+theorem boolOf_some {fenv : Morph.MIR.FullEnv} {c : ValId} {b : Bool}
+    (h : fenv.boolOf c = some b) : fenv.env c = some (.bool b) := by
+  cases he : fenv.env c with
+  | none => simp [Morph.MIR.FullEnv.boolOf, he] at h
+  | some v =>
+    cases v <;> simp_all [Morph.MIR.FullEnv.boolOf]
+
+/-- Every edge argument is a firing phi's source. -/
+theorem args_mem_src {ps' : List Phi} {pred : Morph.MIR.BlockId}
+    {ds : List ValId} {args : List Reg}
+    (hargs : argsFor ps' pred ds = some args) :
+    ∀ r ∈ args, ∃ q ∈ ps', q.pred = pred ∧ q.src = r := by
+  induction ds generalizing args with
+  | nil =>
+    intro r hr
+    simp only [argsFor, Option.some.injEq] at hargs
+    subst hargs
+    exact absurd hr (by simp)
+  | cons d ds' ih =>
+    intro r hr
+    simp only [argsFor] at hargs
+    cases hf : ps'.find? (fun p => p.dst == d && p.pred == pred) with
+    | none => simp [hf] at hargs
+    | some p =>
+      cases hrest : argsFor ps' pred ds' with
+      | none => simp [hf, hrest] at hargs
+      | some rest =>
+        simp only [hf, hrest, Option.some.injEq] at hargs
+        subst hargs
+        rcases List.mem_cons.mp hr with rfl | hmem
+        · refine ⟨p, List.mem_of_find?_eq_some hf, ?_, rfl⟩
+          have htrue := List.find?_some hf
+          simp only [Bool.and_eq_true, beq_iff_eq] at htrue
+          exact htrue.2
+        · obtain ⟨q, hq, hqpred, hqsrc⟩ := ih hrest r hmem
+          exact ⟨q, hq, hqpred, hqsrc⟩
+
+/-! ## The block lookup follows the encoding
+
+`encodeFunc` maps every block; `findBlock` on the CLIF side finds the image
+of the block `findBlock` finds on the MIR side, because encoding preserves
+labels. -/
+
+/-- `mapM` preserves `find?` when every image keeps its key. -/
+theorem mapM_find?_preserved {bs : List Morph.MIR.Block}
+    {g : Morph.MIR.Block → Option Block} {bs' : List Block}
+    (hmap : bs.mapM g = some bs')
+    (hid : ∀ b ∈ bs, ∀ cb, g b = some cb → cb.id = b.id) :
+    ∀ {id : Morph.MIR.BlockId} {b : Morph.MIR.Block},
+      bs.find? (fun x => x.id == id) = some b →
+      ∃ cb, bs'.find? (fun x => x.id == id) = some cb ∧ g b = some cb := by
+  induction bs generalizing bs' with
+  | nil =>
+    intro id b hfind
+    simp only [List.find?_nil] at hfind
+    exact absurd hfind (by simp)
+  | cons x xs ih =>
+    intro id b hfind
+    rw [List.mapM_cons] at hmap
+    cases hx : g x with
+    | none => simp [hx, Option.bind_none] at hmap
+    | some c =>
+      cases hxs : List.mapM g xs with
+      | none => simp [hx, hxs, Option.bind_none] at hmap
+      | some cs =>
+        simp [hx, hxs] at hmap
+        subst hmap
+        cases hpx : (x.id == id) with
+        | true =>
+          have hcid : (c.id == id) = true := by
+            have heq : c.id = x.id := hid x List.mem_cons_self c hx
+            rw [heq]
+            exact hpx
+          simp only [List.find?_cons, hpx] at hfind
+          simp only [List.find?_cons, hcid]
+          obtain rfl := Option.some.inj hfind
+          exact ⟨c, rfl, hx⟩
+        | false =>
+          have hcid : (c.id == id) = false := by
+            have heq : c.id = x.id := hid x List.mem_cons_self c hx
+            rw [heq]
+            exact hpx
+          simp only [List.find?_cons, hpx] at hfind
+          simp only [List.find?_cons, hcid]
+          exact ih hxs (fun b' hm cb hcb => hid b' (List.mem_cons_of_mem _ hm) cb hcb)
+            hfind
+
+/-- The CLIF block with a MIR block's label is its encoding. -/
+theorem findBlock_encodeBlock {f : Morph.MIR.Func} {cf : Func}
+    (henc : encodeFunc f = some cf)
+    {id : Morph.MIR.BlockId} {b : Morph.MIR.Block}
+    (hfind : Morph.MIR.findBlock f id = some b) :
+    ∃ cb, findBlock cf id = some cb ∧
+      encodeBlock f (if b.id == f.entry then stripPrologue b else b) = some cb := by
+  unfold encodeFunc at henc
+  revert henc
+  cases hmap : f.blocks.mapM (encodeBlockAt f) with
+  | none =>
+    intro henc
+    simp at henc
+  | some bs =>
+    intro henc
+    simp at henc
+    subst henc
+    refine mapM_find?_preserved hmap ?_ hfind
+    intro b' hm cb hcb
+    have hcb2 : encodeBlock f (if b'.id == f.entry then stripPrologue b' else b') = some cb := by
+      simpa only [encodeBlockAt] using hcb
+    obtain ⟨cs, t, _, _, _, _, heq⟩ := encodeBlock_inv hcb2
+    calc cb.id = (if b'.id == f.entry then stripPrologue b' else b').id := by rw [heq]
+      _ = b'.id := by split <;> simp [stripPrologue_id]
+
+/-! ## The body simulation, entry peel included
+
+`blockStep_body` runs the encoded body from an agreeing environment: directly
+when the encoded source is the block itself, and past the dropped prologue
+when the encoder stripped it. The peel uses `trace_prologue_peel` plus the
+fact that a phi-free body has no leading phis, and
+`agrees_prologue_trans` for the agreement. -/
+
+theorem blockStep_body {f : Morph.MIR.Func}
+    {prev b fenv fenv' E} (hs : BlockStep f prev b fenv fenv')
+    {B : Morph.MIR.Block}
+    (hB : B = if b.id == f.entry then stripPrologue b else b)
+    {cs : List Instr} (hcs : instrEncodes (splitPhis B.instrs).2 = some cs)
+    (hagE : AgreesOnValues hs.mid E) :
+    ∃ envC, runInstrs E cs = some envC ∧ AgreesOnValues fenv'.env envC := by
+  cases he : (b.id == f.entry) with
+  | false =>
+    have hBeq : B = b := by rw [hB]; simp [he]
+    subst hBeq
+    exact trace_runInstrs_agree hs.htr hcs hagE
+  | true =>
+    rcases stripPrologue_cases b with ⟨rest, hbinstrs, hBinstrs⟩ | hstrip
+    · have hbody : (splitPhis b.instrs).2 = .const 0 .unit :: rest := by
+        rw [hbinstrs]
+        rfl
+      have hno := hs.hnoPhi
+      rw [hbody] at hno
+      have hnoRest : ∀ i ∈ rest, ∀ dst pred src, i ≠ .phi dst pred src :=
+        fun i hi d p s => hno i (List.mem_cons_of_mem _ hi) d p s
+      have hnil : (splitPhis rest).1 = [] := splitPhis_nil_of_noPhi hnoRest
+      have hBbody : (splitPhis B.instrs).2 = rest := by
+        have hBinst : B.instrs = rest := by rw [hB]; simp only [he, if_true]; exact hBinstrs
+        rw [hBinst]
+        have hrecon := splitPhis_reconstruct rest
+        rw [hnil] at hrecon
+        simpa using hrecon.symm
+      have hcsRest : instrEncodes rest = some cs := hBbody ▸ hcs
+      have htr' : Trace (.const 0 .unit :: rest) hs.mid fenv'.env := hbody ▸ hs.htr
+      obtain ⟨m₁, hm₁, htrRest⟩ := trace_prologue_peel htr'
+      have hagMid : AgreesOnValues m₁ E := by
+        rw [hm₁]
+        exact agrees_prologue_trans hagE
+      exact trace_runInstrs_agree htrRest hcsRest hagMid
+    · have hBeq : B = b := by rw [hB]; simp only [he, if_true]; exact hstrip
+      subst hBeq
+      exact trace_runInstrs_agree hs.htr hcs hagE
+
+/-! ## The CLIF realization and the composed bridge
+
+`blockPath_runFuel` runs a path in `runFuel` to the same value: the body
+through `blockStep_body`, the terminator through the outcome lemmas, and each
+edge through `agrees_after_edge_of_checks` (with `hsrc` discharging the edge
+reads and the encoder's gates discharging the fold hypotheses). `cfg_correct`
+is the two realizations side by side. -/
+
+theorem blockPath_runFuel {f : Morph.MIR.Func} {cf : Func}
+    (henc : encodeFunc f = some cf)
+    {prev b fenv mid w E cb} (hp : BlockPath f prev b fenv mid w)
+    (hag : AgreesOnValues mid E) (hcb : findBlock cf b.id = some cb)
+    (hencB : encodeBlock f (if b.id == f.entry then stripPrologue b else b) = some cb) :
+    runFuel (pathFuel hp) cf cb E = some w := by
+  induction hp generalizing E cb with
+  | ret hs hterm hval hne =>
+    rename_i p b' fe fe' v' w'
+    obtain ⟨cs, t, hnd, hnc, hcs, hencT, hcbEq⟩ := encodeBlock_inv hencB
+    obtain ⟨envC, hrun, hagC⟩ := blockStep_body hs rfl hcs hag
+    have hterm' : (if b'.id == f.entry then stripPrologue b' else b').terminator =
+        .return_ v' := by
+      rw [stripTerm_ifEntry]
+      exact hterm
+    have htEq : t = .ret v' :=
+      (Option.some.inj ((encodeTerm_return hterm').symm.trans hencT)).symm
+    have hretAg : runTerm envC (.ret v') = some (.ret w') :=
+      runTerm_return_agree hagC hval hne
+    have hrb : runBlock E
+        ⟨(if b'.id == f.entry then stripPrologue b' else b').id,
+          paramsOf (splitPhis (if b'.id == f.entry then stripPrologue b' else b').instrs).1,
+          cs, t⟩ =
+        ((runInstrs E cs).bind fun env' => (runTerm env' t).map (env', ·)) := rfl
+    have h1 : pathFuel (BlockPath.ret hs hterm hval hne) = 0 + 1 := rfl
+    rw [h1, runFuel_succ, hcbEq, hrb, hrun]
+    simp only [Option.bind_some]
+    rw [htEq, hretAg]
+    simp only [Option.map_some, Option.bind_some]
+  | goto hs hterm hfind hsrc hnoEntry hs' hrest ih =>
+    rename_i p b' fe fe' fe'' t' b'' w'
+    obtain ⟨cs, t, hnd, hnc, hcs, hencT, hcbEq⟩ := encodeBlock_inv hencB
+    obtain ⟨envC, hrun, hagC⟩ := blockStep_body hs rfl hcs hag
+    have hterm' : (if b'.id == f.entry then stripPrologue b' else b').terminator =
+        .goto t' := by
+      rw [stripTerm_ifEntry]
+      exact hterm
+    have hBid : (if b'.id == f.entry then stripPrologue b' else b').id = b'.id :=
+      stripId_ifEntry b' f.entry
+    cases heA : edgeArgs f t' (if b'.id == f.entry then stripPrologue b' else b').id with
+    | none =>
+      have hnone : encodeTerm f (if b'.id == f.entry then stripPrologue b' else b') = none := by
+        simp only [encodeTerm, hterm', heA]
+        rfl
+      rw [hnone] at hencT
+      exact absurd hencT (by simp)
+    | some args =>
+      have htEq : t = .jump t' args :=
+        (Option.some.inj ((encodeTerm_goto hterm' heA).symm.trans hencT)).symm
+      have heA' : edgeArgs f t' b'.id = some args := by rw [← hBid]; exact heA
+      have hfb : f.blocks.find? (fun b => b.id == t') = some b'' := hfind
+      have hps : targetPhis f t' = some (splitPhis b''.instrs).1 := by
+        unfold targetPhis
+        simp [hfb]
+      have hargs : argsFor (splitPhis b''.instrs).1 b'.id
+          (paramsOf (splitPhis b''.instrs).1) = some args := by
+        simpa [edgeArgs, hps] using heA'
+      have hbound : ∀ r ∈ args, ∃ v, envC r = some v := by
+        intro r hr
+        obtain ⟨q, hq, hqpred, hqsrc⟩ := args_mem_src hargs r hr
+        obtain ⟨v, hv, hne⟩ := hsrc q hq hqpred
+        have heq := hreg_of_agree hagC hv hne
+        rw [← heq] at hv
+        refine ⟨v, ?_⟩
+        rw [← hqsrc]
+        exact hv
+      obtain ⟨vs, heval⟩ := evalArgs_complete args hbound
+      have hlen : args.length = (paramsOf (splitPhis b''.instrs).1).length :=
+        edgeArgs_length hps heA'
+      have hvslen : vs.length = args.length := evalArgs_length heval
+      have hlen2 : (paramsOf (splitPhis b''.instrs).1).length = vs.length := by omega
+      obtain ⟨envSucc, hbind⟩ := bindParams_complete envC _ _ hlen2
+      have htid : b''.id = t' := by simpa using List.find?_some hfb
+      obtain ⟨cb'', hcbCLIF, hencB''⟩ := findBlock_encodeBlock henc hfind
+      have hB''eq : (if b''.id == f.entry then stripPrologue b'' else b'') = b'' := by
+        simp [hnoEntry]
+      have hencB''b : encodeBlock f b'' = some cb'' := by rw [← hB''eq]; exact hencB''
+      obtain ⟨cs'', t'', hnd', hnc', hcs'', hencT'', hcbEq''⟩ := encodeBlock_inv hencB''b
+      have hreg : ∀ q ∈ (splitPhis b''.instrs).1, q.pred = b'.id →
+          envC q.src = fe'.env q.src := by
+        intro q hq hpred
+        obtain ⟨v, hv, hne⟩ := hsrc q hq hpred
+        exact hreg_of_agree hagC hv hne
+      have hagSucc : AgreesOnValues hs'.mid envSucc :=
+        agrees_after_edge_of_checks (splitPhis b''.instrs).1 b'.id hnd' hnc'
+          hargs heval hbind hs'.hfold hreg hagC
+      have hparams : cb''.params = paramsOf (splitPhis b''.instrs).1 := by
+        rw [hcbEq'']
+      have hnext : runTerm envC (.jump t' args) = some (.next t' vs) := by
+        simp only [runTerm, heval, Option.map_some]
+      have hrb : runBlock E
+          ⟨(if b'.id == f.entry then stripPrologue b' else b').id,
+            paramsOf (splitPhis (if b'.id == f.entry then stripPrologue b' else b').instrs).1,
+            cs, t⟩ =
+          ((runInstrs E cs).bind fun env' => (runTerm env' t).map (env', ·)) := rfl
+      have h1 : pathFuel
+          (BlockPath.goto hs hterm hfind hsrc hnoEntry hs' hrest) =
+          pathFuel hrest + 1 := rfl
+      have hcb''id : findBlock cf b''.id = some cb'' := by
+        rw [htid]
+        exact hcbCLIF
+      rw [h1, runFuel_succ, hcbEq, hrb, hrun]
+      simp only [Option.bind_some]
+      rw [htEq, hnext]
+      simp only [Option.map_some, Option.bind_some, hcbCLIF, hparams, hbind]
+      exact ih hagSucc hcb''id hencB''
+  | branchTrue hs hterm hbool hfind hsrc hnoEntry hs' hrest ih =>
+    rename_i p b' fe fe' fe'' c' tt' ff' b'' w'
+    obtain ⟨cs, t, hnd, hnc, hcs, hencT, hcbEq⟩ := encodeBlock_inv hencB
+    obtain ⟨envC, hrun, hagC⟩ := blockStep_body hs rfl hcs hag
+    have hterm' : (if b'.id == f.entry then stripPrologue b' else b').terminator =
+        .branch c' tt' ff' := by
+      rw [stripTerm_ifEntry]
+      exact hterm
+    have hBid : (if b'.id == f.entry then stripPrologue b' else b').id = b'.id :=
+      stripId_ifEntry b' f.entry
+    have hmc : fe'.env c' = some (.bool true) := boolOf_some hbool
+    have hec : envC c' = some (.bool true) := hagC c' _ hmc (by simp)
+    cases heT : edgeArgs f tt' (if b'.id == f.entry then stripPrologue b' else b').id with
+    | none =>
+      have hnone : encodeTerm f (if b'.id == f.entry then stripPrologue b' else b') = none := by
+        simp only [encodeTerm, hterm', heT]
+        simp
+      rw [hnone] at hencT
+      exact absurd hencT (by simp)
+    | some argsT =>
+      cases heF : edgeArgs f ff' (if b'.id == f.entry then stripPrologue b' else b').id with
+      | none =>
+        have hnone : encodeTerm f (if b'.id == f.entry then stripPrologue b' else b') = none := by
+          simp only [encodeTerm, hterm', heT, heF]
+          simp
+        rw [hnone] at hencT
+        exact absurd hencT (by simp)
+      | some argsF =>
+        have htEq : t = .brif c' tt' argsT ff' argsF :=
+          (Option.some.inj ((encodeTerm_branch hterm' heT heF).symm.trans hencT)).symm
+        have heT' : edgeArgs f tt' b'.id = some argsT := by rw [← hBid]; exact heT
+        have hfb : f.blocks.find? (fun b => b.id == tt') = some b'' := hfind
+        have hps : targetPhis f tt' = some (splitPhis b''.instrs).1 := by
+          unfold targetPhis
+          simp [hfb]
+        have hargs : argsFor (splitPhis b''.instrs).1 b'.id
+            (paramsOf (splitPhis b''.instrs).1) = some argsT := by
+          simpa [edgeArgs, hps] using heT'
+        have hbound : ∀ r ∈ argsT, ∃ v, envC r = some v := by
+          intro r hr
+          obtain ⟨q, hq, hqpred, hqsrc⟩ := args_mem_src hargs r hr
+          obtain ⟨v, hv, hne⟩ := hsrc q hq hqpred
+          have heq := hreg_of_agree hagC hv hne
+          rw [← heq] at hv
+          refine ⟨v, ?_⟩
+          rw [← hqsrc]
+          exact hv
+        obtain ⟨vs, heval⟩ := evalArgs_complete argsT hbound
+        have hlen : argsT.length = (paramsOf (splitPhis b''.instrs).1).length :=
+          edgeArgs_length hps heT'
+        have hvslen : vs.length = argsT.length := evalArgs_length heval
+        have hlen2 : (paramsOf (splitPhis b''.instrs).1).length = vs.length := by omega
+        obtain ⟨envSucc, hbind⟩ := bindParams_complete envC _ _ hlen2
+        have htid : b''.id = tt' := by simpa using List.find?_some hfb
+        obtain ⟨cb'', hcbCLIF, hencB''⟩ := findBlock_encodeBlock henc hfind
+        have hB''eq : (if b''.id == f.entry then stripPrologue b'' else b'') = b'' := by
+          simp [hnoEntry]
+        have hencB''b : encodeBlock f b'' = some cb'' := by rw [← hB''eq]; exact hencB''
+        obtain ⟨cs'', t'', hnd', hnc', hcs'', hencT'', hcbEq''⟩ := encodeBlock_inv hencB''b
+        have hreg : ∀ q ∈ (splitPhis b''.instrs).1, q.pred = b'.id →
+            envC q.src = fe'.env q.src := by
+          intro q hq hpred
+          obtain ⟨v, hv, hne⟩ := hsrc q hq hpred
+          exact hreg_of_agree hagC hv hne
+        have hagSucc : AgreesOnValues hs'.mid envSucc :=
+          agrees_after_edge_of_checks (splitPhis b''.instrs).1 b'.id hnd' hnc'
+            hargs heval hbind hs'.hfold hreg hagC
+        have hparams : cb''.params = paramsOf (splitPhis b''.instrs).1 := by
+          rw [hcbEq'']
+        have hbrif : runTerm envC (.brif c' tt' argsT ff' argsF) =
+            some (.next tt' vs) := by
+          simp [runTerm, hec, asBool, heval]
+        have hrb : runBlock E
+            ⟨(if b'.id == f.entry then stripPrologue b' else b').id,
+              paramsOf (splitPhis (if b'.id == f.entry then stripPrologue b' else b').instrs).1,
+              cs, t⟩ =
+            ((runInstrs E cs).bind fun env' => (runTerm env' t).map (env', ·)) := rfl
+        have h1 : pathFuel
+            (BlockPath.branchTrue hs hterm hbool hfind hsrc hnoEntry hs' hrest) =
+            pathFuel hrest + 1 := rfl
+        have hcb''id : findBlock cf b''.id = some cb'' := by
+          rw [htid]
+          exact hcbCLIF
+        rw [h1, runFuel_succ, hcbEq, hrb, hrun]
+        simp only [Option.bind_some]
+        rw [htEq, hbrif]
+        simp only [Option.map_some, Option.bind_some, hcbCLIF, hparams, hbind]
+        exact ih hagSucc hcb''id hencB''
+  | branchFalse hs hterm hbool hfind hsrc hnoEntry hs' hrest ih =>
+    rename_i p b' fe fe' fe'' c' tt' ff' b'' w'
+    obtain ⟨cs, t, hnd, hnc, hcs, hencT, hcbEq⟩ := encodeBlock_inv hencB
+    obtain ⟨envC, hrun, hagC⟩ := blockStep_body hs rfl hcs hag
+    have hterm' : (if b'.id == f.entry then stripPrologue b' else b').terminator =
+        .branch c' tt' ff' := by
+      rw [stripTerm_ifEntry]
+      exact hterm
+    have hBid : (if b'.id == f.entry then stripPrologue b' else b').id = b'.id :=
+      stripId_ifEntry b' f.entry
+    have hmc : fe'.env c' = some (.bool false) := boolOf_some hbool
+    have hec : envC c' = some (.bool false) := hagC c' _ hmc (by simp)
+    cases heT : edgeArgs f tt' (if b'.id == f.entry then stripPrologue b' else b').id with
+    | none =>
+      have hnone : encodeTerm f (if b'.id == f.entry then stripPrologue b' else b') = none := by
+        simp only [encodeTerm, hterm', heT]
+        simp
+      rw [hnone] at hencT
+      exact absurd hencT (by simp)
+    | some argsT =>
+      cases heF : edgeArgs f ff' (if b'.id == f.entry then stripPrologue b' else b').id with
+      | none =>
+        have hnone : encodeTerm f (if b'.id == f.entry then stripPrologue b' else b') = none := by
+          simp only [encodeTerm, hterm', heT, heF]
+          simp
+        rw [hnone] at hencT
+        exact absurd hencT (by simp)
+      | some argsF =>
+        have htEq : t = .brif c' tt' argsT ff' argsF :=
+          (Option.some.inj ((encodeTerm_branch hterm' heT heF).symm.trans hencT)).symm
+        have heF' : edgeArgs f ff' b'.id = some argsF := by rw [← hBid]; exact heF
+        have hfb : f.blocks.find? (fun b => b.id == ff') = some b'' := hfind
+        have hps : targetPhis f ff' = some (splitPhis b''.instrs).1 := by
+          unfold targetPhis
+          simp [hfb]
+        have hargs : argsFor (splitPhis b''.instrs).1 b'.id
+            (paramsOf (splitPhis b''.instrs).1) = some argsF := by
+          simpa [edgeArgs, hps] using heF'
+        have hbound : ∀ r ∈ argsF, ∃ v, envC r = some v := by
+          intro r hr
+          obtain ⟨q, hq, hqpred, hqsrc⟩ := args_mem_src hargs r hr
+          obtain ⟨v, hv, hne⟩ := hsrc q hq hqpred
+          have heq := hreg_of_agree hagC hv hne
+          rw [← heq] at hv
+          refine ⟨v, ?_⟩
+          rw [← hqsrc]
+          exact hv
+        obtain ⟨vs, heval⟩ := evalArgs_complete argsF hbound
+        have hlen : argsF.length = (paramsOf (splitPhis b''.instrs).1).length :=
+          edgeArgs_length hps heF'
+        have hvslen : vs.length = argsF.length := evalArgs_length heval
+        have hlen2 : (paramsOf (splitPhis b''.instrs).1).length = vs.length := by omega
+        obtain ⟨envSucc, hbind⟩ := bindParams_complete envC _ _ hlen2
+        have htid : b''.id = ff' := by simpa using List.find?_some hfb
+        obtain ⟨cb'', hcbCLIF, hencB''⟩ := findBlock_encodeBlock henc hfind
+        have hB''eq : (if b''.id == f.entry then stripPrologue b'' else b'') = b'' := by
+          simp [hnoEntry]
+        have hencB''b : encodeBlock f b'' = some cb'' := by rw [← hB''eq]; exact hencB''
+        obtain ⟨cs'', t'', hnd', hnc', hcs'', hencT'', hcbEq''⟩ := encodeBlock_inv hencB''b
+        have hreg : ∀ q ∈ (splitPhis b''.instrs).1, q.pred = b'.id →
+            envC q.src = fe'.env q.src := by
+          intro q hq hpred
+          obtain ⟨v, hv, hne⟩ := hsrc q hq hpred
+          exact hreg_of_agree hagC hv hne
+        have hagSucc : AgreesOnValues hs'.mid envSucc :=
+          agrees_after_edge_of_checks (splitPhis b''.instrs).1 b'.id hnd' hnc'
+            hargs heval hbind hs'.hfold hreg hagC
+        have hparams : cb''.params = paramsOf (splitPhis b''.instrs).1 := by
+          rw [hcbEq'']
+        have hbrif : runTerm envC (.brif c' tt' argsT ff' argsF) =
+            some (.next ff' vs) := by
+          simp [runTerm, hec, asBool, heval]
+        have hrb : runBlock E
+            ⟨(if b'.id == f.entry then stripPrologue b' else b').id,
+              paramsOf (splitPhis (if b'.id == f.entry then stripPrologue b' else b').instrs).1,
+              cs, t⟩ =
+            ((runInstrs E cs).bind fun env' => (runTerm env' t).map (env', ·)) := rfl
+        have h1 : pathFuel
+            (BlockPath.branchFalse hs hterm hbool hfind hsrc hnoEntry hs' hrest) =
+            pathFuel hrest + 1 := rfl
+        have hcb''id : findBlock cf b''.id = some cb'' := by
+          rw [htid]
+          exact hcbCLIF
+        rw [h1, runFuel_succ, hcbEq, hrb, hrun]
+        simp only [Option.bind_some]
+        rw [htEq, hbrif]
+        simp only [Option.map_some, Option.bind_some, hcbCLIF, hparams, hbind]
+        exact ih hagSucc hcb''id hencB''
+
+/-- **C4b, composed.** A certified path runs on both sides to the same value:
+`execFuncFrom` by `blockPath_exec`, `runFuel` by `blockPath_runFuel`. The
+entry agreement is at the fold result, which is the entry environment
+(`hs.hfold` at `prev = none`). -/
+theorem cfg_correct {f : Morph.MIR.Func} {cf : Func}
+    (henc : encodeFunc f = some cf)
+    {b fenv mid env w} (hentry : Morph.MIR.findBlock f f.entry = some b)
+    (hp : BlockPath f none b fenv mid w) (hag : AgreesOnValues fenv.env env)
+    {cb} (hcb : findBlock cf b.id = some cb)
+    (hencB : encodeBlock f (if b.id == f.entry then stripPrologue b else b) = some cb) :
+    Morph.MIR.execFuncFrom (pathFuel hp) f fenv = some w ∧
+      runFuel (pathFuel hp) cf cb env = some w := by
+  have hexec : Morph.MIR.execFuncFrom (pathFuel hp) f fenv = some w := by
+    unfold Morph.MIR.execFuncFrom
+    rw [hentry]
+    exact blockPath_exec hp
+  have hmid : mid = fenv.env := by
+    cases hp with
+    | ret hs _ _ _ => exact hs.hfold
+    | goto hs _ _ _ _ _ _ => exact hs.hfold
+    | branchTrue hs _ _ _ _ _ _ _ => exact hs.hfold
+    | branchFalse hs _ _ _ _ _ _ _ => exact hs.hfold
+  have hag' : AgreesOnValues mid env := hmid ▸ hag
+  exact ⟨hexec, blockPath_runFuel henc hp hag' hcb hencB⟩
 
 end Cfg
 end Morph.Clif
