@@ -373,5 +373,186 @@ theorem execInstrsFullFrom_split (p : Morph.MIR.BlockId) :
           rw [Morph.MIR.execInstrsFullFrom_phi_miss q.dst q.pred p q.src is' fenv hp]
           exact execInstrsFullFrom_split p fenv is'
 
+/-! ## The fold reproduced by the edge's binding
+
+`params_bound_get?` says what the join's parameters hold in the block model, and
+`phiFoldEnv` says what MIR's phi write leaves behind. They are two different
+notions of "the merge": one binds a parameter list once, from the edge's
+arguments; the other fires phis one at a time in list order. This section proves
+they agree, which is what makes the encoding of a merge correct rather than
+merely well-typed.
+
+Two hypotheses, and neither is decoration:
+
+- **`hsep`**: no matching phi reads a register another matching phi writes. The
+  block model reads its arguments once, from the environment the block was
+  entered with; the fold reads each `src` after the previous phi already wrote.
+  Without this the two would be comparing different values, which is why the
+  encoder's scope keeps arm temporaries out of merge destinations.
+- **`huniq`**: two matching phis that write the same destination write the same
+  value. Weaker than "one phi per `(dst, pred)`", which is what `noDupPairs`
+  checks, and it is all the value statement needs: a duplicate write of the same
+  value is invisible.
+
+The conclusion is one equality per destination, stated against a single shared
+environment hypothesis (`hreg`) rather than an `AgreesOnValues`: at a block
+boundary the model's environment *is* MIR's register file for the registers the
+edge reads, and the merge only needs that on `src`s.
+-/
+
+/-- `MIR.Env.update` writes the register it names. -/
+theorem update_self (m : Morph.MIR.Env) (d : ValId) (v : Value) :
+    m.update d v d = some v := by
+  rw [update_eq_set]
+  simp [Env.set]
+
+/-- `MIR.Env.update` leaves every other register alone. -/
+theorem update_other {m : Morph.MIR.Env} {d x : ValId} {v : Value} (h : x ≠ d) :
+    m.update d v x = m x := by
+  rw [update_eq_set]
+  simp [Env.set, h]
+
+/-- **The fold leaves unwritten registers alone.** If no phi matching the
+incoming edge has destination `r`, the fold returns `r`'s entry value: it never
+writes it, and it cannot read it to fail either. -/
+theorem phiFoldEnv_not_dst (pred : Morph.MIR.BlockId) :
+    ∀ (ps : List Phi) (m m' : Morph.MIR.Env), phiFoldEnv pred m ps = some m' →
+      ∀ r : ValId, (∀ q ∈ ps, q.pred = pred → q.dst ≠ r) → m' r = m r
+  | [], m, m', h, r, _ => by
+    simp only [phiFoldEnv, Option.some.injEq] at h
+    subst h
+    rfl
+  | hd :: tl, m, m', h, r, hr => by
+    simp only [phiFoldEnv] at h
+    by_cases hp : hd.pred = pred
+    · rw [if_pos hp] at h
+      split at h
+      · exact absurd h (by simp)
+      · rename_i v hsrc
+        rw [phiFoldEnv_not_dst pred tl (m.update hd.dst v) m' h r
+          (fun q' hq' hp' => hr q' (List.mem_cons_of_mem _ hq') hp')]
+        exact update_other (Ne.symm (hr hd List.mem_cons_self hp))
+    · rw [if_neg hp] at h
+      exact phiFoldEnv_not_dst pred tl m m' h r
+        (fun q' hq' hp' => hr q' (List.mem_cons_of_mem _ hq') hp')
+
+/-- **The fold leaves each destination holding its own `src`'s entry value.**
+This is the phi phase as an equation: for every phi that fires, the destination
+ends up holding the value its `src` held on entry, not the value some *other*
+firing phi wrote there first. `huniq` handles a repeated destination and `hsep`
+handles a destination another phi reads. -/
+theorem phiFoldEnv_get (pred : Morph.MIR.BlockId) :
+    ∀ (ps : List Phi) (m m' : Morph.MIR.Env),
+      (∀ q ∈ ps, q.pred = pred → ∀ q' ∈ ps, q'.pred = pred →
+        q.dst = q'.dst → q.src = q'.src) →
+      (∀ q ∈ ps, q.pred = pred → ∀ q' ∈ ps, q'.pred = pred → q.src ≠ q'.dst) →
+      phiFoldEnv pred m ps = some m' →
+      ∀ q ∈ ps, q.pred = pred → m' q.dst = m q.src
+  | [], m, m', _, _, h, q, hq, _ => by
+    simp only [List.not_mem_nil] at hq
+  | hd :: tl, m, m', huniq, hsep, h, p, hmem, hpred => by
+    have huniq' : ∀ q ∈ tl, q.pred = pred → ∀ q' ∈ tl, q'.pred = pred →
+        q.dst = q'.dst → q.src = q'.src :=
+      fun a ha ha' b hb hb' hd' =>
+        huniq a (List.mem_cons_of_mem _ ha) ha' b (List.mem_cons_of_mem _ hb) hb' hd'
+    have hsep' : ∀ q ∈ tl, q.pred = pred → ∀ q' ∈ tl, q'.pred = pred → q.src ≠ q'.dst :=
+      fun a ha ha' b hb hb' =>
+        hsep a (List.mem_cons_of_mem _ ha) ha' b (List.mem_cons_of_mem _ hb) hb'
+    simp only [phiFoldEnv] at h
+    by_cases hp₀ : hd.pred = pred
+    · rw [if_pos hp₀] at h
+      split at h
+      · exact absurd h (by simp)
+      · rename_i v hsrc
+        rcases List.mem_cons.mp hmem with hpeq | hlt
+        · -- The head fires: its destination is either rewritten by a later phi
+          -- holding the same value, or never written again.
+          subst hpeq
+          by_cases hex : ∃ q' ∈ tl, q'.pred = pred ∧ q'.dst = p.dst
+          · obtain ⟨q', hq'mem, hq'pred, hq'dst⟩ := hex
+            have ihq' := phiFoldEnv_get pred tl (m.update p.dst v) m'
+              huniq' hsep' h q' hq'mem hq'pred
+            have hsame : q'.src = p.src :=
+              huniq q' (List.mem_cons_of_mem _ hq'mem) hq'pred p List.mem_cons_self hp₀
+                (by rw [hq'dst])
+            have hne : q'.src ≠ p.dst :=
+              hsep q' (List.mem_cons_of_mem _ hq'mem) hq'pred p List.mem_cons_self hp₀
+            rw [← hq'dst, ihq', hsame]
+            exact update_other (hsame ▸ hne)
+          · have hnot : ∀ q' ∈ tl, q'.pred = pred → q'.dst ≠ p.dst :=
+              fun q' hm hp hd' => hex ⟨q', hm, hp, hd'⟩
+            rw [phiFoldEnv_not_dst pred tl (m.update p.dst v) m' h p.dst hnot,
+              update_self, hsrc]
+        · -- Any other phi: the head's write is not at its destination.
+          rw [phiFoldEnv_get pred tl (m.update hd.dst v) m' huniq' hsep' h p hlt hpred,
+            update_other (hsep p (List.mem_cons_of_mem _ hlt) hpred hd List.mem_cons_self hp₀)]
+    · rw [if_neg hp₀] at h
+      rcases List.mem_cons.mp hmem with hpeq | hlt
+      · subst hpeq
+        exact absurd hpred hp₀
+      · exact phiFoldEnv_get pred tl m m' huniq' hsep' h p hlt hpred
+
+/-- **The phi the encoder selected.** `edgeArg?` is a `find?` on `(dst, pred)`, so
+a successful lookup names a phi in the list with that destination, that
+predecessor, and that `src`. This is the link between the encoder's choice and
+the fold's behaviour. -/
+theorem edgeArg?_find (ps : List Phi) {pred : Morph.MIR.BlockId} {d : ValId} {str : Reg}
+    (h : edgeArg? ps pred d = some str) :
+    ∃ q ∈ ps, q.dst = d ∧ q.pred = pred ∧ q.src = str := by
+  unfold edgeArg? at h
+  cases hf : ps.find? (fun p => p.dst == d && p.pred == pred) with
+  | none => rw [hf] at h; exact absurd h (by simp)
+  | some q =>
+    rw [hf] at h
+    simp only [Option.map_some, Option.some.injEq] at h
+    have htrue : (q.dst == d && q.pred == pred) = true := by
+      have := List.find?_some hf
+      simpa using this
+    simp only [Bool.and_eq_true, beq_iff_eq] at htrue
+    exact ⟨q, List.mem_of_find?_eq_some hf, htrue.1, htrue.2, h⟩
+
+/-- **The join's parameter holds exactly what the fold writes.** The two sides of
+the merge meet here: the block model's parameter `d` carries the value of the
+argument the encoder chose for `d` on this edge, and MIR's fold leaves `d`
+holding that same `src`'s entry value. Since `hreg` identifies the two entry
+environments on `src`s, the values are equal — one equality per merged register,
+which is what the block simulation consumes. -/
+theorem params_hold_fold (ps : List Phi) (pred : Morph.MIR.BlockId)
+    {args : List Reg} {vs : List Value} {env env' : Env} {m m' : Morph.MIR.Env}
+    (hargs : argsFor ps pred (paramsOf ps) = some args)
+    (heval : evalArgs env args = some vs)
+    (hbind : bindParams env (paramsOf ps) vs = some env')
+    (huniq : ∀ q ∈ ps, q.pred = pred → ∀ q' ∈ ps, q'.pred = pred →
+      q.dst = q'.dst → q.src = q'.src)
+    (hsep : ∀ q ∈ ps, q.pred = pred → ∀ q' ∈ ps, q'.pred = pred → q.src ≠ q'.dst)
+    (hfold : phiFoldEnv pred m ps = some m')
+    (hreg : ∀ q ∈ ps, q.pred = pred → env q.src = m q.src) :
+    ∀ d, d ∈ paramsOf ps → env' d = m' d := by
+  intro d hd
+  obtain ⟨i, hdi⟩ := List.mem_iff_getElem?.mp hd
+  obtain ⟨str, hstr, harg⟩ := params_bound_get? ps pred hargs heval hbind i d hdi
+  obtain ⟨q, hq, hdst, hqpred, hsrc⟩ := edgeArg?_find ps hstr
+  calc env' d = env str := harg
+    _ = m str := hsrc ▸ hreg q hq hqpred
+    _ = m' q.dst := hsrc ▸ (phiFoldEnv_get pred ps m m' huniq hsep hfold q hq hqpred).symm
+    _ = m' d := by rw [hdst]
+
+/-- **The merge holds on every list the encoder emits.** `encodeBlock` refuses a
+join unless both `noDupPairs` and `noPhiChain` succeed, and those two checks
+are exactly the fold's hypotheses — so the parameter/agreement conclusion needs
+no extra assumptions on encoder output. This is the form the block simulation
+consumes. -/
+theorem params_hold_fold_of_checks (ps : List Phi) (pred : Morph.MIR.BlockId)
+    (hnd : noDupPairs ps = true) (hnc : noPhiChain ps = true)
+    {args : List Reg} {vs : List Value} {env env' : Env} {m m' : Morph.MIR.Env}
+    (hargs : argsFor ps pred (paramsOf ps) = some args)
+    (heval : evalArgs env args = some vs)
+    (hbind : bindParams env (paramsOf ps) vs = some env')
+    (hfold : phiFoldEnv pred m ps = some m')
+    (hreg : ∀ q ∈ ps, q.pred = pred → env q.src = m q.src) :
+    ∀ d, d ∈ paramsOf ps → env' d = m' d :=
+  params_hold_fold ps pred hargs heval hbind
+    (noDupPairs_huniq ps hnd pred) (noPhiChain_hsep ps hnc pred) hfold hreg
+
 end Cfg
 end Morph.Clif

@@ -2007,3 +2007,46 @@ cheap regardless but is not load-bearing.
 **Still open.** C4b's fold↔binding correspondence and its fuel induction; the
 terminator lemma; `blockBound`'s bound lemma (C3 owes it, stated against the
 executor); then C3 → C2c → C7 → C8 → C9.
+
+## Loop 167 — the fold↔binding correspondence, and a gate the fold needed
+
+**Goal.** Close the largest open half of C4b: show the join's block parameter
+holds exactly what MIR's phi fold writes, on every list the encoder emits.
+
+**Correspondence (`Morph/ClifCfgSimulate.lean`).** `phiFoldEnv_not_dst` (the
+fold leaves other destinations alone), `phiFoldEnv_get` (the fold leaves `q`
+holding its own entry `src`, under two explicit hypotheses), `edgeArg?_find`
+(the encoder's `find?` names a witness phi), and `params_hold_fold` (the
+parameter carries the fold's value). The two hypotheses are `huniq` (same
+destination and edge ⟹ same source) and `hsep` (no matching phi reads a
+register another matching phi writes) — taken as hypotheses rather than
+derived from `noDupPairs`, because `hsep` does not follow from it: a swap
+(`a := b`, `b := a` on one edge) passes `noDupPairs` and the sequential fold
+miscompiles it. That counterexample forced the next decision.
+
+**Decision — `noPhiChain` (`Morph/ClifCfgEncode.lean`).** Since the fold is
+sequential, same-edge read-after-write (a chain, a swap, or a self-copy `x :=
+x`) is a genuine encoder precondition, not a proof artifact. It is now a
+second `Bool` gate in `encodeBlock` beside `noDupPairs`, so `encodeFunc`
+refuses instead of miscompiling. `Morph/ClifCfgCorrect.lean` discharges both
+hypotheses from the gates (`noDupPairs_huniq`, `noPhiChain_hsep`), and
+`params_hold_fold_of_checks` is the form the block simulation consumes: no
+extra assumptions on encoder output. Pinned on the real lowering — every
+block of `lowerProgramCFG ifLtProg` passes both gates (`native_decide`).
+Existing pins still encode; `lake build Morph`, `lake build Morph.Tests`, and
+`tests/codegen/native.sh` (13/13) all green.
+
+**Findings (toolchain).** `List.mem_iff_getElem?` is a two-component
+existential (`∃ i, l[i]? = some a`), not three — the extra `hi` the first
+attempt destructured does not exist. `cases h : e` substitutes `e` in the goal,
+so the `false` branch wants `rfl`, not the equation. Implicit `{q}` binders do
+not match an explicit-`∀` hypothesis shape at application time; the bridge
+lemmas take `q`/`q'` explicitly. `by simp [hcon]` closes
+`decide (q.src = q'.dst) = true`, no `decide_eq_true` needed.
+
+**Result.** `lake env lean` green on `Morph/ClifCfgEncode.lean`,
+`Morph/ClifCfgCorrect.lean`, `Morph/ClifCfgSimulate.lean`, no warnings.
+
+**Still open.** C4b's terminator lemma (`encodeTerm` ↔ `return`/`goto`/`branch`),
+the fuel induction (`execBlockFrom`/`execBlockFromIn` vs `runFuel`), and the
+composed `cfg_correct`; then C3 → C2c → C7 → C8 → C9.

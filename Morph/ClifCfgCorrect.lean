@@ -238,5 +238,58 @@ theorem paramsOf_mem (ps : List Phi) (d : ValId) :
     d ∈ paramsOf ps ↔ ∃ p ∈ ps, p.dst = d := by
   simpa [paramsOf] using paramsOfAux_mem ps [] d
 
+/-! ## The encoder's gates imply the fold's hypotheses
+
+`encodeBlock` refuses a join unless both `noDupPairs` and `noPhiChain` hold, so
+every list the encoder really emits satisfies the two hypotheses the fold
+lemmas demand. The first says a destination names one source per edge: the
+successful check puts the phi itself and any same-edge rival in one
+length-one filter, hence in one singleton. The second says no phi reads what
+another phi on the same edge writes: a violation would be a live witness for
+the `any` the check requires to be false. -/
+
+/-- A successful `noDupPairs` check names one source per destination and edge. -/
+theorem noDupPairs_huniq (ps : List Phi) (hnd : noDupPairs ps = true)
+    (pred : Morph.MIR.BlockId)
+    (q : Phi) (hq : q ∈ ps) (hqp : q.pred = pred)
+    (q' : Phi) (hq' : q' ∈ ps) (hqp' : q'.pred = pred)
+    (hdst : q.dst = q'.dst) : q.src = q'.src := by
+  simp only [noDupPairs] at hnd
+  have hall := (List.all_eq_true.mp hnd) q hq
+  have hself : (q.dst == q.dst && q.pred == q.pred) = true := by simp
+  have hother : (q'.dst == q.dst && q'.pred == q.pred) = true := by
+    simp [hdst, hqp, hqp']
+  have hlen : (ps.filter fun r => r.dst == q.dst && r.pred == q.pred).length = 1 :=
+    beq_iff_eq.mp hall
+  obtain ⟨a, ha⟩ := List.length_eq_one_iff.mp hlen
+  have hmq : q ∈ ps.filter (fun r => r.dst == q.dst && r.pred == q.pred) :=
+    List.mem_filter.mpr ⟨hq, hself⟩
+  have hmq' : q' ∈ ps.filter (fun r => r.dst == q.dst && r.pred == q.pred) :=
+    List.mem_filter.mpr ⟨hq', hother⟩
+  rw [ha, List.mem_singleton] at hmq hmq'
+  have heq : q = q' := hmq.trans hmq'.symm
+  rw [heq]
+
+/-- A successful `noPhiChain` check keeps same-edge reads off same-edge writes. -/
+theorem noPhiChain_hsep (ps : List Phi) (hnc : noPhiChain ps = true)
+    (pred : Morph.MIR.BlockId)
+    (q : Phi) (hq : q ∈ ps) (hqp : q.pred = pred)
+    (q' : Phi) (hq' : q' ∈ ps) (hqp' : q'.pred = pred) : q.src ≠ q'.dst := by
+  simp only [noPhiChain] at hnc
+  have hall := (List.all_eq_true.mp hnc) q hq
+  have hfalse : (ps.any fun r => q.pred == r.pred && decide (q.src = r.dst)) = false := by
+    cases h : (ps.any fun r => q.pred == r.pred && decide (q.src = r.dst)) with
+    | true => simp [h] at hall
+    | false => rfl
+  intro hcon
+  have hpred : (q.pred == q'.pred) = true := by
+    simp only [beq_iff_eq, hqp, hqp']
+  have htrue : (ps.any fun r => q.pred == r.pred && decide (q.src = r.dst)) = true :=
+    List.any_eq_true.mpr ⟨q', hq', by
+      show (q.pred == q'.pred && decide (q.src = q'.dst)) = true
+      simp only [Bool.and_eq_true, hpred, true_and]
+      simp [hcon]⟩
+  simp [hfalse] at htrue
+
 end Cfg
 end Morph.Clif

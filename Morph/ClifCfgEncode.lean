@@ -93,6 +93,15 @@ def noDupPairs (phis : List Phi) : Bool :=
   phis.all fun p =>
     (phis.filter (fun q => q.dst == p.dst && q.pred == p.pred)).length == 1
 
+/-- No phi reads a register another phi for the same predecessor writes. The
+join folds its phis in order (`phiFoldEnv`), so a same-edge read-after-write —
+a chain `y := x`, `z := y`, or a self-copy `x := x` — would read the fold's own
+output instead of the entry environment, and the edge's argument would disagree
+with the folded register. The encoder refuses instead of reordering. -/
+def noPhiChain (phis : List Phi) : Bool :=
+  phis.all fun q =>
+    !(phis.any fun q' => q.pred == q'.pred && decide (q.src = q'.dst))
+
 /-- One argument per parameter, built left to right. Written with an explicit
 two-way match rather than a `do` block (as `instrEncodes` is) so `argsFor_length`
 is invertible case by case. -/
@@ -138,6 +147,7 @@ straight-line, and the terminator supplies each edge's arguments. -/
 def encodeBlock (f : Morph.MIR.Func) (b : Morph.MIR.Block) : Option Block := do
   let phis := (splitPhis b.instrs).1
   if !noDupPairs phis then none
+  else if !noPhiChain phis then none
   else
     let is ← instrEncodes (splitPhis b.instrs).2
     let t ← encodeTerm f b
@@ -218,6 +228,17 @@ def latePhiFunc : Morph.MIR.Func :=
   ⟨"main", [], [⟨0, [.const 0 (.int 1), .phi 1 0 0], .return_ 0⟩], 0, .unitType⟩
 
 example : (encodeFunc latePhiFunc == none) = true := by native_decide
+
+/-- The joins of a real lowering pass both encoder gates. Every block's leading
+phis satisfy `noDupPairs` and `noPhiChain`, so `params_hold_fold_of_checks`
+applies to each of them with no extra assumptions — the bridge from the
+encoder's checks to the fold's hypotheses holds on lowered code, not just on
+hand-built lists. -/
+example : (match lowerProgramCFG ifLtProg with
+  | none => false
+  | some f => f.blocks.all fun b =>
+      noDupPairs (splitPhis b.instrs).1 && noPhiChain (splitPhis b.instrs).1) = true := by
+  native_decide
 
 end Cfg
 end Morph.Clif
