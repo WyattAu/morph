@@ -2102,3 +2102,30 @@ green (the `runLowered` pins re-ran under the new threading).
 **Still open.** C4b's body bridge (phi-free `execInstrsFullFrom` =
 `execInstrsFull`), the single-block certificate step, the fuel induction, and
 the composed `cfg_correct`; then C3 → C2c → C7 → C8 → C9.
+
+## Loop 170 — C4b body bridge: the certificate determines the MIR walk
+
+**Goal.** Make the block body reusable: separate the phi fold from the
+straight-line body on the MIR side, in the form the induction consumes.
+
+**Did.** `Morph/ClifCfgSimulate.lean`, two new sections. "The body bridge":
+`instrEncodes_noPhi` (an encoded body has no `phi` — `instrEncode` refuses it),
+`execInstrsFullFrom_of_noPhi` (off phis the edge parameter is inert, by
+`execInstrsFullFrom_nonphi` + `evalInstrFull` casing), 
+`execInstrsFullFrom_none_phis` (entry skips re-emitted leading phis),
+`block_exec_of_cert` (fold result + `Trace` over the body fix the
+`execInstrsFullFrom` outcome on both entry shapes, store untouched).
+"Inverting a successful block encoding": `encodeBlock_inv` exposes params,
+encoded body, terminator, and both gate equations from `encodeBlock f b`.
+
+**Findings (toolchain).** `push_neg` is not in scope — `simp only [not_exists]`
+turns `¬∃` into the `∀…≠` shape `execInstrsFullFrom_nonphi` takes. `split`
+cannot see under `encodeBlock`'s `let`, and `cases h : bool-check` substitutes
+the check into the goal: case on the booleans first and close the existential
+with `rfl`s. A `cases prev` leaves `hfold`'s `match` unreduced; retype it
+(`have hfold' : … := hfold`, definitional) before rewriting.
+
+**Result.** `lake env lean` green on `Morph/ClifCfgSimulate.lean`, no warnings.
+
+**Still open.** C4b's single-block certificate step, the fuel induction, and the
+composed `cfg_correct`; then C3 → C2c → C7 → C8 → C9.

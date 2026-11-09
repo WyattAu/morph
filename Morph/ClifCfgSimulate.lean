@@ -668,5 +668,139 @@ theorem agrees_after_edge_of_checks (ps : List Phi) (pred : Morph.MIR.BlockId)
   agrees_after_edge ps pred hargs heval hbind
     (noDupPairs_huniq ps hnd pred) (noPhiChain_hsep ps hnc pred) hfold hreg hag
 
+/-! ## The body bridge: the edge parameter is inert off phis
+
+The phi phase (`execInstrsFullFrom_split`) separates a block's walk into the
+fold over its leading phis and the walk over the rest. What the rest *is* — a
+straight-line body the encoder accepted — is what makes the second half
+reusable: `instrEncode` refuses `.phi`, so an encoded body has no phi at all,
+and on a phi-free list the edge parameter changes nothing. The certificate
+(a fold result plus a `Trace` over the body) therefore determines the MIR walk
+on both entry shapes, which is the MIR half of the single-block step.
+-/
+
+/-- An encoded body has no phi: `instrEncode` refuses `.phi`. -/
+theorem instrEncodes_noPhi {is : List Morph.MIR.Instr} {cs : List Instr}
+    (h : instrEncodes is = some cs) :
+    ∀ i ∈ is, ∀ dst pred src, i ≠ .phi dst pred src := by
+  induction is generalizing cs with
+  | nil => simp
+  | cons j js ih =>
+    intro i hi dst pred src hphi
+    rcases instrEncodes_cons.mp h with ⟨c, cs', henc, henc', rfl⟩
+    rcases List.mem_cons.mp hi with rfl | hmem
+    · subst hphi
+      simp [instrEncode] at henc
+    · exact ih henc' i hmem dst pred src hphi
+
+/-- Off phis the edge parameter is inert. -/
+theorem execInstrsFullFrom_of_noPhi (prev : Option Morph.MIR.BlockId)
+    (fenv : Morph.MIR.FullEnv) :
+    ∀ (is : List Morph.MIR.Instr),
+      (∀ i ∈ is, ∀ dst pred src, i ≠ .phi dst pred src) →
+      Morph.MIR.execInstrsFullFrom prev fenv is = Morph.MIR.execInstrsFull fenv is
+  | [], _ => by rfl
+  | j :: js, h => by
+    by_cases hj : ∃ dst pred src, j = .phi dst pred src
+    · obtain ⟨dst, pred, src, rfl⟩ := hj
+      exact absurd rfl (h _ List.mem_cons_self dst pred src)
+    · simp only [not_exists] at hj
+      have hrest : ∀ i ∈ js, ∀ dst pred src, i ≠ .phi dst pred src :=
+        fun i hi d p s => h i (List.mem_cons_of_mem _ hi) d p s
+      rw [Morph.MIR.execInstrsFullFrom_nonphi prev fenv hj]
+      cases he : Morph.MIR.evalInstrFull fenv j with
+      | none => simp [Morph.MIR.execInstrsFull, he]
+      | some fenv' =>
+        simp only [Morph.MIR.execInstrsFull, he]
+        exact execInstrsFullFrom_of_noPhi prev fenv' js hrest
+
+/-- Leading phis re-emitted from `Phi` are skipped at the entry block, which has
+no incoming edge for them to match. -/
+theorem execInstrsFullFrom_none_phis (fenv : Morph.MIR.FullEnv) :
+    ∀ (phis : List Phi) (rest : List Morph.MIR.Instr),
+      Morph.MIR.execInstrsFullFrom none fenv (phis.map toInstr ++ rest) =
+        Morph.MIR.execInstrsFullFrom none fenv rest
+  | [], rest => by simp
+  | q :: qs, rest => by
+    simp only [List.map_cons, List.cons_append, toInstr]
+    rw [Morph.MIR.execInstrsFullFrom_phi_none]
+    exact execInstrsFullFrom_none_phis fenv qs rest
+
+/-- **The certificate determines the MIR walk.** A fold result plus a `Trace`
+over the body fix the block's `execInstrsFullFrom` outcome on both entry
+shapes: at the entry the leading phis are dead and the body runs from the entry
+environment; on an edge the fold runs first and the body from the folded
+environment. The store is threaded untouched, as `Trace` promises. -/
+theorem block_exec_of_cert (prev : Option Morph.MIR.BlockId)
+    (fenv : Morph.MIR.FullEnv)
+    (is : List Morph.MIR.Instr) {mMid m' : Morph.MIR.Env}
+    (hfold : match prev with
+      | none => mMid = fenv.env
+      | some p => phiFoldEnv p fenv.env (splitPhis is).1 = some mMid)
+    (htr : Trace (splitPhis is).2 mMid m')
+    (hnoPhi : ∀ i ∈ (splitPhis is).2, ∀ dst pred src, i ≠ .phi dst pred src) :
+    Morph.MIR.execInstrsFullFrom prev fenv is = some ⟨m', fenv.store⟩ := by
+  cases prev with
+  | none =>
+    subst hfold
+    rw [splitPhis_reconstruct is, execInstrsFullFrom_none_phis fenv _ _,
+      execInstrsFullFrom_of_noPhi none fenv _ hnoPhi]
+    exact trace_execInstrsFull htr fenv.store
+  | some p =>
+    have hfold' : phiFoldEnv p fenv.env (splitPhis is).1 = some mMid := hfold
+    simp only [execInstrsFullFrom_split p fenv is, hfold']
+    rw [execInstrsFullFrom_of_noPhi (some p) ⟨mMid, fenv.store⟩ _ hnoPhi]
+    exact trace_execInstrsFull htr fenv.store
+
+/-! ## Inverting a successful block encoding
+
+The fuel induction cases on the MIR terminator and needs the encoded block's
+pieces — its parameter list, its encoded body, its terminator — as equations.
+`encodeBlock`'s two gates become the two `= true` hypotheses every later lemma
+takes, which is why the `_of_checks` forms compose without further casing.
+-/
+
+/-- A successful `encodeBlock` exposes its pieces. -/
+theorem encodeBlock_inv {f : Morph.MIR.Func} {b : Morph.MIR.Block} {cb : Block}
+    (h : encodeBlock f b = some cb) :
+    ∃ (cs : List Instr) (t : Term),
+      noDupPairs (splitPhis b.instrs).1 = true ∧
+      noPhiChain (splitPhis b.instrs).1 = true ∧
+      instrEncodes (splitPhis b.instrs).2 = some cs ∧
+      encodeTerm f b = some t ∧
+      cb = ⟨b.id, paramsOf (splitPhis b.instrs).1, cs, t⟩ := by
+  cases hnd : noDupPairs (splitPhis b.instrs).1 with
+  | false =>
+    have hnone : encodeBlock f b = none := by
+      unfold encodeBlock
+      simp [hnd]
+    rw [hnone] at h
+    exact absurd h (by simp)
+  | true =>
+    cases hnc : noPhiChain (splitPhis b.instrs).1 with
+    | false =>
+      have hnone : encodeBlock f b = none := by
+        unfold encodeBlock
+        simp [hnd, hnc]
+      rw [hnone] at h
+      exact absurd h (by simp)
+    | true =>
+      have hunfold : encodeBlock f b =
+          (instrEncodes (splitPhis b.instrs).2).bind fun is =>
+            (encodeTerm f b).bind fun t =>
+              some ⟨b.id, paramsOf (splitPhis b.instrs).1, is, t⟩ := by
+        unfold encodeBlock
+        simp [hnd, hnc]
+      rw [hunfold] at h
+      cases his : instrEncodes (splitPhis b.instrs).2 with
+      | none => simp [his] at h
+      | some cs =>
+        simp only [his, Option.bind_some] at h
+        cases ht : encodeTerm f b with
+        | none => simp [ht] at h
+        | some t =>
+          simp only [ht, Option.bind_some, Option.some.injEq] at h
+          exact ⟨cs, t, rfl, rfl, rfl, rfl, h.symm⟩
+
 end Cfg
 end Morph.Clif
