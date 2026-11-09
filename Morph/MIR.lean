@@ -710,5 +710,129 @@ theorem execBlockFrom_return (f : Func) (prev : Option BlockId) (b : Block)
        | none => none
        | some fenv' => fenv'.env v) := rfl
 
+/-! ## Program-aware execution (Stage C pre-C3 hedge)
+
+`evalInstrFull` returns `none` for `Instr.call`: the executor cannot look the
+callee up, because it is never told which program it is running. C8 fixes that,
+and if the block-level statements (C3, C4b) are stated about a program-blind
+executor every one of them has to be restated and re-proved when it does. The
+three definitions below carry the program from the start.
+
+Until `call` is executable the parameter is **inert**, which the agreement
+lemmas at the end of this section state: the program-aware executor is exactly
+the program-blind one. That is the same move C1 validated — definitions beside
+definitions, nothing already proved moves — with the difference that the
+statements C3/C4b will be written against the program-aware names, so C8 only
+has to revisit the `.call` case instead of the whole stage.
+-/
+
+/-- Edge-aware instruction execution with the surrounding program in scope.
+`prog` is inert until `Instr.call` is executable (C8); the phi and non-phi
+cases are those of `execInstrsFullFrom`. -/
+def execInstrsFullFromIn (prog : Program) (prev : Option BlockId)
+    (fenv : FullEnv) : List Instr → Option FullEnv
+  | [] => some fenv
+  | .phi dst pred src :: rest =>
+      match prev with
+      | none => execInstrsFullFromIn prog prev fenv rest
+      | some p =>
+          if pred = p then
+            match fenv.env src with
+            | none => none
+            | some v =>
+                execInstrsFullFromIn prog prev
+                  ⟨fenv.env.update dst v, fenv.store⟩ rest
+          else execInstrsFullFromIn prog prev fenv rest
+  | i :: rest =>
+      match evalInstrFull fenv i with
+      | none => none
+      | some fenv' => execInstrsFullFromIn prog prev fenv' rest
+
+/-- Edge-aware block execution with the surrounding program in scope. -/
+def execBlockFromIn (prog : Program) (fuel : Nat) (f : Func)
+    (prev : Option BlockId) (b : Block) (fenv : FullEnv) : Option Value :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
+      match execInstrsFullFromIn prog prev fenv b.instrs with
+      | none => none
+      | some fenv' =>
+          match b.terminator with
+          | .return_ v => fenv'.env v
+          | .goto t =>
+              match findBlock f t with
+              | some b' => execBlockFromIn prog fuel f (some b.id) b' fenv'
+              | none => none
+          | .branch cond tt ff =>
+              match fenv'.boolOf cond with
+              | some true =>
+                  match findBlock f tt with
+                  | some b' => execBlockFromIn prog fuel f (some b.id) b' fenv'
+                  | none => none
+              | some false =>
+                  match findBlock f ff with
+                  | some b' => execBlockFromIn prog fuel f (some b.id) b' fenv'
+                  | none => none
+              | none => none
+          | .switch _ _ _ => none
+
+/-- Execute a function from its entry block with the surrounding program in
+scope. The shape C3 and C4b state their theorems against. -/
+def execFuncIn (prog : Program) (fuel : Nat) (f : Func)
+    (fenv : FullEnv) : Option Value :=
+  match findBlock f f.entry with
+  | some b => execBlockFromIn prog fuel f none b fenv
+  | none => none
+
+/-- No executed instruction consults the program yet: the program-aware
+instruction walk is the program-blind one. This is the lemma that lets C8 stop
+being inert, rather than restarting the stage. -/
+theorem execInstrsFullFromIn_eq (prog : Program) (prev : Option BlockId)
+    (fenv : FullEnv) (is : List Instr) :
+    execInstrsFullFromIn prog prev fenv is = execInstrsFullFrom prev fenv is := by
+  induction is generalizing fenv with
+  | nil => rfl
+  | cons i rest ih =>
+      cases i with
+      | phi dst pred src =>
+          cases prev with
+          | none => exact ih fenv
+          | some p =>
+              by_cases hp : pred = p
+              · subst hp
+                cases hsrc : fenv.env src with
+                | none => simp [execInstrsFullFromIn, execInstrsFullFrom, hsrc]
+                | some v =>
+                    simp [execInstrsFullFromIn, execInstrsFullFrom, hsrc, ih]
+              · simp [execInstrsFullFromIn, execInstrsFullFrom, hp, ih]
+      | _ =>
+          simp only [execInstrsFullFromIn, execInstrsFullFrom]
+          split
+          · rfl
+          · rename_i fenv' _
+            rw [ih fenv']
+
+/-- The block walk is program-blind too: same fuel, same edge, same result. -/
+theorem execBlockFromIn_eq (prog : Program) (fuel : Nat) (f : Func)
+    (prev : Option BlockId) (b : Block) (fenv : FullEnv) :
+    execBlockFromIn prog fuel f prev b fenv = execBlockFrom fuel f prev b fenv := by
+  induction fuel generalizing prev b fenv with
+  | zero => rfl
+  | succ fuel ih =>
+      rw [execBlockFromIn, execBlockFrom, execInstrsFullFromIn_eq]
+      repeat' first
+        | rfl
+        | split
+        | exact ih _ _ _
+
+/-- Entry dispatch agrees as well: the hedge is a signature change, not a
+semantics change. -/
+theorem execFuncIn_eq (prog : Program) (fuel : Nat) (f : Func) (fenv : FullEnv) :
+    execFuncIn prog fuel f fenv = execFuncFrom fuel f fenv := by
+  rw [execFuncIn, execFuncFrom]
+  split
+  · exact execBlockFromIn_eq prog fuel f none _ fenv
+  · rfl
+
 end Morph.MIR
 

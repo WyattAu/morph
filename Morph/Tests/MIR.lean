@@ -229,6 +229,12 @@ def fDiamond : Func where
 example : execFuncFrom 3 fDiamond ⟨fun _ => none, Store.empty⟩ == some (.int 10) := by
   native_decide
 
+/-- The program-aware executor (the C8 hedge) runs the same diamond: the program
+parameter is inert until `call` is executable, so nothing about C1–C4 moves. -/
+example :
+    execFuncIn ⟨[fDiamond]⟩ 3 fDiamond ⟨fun _ => none, Store.empty⟩ == some (.int 10) := by
+  native_decide
+
 /-- Flip the condition (`const 0 (.bool false)`) and the false arm's phi fires. -/
 def fDiamondFalse : Func :=
   { fDiamond with

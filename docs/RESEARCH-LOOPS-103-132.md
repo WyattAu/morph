@@ -1957,3 +1957,53 @@ What does *not* move: C6's `rejects.tsv` rows are Stage C items (they pin the
 refusals the stage makes), so they stay. The order inside Stage C is unchanged:
 C4b (three lemmas) → hedges (program parameter, `blockBound`) → C3 → C2c → C7 →
 C8 → C9.
+
+## Loop 166 — the two pre-C3 hedges, and a measurement that corrects a belief
+
+Both hedges from `docs/STAGEC-SCOPE.md` §5.1, paid before C3's theorem is
+stated rather than after C4b. The order matters: both change the *signature* the
+stage's statements mention, so paying them late means restating the two hardest
+theorems in the stage.
+
+**Hedge 1 — the executor knows its program (`Morph/MIR.lean`).**
+`evalInstrFull` returns `none` for `Instr.call` because it is never told which
+program it runs. C8 fixes that, and a C3/C4b stated against a program-blind
+executor would be restated and re-proved when it does. Added
+`execInstrsFullFromIn`, `execBlockFromIn`, `execFuncIn` — structural copies of
+the C1 definitions with a `Program` parameter — and proved the parameter
+**inert** (`execInstrsFullFromIn_eq`, `execBlockFromIn_eq`, `execFuncIn_eq`).
+C8's diff becomes the `.call` case and one hypothesis ("the block contains no
+call") instead of the stage. Pinned on the diamond program in
+`Morph/Tests/MIR.lean`; every C1 lemma still applies unchanged.
+
+**Hedge 2 — fuel is a function, not a literal (`Morph/HIRToMIRBranch.lean`).**
+`armBlockBound`/`blockBound`, with two decisions that only pay off at C7: arms
+combine by `max` (only one is traversed, and a flat "three per statement" bound
+misses nesting), and the oracle's fuel is a parameter that is inert today and
+load-bearing for `whileLoop`. Pins: `ifProg` = 4 (matching the lowered CFG's
+four blocks), `nestedThenProg` = 7, an `if`-free body = 1.
+
+**Finding (toolchain).** `HIR.Stmt` and `HIR.Expr` are mutually recursive, so
+recursing into an arm goes through the *mutual* recursor and Lean compiles
+`armBlockBound` as well-founded recursion. Consequences: `rfl` does not see its
+equations, and `simp [armBlockBound]` makes no progress (the equation lemmas
+exist, but not as definitional reductions). Rewrite with the explicit `[simp]`
+lemmas or `armBlockBound.eq_def`. The nested `match s with` form was tried as a
+fix and does **not** help — the mutual recursor is the cause, not the deep
+pattern.
+
+**Finding (measurement, correcting loop 164's note).** Loop 164 recorded
+`Morph/ClifCfgCorrect.lean` as taking 6–10 minutes to elaborate, and this
+session's roadmap review treated that as a throughput risk. Measured:
+`lake env lean Morph/ClifCfgCorrect.lean` is **1.9 s** (`-Dprofiler=true`:
+525 ms tactic execution, 388 ms import, 299 ms simp). The apparent hangs were
+cold or contended Lake builds, not elaboration. Nothing about that file needs
+restructuring; the rule it argued for (split files, prefer `simp only`) is
+cheap regardless but is not load-bearing.
+
+**Result.** `lake env lean Morph/MIR.lean`, `Morph/HIRToMIRBranch.lean`,
+`Morph/Tests/MIR.lean` green, no warnings.
+
+**Still open.** C4b's fold↔binding correspondence and its fuel induction; the
+terminator lemma; `blockBound`'s bound lemma (C3 owes it, stated against the
+executor); then C3 → C2c → C7 → C8 → C9.

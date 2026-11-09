@@ -199,14 +199,17 @@ theorem lowerStmtsCFG_if_correct
     (hbs : BranchStmts budget (.ifStmt c th el :: rest))
     (hrun : runStmts fuelH env (.ifStmt c th el :: rest) acc = (out, env'))
     (hval : runValue? out = some (.lit w)) :
-    execFuncFrom (blockBound (.ifStmt c th el :: rest) + 1) func ⟨envOf ρ, store⟩ = some w
+    execFuncIn prog (blockBound fuelH (.ifStmt c th el :: rest)) func
+      ⟨envOf ρ, store⟩ = some w
 ```
 
 The exact argument list is C3's to fix; what is fixed here is the shape: fuel
-comes from `blockBound` (§4.4), and the *program* is not mentioned — the
-theorem is about the executor and the lowerer, and `compile_total` for the
-branching fragment is the corollary that composes them. Keeping that split is
-what let Stage A/B stay one-directional.
+comes from `blockBound` applied to the oracle's own fuel (§4.4), and the executor
+is the program-aware one (`MIR.execFuncIn`, loop 166) so that C8 does not have to
+restate this theorem. `prog` is inert until `call` is executable; the lemma that
+says so is `execFuncIn_eq`. Keeping the MIR→CLIF statement about the *executor
+and the lowerer* — with `compile_total` for the branching fragment as the
+corollary that composes them — is what let Stage A/B stay one-directional.
 
 ### 4.3 CLIF blocks
 
@@ -248,18 +251,38 @@ that the CLIF-side theorem is a statement about the artifact.
 
 `2 * fuelH + 3` (§4.2) is right for `if` — entry, one arm, join, so three
 blocks traversed per oracle step — and wrong for `while`, which traverses a
-block per iteration. Rather than repair the constant at C7, C3 states the bound
-through a computable function:
+block per iteration. Rather than repair the constant at C7, the bound is a
+computable function, **landed loop 166** in `Morph/HIRToMIRBranch.lean`:
 
 ```lean
-def blockBound : List Stmt → Nat   -- structural, ≤ 3 per step, recomputed per arm
-theorem execFuncFrom_bounded : blocks traversed ≤ blockBound stmts
+def armBlockBound (fuel : Nat) : List HIR.Stmt → Nat   -- extra blocks; 3 per if, arms by max
+def blockBound (fuel : Nat) (stmts : List HIR.Stmt) : Nat := 1 + armBlockBound fuel stmts
 ```
 
-C3's main theorem then cites `blockBound` and instantiates it, and C7 adds one
-constructor to `blockBound` instead of restating every fuel arithmetic in the
-stage. This is the §2 prerequisite 3 work, done as part of C3 rather than
-before it.
+Two decisions in that signature, both about C7:
+
+- **Arms combine by `max`, not by sum.** Only one arm is traversed, so a sum
+  would over-charge by the untaken arm and a "three per statement" bound would
+  miss nesting entirely (`nestedThenProg` is 7 blocks: entry, outer `if`'s
+  three, inner `if`'s three).
+- **The oracle's fuel is a parameter, and is inert today.** An `if` traverses a
+  fixed number of blocks whatever the oracle's fuel; a `while` does not, because
+  an iteration consumes fuel. Taking the parameter now is what keeps C3's
+  statement from having to be restated when its `whileLoop` case lands — the
+  same move as `MIR.execFuncIn`'s program parameter.
+
+The bound lemma C3 owes — "blocks traversed ≤ `blockBound fuelH stmts`" — is
+stated against the executor and proved once, by the same induction as C3's main
+theorem; it is not yet in the tree. What is in the tree is the function, its
+equations, and three pins in `Morph/HIRToMIRBranch.lean` (`ifProg` = 4,
+`nestedThenProg` = 7, an `if`-free body = 1).
+
+Note for proofs, not for callers: `HIR.Stmt`/`HIR.Expr` are mutually recursive,
+so `armBlockBound` recurses through the **mutual** recursor and Lean compiles it
+as well-founded recursion. `rfl` does not see the equations and `simp
+[armBlockBound]` does not fire; rewrite with the `[simp]` lemmas
+(`armBlockBound_nil`, `armBlockBound_if`, `armBlockBound_cons_not_if`) or with
+`armBlockBound.eq_def`.
 
 ## 5. Work items
 
@@ -307,16 +330,23 @@ right thing to take when C3 stalls. C2c is **not** on C3's critical path
 (`ArmStmts` is the hypothesis), so it waits behind C6; binding arms stay a loud
 refusal, and C6 pins that refusal as a test row.
 
-**Two hedges worth paying before C3's main theorem is stated:**
+**Two hedges worth paying before C3's main theorem is stated** — **both landed,
+loop 166**:
 
 1. **A function parameter in the executor.** C8 needs `Instr.call`, which needs
    the executor to know other functions. If C3 proves `lowerStmts_if_correct`
    against a single-function executor, C8 restates and re-proves it. An inert
    program parameter on `execFuncFrom` (empty program for now) costs tens of
    lines and is the same move C1 validated: new definition beside the old, so
-   nothing already proved moves.
+   nothing already proved moves. Landed as `MIR.execInstrsFullFromIn`,
+   `execBlockFromIn`, `execFuncIn` with `execInstrsFullFromIn_eq`,
+   `execBlockFromIn_eq`, `execFuncIn_eq` proving the parameter inert — C3 and
+   C4b write their statements against the `…In` names, so C8 revisits the `.call`
+   case instead of the whole stage.
 2. **Fuel through `blockBound`, not a literal (§4.4).** Otherwise C7 repairs
-   every fuel constant in the stage.
+   every fuel constant in the stage. Landed as `armBlockBound`/`blockBound` in
+   `Morph/HIRToMIRBranch.lean`, with the oracle fuel as an inert parameter for
+   the same reason.
 
 ## 6. What Stage C will not claim
 

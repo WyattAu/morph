@@ -126,6 +126,78 @@ theorem straightStmts_to_branch {budget : Nat} :
   | _, .returnStmt e rest h1 h2 => .returnStmt e rest h1 h2
   | _, .nop rest h => .cons .nop (straightStmts_to_branch h)
 
+/-! ## Fuel: one computable budget for the whole stage (scope §4.4)
+
+C3's theorem cannot carry a literal fuel constant. `if` costs three blocks (its
+condition block, the taken arm, the join) and C7's loops cost a block per
+iteration, so a constant chosen for `if` is wrong for `while` and every later
+statement in the stage would have to repair it. `blockBound` is that budget,
+stated once.
+
+It takes the oracle's own step fuel as well as the statement list. That
+parameter is **inert** for the fragment that exists today — an `if` traverses a
+fixed number of blocks whatever the oracle's fuel — and C7's `whileLoop` case is
+where it stops being inert, because an iteration consumes oracle fuel and the
+block budget must be allowed to depend on it. Taking it now is the same move as
+the program parameter on `MIR.execFuncIn`: the *statement* survives, even the
+part of it that is currently vacuous.
+-/
+
+/-- Extra blocks a statement list adds beyond the one it starts in. An `if` adds
+three: its condition block, the taken arm, and the join. Nested `if`s inside an
+arm add to that arm's own count, and only one arm is traversed, so the arms are
+combined with `max`. Statements that stay inside their block add nothing. -/
+def armBlockBound (fuel : Nat) : List HIR.Stmt → Nat
+  | [] => 0
+  | s :: rest =>
+      match s with
+      | .ifStmt _ th el =>
+          3 + max (armBlockBound fuel th) (armBlockBound fuel el)
+            + armBlockBound fuel rest
+      | _ => armBlockBound fuel rest
+
+/-- Block budget for a body: the entry block plus whatever branching adds.
+C3, C4b and C7 state their executor fuel as `blockBound fuelH stmts` rather than
+a literal, so the arithmetic lives here instead of in every theorem. -/
+def blockBound (fuel : Nat) (stmts : List HIR.Stmt) : Nat :=
+  1 + armBlockBound fuel stmts
+
+-- `HIR.Stmt` and `HIR.Expr` are mutually recursive, so recursion through an
+-- arm is not structural: the equations below are `armBlockBound.eq_def`'s
+-- branches, not `rfl`-reductions. Downstream proofs should rewrite with these
+-- lemmas (they are `[simp]`), never with the definition name.
+
+@[simp] theorem armBlockBound_nil (fuel : Nat) : armBlockBound fuel [] = 0 := by
+  rw [armBlockBound.eq_def]
+
+@[simp] theorem armBlockBound_if (fuel : Nat) (c : HIR.Expr)
+    (th el rest : List HIR.Stmt) :
+    armBlockBound fuel (.ifStmt c th el :: rest) =
+      3 + max (armBlockBound fuel th) (armBlockBound fuel el)
+        + armBlockBound fuel rest := by
+  rw [armBlockBound.eq_def]
+
+/-- A statement that is not an `if` stays inside the block it starts in, so it
+adds no blocks to the list's bound. -/
+theorem armBlockBound_cons_not_if (fuel : Nat) {s : HIR.Stmt}
+    {rest : List HIR.Stmt} (h : ∀ c th el, s ≠ .ifStmt c th el) :
+    armBlockBound fuel (s :: rest) = armBlockBound fuel rest := by
+  rw [armBlockBound.eq_def]
+  cases s with
+  | ifStmt c th el => exact absurd rfl (h c th el)
+  | _ => rfl
+
+/-- `if`-free statement lists never leave their block, so their budget is one
+block. This is the case every Stage A/B program falls into. -/
+theorem armBlockBound_eq_zero_of_forall_not_if (fuel : Nat) :
+    ∀ {ss : List HIR.Stmt}, (∀ s ∈ ss, ∀ c th el, s ≠ .ifStmt c th el) →
+      armBlockBound fuel ss = 0
+  | [], _ => armBlockBound_nil fuel
+  | s :: rest, h => by
+      rw [armBlockBound_cons_not_if fuel (fun c th el => h s (List.mem_cons_self ..) c th el)]
+      exact armBlockBound_eq_zero_of_forall_not_if fuel
+        (fun s' hs' c th el => h s' (List.mem_cons_of_mem _ hs') c th el)
+
 /-! ## The lowering -/
 
 /-- The block a worker was asked to fill, plus every block it produced beyond
@@ -275,9 +347,19 @@ def ifProg : HIR.Program :=
   ⟨[.ifStmt (.lit (.bool true)) [.exprStmt (.lit (.int 10))]
       [.exprStmt (.lit (.int 20))]]⟩
 
-/-- The lowered program is a five-block CFG (entry, then, else, join) plus the
+/-- The lowered program is a four-block CFG (entry, then, else, join) plus the
 prologue register. -/
 example : (lowerProgramCFG ifProg).map (fun f => f.blocks.length) = some 4 := by
+  native_decide
+
+/-- `blockBound` agrees with the CFG the lowering produced: the entry block plus
+the `if`'s three. This is the arithmetic C3 will cite instead of a literal. -/
+example : blockBound 8 ifProg.stmts = 4 := by
+  native_decide
+
+/-- A program with no `if` is one block, whatever its length. -/
+example :
+    blockBound 8 [.exprStmt (.lit (.int 1)), .exprStmt (.lit (.int 2))] = 1 := by
   native_decide
 
 /-- The true arm's value reaches the return. -/
@@ -350,6 +432,12 @@ example :
     (lowerProgramCFG nestedElseProg).bind
         (fun f => execFuncFrom 6 f ⟨fun _ => none, Store.empty⟩)
       == some (.int 7) := by
+  native_decide
+
+/-- The bound counts the nested arm, and only the deeper of the two: 1 (entry)
++ 3 (outer `if`) + 3 (inner `if`, in the then-arm). This is the case a flat
+"three per statement" bound would get wrong. -/
+example : blockBound 8 nestedThenProg.stmts = 7 := by
   native_decide
 
 end Morph.HIRToMIRCorrect
