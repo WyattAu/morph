@@ -868,6 +868,269 @@ example : ¬ ArmStmts 256 [.varDecl ⟨0, "x"⟩ Typ.intType (.lit (.int 1))] :=
   intro h
   cases h
 
+/-! ## C3 worker helpers: inversions, one-block steps, phi pairs
+
+Loop 175. The worker induction (next) mirrors `lowerStmts_total`: list
+induction for the body, predicate induction for the arms, expression steps
+via `lower_total.1`, environment preservation via `RelEnv_exec`. What is new
+is block dispatch, so these helpers isolate it: projection-style inversions
+(the `StraightStmts_*` idiom — `cases` on the predicate never touches the
+locals the worker still needs), one-block unfold equations for each
+terminator, the join's phi pair firing on the taken edge, and the bridge
+from edge-aware execution back to `execInstrsFull` for phi-free expression
+code. -/
+
+theorem BranchStep_exprStmt {budget : Nat} {e : HIR.Expr}
+    (h : BranchStep budget (.exprStmt e)) :
+    IsStraight e ∧ SLWeight e < budget := by
+  cases h with
+  | exprStmt _ hs hb => exact ⟨hs, hb⟩
+
+theorem BranchStep_varDecl {budget : Nat} {id : HIR.Id} {τ : Typ}
+    {init : HIR.Expr} (h : BranchStep budget (.varDecl id τ init)) :
+    IsStraight init ∧ SLWeight init < budget := by
+  cases h with
+  | varDecl _ _ _ hs hb => exact ⟨hs, hb⟩
+
+theorem BranchStep_assign {budget : Nat} {id : HIR.Id} {e : HIR.Expr}
+    (h : BranchStep budget (.assign id e)) :
+    IsStraight e ∧ SLWeight e < budget := by
+  cases h with
+  | assign _ _ hs hb => exact ⟨hs, hb⟩
+
+theorem BranchStep_if {budget : Nat} {c : HIR.Expr} {th el : List HIR.Stmt}
+    (h : BranchStep budget (.ifStmt c th el)) :
+    IsStraight c ∧ SLWeight c < budget ∧
+      ArmStmts budget th ∧ ArmStmts budget el := by
+  cases h with
+  | ifStmt _ _ _ hs hb ht he => exact ⟨hs, hb, ht, he⟩
+
+theorem BranchStmts_exprStmt {budget : Nat} {e : HIR.Expr} {rest : List HIR.Stmt}
+    (h : BranchStmts budget (.exprStmt e :: rest)) :
+    IsStraight e ∧ SLWeight e < budget ∧ BranchStmts budget rest := by
+  cases h with
+  | cons hs hrs =>
+      obtain ⟨hstr, hb⟩ := BranchStep_exprStmt hs
+      exact ⟨hstr, hb, hrs⟩
+
+theorem BranchStmts_varDecl {budget : Nat} {id : HIR.Id} {τ : Typ}
+    {init : HIR.Expr} {rest : List HIR.Stmt}
+    (h : BranchStmts budget (.varDecl id τ init :: rest)) :
+    IsStraight init ∧ SLWeight init < budget ∧ BranchStmts budget rest := by
+  cases h with
+  | cons hs hrs =>
+      obtain ⟨hstr, hb⟩ := BranchStep_varDecl hs
+      exact ⟨hstr, hb, hrs⟩
+
+theorem BranchStmts_assign {budget : Nat} {id : HIR.Id} {e : HIR.Expr}
+    {rest : List HIR.Stmt} (h : BranchStmts budget (.assign id e :: rest)) :
+    IsStraight e ∧ SLWeight e < budget ∧ BranchStmts budget rest := by
+  cases h with
+  | cons hs hrs =>
+      obtain ⟨hstr, hb⟩ := BranchStep_assign hs
+      exact ⟨hstr, hb, hrs⟩
+
+theorem BranchStmts_nop {budget : Nat} {rest : List HIR.Stmt}
+    (h : BranchStmts budget (.nop :: rest)) : BranchStmts budget rest := by
+  cases h with
+  | cons hs hrs =>
+      cases hs with
+      | nop => exact hrs
+
+theorem BranchStmts_returnStmt {budget : Nat} {e : HIR.Expr} {rest : List HIR.Stmt}
+    (h : BranchStmts budget (.returnStmt e :: rest)) :
+    IsStraight e ∧ SLWeight e < budget := by
+  cases h with
+  | cons hs _ => cases hs
+  | returnStmt _ _ hs hb => exact ⟨hs, hb⟩
+
+theorem BranchStmts_if {budget : Nat} {c : HIR.Expr} {th el rest : List HIR.Stmt}
+    (h : BranchStmts budget (.ifStmt c th el :: rest)) :
+    IsStraight c ∧ SLWeight c < budget ∧
+      ArmStmts budget th ∧ ArmStmts budget el ∧ BranchStmts budget rest := by
+  cases h with
+  | cons hs hrs =>
+      obtain ⟨hstr, hb, ht, he⟩ := BranchStep_if hs
+      exact ⟨hstr, hb, ht, he, hrs⟩
+
+theorem ArmStmts_exprStmt {budget : Nat} {e : HIR.Expr} {rest : List HIR.Stmt}
+    (h : ArmStmts budget (.exprStmt e :: rest)) :
+    IsStraight e ∧ SLWeight e < budget ∧ ArmStmts budget rest := by
+  cases h with
+  | exprStmt _ _ hs hb hr => exact ⟨hs, hb, hr⟩
+
+theorem ArmStmts_nop {budget : Nat} {rest : List HIR.Stmt}
+    (h : ArmStmts budget (.nop :: rest)) : ArmStmts budget rest := by
+  cases h with
+  | nop _ hr => exact hr
+
+theorem ArmStmts_if {budget : Nat} {c : HIR.Expr} {th el rest : List HIR.Stmt}
+    (h : ArmStmts budget (.ifStmt c th el :: rest)) :
+    IsStraight c ∧ SLWeight c < budget ∧
+      ArmStmts budget th ∧ ArmStmts budget el ∧ ArmStmts budget rest := by
+  cases h with
+  | ifStmt _ _ _ _ hs hb ht he hr => exact ⟨hs, hb, ht, he, hr⟩
+
+theorem ArmStmts_returnStmt {budget : Nat} {e : HIR.Expr} {rest : List HIR.Stmt}
+    (h : ArmStmts budget (.returnStmt e :: rest)) :
+    IsStraight e ∧ SLWeight e < budget := by
+  cases h with
+  | returnStmt _ _ hs hb => exact ⟨hs, hb⟩
+
+/-- One block, `return` terminator: run the instructions, read the register. -/
+theorem execBlockFromIn_return (prog : Program) (F : Nat) (f : Func)
+    (prev : Option MIR.BlockId) (id : MIR.BlockId) (is : List Instr) (v : ValId)
+    (fenv fenv' : FullEnv)
+    (hexec : execInstrsFullFromIn prog prev fenv is = some fenv') :
+    execBlockFromIn prog (F + 1) f prev ⟨id, is, .return_ v⟩ fenv =
+      fenv'.env v := by
+  have hstep : execBlockFromIn prog (F + 1) f prev ⟨id, is, .return_ v⟩ fenv =
+      (match execInstrsFullFromIn prog prev fenv is with
+       | none => none
+       | some fenv' => fenv'.env v) := rfl
+  rw [hstep, hexec]
+
+/-- One block, `goto` terminator: run the instructions, continue at the target
+with the block as the predecessor edge. -/
+theorem execBlockFromIn_goto (prog : Program) (F : Nat) (f : Func)
+    (prev : Option MIR.BlockId) (id : MIR.BlockId) (is : List Instr)
+    (t : MIR.BlockId) (fenv fenv' : FullEnv) (b' : Block)
+    (hexec : execInstrsFullFromIn prog prev fenv is = some fenv')
+    (hfind : findBlock f t = some b') :
+    execBlockFromIn prog (F + 1) f prev ⟨id, is, .goto t⟩ fenv =
+      execBlockFromIn prog F f (some id) b' fenv' := by
+  have hstep : execBlockFromIn prog (F + 1) f prev ⟨id, is, .goto t⟩ fenv =
+      (match execInstrsFullFromIn prog prev fenv is with
+       | none => none
+       | some fenv' =>
+           match findBlock f t with
+           | some b' => execBlockFromIn prog F f (some id) b' fenv'
+           | none => none) := rfl
+  rw [hstep, hexec, hfind]
+
+/-- One block, `branch` terminator, condition true: continue at `t`. -/
+theorem execBlockFromIn_branch_true (prog : Program) (F : Nat) (f : Func)
+    (prev : Option MIR.BlockId) (id : MIR.BlockId) (is : List Instr)
+    (c : ValId) (t e : MIR.BlockId) (fenv fenv' : FullEnv) (b' : Block)
+    (hexec : execInstrsFullFromIn prog prev fenv is = some fenv')
+    (hbool : fenv'.boolOf c = some true)
+    (hfind : findBlock f t = some b') :
+    execBlockFromIn prog (F + 1) f prev ⟨id, is, .branch c t e⟩ fenv =
+      execBlockFromIn prog F f (some id) b' fenv' := by
+  have hstep : execBlockFromIn prog (F + 1) f prev ⟨id, is, .branch c t e⟩ fenv =
+      (match execInstrsFullFromIn prog prev fenv is with
+       | none => none
+       | some fenv' =>
+           match fenv'.boolOf c with
+           | some true =>
+               match findBlock f t with
+               | some b' => execBlockFromIn prog F f (some id) b' fenv'
+               | none => none
+           | some false =>
+               match findBlock f e with
+               | some b' => execBlockFromIn prog F f (some id) b' fenv'
+               | none => none
+           | none => none) := rfl
+  rw [hstep, hexec]
+  simp only [hbool, hfind]
+
+/-- One block, `branch` terminator, condition false: continue at `e`. -/
+theorem execBlockFromIn_branch_false (prog : Program) (F : Nat) (f : Func)
+    (prev : Option MIR.BlockId) (id : MIR.BlockId) (is : List Instr)
+    (c : ValId) (t e : MIR.BlockId) (fenv fenv' : FullEnv) (b' : Block)
+    (hexec : execInstrsFullFromIn prog prev fenv is = some fenv')
+    (hbool : fenv'.boolOf c = some false)
+    (hfind : findBlock f e = some b') :
+    execBlockFromIn prog (F + 1) f prev ⟨id, is, .branch c t e⟩ fenv =
+      execBlockFromIn prog F f (some id) b' fenv' := by
+  have hstep : execBlockFromIn prog (F + 1) f prev ⟨id, is, .branch c t e⟩ fenv =
+      (match execInstrsFullFromIn prog prev fenv is with
+       | none => none
+       | some fenv' =>
+           match fenv'.boolOf c with
+           | some true =>
+               match findBlock f t with
+               | some b' => execBlockFromIn prog F f (some id) b' fenv'
+               | none => none
+           | some false =>
+               match findBlock f e with
+               | some b' => execBlockFromIn prog F f (some id) b' fenv'
+               | none => none
+           | none => none) := rfl
+  rw [hstep, hexec]
+  simp only [hbool, hfind]
+
+/-- The join's phi pair on the taken edge: arriving from `p` fires the
+`p`-phi, skips the other edge's phi, and runs the rest of the block with the
+merged register bound. The miss side needs the edges distinct, which the
+worker has from the exit-id ranges. -/
+theorem execInstrsFullFromIn_phis_hit (prog : Program) (p : MIR.BlockId)
+    (fenv : FullEnv) (vm : ValId) (te ee : MIR.BlockId) (tv ev : ValId)
+    (ris : List Instr) (wv : Value)
+    (hte : te = p) (hne : ee ≠ p) (hsrc : fenv.env tv = some wv) :
+    execInstrsFullFromIn prog (some p) fenv
+        ([.phi vm te tv, .phi vm ee ev] ++ ris) =
+      execInstrsFullFromIn prog (some p)
+        ⟨fenv.env.update vm wv, fenv.store⟩ ris := by
+  simp only [List.cons_append, List.nil_append]
+  rw [execInstrsFullFromIn_eq, execInstrsFullFromIn_eq,
+    execInstrsFullFrom_phi_hit _ _ _ _ _ _ hte, hsrc]
+  simp only [execInstrsFullFrom_phi_miss _ _ _ _ _ _ hne]
+
+/-- A pure instruction is never a phi: the worker feeds this to the bridge
+below for every expression-emitted instruction. -/
+theorem IsPure_not_phi {i : Instr} (h : IsPure i) (dst : ValId)
+    (pred : MIR.BlockId) (src : ValId) : i ≠ .phi dst pred src := by
+  cases h with
+  | const _ _ => simp
+  | copy _ _ => simp
+  | unop _ _ _ _ => simp
+  | binop _ _ _ _ _ => simp
+
+/-- Edge-aware execution agrees with straight-line execution on phi-free
+instruction lists: the program parameter is inert (that is
+`execInstrsFullFromIn_eq`) and the edge parameter only matters to phis. The
+worker uses it to run `lowerExpr` code inside blocks via `lower_total.1`. -/
+theorem execInstrsFullFromIn_of_noPhi (prog : Program) (prev : Option MIR.BlockId)
+    (fenv : FullEnv) (is : List Instr)
+    (h : ∀ dst pred src, .phi dst pred src ∉ is) :
+    execInstrsFullFromIn prog prev fenv is = execInstrsFull fenv is := by
+  rw [execInstrsFullFromIn_eq]
+  induction is generalizing fenv with
+  | nil => rfl
+  | cons i rest ih =>
+      have hhead : ∀ dst pred src, i ≠ .phi dst pred src := by
+        intro dst pred src hphi
+        exact h dst pred src (hphi ▸ List.mem_cons_self)
+      rw [execInstrsFullFrom_nonphi prev fenv hhead]
+      cases he : evalInstrFull fenv i with
+      | none => simp only [execInstrsFull, he]
+      | some fenv' =>
+          simp only [execInstrsFull, he]
+          exact ih fenv'
+            (fun d p s hm => h d p s (List.mem_cons_of_mem _ hm))
+
+/-- A boolean register reads back through `boolOf`. -/
+theorem boolOf_of_lit (fenv : FullEnv) (c : ValId) (b : Bool)
+    (h : fenv.env c = some (Value.bool b)) : fenv.boolOf c = some b := by
+  simp only [FullEnv.boolOf, h]
+
+/-- `getLast?` only returns members: the worker needs it to place an arm's
+exit block inside its id range. -/
+theorem getLast?_mem {α : Type} :
+    ∀ {l : List α} {a : α}, l.getLast? = some a → a ∈ l
+  | [], _ => by
+      intro h
+      exact absurd h (by simp)
+  | hd :: tl, _ => by
+      intro h
+      have hne : hd :: tl ≠ [] := by simp
+      have hg := List.getLast?_eq_some_getLast hne
+      rw [hg] at h
+      have ha : _ = (hd :: tl).getLast hne := (Option.some.inj h).symm
+      rw [ha]
+      exact List.getLast_mem hne
+
 /-! ## The lowered CFG runs
 
 These are evidence, not the theorem: the same expression in both arms would pass
