@@ -1140,6 +1140,259 @@ theorem boolOf_of_lit (fenv : FullEnv) (c : ValId) (b : Bool)
     (h : fenv.env c = some (Value.bool b)) : fenv.boolOf c = some b := by
   simp only [FullEnv.boolOf, h]
 
+/-- Edge-aware execution splits over instruction append: run the prefix,
+then run the suffix from the resulting environment. The worker uses it to
+separate expression code (run env-explicitly via `lower_total.1`) from the
+rest of an entry block. -/
+theorem execInstrsFullFrom_append (prev : Option MIR.BlockId) (fenv : FullEnv)
+    (l₁ l₂ : List Instr) :
+    execInstrsFullFrom prev fenv (l₁ ++ l₂) =
+      match execInstrsFullFrom prev fenv l₁ with
+      | none => none
+      | some fenv1 => execInstrsFullFrom prev fenv1 l₂ := by
+  induction l₁ generalizing fenv with
+  | nil => simp [execInstrsFullFrom]
+  | cons i rest ih =>
+      by_cases hi : ∃ dst pred src, i = .phi dst pred src
+      · obtain ⟨dst, pred, src, rfl⟩ := hi
+        cases prev with
+        | none =>
+            simp only [List.cons_append]
+            rw [execInstrsFullFrom_phi_none, execInstrsFullFrom_phi_none, ih]
+        | some p =>
+            by_cases hp : pred = p
+            · cases hsrc : fenv.env src with
+              | none =>
+                  have h1 : execInstrsFullFrom (some p) fenv
+                      (.phi dst pred src :: (rest ++ l₂)) = none := by
+                    rw [execInstrsFullFrom_phi_hit _ _ _ _ _ _ hp, hsrc]
+                  have h2 : execInstrsFullFrom (some p) fenv
+                      (.phi dst pred src :: rest) = none := by
+                    rw [execInstrsFullFrom_phi_hit _ _ _ _ _ _ hp, hsrc]
+                  simp only [List.cons_append]
+                  rw [h1, h2]
+              | some v =>
+                  have h1 : execInstrsFullFrom (some p) fenv
+                      (.phi dst pred src :: (rest ++ l₂)) =
+                      execInstrsFullFrom (some p)
+                        ⟨fenv.env.update dst v, fenv.store⟩ (rest ++ l₂) := by
+                    rw [execInstrsFullFrom_phi_hit _ _ _ _ _ _ hp, hsrc]
+                  have h2 : execInstrsFullFrom (some p) fenv
+                      (.phi dst pred src :: rest) =
+                      execInstrsFullFrom (some p)
+                        ⟨fenv.env.update dst v, fenv.store⟩ rest := by
+                    rw [execInstrsFullFrom_phi_hit _ _ _ _ _ _ hp, hsrc]
+                  simp only [List.cons_append]
+                  rw [h1, h2, ih]
+            · have h1 : execInstrsFullFrom (some p) fenv
+                    (.phi dst pred src :: (rest ++ l₂)) =
+                    execInstrsFullFrom (some p) fenv (rest ++ l₂) :=
+                execInstrsFullFrom_phi_miss _ _ _ _ _ _ hp
+              have h2 : execInstrsFullFrom (some p) fenv
+                    (.phi dst pred src :: rest) =
+                    execInstrsFullFrom (some p) fenv rest :=
+                execInstrsFullFrom_phi_miss _ _ _ _ _ _ hp
+              simp only [List.cons_append]
+              rw [h1, h2, ih]
+      · have hnp : ∀ dst pred src, i ≠ .phi dst pred src :=
+          fun d p s h => hi ⟨d, p, s, h⟩
+        simp only [List.cons_append]
+        rw [execInstrsFullFrom_nonphi prev fenv hnp]
+        cases he : evalInstrFull fenv i with
+        | none =>
+            have h1 : execInstrsFullFrom prev fenv (i :: rest) = none := by
+              rw [execInstrsFullFrom_nonphi prev fenv hnp, he]
+            rw [h1]
+        | some fenv' =>
+            have h1 : execInstrsFullFrom prev fenv (i :: rest) =
+                execInstrsFullFrom prev fenv' rest := by
+              rw [execInstrsFullFrom_nonphi prev fenv hnp, he]
+            rw [h1]
+            simp only [ih]
+
+/-- Program-aware execution splits too: the program parameter is inert. -/
+theorem execInstrsFullFromIn_append (prog : Program)
+    (prev : Option MIR.BlockId) (fenv : FullEnv) (l₁ l₂ : List Instr) :
+    execInstrsFullFromIn prog prev fenv (l₁ ++ l₂) =
+      match execInstrsFullFromIn prog prev fenv l₁ with
+      | none => none
+      | some fenv1 => execInstrsFullFromIn prog prev fenv1 l₂ := by
+  simp only [execInstrsFullFromIn_eq, execInstrsFullFrom_append]
+
+/-- A lowered entry block never starts with a phi: `L.instrs` is expression
+code (`lower_isPure`), and phis only appear in join blocks, which live in
+`L.blocks`. The worker uses it to run entry instructions edge-blind via
+`execInstrsFullFromIn_of_noPhi`. The induction is on the list, not the
+fragment predicates: `L.instrs` depends only on the spine (never on arms),
+so the `if` case needs no induction hypothesis. -/
+theorem lowerStmtsCFG_instrs_pure :
+    ∀ (bId : MIR.BlockId) (cont : Option MIR.BlockId) (arm : Bool)
+      (ρ : List (HIR.Id × ValId)) (supply nextB : Nat) (lastVal : ValId)
+      (hasVal : Bool) (ss : List HIR.Stmt) (L : Lowered),
+      lowerStmtsCFG bId cont arm ρ supply nextB lastVal hasVal ss = some L →
+      ∀ i ∈ L.instrs, IsPure i := by
+  intro bId cont arm ρ supply nextB lastVal hasVal ss
+  induction ss generalizing bId cont arm ρ supply nextB lastVal hasVal with
+  | nil =>
+      intro L h i hi
+      cases arm with
+      | true =>
+          cases hasVal with
+          | false =>
+              simp only [lowerStmtsCFG.eq_def] at h
+              obtain rfl := Option.some.inj h
+              dsimp only at hi
+              simp only [List.mem_singleton] at hi
+              subst hi
+              exact IsPure.const _ _
+          | true =>
+              simp only [lowerStmtsCFG.eq_def] at h
+              obtain rfl := Option.some.inj h
+              dsimp only at hi
+              simp at hi
+      | false =>
+          simp only [lowerStmtsCFG.eq_def] at h
+          obtain rfl := Option.some.inj h
+          dsimp only at hi
+          simp at hi
+  | cons s rest ih =>
+      cases s with
+      | exprStmt e =>
+          intro L h i hi
+          simp only [lowerStmtsCFG] at h
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he] at h; simp at h
+          | some p =>
+              obtain ⟨v0, ie, s1⟩ := p
+              rw [he] at h
+              simp only [] at h
+              cases hr : lowerStmtsCFG bId cont arm ρ s1 nextB v0 true rest with
+              | none => rw [hr] at h; simp at h
+              | some q =>
+                  rw [hr] at h
+                  simp only [] at h
+                  obtain rfl := Option.some.inj h
+                  simp only [List.mem_append] at hi
+                  rcases hi with hi | hi
+                  · exact lower_isPure.1 _ _ _ _ _ _ he _ hi
+                  · exact ih _ _ _ _ _ _ _ _ _ hr _ hi
+      | varDecl id τ init =>
+          intro L h i hi
+          cases arm with
+          | true =>
+              simp only [lowerStmtsCFG] at h
+              simp at h
+          | false =>
+              simp only [lowerStmtsCFG] at h
+              cases he : lowerExpr ρ supply init with
+              | none => rw [he] at h; simp at h
+              | some p =>
+                  obtain ⟨vb, ib, s1⟩ := p
+                  rw [he] at h
+                  simp only [] at h
+                  cases hr : lowerStmtsCFG bId cont false ((id, vb) :: ρ) s1
+                      nextB lastVal true rest with
+                  | none => rw [hr] at h; simp at h
+                  | some q =>
+                      rw [hr] at h
+                      simp only [] at h
+                      obtain rfl := Option.some.inj h
+                      simp only [List.mem_append] at hi
+                      rcases hi with hi | hi
+                      · exact lower_isPure.1 _ _ _ _ _ _ he _ hi
+                      · exact ih _ _ _ _ _ _ _ _ _ hr _ hi
+      | assign id e =>
+          intro L h i hi
+          cases arm with
+          | true =>
+              simp only [lowerStmtsCFG] at h
+              simp at h
+          | false =>
+              simp only [lowerStmtsCFG] at h
+              cases he : lowerExpr ρ supply e with
+              | none => rw [he] at h; simp at h
+              | some p =>
+                  obtain ⟨v, ie, s1⟩ := p
+                  rw [he] at h
+                  simp only [] at h
+                  cases hr : lowerStmtsCFG bId cont false (updAssoc ρ id v)
+                      s1 nextB lastVal true rest with
+                  | none => rw [hr] at h; simp at h
+                  | some q =>
+                      rw [hr] at h
+                      simp only [] at h
+                      obtain rfl := Option.some.inj h
+                      simp only [List.mem_append] at hi
+                      rcases hi with hi | hi
+                      · exact lower_isPure.1 _ _ _ _ _ _ he _ hi
+                      · exact ih _ _ _ _ _ _ _ _ _ hr _ hi
+      | nop =>
+          intro L h i hi
+          simp only [lowerStmtsCFG] at h
+          cases hr : lowerStmtsCFG bId cont arm ρ supply nextB lastVal
+              hasVal rest with
+          | none => rw [hr] at h; simp at h
+          | some q =>
+              rw [hr] at h
+              obtain rfl := Option.some.inj h
+              exact ih _ _ _ _ _ _ _ _ _ hr _ hi
+      | ifStmt c th el =>
+          intro L h i hi
+          simp only [lowerStmtsCFG] at h
+          cases heC : lowerExpr ρ supply c with
+          | none => rw [heC] at h; simp at h
+          | some p =>
+              obtain ⟨vc, ic, s1⟩ := p
+              rw [heC] at h
+              simp only [] at h
+              cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
+                  (nextB + 3) lastVal false th with
+              | none => rw [ht] at h; simp at h
+              | some lt =>
+                  rw [ht] at h
+                  simp only [] at h
+                  cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ
+                      lt.supply lt.next lastVal false el with
+                  | none => rw [he] at h; simp at h
+                  | some le =>
+                      rw [he] at h
+                      simp only [] at h
+                      cases hr : lowerStmtsCFG (nextB + 2) cont arm ρ
+                          (le.supply + 1) le.next le.supply true rest with
+                      | none => rw [hr] at h; simp at h
+                      | some lr =>
+                          rw [hr] at h
+                          simp only [] at h
+                          obtain rfl := Option.some.inj h
+                          exact lower_isPure.1 _ _ _ _ _ _ heC _ hi
+      | returnStmt e =>
+          intro L h i hi
+          simp only [lowerStmtsCFG] at h
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he] at h; simp at h
+          | some p =>
+              obtain ⟨v, ie, s1⟩ := p
+              rw [he] at h
+              simp only [] at h
+              obtain rfl := Option.some.inj h
+              exact lower_isPure.1 _ _ _ _ _ _ he _ hi
+      | «break» =>
+          intro L h i hi
+          simp only [lowerStmtsCFG] at h
+          simp at h
+      | «continue» =>
+          intro L h i hi
+          simp only [lowerStmtsCFG] at h
+          simp at h
+      | whileLoop _ _ =>
+          intro L h i hi
+          simp only [lowerStmtsCFG] at h
+          simp at h
+      | matchStmt _ _ =>
+          intro L h i hi
+          simp only [lowerStmtsCFG] at h
+          simp at h
+
 /-- `getLast?` only returns members: the worker needs it to place an arm's
 exit block inside its id range. -/
 theorem getLast?_mem {α : Type} :
