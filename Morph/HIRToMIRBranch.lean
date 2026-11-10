@@ -227,16 +227,29 @@ structure Lowered where
 - `cont = none`: a completed list returns its value (the program body).
 - `cont = some b`: a completed list jumps to `b` (an arm, or a body tail).
 - `arm = true`: binding statements are refused (see `ArmStmts`).
+- `hasVal`: whether a value has been produced on this path. An arm that
+  produced none (empty, or `nop`s only) must still deliver the HIR value
+  `unit`, so its nil case emits `const unit` instead of passing `lastVal`
+  through (which would leak the incoming accumulator — loop 176 found
+  `5; if true {} else {}` lowering to `5`). Bodies keep `lastVal`: their
+  accumulator flows through. Arms start at `false`; `exprStmt` and a nested
+  `if` set it (their value always materializes); `returnStmt` is terminal.
 
 Block ids: `bId` is the caller's; the two arms take `nextB`/`nextB + 1`, the join
 takes `nextB + 2`, and lowering continues from `nextB + 3`. -/
 def lowerStmtsCFG (bId : MIR.BlockId) (cont : Option MIR.BlockId)
     (arm : Bool) (ρ : List (HIR.Id × ValId)) (supply : Nat) (nextB : MIR.BlockId)
-    (lastVal : ValId) : List HIR.Stmt → Option Lowered
+    (lastVal : ValId) (hasVal : Bool) : List HIR.Stmt → Option Lowered
   | [] =>
-      some ⟨[], (match cont with | none => .return_ lastVal | some t => .goto t),
-            [], lastVal, ρ, supply, nextB⟩
-  | .nop :: rest => lowerStmtsCFG bId cont arm ρ supply nextB lastVal rest
+      match arm, hasVal with
+      | true, false =>
+          some ⟨[.const supply .unit],
+                (match cont with | none => .return_ supply | some t => .goto t),
+                [], supply, ρ, supply + 1, nextB⟩
+      | _, _ =>
+          some ⟨[], (match cont with | none => .return_ lastVal | some t => .goto t),
+                [], lastVal, ρ, supply, nextB⟩
+  | .nop :: rest => lowerStmtsCFG bId cont arm ρ supply nextB lastVal hasVal rest
   -- Match form, not `do`: `simp only [lowerStmtsCFG]` plus `simp only []`
   -- reduce these exactly as in Stage A (`lowerStmts`), while `do`-notation
   -- `Bind.bind` needs full `simp`, which also normalizes the block assembly
@@ -246,7 +259,7 @@ def lowerStmtsCFG (bId : MIR.BlockId) (cont : Option MIR.BlockId)
   | .exprStmt e :: rest =>
       match lowerExpr ρ supply e with
       | some (v, ie, s1) =>
-          match lowerStmtsCFG bId cont arm ρ s1 nextB v rest with
+          match lowerStmtsCFG bId cont arm ρ s1 nextB v true rest with
           | some L => some { L with instrs := ie ++ L.instrs }
           | none => none
       | none => none
@@ -256,7 +269,7 @@ def lowerStmtsCFG (bId : MIR.BlockId) (cont : Option MIR.BlockId)
       | false =>
           match lowerExpr ρ supply init with
           | some (vb, ib, s1) =>
-              match lowerStmtsCFG bId cont arm ((id, vb) :: ρ) s1 nextB lastVal rest with
+              match lowerStmtsCFG bId cont arm ((id, vb) :: ρ) s1 nextB lastVal true rest with
               | some L => some { L with instrs := ib ++ L.instrs }
               | none => none
           | none => none
@@ -266,7 +279,7 @@ def lowerStmtsCFG (bId : MIR.BlockId) (cont : Option MIR.BlockId)
       | false =>
           match lowerExpr ρ supply e with
           | some (v, ie, s1) =>
-              match lowerStmtsCFG bId cont arm (updAssoc ρ id v) s1 nextB lastVal rest with
+              match lowerStmtsCFG bId cont arm (updAssoc ρ id v) s1 nextB lastVal true rest with
               | some L => some { L with instrs := ie ++ L.instrs }
               | none => none
           | none => none
@@ -286,13 +299,13 @@ def lowerStmtsCFG (bId : MIR.BlockId) (cont : Option MIR.BlockId)
       match lowerExpr ρ supply c with
       | none => none
       | some (vc, ic, s1) =>
-          match lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1 (nextB + 3) lastVal th with
+          match lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1 (nextB + 3) lastVal false th with
           | none => none
           | some lt =>
-              match lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ lt.supply lt.next lastVal el with
+              match lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ lt.supply lt.next lastVal false el with
               | none => none
               | some le =>
-                  match lowerStmtsCFG (nextB + 2) cont arm ρ (le.supply + 1) le.next le.supply rest with
+                  match lowerStmtsCFG (nextB + 2) cont arm ρ (le.supply + 1) le.next le.supply true rest with
                   | none => none
                   | some lr =>
                       some { instrs := ic
@@ -319,7 +332,7 @@ def lowerStmtsCFG (bId : MIR.BlockId) (cont : Option MIR.BlockId)
 /-- Lower a program to a MIR CFG. Register 0 is the unit prologue (as in
 `lowerProgram`), block 0 is the entry, and the arms' blocks start at 1. -/
 def lowerProgramCFG (prog : HIR.Program) : Option Func := do
-  let L ← lowerStmtsCFG 0 none false [] 1 1 0 prog.stmts
+  let L ← lowerStmtsCFG 0 none false [] 1 1 0 false prog.stmts
   some ⟨"main", [], ⟨0, [.const 0 .unit] ++ L.instrs, L.term⟩ :: L.blocks.reverse,
     0, .unitType⟩
 
@@ -502,14 +515,15 @@ below the returned supply of ids, and the produced ids are duplicate-free.
 `arm` is fixed `false`: bindings are allowed and the lowering handles them. -/
 theorem lowerStmtsCFG_branch_inv (budget : Nat) :
     ∀ (bId : MIR.BlockId) (cont : Option MIR.BlockId) (ρ : List (HIR.Id × ValId))
-      (supply nextB : Nat) (lastVal : ValId) (ss : List HIR.Stmt) (L : Lowered),
-      lowerStmtsCFG bId cont false ρ supply nextB lastVal ss = some L →
+      (supply nextB : Nat) (lastVal : ValId) (hasVal : Bool)
+      (ss : List HIR.Stmt) (L : Lowered),
+      lowerStmtsCFG bId cont false ρ supply nextB lastVal hasVal ss = some L →
       BranchStmts budget ss →
       nextB ≤ L.next ∧ supply ≤ L.supply ∧
         (∀ b ∈ L.blocks, nextB ≤ b.id ∧ b.id < L.next) ∧
         (L.blocks.map Block.id).Nodup := by
-  intro bId cont ρ supply nextB lastVal ss
-  induction ss generalizing bId cont ρ supply nextB lastVal with
+  intro bId cont ρ supply nextB lastVal hasVal ss
+  induction ss generalizing bId cont ρ supply nextB lastVal hasVal with
   | nil =>
       intro L h hss
       cases hss with
@@ -532,14 +546,14 @@ theorem lowerStmtsCFG_branch_inv (budget : Nat) :
                   obtain ⟨v0, ie, s1⟩ := p
                   rw [he] at h
                   simp at h
-                  cases hr : lowerStmtsCFG bId cont false ρ s1 nextB v0 rest with
+                  cases hr : lowerStmtsCFG bId cont false ρ s1 nextB v0 true rest with
                   | none => rw [hr] at h; simp at h
                   | some q =>
                       rw [hr] at h
                       simp at h
                       subst h
                       have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
-                      obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ hr hrs
+                      obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ _ hr hrs
                       exact ⟨hmn, Nat.le_trans hs1 hms, hbnd, hnod⟩
           | varDecl id τ init hstr _ =>
               simp [lowerStmtsCFG] at h
@@ -550,14 +564,14 @@ theorem lowerStmtsCFG_branch_inv (budget : Nat) :
                   rw [he] at h
                   simp at h
                   cases hr : lowerStmtsCFG bId cont false ((id, vb) :: ρ) s1
-                      nextB lastVal rest with
+                      nextB lastVal true rest with
                   | none => rw [hr] at h; simp at h
                   | some q =>
                       rw [hr] at h
                       simp at h
                       subst h
                       have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
-                      obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ hr hrs
+                      obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ _ hr hrs
                       exact ⟨hmn, Nat.le_trans hs1 hms, hbnd, hnod⟩
           | assign id e hstr _ =>
               simp [lowerStmtsCFG] at h
@@ -568,25 +582,25 @@ theorem lowerStmtsCFG_branch_inv (budget : Nat) :
                   rw [he] at h
                   simp at h
                   cases hr : lowerStmtsCFG bId cont false (updAssoc ρ id v) s1
-                      nextB lastVal rest with
+                      nextB lastVal true rest with
                   | none => rw [hr] at h; simp at h
                   | some q =>
                       rw [hr] at h
                       simp at h
                       subst h
                       have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
-                      obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ hr hrs
+                      obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ _ hr hrs
                       exact ⟨hmn, Nat.le_trans hs1 hms, hbnd, hnod⟩
           | nop =>
               simp [lowerStmtsCFG] at h
               cases hr : lowerStmtsCFG bId cont false ρ supply nextB
-                  lastVal rest with
+                  lastVal hasVal rest with
               | none => rw [hr] at h; simp at h
               | some q =>
                   rw [hr] at h
                   simp at h
                   subst h
-                  obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ hr hrs
+                  obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ _ hr hrs
                   exact ⟨hmn, hms, hbnd, hnod⟩
           | ifStmt c th el hstr _ hath hael =>
               -- Peel with `unfold`, never `simp`: full `simp` normalizes the
@@ -600,19 +614,19 @@ theorem lowerStmtsCFG_branch_inv (budget : Nat) :
                   rw [heC] at h
                   simp only [] at h
                   cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
-                      (nextB + 3) lastVal th with
+                      (nextB + 3) lastVal false th with
                   | none => rw [ht] at h; simp at h
                   | some lt =>
                       rw [ht] at h
                       simp only [] at h
                       cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2))
-                          true ρ lt.supply lt.next lastVal el with
+                          true ρ lt.supply lt.next lastVal false el with
                       | none => rw [he] at h; simp at h
                       | some le =>
                           rw [he] at h
                           simp only [] at h
                           cases hr : lowerStmtsCFG (nextB + 2) cont false ρ
-                              (le.supply + 1) le.next le.supply rest with
+                              (le.supply + 1) le.next le.supply true rest with
                           | none => rw [hr] at h; simp at h
                           | some lr =>
                               rw [hr] at h
@@ -622,12 +636,12 @@ theorem lowerStmtsCFG_branch_inv (budget : Nat) :
                               have hs1 : supply ≤ s1 :=
                                 lower_mono.1 _ _ _ _ _ _ heC
                               obtain ⟨hmnt, hmst, hbndt, hnodt⟩ :=
-                                lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ ht hath
+                                lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ ht hath
                               obtain ⟨hmne, hmse, hbnde, hnode⟩ :=
-                                lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ he
+                                lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ he
                                   hael
                               obtain ⟨hmnr, hmsr, hbndr, hnodr⟩ :=
-                                ih _ _ _ _ _ _ _ hr hrs
+                                ih _ _ _ _ _ _ _ _ hr hrs
                               refine ⟨by omega, by omega, ?_, ?_⟩
                               · intro b hb
                                 simp only [List.mem_append, List.mem_singleton] at hb
@@ -692,20 +706,31 @@ theorem lowerStmtsCFG_branch_inv (budget : Nat) :
 takes a binding branch and `ArmStmts` has no such constructor to match. -/
 theorem lowerStmtsCFG_arm_inv (budget : Nat) :
     ∀ (bId : MIR.BlockId) (cont : Option MIR.BlockId) (ρ : List (HIR.Id × ValId))
-      (supply nextB : Nat) (lastVal : ValId) (ss : List HIR.Stmt) (L : Lowered),
-      lowerStmtsCFG bId cont true ρ supply nextB lastVal ss = some L →
+      (supply nextB : Nat) (lastVal : ValId) (hasVal : Bool)
+      (ss : List HIR.Stmt) (L : Lowered),
+      lowerStmtsCFG bId cont true ρ supply nextB lastVal hasVal ss = some L →
       ArmStmts budget ss →
       nextB ≤ L.next ∧ supply ≤ L.supply ∧
         (∀ b ∈ L.blocks, nextB ≤ b.id ∧ b.id < L.next) ∧
         (L.blocks.map Block.id).Nodup := by
-  intro bId cont ρ supply nextB lastVal ss L h hss
-  induction hss generalizing bId cont ρ supply nextB lastVal L with
+  intro bId cont ρ supply nextB lastVal hasVal ss L h hss
+  induction hss generalizing bId cont ρ supply nextB lastVal hasVal L with
   | nil =>
       simp only [lowerStmtsCFG.eq_def] at h
-      simp at h
-      subst h
-      exact ⟨Nat.le_refl _, Nat.le_refl _, fun b hb => by simp at hb,
-        List.nodup_nil⟩
+      cases hv : hasVal with
+      | true =>
+          simp only [hv] at h
+          simp at h
+          subst h
+          exact ⟨Nat.le_refl _, Nat.le_refl _, fun b hb => by simp at hb,
+            List.nodup_nil⟩
+      | false =>
+          simp only [hv] at h
+          simp at h
+          subst h
+          -- The valueless arm emits `const unit` into a fresh register.
+          exact ⟨Nat.le_refl _, Nat.le_succ _, fun b hb => by simp at hb,
+            List.nodup_nil⟩
   | exprStmt e rest hstr _ hrs ih =>
       simp [lowerStmtsCFG] at h
       cases he : lowerExpr ρ supply e with
@@ -714,23 +739,23 @@ theorem lowerStmtsCFG_arm_inv (budget : Nat) :
           obtain ⟨v0, ie, s1⟩ := p
           rw [he] at h
           simp at h
-          cases hr : lowerStmtsCFG bId cont true ρ s1 nextB v0 rest with
+          cases hr : lowerStmtsCFG bId cont true ρ s1 nextB v0 true rest with
           | none => rw [hr] at h; simp at h
           | some q =>
               rw [hr] at h
               simp at h
               subst h
               have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
-              obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ hr
+              obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ _ hr
               exact ⟨hmn, Nat.le_trans hs1 hms, hbnd, hnod⟩
   | nop rest hrs ih =>
       simp [lowerStmtsCFG] at h
-      cases hr : lowerStmtsCFG bId cont true ρ supply nextB lastVal rest with
+      cases hr : lowerStmtsCFG bId cont true ρ supply nextB lastVal hasVal rest with
       | none => rw [hr] at h; simp at h          | some q =>
               rw [hr] at h
               simp at h
               subst h
-              obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ hr
+              obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ _ hr
               exact ⟨hmn, hms, hbnd, hnod⟩
   | ifStmt c th el rest hstr _ hath hael hrs iht ihe ihr =>
       simp only [lowerStmtsCFG] at h
@@ -741,19 +766,19 @@ theorem lowerStmtsCFG_arm_inv (budget : Nat) :
           rw [heC] at h
           simp only [] at h
           cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
-              (nextB + 3) lastVal th with
+              (nextB + 3) lastVal false th with
           | none => rw [ht] at h; simp at h
           | some lt =>
               rw [ht] at h
               simp only [] at h
               cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ
-                  lt.supply lt.next lastVal el with
+                  lt.supply lt.next lastVal false el with
               | none => rw [he] at h; simp at h
               | some le =>
                   rw [he] at h
                   simp only [] at h
                   cases hr : lowerStmtsCFG (nextB + 2) cont true ρ
-                      (le.supply + 1) le.next le.supply rest with
+                      (le.supply + 1) le.next le.supply true rest with
                   | none => rw [hr] at h; simp at h
                   | some lr =>
                       rw [hr] at h
@@ -762,11 +787,11 @@ theorem lowerStmtsCFG_arm_inv (budget : Nat) :
                       dsimp only at ⊢
                       have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ heC
                       obtain ⟨hmnt, hmst, hbndt, hnodt⟩ :=
-                        iht _ _ _ _ _ _ _ ht
+                        iht _ _ _ _ _ _ _ _ ht
                       obtain ⟨hmne, hmse, hbnde, hnode⟩ :=
-                        ihe _ _ _ _ _ _ _ he
+                        ihe _ _ _ _ _ _ _ _ he
                       obtain ⟨hmnr, hmsr, hbndr, hnodr⟩ :=
-                        ihr _ _ _ _ _ _ _ hr
+                        ihr _ _ _ _ _ _ _ _ hr
                       refine ⟨by omega, by omega, ?_, ?_⟩
                       · intro b hb
                         simp only [List.mem_append, List.mem_singleton] at hb

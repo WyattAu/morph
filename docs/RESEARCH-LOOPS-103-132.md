@@ -2269,3 +2269,34 @@ copied verbatim from the definition.
 
 **Still open.** C3 worker induction + top corollary + bridge docs; then C7,
 C8; C9 at Stage C exit. G-1/G-3/G-7 skipped per standing directive.
+
+## Loop 176 — empty-arm value bug: `hasVal` repair
+
+**Goal.** Unblock the C3 worker: state its HIR premise and check the shapes
+line up before writing the induction.
+
+**Found.** A real soundness bug, caught by probing (not by any test):
+`5; if true {} else {}` runs to `unit` in HIR (arms run from `unit`, so an
+empty arm yields `unit`) but the CFG lowering returned `5` — a valueless arm
+passed `lastVal` (the incoming accumulator) through as its value. Same for
+`nop`-only arms, and nested: any arm whose value HIR computes as `unit`
+diverged from MIR whenever `lastVal` was not `unit`. Top-level empty arms
+were accidentally right (`lastVal` is the unit prologue register).
+
+**Fix.** Thread `hasVal : Bool` through `lowerStmtsCFG`: arms start `false`;
+`exprStmt` and a nested `if` set it (their value always materializes);
+`returnStmt` is terminal; `nop` preserves it. The nil case emits
+`const unit` into a fresh register when `arm && !hasVal`, and is unchanged
+otherwise — in particular the body and all value-carrying arms lower
+bit-identically to before, so no corpus or pin output moves. `Lowered` and
+`lowerProgramCFG` are unchanged; the churn is contained in
+`Morph/HIRToMIRBranch.lean` (C4b and the drivers only use `lowerProgramCFG`).
+The invariant proofs needed only the new binder plus a two-way split in the
+arm nil bullet (`supply ≤ supply + 1` for the fresh register).
+
+**Result.** Probe agrees (`unit` both sides); `lake build Morph` 468 green,
+`lake build Morph.Tests` 292 green, `check.sh` 22/22, `native.sh` 13/13.
+
+**Still open.** C3 worker (arm + body) with the HIR premise over
+`ss ++ contSS`, then top corollary + bridge; then C7, C8; C9 at Stage C exit.
+G-1/G-3/G-7 skipped per standing directive.
