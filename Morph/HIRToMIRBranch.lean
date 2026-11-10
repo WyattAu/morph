@@ -237,57 +237,83 @@ def lowerStmtsCFG (bId : MIR.BlockId) (cont : Option MIR.BlockId)
       some ⟨[], (match cont with | none => .return_ lastVal | some t => .goto t),
             [], lastVal, ρ, supply, nextB⟩
   | .nop :: rest => lowerStmtsCFG bId cont arm ρ supply nextB lastVal rest
-  | .exprStmt e :: rest => do
-      let (v, ie, s1) ← lowerExpr ρ supply e
-      let L ← lowerStmtsCFG bId cont arm ρ s1 nextB v rest
-      some { L with instrs := ie ++ L.instrs }
+  -- Match form, not `do`: `simp only [lowerStmtsCFG]` plus `simp only []`
+  -- reduce these exactly as in Stage A (`lowerStmts`), while `do`-notation
+  -- `Bind.bind` needs full `simp`, which also normalizes the block assembly
+  -- (`[T] ++ X` to `T :: X`) and breaks the syntactic match the C3 invariant
+  -- proofs rely on. Everything is inlined (no `let`) so `rw` finds the
+  -- recursive calls syntactically.
+  | .exprStmt e :: rest =>
+      match lowerExpr ρ supply e with
+      | some (v, ie, s1) =>
+          match lowerStmtsCFG bId cont arm ρ s1 nextB v rest with
+          | some L => some { L with instrs := ie ++ L.instrs }
+          | none => none
+      | none => none
   | .varDecl id _τ init :: rest =>
       match arm with
       | true => none
-      | false => do
-          let (vb, ib, s1) ← lowerExpr ρ supply init
-          let L ← lowerStmtsCFG bId cont arm ((id, vb) :: ρ) s1 nextB lastVal rest
-          some { L with instrs := ib ++ L.instrs }
+      | false =>
+          match lowerExpr ρ supply init with
+          | some (vb, ib, s1) =>
+              match lowerStmtsCFG bId cont arm ((id, vb) :: ρ) s1 nextB lastVal rest with
+              | some L => some { L with instrs := ib ++ L.instrs }
+              | none => none
+          | none => none
   | .assign id e :: rest =>
       match arm with
       | true => none
-      | false => do
-          let (v, ie, s1) ← lowerExpr ρ supply e
-          let L ← lowerStmtsCFG bId cont arm (updAssoc ρ id v) s1 nextB lastVal rest
-          some { L with instrs := ie ++ L.instrs }
-  | .returnStmt e :: _ => do
-      let (v, ie, s1) ← lowerExpr ρ supply e
-      some ⟨ie, .return_ v, [], v, ρ, s1, nextB⟩
-  | .ifStmt c th el :: rest => do
-      let (vc, ic, s1) ← lowerExpr ρ supply c
-      let bThen := nextB
-      let bElse := nextB + 1
-      let bJoin := nextB + 2
-      let Lt ← lowerStmtsCFG bThen (some bJoin) true ρ s1 (nextB + 3) lastVal th
-      let Le ← lowerStmtsCFG bElse (some bJoin) true ρ Lt.supply Lt.next lastVal el
-      -- The merged value: one phi per incoming edge, both writing `vm`. The
-      -- edge's *source* is the block that jumps to the join, which is the arm's
-      -- own block only when the arm emitted none of its own. An arm holding a
-      -- nested `if` ends in that `if`'s join, and that block is the predecessor
-      -- — using `bThen` there would name a block whose terminator branches into
-      -- the arm's first block instead, so the phi would never fire and the join
-      -- would return an unbound register (found in loop 161 by encoding
-      -- `if (1 < 2) { if (3 < 4) { 7 } else { 8 } } else { 9 }`).
-      let thenExit := (Lt.blocks.getLast?.map (fun b => b.id)).getD bThen
-      let elseExit := (Le.blocks.getLast?.map (fun b => b.id)).getD bElse
-      let vm := Le.supply
-      let phis : List Instr :=
-        [.phi vm thenExit Lt.val, .phi vm elseExit Le.val]
-      let Lr ← lowerStmtsCFG bJoin cont arm ρ (vm + 1) Le.next vm rest
-      some { instrs := ic
-             term := .branch vc bThen bElse
-             blocks := Lt.blocks ++ [⟨bThen, Lt.instrs, Lt.term⟩]
-                       ++ Le.blocks ++ [⟨bElse, Le.instrs, Le.term⟩]
-                       ++ Lr.blocks ++ [⟨bJoin, phis ++ Lr.instrs, Lr.term⟩]
-             val := Lr.val
-             ρ := Lr.ρ
-             supply := Lr.supply
-             next := Lr.next }
+      | false =>
+          match lowerExpr ρ supply e with
+          | some (v, ie, s1) =>
+              match lowerStmtsCFG bId cont arm (updAssoc ρ id v) s1 nextB lastVal rest with
+              | some L => some { L with instrs := ie ++ L.instrs }
+              | none => none
+          | none => none
+  | .returnStmt e :: _ =>
+      match lowerExpr ρ supply e with
+      | some (v, ie, s1) => some ⟨ie, .return_ v, [], v, ρ, s1, nextB⟩
+      | none => none
+  -- The merged value: one phi per incoming edge, both writing `vm`
+  -- (`Le.supply`). The edge's *source* is the block that jumps to the join,
+  -- which is the arm's own block only when the arm emitted none of its own.
+  -- An arm holding a nested `if` ends in that `if`'s join, and that block is
+  -- the predecessor — using the arm's own block there would name a block
+  -- whose terminator branches into the arm's first block instead, so the phi
+  -- would never fire and the join would return an unbound register (found in
+  -- loop 161 by encoding `if (1 < 2) { if (3 < 4) { 7 } else { 8 } } else { 9 }`).
+  | .ifStmt c th el :: rest =>
+      match lowerExpr ρ supply c with
+      | none => none
+      | some (vc, ic, s1) =>
+          match lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1 (nextB + 3) lastVal th with
+          | none => none
+          | some lt =>
+              match lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ lt.supply lt.next lastVal el with
+              | none => none
+              | some le =>
+                  match lowerStmtsCFG (nextB + 2) cont arm ρ (le.supply + 1) le.next le.supply rest with
+                  | none => none
+                  | some lr =>
+                      some { instrs := ic
+                             term := .branch vc nextB (nextB + 1)
+                             blocks := lt.blocks ++ [⟨nextB, lt.instrs, lt.term⟩]
+                                       ++ le.blocks ++ [⟨nextB + 1, le.instrs, le.term⟩]
+                                       ++ lr.blocks ++ [⟨nextB + 2,
+                                           [.phi le.supply ((lt.blocks.getLast?.map (fun b => b.id)).getD nextB) lt.val,
+                                            .phi le.supply ((le.blocks.getLast?.map (fun b => b.id)).getD (nextB + 1)) le.val] ++ lr.instrs,
+                                           lr.term⟩]
+                             val := lr.val
+                             ρ := lr.ρ
+                             supply := lr.supply
+                             -- `lr.next + 1`, not `lr.next`: the join block itself
+                             -- carries id `nextB + 2`, and `rest` may allocate
+                             -- nothing (so `lr.next` can equal `nextB + 2`). The
+                             -- invariant needs every produced id strictly below
+                             -- `L.next`, and nesting needs the outer ids to start
+                             -- strictly above the inner ones, so the high-water
+                             -- mark must clear the join id even when `rest` is empty.
+                             next := lr.next + 1 }
   | _ :: _ => none
 
 /-- Lower a program to a MIR CFG. Register 0 is the unit prologue (as in
@@ -296,6 +322,512 @@ def lowerProgramCFG (prog : HIR.Program) : Option Func := do
   let L ← lowerStmtsCFG 0 none false [] 1 1 0 prog.stmts
   some ⟨"main", [], ⟨0, [.const 0 .unit] ++ L.instrs, L.term⟩ :: L.blocks.reverse,
     0, .unitType⟩
+
+/-! ## C3 infrastructure: the lowering only grows, and block ids are unique
+
+Loop 174. C3's induction runs the lowered blocks, so it needs three facts
+about `lowerStmtsCFG`: supply and block ids only grow, every produced block
+id lies in `[nextB, L.next)`, and the produced id sets are duplicate-free.
+The induction is on the fragment predicates (`BranchStmts`/`ArmStmts`), not
+on the statement list — an `if`'s arms are not structural subterms of the
+list, but they are subterms of the predicate proof, and `ArmStmts` having no
+`varDecl`/`assign` constructor is what discharges the lowering's arm refusal
+without an extra contradiction case. -/
+
+/-- Appending duplicate-free id lists with no shared id keeps duplicate-free
+ids. The workhorse for the six-part `if` assembly. -/
+theorem nodup_concat {l₁ l₂ : List Nat} (h₁ : l₁.Nodup) (h₂ : l₂.Nodup)
+    (hd : ∀ x ∈ l₁, ∀ y ∈ l₂, x ≠ y) : (l₁ ++ l₂).Nodup := by
+  induction l₁ with
+  | nil => simpa using h₂
+  | cons a as ih =>
+      rw [List.cons_append, List.nodup_cons] at ⊢
+      rw [List.nodup_cons] at h₁
+      obtain ⟨hnotin, hnod⟩ := h₁
+      refine ⟨?_, ih hnod (fun x hx y hy => hd x (List.mem_cons_of_mem _ hx) y hy)⟩
+      intro hmem
+      rcases List.mem_append.mp hmem with h | h
+      · exact hnotin h
+      · exact hd _ (List.mem_cons_self ..) _ h rfl
+
+/-- A block list with duplicate-free ids answers `find?` by membership: the
+first match is the block itself, because no other block shares its id. -/
+theorem findBlock_of_nodup_mem {l : List Block} {b : Block}
+    (hnod : (l.map Block.id).Nodup) (hmem : b ∈ l) :
+    l.find? (fun b' => b'.id == b.id) = some b := by
+  induction l with
+  | nil => simp at hmem
+  | cons hd tl ih =>
+      rw [List.map_cons, List.nodup_cons] at hnod
+      obtain ⟨hnotin, hnodtl⟩ := hnod
+      cases hb : (hd.id == b.id) with
+      | true =>
+          have hid : hd.id = b.id := by simpa using hb
+          have hnotmem : b ∉ tl := fun h => hnotin (List.mem_map.mpr ⟨b, h, hid.symm⟩)
+          have heq : hd = b := by
+            rcases List.mem_cons.mp hmem with h | h
+            · exact h.symm
+            · exact absurd h hnotmem
+          subst heq
+          simp only [List.find?, hb]
+      | false =>
+          have hmemtl : b ∈ tl := by
+            rcases List.mem_cons.mp hmem with h | h
+            · exfalso
+              have ht := beq_self_eq_true (b.id)
+              rw [← h] at hb
+              rw [hb] at ht
+              exact Bool.false_ne_true ht
+            · exact h
+          simp only [List.find?, hb]
+          exact ih hnodtl hmemtl
+
+private theorem ne_of_lt_nat' {a b : Nat} (h : a < b) : a ≠ b :=
+  Nat.ne_of_lt h
+
+private theorem ne_of_gt_nat' {a b : Nat} (h : a > b) : a ≠ b :=
+  (Nat.ne_of_lt h).symm
+
+/-- The six block groups of a lowered `if` have pairwise-disjoint id ranges
+— arms below their joins, joins below the next call's ids — so the whole
+assembly is duplicate-free. Stated on id lists, so the caller never has to
+reassociate the block concatenation: the conclusion is definitionally the
+pushed-through map. -/
+theorem if_assembly_nodup {nextB ltNext leNext lrNext : Nat}
+    {A B C : List Block} {thenB elseB joinB : Block}
+    (hmnt : nextB + 3 ≤ ltNext) (hmne : ltNext ≤ leNext) (_hmnr : leNext ≤ lrNext)
+    (hbndA : ∀ b ∈ A, nextB + 3 ≤ b.id ∧ b.id < ltNext)
+    (hbndB : ∀ b ∈ B, ltNext ≤ b.id ∧ b.id < leNext)
+    (hbndC : ∀ b ∈ C, leNext ≤ b.id ∧ b.id < lrNext)
+    (hthen : thenB.id = nextB) (helse : elseB.id = nextB + 1)
+    (hjoin : joinB.id = nextB + 2)
+    (hnodA : (A.map Block.id).Nodup) (hnodB : (B.map Block.id).Nodup)
+    (hnodC : (C.map Block.id).Nodup) :
+    ((A ++ [thenB] ++ B ++ [elseB] ++ C ++ [joinB]).map Block.id).Nodup := by
+  have hbA : ∀ x ∈ A.map Block.id, nextB + 3 ≤ x ∧ x < ltNext := by
+    intro x hx
+    obtain ⟨b, hb, rfl⟩ := List.mem_map.mp hx
+    exact hbndA b hb
+  have hbB : ∀ x ∈ B.map Block.id, ltNext ≤ x ∧ x < leNext := by
+    intro x hx
+    obtain ⟨b, hb, rfl⟩ := List.mem_map.mp hx
+    exact hbndB b hb
+  have hbC : ∀ x ∈ C.map Block.id, leNext ≤ x ∧ x < lrNext := by
+    intro x hx
+    obtain ⟨b, hb, rfl⟩ := List.mem_map.mp hx
+    exact hbndC b hb
+  have e1 : (C.map Block.id ++ [nextB + 2]).Nodup :=
+    nodup_concat hnodC (by simp) (by
+      intro x hx y hy
+      simp only [List.mem_singleton] at hy
+      subst hy
+      obtain ⟨hloC, -⟩ := hbC x hx
+      exact ne_of_gt_nat' (Nat.lt_of_lt_of_le
+        (Nat.add_lt_add_left (show 2 < 3 from by decide) nextB)
+        (Nat.le_trans (Nat.le_trans hmnt hmne) hloC)))
+  have e2 : ([nextB + 1] ++ (C.map Block.id ++ [nextB + 2])).Nodup :=
+    nodup_concat (by simp) e1 (by
+      intro x hx y hy
+      simp only [List.mem_singleton] at hx
+      subst hx
+      simp only [List.mem_append, List.mem_singleton] at hy
+      rcases hy with hy | rfl
+      · obtain ⟨hloC, -⟩ := hbC y hy
+        exact ne_of_lt_nat' (Nat.lt_of_lt_of_le
+          (Nat.add_lt_add_left (show 1 < 3 from by decide) nextB)
+          (Nat.le_trans (Nat.le_trans hmnt hmne) hloC))
+      · exact ne_of_lt_nat'
+          (Nat.add_lt_add_left (show 1 < 2 from by decide) nextB))
+  have e3 : (B.map Block.id ++
+      ([nextB + 1] ++ (C.map Block.id ++ [nextB + 2]))).Nodup :=
+    nodup_concat hnodB e2 (by
+      intro x hx y hy
+      obtain ⟨hloB, hhiB⟩ := hbB x hx
+      simp only [List.mem_append, List.mem_singleton] at hy
+      rcases hy with rfl | hy | rfl
+      · exact ne_of_gt_nat' (Nat.lt_of_lt_of_le
+          (Nat.add_lt_add_left (show 1 < 3 from by decide) nextB)
+          (Nat.le_trans hmnt hloB))
+      · obtain ⟨hloC, -⟩ := hbC y hy
+        exact ne_of_lt_nat' (Nat.lt_of_lt_of_le hhiB hloC)
+      · exact ne_of_gt_nat' (Nat.lt_of_lt_of_le
+          (Nat.add_lt_add_left (show 2 < 3 from by decide) nextB)
+          (Nat.le_trans hmnt hloB)))
+  have e4 : ([nextB] ++ (B.map Block.id ++
+      ([nextB + 1] ++ (C.map Block.id ++ [nextB + 2])))).Nodup :=
+    nodup_concat (by simp) e3 (by
+      intro x hx y hy
+      simp only [List.mem_singleton] at hx
+      subst hx
+      simp only [List.mem_append, List.mem_singleton] at hy
+      rcases hy with hy | rfl | hy | rfl
+      · obtain ⟨hloB, -⟩ := hbB y hy
+        exact ne_of_lt_nat' (Nat.lt_of_lt_of_le
+          (Nat.add_lt_add_left (show 0 < 3 from by decide) x)
+          (Nat.le_trans hmnt hloB))
+      · exact ne_of_lt_nat'
+          (Nat.add_lt_add_left (show 0 < 1 from by decide) x)
+      · obtain ⟨hloC, -⟩ := hbC y hy
+        exact ne_of_lt_nat' (Nat.lt_of_lt_of_le
+          (Nat.add_lt_add_left (show 0 < 3 from by decide) x)
+          (Nat.le_trans (Nat.le_trans hmnt hmne) hloC))
+      · exact ne_of_lt_nat'
+          (Nat.add_lt_add_left (show 0 < 2 from by decide) x))
+  simp only [List.map_append, List.map_cons, List.map_nil, List.append_assoc,
+    hthen, helse, hjoin]
+  exact nodup_concat hnodA e4 (by
+    intro x hx y hy
+    obtain ⟨hloA, hhiA⟩ := hbA x hx
+    simp only [List.mem_append, List.mem_singleton] at hy
+    rcases hy with rfl | hy | rfl | hy | rfl
+    · exact ne_of_gt_nat' (Nat.lt_of_lt_of_le
+        (Nat.add_lt_add_left (show 0 < 3 from by decide) y)
+        hloA)
+    · obtain ⟨hloB, -⟩ := hbB y hy
+      exact ne_of_lt_nat' (Nat.lt_of_lt_of_le hhiA hloB)
+    · exact ne_of_gt_nat' (Nat.lt_of_lt_of_le
+        (Nat.add_lt_add_left (show 1 < 3 from by decide) nextB)
+        hloA)
+    · obtain ⟨hloC, -⟩ := hbC y hy
+      exact ne_of_lt_nat' (Nat.lt_of_lt_of_le hhiA (Nat.le_trans hmne hloC))
+    · exact ne_of_gt_nat' (Nat.lt_of_lt_of_le
+        (Nat.add_lt_add_left (show 2 < 3 from by decide) nextB)
+        hloA))
+
+mutual
+
+/-- Master invariant over the straight-line-carrying fragment: supply and
+block ids only grow, every produced block id is fresh for the call and
+below the returned supply of ids, and the produced ids are duplicate-free.
+`arm` is fixed `false`: bindings are allowed and the lowering handles them. -/
+theorem lowerStmtsCFG_branch_inv (budget : Nat) :
+    ∀ (bId : MIR.BlockId) (cont : Option MIR.BlockId) (ρ : List (HIR.Id × ValId))
+      (supply nextB : Nat) (lastVal : ValId) (ss : List HIR.Stmt) (L : Lowered),
+      lowerStmtsCFG bId cont false ρ supply nextB lastVal ss = some L →
+      BranchStmts budget ss →
+      nextB ≤ L.next ∧ supply ≤ L.supply ∧
+        (∀ b ∈ L.blocks, nextB ≤ b.id ∧ b.id < L.next) ∧
+        (L.blocks.map Block.id).Nodup := by
+  intro bId cont ρ supply nextB lastVal ss
+  induction ss generalizing bId cont ρ supply nextB lastVal with
+  | nil =>
+      intro L h hss
+      cases hss with
+      | nil =>
+          simp only [lowerStmtsCFG.eq_def] at h
+          simp at h
+          subst h
+          exact ⟨Nat.le_refl _, Nat.le_refl _, fun b hb => by simp at hb,
+            List.nodup_nil⟩
+  | cons s rest ih =>
+      intro L h hss
+      cases hss with
+      | cons hs hrs =>
+          cases hs with
+          | exprStmt e hstr _ =>
+              simp [lowerStmtsCFG] at h
+              cases he : lowerExpr ρ supply e with
+              | none => rw [he] at h; simp at h
+              | some p =>
+                  obtain ⟨v0, ie, s1⟩ := p
+                  rw [he] at h
+                  simp at h
+                  cases hr : lowerStmtsCFG bId cont false ρ s1 nextB v0 rest with
+                  | none => rw [hr] at h; simp at h
+                  | some q =>
+                      rw [hr] at h
+                      simp at h
+                      subst h
+                      have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+                      obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ hr hrs
+                      exact ⟨hmn, Nat.le_trans hs1 hms, hbnd, hnod⟩
+          | varDecl id τ init hstr _ =>
+              simp [lowerStmtsCFG] at h
+              cases he : lowerExpr ρ supply init with
+              | none => rw [he] at h; simp at h
+              | some p =>
+                  obtain ⟨vb, ib, s1⟩ := p
+                  rw [he] at h
+                  simp at h
+                  cases hr : lowerStmtsCFG bId cont false ((id, vb) :: ρ) s1
+                      nextB lastVal rest with
+                  | none => rw [hr] at h; simp at h
+                  | some q =>
+                      rw [hr] at h
+                      simp at h
+                      subst h
+                      have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+                      obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ hr hrs
+                      exact ⟨hmn, Nat.le_trans hs1 hms, hbnd, hnod⟩
+          | assign id e hstr _ =>
+              simp [lowerStmtsCFG] at h
+              cases he : lowerExpr ρ supply e with
+              | none => rw [he] at h; simp at h
+              | some p =>
+                  obtain ⟨v, ie, s1⟩ := p
+                  rw [he] at h
+                  simp at h
+                  cases hr : lowerStmtsCFG bId cont false (updAssoc ρ id v) s1
+                      nextB lastVal rest with
+                  | none => rw [hr] at h; simp at h
+                  | some q =>
+                      rw [hr] at h
+                      simp at h
+                      subst h
+                      have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+                      obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ hr hrs
+                      exact ⟨hmn, Nat.le_trans hs1 hms, hbnd, hnod⟩
+          | nop =>
+              simp [lowerStmtsCFG] at h
+              cases hr : lowerStmtsCFG bId cont false ρ supply nextB
+                  lastVal rest with
+              | none => rw [hr] at h; simp at h
+              | some q =>
+                  rw [hr] at h
+                  simp at h
+                  subst h
+                  obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ hr hrs
+                  exact ⟨hmn, hms, hbnd, hnod⟩
+          | ifStmt c th el hstr _ hath hael =>
+              -- Peel with `unfold`, never `simp`: full `simp` normalizes the
+              -- block assembly (`[T] ++ X` to `T :: X`), breaking the syntactic
+              -- match the membership split and `if_assembly_nodup` need.
+              simp only [lowerStmtsCFG] at h
+              cases heC : lowerExpr ρ supply c with
+              | none => rw [heC] at h; simp at h
+              | some p =>
+                  obtain ⟨vc, ic, s1⟩ := p
+                  rw [heC] at h
+                  simp only [] at h
+                  cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
+                      (nextB + 3) lastVal th with
+                  | none => rw [ht] at h; simp at h
+                  | some lt =>
+                      rw [ht] at h
+                      simp only [] at h
+                      cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2))
+                          true ρ lt.supply lt.next lastVal el with
+                      | none => rw [he] at h; simp at h
+                      | some le =>
+                          rw [he] at h
+                          simp only [] at h
+                          cases hr : lowerStmtsCFG (nextB + 2) cont false ρ
+                              (le.supply + 1) le.next le.supply rest with
+                          | none => rw [hr] at h; simp at h
+                          | some lr =>
+                              rw [hr] at h
+                              simp only [] at h
+                              obtain rfl := Option.some.inj h
+                              dsimp only at ⊢
+                              have hs1 : supply ≤ s1 :=
+                                lower_mono.1 _ _ _ _ _ _ heC
+                              obtain ⟨hmnt, hmst, hbndt, hnodt⟩ :=
+                                lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ ht hath
+                              obtain ⟨hmne, hmse, hbnde, hnode⟩ :=
+                                lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ he
+                                  hael
+                              obtain ⟨hmnr, hmsr, hbndr, hnodr⟩ :=
+                                ih _ _ _ _ _ _ _ hr hrs
+                              refine ⟨by omega, by omega, ?_, ?_⟩
+                              · intro b hb
+                                simp only [List.mem_append, List.mem_singleton] at hb
+                                rcases hb with ((((hb | rfl) | hb) | rfl) | hb) | rfl
+                                · obtain ⟨hlo, hhi⟩ := hbndt b hb
+                                  exact ⟨Nat.le_trans (Nat.le_add_right _ _) hlo,
+                                    Nat.lt_of_lt_of_le hhi (Nat.le_trans hmne
+                                      (Nat.le_trans hmnr (Nat.le_succ _)))⟩
+                                · exact ⟨Nat.le_refl _,
+                                    Nat.lt_of_le_of_lt (Nat.le_trans
+                                      (Nat.le_trans (Nat.le_trans
+                                        (Nat.le_add_right _ _) hmnt) hmne) hmnr)
+                                      (Nat.lt_succ_self _)⟩
+                                · obtain ⟨hlo, hhi⟩ := hbnde b hb
+                                  exact ⟨Nat.le_trans (Nat.le_trans
+                                      (Nat.le_add_right _ _) hmnt) hlo,
+                                    Nat.lt_of_lt_of_le hhi (Nat.le_trans hmnr
+                                      (Nat.le_succ _))⟩
+                                · exact ⟨Nat.le_succ _,
+                                    Nat.lt_of_le_of_lt (Nat.le_trans
+                                      (Nat.le_trans (Nat.le_trans
+                                        (Nat.le_trans (Nat.le_succ _)
+                                          (Nat.le_succ _)) hmnt) hmne) hmnr)
+                                      (Nat.lt_succ_self _)⟩
+                                · obtain ⟨hlo, hhi⟩ := hbndr b hb
+                                  exact ⟨Nat.le_trans (Nat.le_trans
+                                      (Nat.le_trans (Nat.le_add_right _ _)
+                                        hmnt) hmne) hlo,
+                                    Nat.lt_of_lt_of_le hhi (Nat.le_succ _)⟩
+                                · exact ⟨Nat.le_add_right _ _,
+                                    Nat.lt_of_le_of_lt (Nat.le_trans
+                                      (Nat.le_trans (Nat.le_trans
+                                        (Nat.le_succ _) hmnt) hmne) hmnr)
+                                      (Nat.lt_succ_self _)⟩
+                              · exact if_assembly_nodup (A := lt.blocks)
+                                  (B := le.blocks) (C := lr.blocks)
+                                  (thenB := ⟨nextB, lt.instrs, lt.term⟩)
+                                  (elseB := ⟨nextB + 1, le.instrs, le.term⟩)
+                                  (joinB := ⟨nextB + 2,
+                                    [Instr.phi le.supply ((lt.blocks.getLast?.map
+                                      (fun b => b.id)).getD nextB) lt.val,
+                                     Instr.phi le.supply ((le.blocks.getLast?.map
+                                      (fun b => b.id)).getD (nextB + 1)) le.val] ++
+                                      lr.instrs,
+                                    lr.term⟩)
+                                  hmnt hmne hmnr hbndt hbnde hbndr
+                                  rfl rfl rfl hnodt hnode hnodr
+      | returnStmt e _ hstr _ =>
+          simp [lowerStmtsCFG] at h
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he] at h; simp at h
+          | some p =>
+              obtain ⟨v, ie, s1⟩ := p
+              rw [he] at h
+              simp at h
+              subst h
+              have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+              exact ⟨Nat.le_refl _, hs1, fun b hb => by simp at hb,
+                List.nodup_nil⟩
+
+/-- Same invariant for arms: `arm` is fixed `true`, so the lowering never
+takes a binding branch and `ArmStmts` has no such constructor to match. -/
+theorem lowerStmtsCFG_arm_inv (budget : Nat) :
+    ∀ (bId : MIR.BlockId) (cont : Option MIR.BlockId) (ρ : List (HIR.Id × ValId))
+      (supply nextB : Nat) (lastVal : ValId) (ss : List HIR.Stmt) (L : Lowered),
+      lowerStmtsCFG bId cont true ρ supply nextB lastVal ss = some L →
+      ArmStmts budget ss →
+      nextB ≤ L.next ∧ supply ≤ L.supply ∧
+        (∀ b ∈ L.blocks, nextB ≤ b.id ∧ b.id < L.next) ∧
+        (L.blocks.map Block.id).Nodup := by
+  intro bId cont ρ supply nextB lastVal ss L h hss
+  induction hss generalizing bId cont ρ supply nextB lastVal L with
+  | nil =>
+      simp only [lowerStmtsCFG.eq_def] at h
+      simp at h
+      subst h
+      exact ⟨Nat.le_refl _, Nat.le_refl _, fun b hb => by simp at hb,
+        List.nodup_nil⟩
+  | exprStmt e rest hstr _ hrs ih =>
+      simp [lowerStmtsCFG] at h
+      cases he : lowerExpr ρ supply e with
+      | none => rw [he] at h; simp at h
+      | some p =>
+          obtain ⟨v0, ie, s1⟩ := p
+          rw [he] at h
+          simp at h
+          cases hr : lowerStmtsCFG bId cont true ρ s1 nextB v0 rest with
+          | none => rw [hr] at h; simp at h
+          | some q =>
+              rw [hr] at h
+              simp at h
+              subst h
+              have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+              obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ hr
+              exact ⟨hmn, Nat.le_trans hs1 hms, hbnd, hnod⟩
+  | nop rest hrs ih =>
+      simp [lowerStmtsCFG] at h
+      cases hr : lowerStmtsCFG bId cont true ρ supply nextB lastVal rest with
+      | none => rw [hr] at h; simp at h          | some q =>
+              rw [hr] at h
+              simp at h
+              subst h
+              obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ hr
+              exact ⟨hmn, hms, hbnd, hnod⟩
+  | ifStmt c th el rest hstr _ hath hael hrs iht ihe ihr =>
+      simp only [lowerStmtsCFG] at h
+      cases heC : lowerExpr ρ supply c with
+      | none => rw [heC] at h; simp at h
+      | some p =>
+          obtain ⟨vc, ic, s1⟩ := p
+          rw [heC] at h
+          simp only [] at h
+          cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
+              (nextB + 3) lastVal th with
+          | none => rw [ht] at h; simp at h
+          | some lt =>
+              rw [ht] at h
+              simp only [] at h
+              cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ
+                  lt.supply lt.next lastVal el with
+              | none => rw [he] at h; simp at h
+              | some le =>
+                  rw [he] at h
+                  simp only [] at h
+                  cases hr : lowerStmtsCFG (nextB + 2) cont true ρ
+                      (le.supply + 1) le.next le.supply rest with
+                  | none => rw [hr] at h; simp at h
+                  | some lr =>
+                      rw [hr] at h
+                      simp only [] at h
+                      obtain rfl := Option.some.inj h
+                      dsimp only at ⊢
+                      have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ heC
+                      obtain ⟨hmnt, hmst, hbndt, hnodt⟩ :=
+                        iht _ _ _ _ _ _ _ ht
+                      obtain ⟨hmne, hmse, hbnde, hnode⟩ :=
+                        ihe _ _ _ _ _ _ _ he
+                      obtain ⟨hmnr, hmsr, hbndr, hnodr⟩ :=
+                        ihr _ _ _ _ _ _ _ hr
+                      refine ⟨by omega, by omega, ?_, ?_⟩
+                      · intro b hb
+                        simp only [List.mem_append, List.mem_singleton] at hb
+                        rcases hb with ((((hb | rfl) | hb) | rfl) | hb) | rfl
+                        · obtain ⟨hlo, hhi⟩ := hbndt b hb
+                          exact ⟨Nat.le_trans (Nat.le_add_right _ _) hlo,
+                            Nat.lt_of_lt_of_le hhi (Nat.le_trans hmne
+                              (Nat.le_trans hmnr (Nat.le_succ _)))⟩
+                        · exact ⟨Nat.le_refl _,
+                            Nat.lt_of_le_of_lt (Nat.le_trans
+                              (Nat.le_trans (Nat.le_trans
+                                (Nat.le_add_right _ _) hmnt) hmne) hmnr)
+                              (Nat.lt_succ_self _)⟩
+                        · obtain ⟨hlo, hhi⟩ := hbnde b hb
+                          exact ⟨Nat.le_trans (Nat.le_trans
+                              (Nat.le_add_right _ _) hmnt) hlo,
+                            Nat.lt_of_lt_of_le hhi (Nat.le_trans hmnr
+                              (Nat.le_succ _))⟩
+                        · exact ⟨Nat.le_succ _,
+                            Nat.lt_of_le_of_lt (Nat.le_trans
+                              (Nat.le_trans (Nat.le_trans
+                                (Nat.le_trans (Nat.le_succ _)
+                                  (Nat.le_succ _)) hmnt) hmne) hmnr)
+                              (Nat.lt_succ_self _)⟩
+                        · obtain ⟨hlo, hhi⟩ := hbndr b hb
+                          exact ⟨Nat.le_trans (Nat.le_trans
+                              (Nat.le_trans (Nat.le_add_right _ _)
+                                hmnt) hmne) hlo,
+                            Nat.lt_of_lt_of_le hhi (Nat.le_succ _)⟩
+                        · exact ⟨Nat.le_add_right _ _,
+                            Nat.lt_of_le_of_lt (Nat.le_trans
+                              (Nat.le_trans (Nat.le_trans
+                                (Nat.le_succ _) hmnt) hmne) hmnr)
+                              (Nat.lt_succ_self _)⟩
+                      · exact if_assembly_nodup (A := lt.blocks)
+                          (B := le.blocks) (C := lr.blocks)
+                          (thenB := ⟨nextB, lt.instrs, lt.term⟩)
+                          (elseB := ⟨nextB + 1, le.instrs, le.term⟩)
+                          (joinB := ⟨nextB + 2,
+                            [Instr.phi le.supply ((lt.blocks.getLast?.map
+                              (fun b => b.id)).getD nextB) lt.val,
+                             Instr.phi le.supply ((le.blocks.getLast?.map
+                              (fun b => b.id)).getD (nextB + 1)) le.val] ++
+                              lr.instrs,
+                            lr.term⟩)
+                          hmnt hmne hmnr hbndt hbnde hbndr
+                          rfl rfl rfl hnodt hnode hnodr
+  | returnStmt e rest hstr _ =>
+      simp [lowerStmtsCFG] at h
+      cases he : lowerExpr ρ supply e with
+      | none => rw [he] at h; simp at h
+      | some p =>
+          obtain ⟨v, ie, s1⟩ := p
+          rw [he] at h
+          simp at h
+          subst h
+          have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+          exact ⟨Nat.le_refl _, hs1, fun b hb => by simp at hb,
+            List.nodup_nil⟩
+
+end
 
 /-! ## The boundary is real
 

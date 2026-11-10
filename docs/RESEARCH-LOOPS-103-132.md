@@ -2242,3 +2242,30 @@ was not.
 
 **Still open.** C3, C7, C8; C9 at Stage C exit. G-1/G-3/G-7 skipped per
 standing directive.
+
+## Loop 174 — C3 master invariant: `lowerStmtsCFG_branch_inv` + `_arm_inv` green
+
+**Goal.** Prove the C3 lowering invariant (mono + bounds + nodup) by predicate
+induction, unblocking the worker induction for the if-case simulation.
+
+**Did.** Root-caused the if-case peel failure: `do`-notation elaborates to
+`Bind.bind`, whose instance projection (`instMonadOption.toBind.1`) no
+`dsimp`/`unfold` configuration reduces without also normalizing the block
+assembly (`[T] ++ X` to `T :: X`), which broke the syntactic match the
+membership split and `if_assembly_nodup` rely on. Fix, matching Stage A
+(`lowerStmts`): rewrote `lowerStmtsCFG` in match form (no `do`, everything
+inlined so `rw` finds the recursive calls) and peeled with
+`simp only [lowerStmtsCFG]` + `simp only []`, exactly the
+`lowerStmts_total` idiom. Two further shape facts fell out of the errors:
+`++`/`∨` nest left, so the 6-way split needs the explicit nested pattern
+`((((hb | rfl) | hb) | rfl) | hb) | rfl`, and the old `c1` cons-rewrite (needed
+under simp-normalization) actively mangles the preserved `[T]` form into
+`[T] ++ []`, so it was deleted. Both nodup bullets are now a single explicit
+`exact if_assembly_nodup (A := ...) ... rfl rfl rfl ...` with the join block
+copied verbatim from the definition.
+
+**Result.** `lake env lean Morph/HIRToMIRBranch.lean` clean, `lake build Morph`
+468 jobs green, `lake build Morph.Tests` 292 jobs green, no `sorry`.
+
+**Still open.** C3 worker induction + top corollary + bridge docs; then C7,
+C8; C9 at Stage C exit. G-1/G-3/G-7 skipped per standing directive.
