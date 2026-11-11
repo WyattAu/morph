@@ -576,10 +576,11 @@ example : buildClif "if (1 < 2) { let x = 1; } else { 2 }" ==
       "codegen: program is outside the branch fragment (straight-line statements or if with non-binding arms; see docs/STAGEC-SCOPE.md §3)" := by
   native_decide
 
--- Golden: a loop is outside the branch fragment (C7).
+-- Golden: a loop lowers (C7a) but the cyclic CFG is outside the CLIF block
+-- subset the emitter encodes (back-edges carry no edge arguments there).
 example : buildClif "while (1 < 2) { 1 }" ==
     .unsupported
-      "codegen: program is outside the branch fragment (straight-line statements or if with non-binding arms; see docs/STAGEC-SCOPE.md §3)" := by
+      "codegen: the CLIF block subset cannot encode this program (switch, non-leading phi, missing edge argument, bool constants)" := by
   native_decide
 
 -- Golden: a literal boolean condition lowers fine and *encodes* not at all —
