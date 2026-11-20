@@ -71,8 +71,27 @@ open Morph.Frontend.HIRInterp
 
 /-! ## The statement grammars -/
 
+/-- Variable-free expressions: no `.var` anywhere (deep). A loop-body binding
+(`var`/`assign`) with a `.var` right-hand side would alias the source register,
+which the header phis then overwrite on behalf of the carried id — the HIR
+keeps the old value while the MIR reads the new one. Literals and operations
+allocate fresh registers, so only `.var` aliases. Statement conditions and
+discards only read, so they need no restriction. -/
+inductive VarFree : HIR.Expr → Prop where
+  | lit (v : Value) : VarFree (.lit v)
+  | unop (op : Operator) (e : HIR.Expr) : VarFree e → VarFree (.unop op e)
+  | binop (op : Operator) (a b : HIR.Expr) :
+      VarFree a → VarFree b → VarFree (.binop op a b)
+  | let_ (id : HIR.Id) (init body : HIR.Expr) :
+      VarFree init → VarFree body → VarFree (.let id init body)
+  | block (es : List HIR.Expr) :
+      (∀ e ∈ es, VarFree e) → VarFree (.block es)
+
 /-- Statement lists an `if` arm may contain: no `varDecl`, no `assign` (see the
-module note). `return` is allowed and is terminal, like everywhere else. -/
+module note). `return` is allowed and is terminal, like everywhere else.
+`break`/`continue` are allowed here so an arm inside a loop body can leave it:
+validity is enforced by the lowering (under `loop = none` they refuse, making
+those theorem cases vacuous), not by the predicate. -/
 inductive ArmStmts (budget : Nat) : List HIR.Stmt → Prop where
   | nil : ArmStmts budget []
   | exprStmt (e : HIR.Expr) (rest : List HIR.Stmt) :
@@ -85,6 +104,240 @@ inductive ArmStmts (budget : Nat) : List HIR.Stmt → Prop where
       ArmStmts budget (.ifStmt c th el :: rest)
   | returnStmt (e : HIR.Expr) (rest : List HIR.Stmt) :
       IsStraight e → SLWeight e < budget → ArmStmts budget (.returnStmt e :: rest)
+  | breakStmt (rest : List HIR.Stmt) :
+      ArmStmts budget rest → ArmStmts budget (.break :: rest)
+  | continueStmt (rest : List HIR.Stmt) :
+      ArmStmts budget rest → ArmStmts budget (.continue :: rest)
+
+/-- Break-free arms: no `.break` anywhere (deep through nested arm `if`s).
+`continue` is allowed (it recurses, so the exit env stays reachable) as are
+`return` (propagates) and straight-line steps. A loop-body `if` with
+break-free arms may bind after it (top-level `break` is terminal in the
+lowering, so the exit env is exact); an `if` whose arms may break must have
+a binding-free tail (see `LoopStmts.ifStmtBreak`), because an arm `break`
+skips the tail while the static exit env still mentions its registers. -/
+inductive ArmNoBreak : List HIR.Stmt → Prop where
+  | nil : ArmNoBreak []
+  | exprStmt (e : HIR.Expr) (rest : List HIR.Stmt) :
+      ArmNoBreak rest → ArmNoBreak (.exprStmt e :: rest)
+  | nop (rest : List HIR.Stmt) : ArmNoBreak rest → ArmNoBreak (.nop :: rest)
+  | ifStmt (c : HIR.Expr) (th el : List HIR.Stmt) (rest : List HIR.Stmt) :
+      ArmNoBreak th → ArmNoBreak el → ArmNoBreak rest →
+      ArmNoBreak (.ifStmt c th el :: rest)
+  | returnStmt (e : HIR.Expr) (rest : List HIR.Stmt) : ArmNoBreak (.returnStmt e :: rest)
+  | continueStmt (rest : List HIR.Stmt) :
+      ArmNoBreak rest → ArmNoBreak (.continue :: rest)
+
+/-- Break-free arms never produce `.broke`: the only HIR step that yields it
+is `.break` itself, which has no `ArmNoBreak` constructor. Arms run from a
+value accumulator (every caller passes `.unit`), so the `nil` case cannot
+inherit a `.broke` either. The loop-body worker uses this to discharge the
+`broke` subcase of a break-free-arm `if`.
+Replacing the accumulator never produces `.broke`: a value stays a value
+and every other flow is untouched (the `.broke` case itself is absurd). -/
+theorem HFlow_replace_ne_broke {acc : HFlow} (u : HIR.Expr) (h : acc ≠ .broke) :
+    acc.replace u ≠ .broke := by
+  cases acc with
+  | value _ => simp [HFlow.replace]
+  | broke => exact absurd rfl h
+  | returned _ => simp [HFlow.replace]
+  | continued => simp [HFlow.replace]
+  | stuck => simp [HFlow.replace]
+
+theorem ArmNoBreak_run {ss : List HIR.Stmt} (hnb : ArmNoBreak ss) :
+    ∀ (fuelH : Nat) (henv henv' : HEnv) (acc out : HFlow),
+      acc ≠ .broke →
+      runHIRStmts fuelH henv ss acc = (out, henv') →
+      out = .broke → False := by
+  induction hnb with
+  | nil =>
+      intro fuelH henv henv' acc out hacc hrun hbroke
+      cases fuelH with
+      | zero =>
+          have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+          rw [hst] at hbroke
+          exact absurd hbroke (by simp)
+      | succ fh =>
+          have hacc' : out = acc := (congrArg Prod.fst hrun).symm
+          rw [hacc'] at hbroke
+          exact absurd hbroke hacc
+  | exprStmt e rest _ ih =>
+      intro fuelH henv henv' acc out hacc hrun hbroke
+      cases fuelH with
+      | zero =>
+          have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+          rw [hst] at hbroke
+          exact absurd hbroke (by simp)
+      | succ fh =>
+          have hstep : runHIRStmts (fh + 1) henv (.exprStmt e :: rest) acc =
+              (match evalHIR 256 henv e with
+                | none => (HFlow.stuck, henv)
+                | some v => runHIRStmts fh henv rest (.value v)) := rfl
+          rw [hstep] at hrun
+          cases hev : evalHIR 256 henv e with
+          | none =>
+              rw [hev] at hrun
+              have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+              rw [hst] at hbroke
+              exact absurd hbroke (by simp)
+          | some v =>
+              rw [hev] at hrun
+              exact ih fh henv henv' _ _ (by simp) hrun hbroke
+  | nop rest _ ih =>
+      intro fuelH henv henv' acc out hacc hrun hbroke
+      cases fuelH with
+      | zero =>
+          have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+          rw [hst] at hbroke
+          exact absurd hbroke (by simp)
+      | succ fh =>
+          have hstep : runHIRStmts (fh + 1) henv (.nop :: rest) acc =
+              runHIRStmts fh henv rest acc := rfl
+          rw [hstep] at hrun
+          exact ih fh henv henv' _ _ hacc hrun hbroke
+  | ifStmt c th el rest _ _ _ ihth ihel ihrest =>
+      intro fuelH henv henv' acc out hacc hrun hbroke
+      cases fuelH with
+      | zero =>
+          have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+          rw [hst] at hbroke
+          exact absurd hbroke (by simp)
+      | succ fh =>
+          have hstep : runHIRStmts (fh + 1) henv
+              (.ifStmt c th el :: rest) acc =
+              (match evalHIR 256 henv c with
+                | some (.lit (.bool true)) =>
+                    match runHIRStmts fh henv th (.value (.lit .unit)) with
+                    | (.value u, env') =>
+                        runHIRStmts fh env' rest (acc.replace u)
+                    | (f, env') => (f, env')
+                | some (.lit (.bool false)) =>
+                    match runHIRStmts fh henv el (.value (.lit .unit)) with
+                    | (.value u, env') =>
+                        runHIRStmts fh env' rest (acc.replace u)
+                    | (f, env') => (f, env')
+                | _ => (HFlow.stuck, henv)) := rfl
+          rw [hstep] at hrun
+          cases hev : evalHIR 256 henv c with
+          | none =>
+              rw [hev] at hrun
+              have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+              rw [hst] at hbroke
+              exact absurd hbroke (by simp)
+          | some r =>
+              rw [hev] at hrun
+              cases r with
+              | lit v =>
+                  cases v with
+                  | bool b =>
+                      cases b with
+                      | true =>
+                          simp only [] at hrun
+                          cases har : runHIRStmts fh henv th
+                              (.value (.lit .unit)) with
+                          | mk out_arm env_arm =>
+                              rw [har] at hrun
+                              cases out_arm with
+                              | value u =>
+                                  simp only [] at hrun
+                                  exact ihrest fh env_arm henv' _ _
+                                    (HFlow_replace_ne_broke _ hacc)
+                                    hrun hbroke
+                              | returned e =>
+                                  have hr : out = .returned e :=
+                                    (congrArg Prod.fst hrun).symm
+                                  rw [hr] at hbroke
+                                  exact absurd hbroke (by simp)
+                              | broke =>
+                                  exact ihth fh henv env_arm _ _
+                                    (by simp) har rfl
+                              | continued =>
+                                  have hr : out = .continued :=
+                                    (congrArg Prod.fst hrun).symm
+                                  rw [hr] at hbroke
+                                  exact absurd hbroke (by simp)
+                              | stuck =>
+                                  have hr : out = .stuck :=
+                                    (congrArg Prod.fst hrun).symm
+                                  rw [hr] at hbroke
+                                  exact absurd hbroke (by simp)
+                      | false =>
+                          simp only [] at hrun
+                          cases har : runHIRStmts fh henv el
+                              (.value (.lit .unit)) with
+                          | mk out_arm env_arm =>
+                              rw [har] at hrun
+                              cases out_arm with
+                              | value u =>
+                                  simp only [] at hrun
+                                  exact ihrest fh env_arm henv' _ _
+                                    (HFlow_replace_ne_broke _ hacc)
+                                    hrun hbroke
+                              | returned e =>
+                                  have hr : out = .returned e :=
+                                    (congrArg Prod.fst hrun).symm
+                                  rw [hr] at hbroke
+                                  exact absurd hbroke (by simp)
+                              | broke =>
+                                  exact ihel fh henv env_arm _ _
+                                    (by simp) har rfl
+                              | continued =>
+                                  have hr : out = .continued :=
+                                    (congrArg Prod.fst hrun).symm
+                                  rw [hr] at hbroke
+                                  exact absurd hbroke (by simp)
+                              | stuck =>
+                                  have hr : out = .stuck :=
+                                    (congrArg Prod.fst hrun).symm
+                                  rw [hr] at hbroke
+                                  exact absurd hbroke (by simp)
+                  | _ =>
+                      have hst : out = .stuck :=
+                        (congrArg Prod.fst hrun).symm
+                      rw [hst] at hbroke
+                      exact absurd hbroke (by simp)
+              | _ =>
+                  have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+                  rw [hst] at hbroke
+                  exact absurd hbroke (by simp)
+  | returnStmt e rest =>
+      intro fuelH henv henv' acc out hacc hrun hbroke
+      cases fuelH with
+      | zero =>
+          have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+          rw [hst] at hbroke
+          exact absurd hbroke (by simp)
+      | succ fh =>
+          have hstep : runHIRStmts (fh + 1) henv (.returnStmt e :: rest) acc =
+              (match evalHIR 256 henv e with
+                | none => (HFlow.stuck, henv)
+                | some v => (.returned v, henv)) := rfl
+          rw [hstep] at hrun
+          cases hev : evalHIR 256 henv e with
+          | none =>
+              rw [hev] at hrun
+              have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+              rw [hst] at hbroke
+              exact absurd hbroke (by simp)
+          | some v =>
+              rw [hev] at hrun
+              have hr : out = .returned v := (congrArg Prod.fst hrun).symm
+              rw [hr] at hbroke
+              exact absurd hbroke (by simp)
+  | continueStmt rest _ _ih =>
+      intro fuelH henv henv' acc out hacc hrun hbroke
+      cases fuelH with
+      | zero =>
+          have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+          rw [hst] at hbroke
+          exact absurd hbroke (by simp)
+      | succ fh =>
+          have hstep : runHIRStmts (fh + 1) henv (.continue :: rest) acc =
+              (.continued, henv) := rfl
+          rw [hstep] at hrun
+          have hr : out = .continued := (congrArg Prod.fst hrun).symm
+          rw [hr] at hbroke
+          exact absurd hbroke (by simp)
 
 /-! `BranchStep` and `BranchStmts` are mutually recursive: an `if`'s arms are
 statement lists. (Doc comments inside a `mutual` block break its layout in this
@@ -103,6 +356,12 @@ inductive BranchStep (budget : Nat) : HIR.Stmt → Prop where
       IsStraight c → SLWeight c < budget →
       ArmStmts budget th → ArmStmts budget el →
       BranchStep budget (.ifStmt c th el)
+  | breakStmt : BranchStep budget .break
+  | continueStmt : BranchStep budget .continue
+  | whileStmt (c : HIR.Expr) (body : List HIR.Stmt) :
+      IsStraight c → SLWeight c < budget →
+      LoopStmts budget body →
+      BranchStep budget (.whileLoop c body)
 
 inductive BranchStmts (budget : Nat) : List HIR.Stmt → Prop where
   | nil : BranchStmts budget []
@@ -110,6 +369,41 @@ inductive BranchStmts (budget : Nat) : List HIR.Stmt → Prop where
       BranchStep budget s → BranchStmts budget rest → BranchStmts budget (s :: rest)
   | returnStmt (e : HIR.Expr) (rest : List HIR.Stmt) :
       IsStraight e → SLWeight e < budget → BranchStmts budget (.returnStmt e :: rest)
+
+/-- Loop bodies: everything `BranchStmts` allows (bindings included — they
+become loop-carried registers) plus `break`/`continue`, but no nested `while`
+(the lowering refuses nesting, so there is no constructor for it). Arms of an
+`if` inside a body stay `ArmStmts` (arm mode still refuses bindings). -/
+inductive LoopStmts (budget : Nat) : List HIR.Stmt → Prop where
+  | nil : LoopStmts budget []
+  | exprStmt (e : HIR.Expr) (rest : List HIR.Stmt) :
+      IsStraight e → SLWeight e < budget → LoopStmts budget rest →
+      LoopStmts budget (.exprStmt e :: rest)
+  | varDecl (id : HIR.Id) (τ : Typ) (init : HIR.Expr) (rest : List HIR.Stmt) :
+      IsStraight init → SLWeight init < budget → LoopStmts budget rest →
+      VarFree init →
+      LoopStmts budget (.varDecl id τ init :: rest)
+  | assign (id : HIR.Id) (e : HIR.Expr) (rest : List HIR.Stmt) :
+      IsStraight e → SLWeight e < budget → LoopStmts budget rest →
+      VarFree e →
+      LoopStmts budget (.assign id e :: rest)
+  | nop (rest : List HIR.Stmt) : LoopStmts budget rest → LoopStmts budget (.nop :: rest)
+  | ifStmt (c : HIR.Expr) (th el : List HIR.Stmt) (rest : List HIR.Stmt) :
+      IsStraight c → SLWeight c < budget →
+      ArmStmts budget th → ArmStmts budget el → LoopStmts budget rest →
+      ArmNoBreak th → ArmNoBreak el →
+      LoopStmts budget (.ifStmt c th el :: rest)
+  | ifStmtBreak (c : HIR.Expr) (th el : List HIR.Stmt) (rest : List HIR.Stmt) :
+      IsStraight c → SLWeight c < budget →
+      ArmStmts budget th → ArmStmts budget el →
+      LoopStmts budget rest → ArmStmts budget rest →
+      LoopStmts budget (.ifStmt c th el :: rest)
+  | returnStmt (e : HIR.Expr) (rest : List HIR.Stmt) :
+      IsStraight e → SLWeight e < budget → LoopStmts budget (.returnStmt e :: rest)
+  | breakStmt (rest : List HIR.Stmt) :
+      LoopStmts budget rest → LoopStmts budget (.break :: rest)
+  | continueStmt (rest : List HIR.Stmt) :
+      LoopStmts budget rest → LoopStmts budget (.continue :: rest)
 
 end
 
@@ -127,7 +421,28 @@ theorem straightStmts_to_branch {budget : Nat} :
   | _, .assign id e rest h1 h2 h3 =>
       .cons (.assign id e h1 h2) (straightStmts_to_branch h3)
   | _, .returnStmt e rest h1 h2 => .returnStmt e rest h1 h2
-  | _, .nop rest h => .cons .nop (straightStmts_to_branch h)
+  | _, .nop rest h => .cons .nop (straightStmts_to_branch h)/-- Loop bodies embed in the branch fragment: every `LoopStmts` constructor maps
+to its `BranchStep`/`BranchStmts` counterpart (`break`/`continue` are
+constructors on both sides; there is no `while` to map). Structural recursion:
+`LoopStmts` lives in the `mutual` block, which the `induction` tactic does not
+support. -/theorem LoopStmts_to_BranchStmts {budget : Nat} :
+    ∀ {ss : List HIR.Stmt}, LoopStmts budget ss → BranchStmts budget ss
+  | _, .nil => .nil
+  | _, .exprStmt e rest h1 h2 h3 =>
+      .cons (.exprStmt e h1 h2) (LoopStmts_to_BranchStmts h3)
+  | _, .varDecl id τ init rest h1 h2 h3 _ =>
+      .cons (.varDecl id τ init h1 h2) (LoopStmts_to_BranchStmts h3)
+  | _, .assign id e rest h1 h2 h3 _ =>
+      .cons (.assign id e h1 h2) (LoopStmts_to_BranchStmts h3)
+  | _, .nop rest h => .cons .nop (LoopStmts_to_BranchStmts h)
+  | _, .ifStmt c th el rest h1 h2 hath hael h _ _ =>
+      .cons (.ifStmt c th el h1 h2 hath hael) (LoopStmts_to_BranchStmts h)
+  | _, .ifStmtBreak c th el rest h1 h2 hath hael h _ =>
+      .cons (.ifStmt c th el h1 h2 hath hael)
+        (LoopStmts_to_BranchStmts h)
+  | _, .returnStmt e rest h1 h2 => .returnStmt e rest h1 h2
+  | _, .breakStmt rest h => .cons .breakStmt (LoopStmts_to_BranchStmts h)
+  | _, .continueStmt rest h => .cons .continueStmt (LoopStmts_to_BranchStmts h)
 
 /-! ## Fuel: one computable budget for the whole stage (scope §4.4)
 
@@ -271,18 +586,99 @@ def carryCopies (ρ : List (HIR.Id × ValId)) : List (HIR.Id × ValId) →
       | some s => (carryCopies ρ rest).map (.copy r s :: ·)
 
 /-- Allocate loop-carried registers: one fresh `r` per assigned id present in
-`ρ`, starting at `s1`. Returns the carried pairs, the bumped supply, and the
-body-entry env. `none` when a duplicate-free id is somehow unmapped. -/
-def mkCarried (ρ : List (HIR.Id × ValId)) (s1 : Nat) (ids : List HIR.Id) :
-    Option (List (HIR.Id × ValId) × Nat × List (HIR.Id × ValId)) :=
-  ids.foldl (fun acc id =>
-    match acc with
-    | none => none
-    | some (cs, s, ρ') =>
-        match rhoLookup ρ' id with
-        | none => none
-        | some _ => some ((id, s) :: cs, s + 1, updAssoc ρ' id s))
-    (some ([], s1, ρ))
+`ρ`, starting at `s`. Returns the carried pairs, the bumped supply, and the
+body-entry env. `none` when an id is unmapped (the call site filters those
+out, so the `none` branch is dead there — but the definition stays total). -/
+def mkCarried (ρ : List (HIR.Id × ValId)) (s : Nat) : List HIR.Id →
+    Option (List (HIR.Id × ValId) × Nat × List (HIR.Id × ValId))
+  | [] => some ([], s, ρ)
+  | id :: ids =>
+      match rhoLookup ρ id with
+      | none => none
+      | some _ =>
+          match mkCarried (updAssoc ρ id s) (s + 1) ids with
+          | none => none
+          | some (cs, s', ρ') => some ((id, s) :: cs, s', ρ')
+
+/-- Allocation only bumps the supply, and the resulting env is fresh above
+it: `updAssoc` replaces in place, so every member is either an old mapping
+(below `s`) or a carried pair (below `s'`). -/
+theorem mkCarried_growth_fresh {ρ : List (HIR.Id × ValId)} {s : Nat}
+    {ids : List HIR.Id} {cs : List (HIR.Id × ValId)} {s' : Nat}
+    {ρ' : List (HIR.Id × ValId)} (hf : FreshAbove ρ s)
+    (h : mkCarried ρ s ids = some (cs, s', ρ')) :
+    s ≤ s' ∧ FreshAbove ρ' s' := by
+  have hmem_upd : ∀ (σ : List (HIR.Id × ValId)) (id : HIR.Id) (sv : Nat)
+      (j : HIR.Id) (v : Nat),
+      (j, v) ∈ updAssoc σ id sv → (j, v) ∈ σ ∨ (j = id ∧ v = sv) := by
+    intro σ
+    induction σ with
+    | nil =>
+        intro id sv j v hmem
+        simp [updAssoc] at hmem
+    | cons p rest ih =>
+        obtain ⟨j', w⟩ := p
+        intro id sv j v hmem
+        by_cases heq : j' = id
+        · rw [updAssoc, if_pos heq, List.mem_cons] at hmem
+          rcases hmem with h0 | h0
+          · exact Or.inr ⟨heq ▸ congrArg Prod.fst h0, congrArg Prod.snd h0⟩
+          · exact Or.inl (List.mem_cons_of_mem _ h0)
+        · rw [updAssoc, if_neg heq, List.mem_cons] at hmem
+          rcases hmem with h0 | h0
+          · exact Or.inl (List.mem_cons.mpr (Or.inl h0))
+          · rcases ih id sv j v h0 with h' | h'
+            · exact Or.inl (List.mem_cons_of_mem _ h')
+            · exact Or.inr h'
+  induction ids generalizing ρ s cs s' ρ' with
+  | nil =>
+      simp only [mkCarried] at h
+      obtain ⟨rfl, rfl, rfl⟩ := Option.some.inj h
+      exact ⟨Nat.le_refl _, hf⟩
+  | cons id ids ih =>
+      simp only [mkCarried] at h
+      cases hρ : rhoLookup ρ id with
+      | none => rw [hρ] at h; simp at h
+      | some _ =>
+          rw [hρ] at h
+          cases hrec : mkCarried (updAssoc ρ id s) (s + 1) ids with
+          | none => rw [hrec] at h; simp at h
+          | some q =>
+              obtain ⟨cs', s'', ρ''⟩ := q
+              rw [hrec] at h
+              obtain ⟨rfl, rfl, rfl⟩ := Option.some.inj h
+              have hf' : FreshAbove (updAssoc ρ id s) (s + 1) := by
+                intro j v hmem
+                rcases hmem_upd _ _ _ _ _ hmem with hmem | ⟨rfl, rfl⟩
+                · exact Nat.lt_of_lt_of_le (hf _ _ hmem) (Nat.le_succ _)
+                · exact Nat.lt_succ_self _
+              obtain ⟨hle, hfr⟩ := ih hf' hrec
+              exact ⟨Nat.le_trans (Nat.le_succ _) hle, hfr⟩
+
+/-- Supply growth alone needs no freshness hypothesis (the static invariant
+`branch_inv` cites this; the executors cite `mkCarried_growth_fresh`). -/
+theorem mkCarried_le {ρ : List (HIR.Id × ValId)} {s : Nat}
+    {ids : List HIR.Id} {cs : List (HIR.Id × ValId)} {s' : Nat}
+    {ρ' : List (HIR.Id × ValId)}
+    (h : mkCarried ρ s ids = some (cs, s', ρ')) : s ≤ s' := by
+  induction ids generalizing ρ s cs s' ρ' with
+  | nil =>
+      simp only [mkCarried] at h
+      obtain ⟨rfl, rfl, rfl⟩ := Option.some.inj h
+      exact Nat.le_refl _
+  | cons id ids ih =>
+      simp only [mkCarried] at h
+      cases hρ : rhoLookup ρ id with
+      | none => rw [hρ] at h; simp at h
+      | some _ =>
+          rw [hρ] at h
+          cases hrec : mkCarried (updAssoc ρ id s) (s + 1) ids with
+          | none => rw [hrec] at h; simp at h
+          | some q =>
+              obtain ⟨cs', s'', ρ''⟩ := q
+              rw [hrec] at h
+              obtain ⟨rfl, rfl, rfl⟩ := Option.some.inj h
+              exact Nat.le_trans (Nat.le_succ _) (ih hrec)
 
 /-- Header phis for the carried registers: one entry edge plus one edge per
 back-predecessor. The fall-through end reads its sources from the body's exit
@@ -361,7 +757,7 @@ def lowerStmtsCFG (bId : MIR.BlockId) (cont : Option MIR.BlockId)
       | _, _ =>
           some ⟨[], (match cont with | none => .return_ lastVal | some t => .goto t),
                 [], lastVal, ρ, supply, nextB⟩
-  | .nop :: rest => lowerStmtsCFG bId cont arm ρ supply nextB lastVal hasVal none rest
+  | .nop :: rest => lowerStmtsCFG bId cont arm ρ supply nextB lastVal hasVal loop rest
   -- Match form, not `do`: `simp only [lowerStmtsCFG]` plus `simp only []`
   -- reduce these exactly as in Stage A (`lowerStmts`), while `do`-notation
   -- `Bind.bind` needs full `simp`, which also normalizes the block assembly
@@ -371,7 +767,7 @@ def lowerStmtsCFG (bId : MIR.BlockId) (cont : Option MIR.BlockId)
   | .exprStmt e :: rest =>
       match lowerExpr ρ supply e with
       | some (v, ie, s1) =>
-          match lowerStmtsCFG bId cont arm ρ s1 nextB v true none rest with
+          match lowerStmtsCFG bId cont arm ρ s1 nextB v true loop rest with
           | some L => some { L with instrs := ie ++ L.instrs }
           | none => none
       | none => none
@@ -379,9 +775,12 @@ def lowerStmtsCFG (bId : MIR.BlockId) (cont : Option MIR.BlockId)
       match arm with
       | true => none
       | false =>
+          match loop with
+          | some _ => none
+          | none =>
           match lowerExpr ρ supply init with
           | some (vb, ib, s1) =>
-              match lowerStmtsCFG bId cont arm ((id, vb) :: ρ) s1 nextB lastVal true none rest with
+              match lowerStmtsCFG bId cont arm ((id, vb) :: ρ) s1 nextB lastVal true loop rest with
               | some L => some { L with instrs := ib ++ L.instrs }
               | none => none
           | none => none
@@ -391,7 +790,7 @@ def lowerStmtsCFG (bId : MIR.BlockId) (cont : Option MIR.BlockId)
       | false =>
           match lowerExpr ρ supply e with
           | some (v, ie, s1) =>
-              match lowerStmtsCFG bId cont arm (updAssoc ρ id v) s1 nextB lastVal true none rest with
+              match lowerStmtsCFG bId cont arm (updAssoc ρ id v) s1 nextB lastVal true loop rest with
               | some L => some { L with instrs := ie ++ L.instrs }
               | none => none
           | none => none
@@ -411,13 +810,13 @@ def lowerStmtsCFG (bId : MIR.BlockId) (cont : Option MIR.BlockId)
       match lowerExpr ρ supply c with
       | none => none
       | some (vc, ic, s1) =>
-          match lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1 (nextB + 3) lastVal false none th with
+          match lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1 (nextB + 3) lastVal false loop th with
           | none => none
           | some lt =>
-              match lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ lt.supply lt.next lastVal false none el with
+              match lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ lt.supply lt.next lastVal false loop el with
               | none => none
               | some le =>
-                  match lowerStmtsCFG (nextB + 2) cont arm ρ (le.supply + 1) le.next le.supply true none rest with
+                  match lowerStmtsCFG (nextB + 2) cont arm ρ (le.supply + 1) le.next le.supply true loop rest with
                   | none => none
                   | some lr =>
                       some { instrs := ic
@@ -445,7 +844,11 @@ def lowerStmtsCFG (bId : MIR.BlockId) (cont : Option MIR.BlockId)
   | .break :: _ =>
       match loop with
       | none => none
-      | some info => some ⟨[], .goto info.exit, [], lastVal, ρ, supply, nextB⟩
+      | some info =>
+          match carryCopies ρ info.carried with
+          | none => none
+          | some copies =>
+              some ⟨copies, .goto info.exit, [], lastVal, ρ, supply, nextB⟩
   | .continue :: _ =>
       match loop with
       | none => none
@@ -479,8 +882,8 @@ def lowerStmtsCFG (bId : MIR.BlockId) (cont : Option MIR.BlockId)
                       (loop := some ⟨nextB, nextB + 1, carried⟩) body with
                   | none => none
                   | some lb =>
-                      match lowerStmtsCFG (nextB + 1) cont arm lb.ρ
-                          (lb.supply + 1) lb.next lb.supply true none rest with
+                      match lowerStmtsCFG (nextB + 1) cont arm ρb
+                          (lb.supply + 1) lb.next lb.supply true loop rest with
                       | none => none
                       | some lr =>
                           match mkHeaderPhis ρ bId carried
@@ -509,7 +912,7 @@ def lowerStmtsCFG (bId : MIR.BlockId) (cont : Option MIR.BlockId)
                                                  .branch vc (nextB + 2)
                                                    (nextB + 1)⟩] ++
                                                [⟨nextB + 1,
-                                                 .const lr.supply .unit ::
+                                                 .const lb.supply .unit ::
                                                    lr.instrs,
                                                  lr.term⟩] ++ lr.blocks
                                      val := lr.val
@@ -695,215 +1098,89 @@ theorem if_assembly_nodup {nextB ltNext leNext lrNext : Nat}
         hloA)
     · obtain ⟨hloC, -⟩ := hbC y hy
       exact ne_of_lt_nat' (Nat.lt_of_lt_of_le hhiA (Nat.le_trans hmne hloC)))
-
-mutual
-
-/-- Master invariant over the straight-line-carrying fragment: supply and
-block ids only grow, every produced block id is fresh for the call and
-below the returned supply of ids, and the produced ids are duplicate-free.
-`arm` is fixed `false`: bindings are allowed and the lowering handles them. -/
-theorem lowerStmtsCFG_branch_inv (budget : Nat) :
-    ∀ (bId : MIR.BlockId) (cont : Option MIR.BlockId) (ρ : List (HIR.Id × ValId))
-      (supply nextB : Nat) (lastVal : ValId) (hasVal : Bool)
-      (ss : List HIR.Stmt) (L : Lowered),
-      lowerStmtsCFG bId cont false ρ supply nextB lastVal hasVal none ss = some L →
-      BranchStmts budget ss →
-      nextB ≤ L.next ∧ supply ≤ L.supply ∧
-        (∀ b ∈ L.blocks, nextB ≤ b.id ∧ b.id < L.next) ∧
-        (L.blocks.map Block.id).Nodup := by
-  intro bId cont ρ supply nextB lastVal hasVal ss
-  induction ss generalizing bId cont ρ supply nextB lastVal hasVal with
-  | nil =>
-      intro L h hss
-      cases hss with
-      | nil =>
-          simp only [lowerStmtsCFG.eq_def] at h
-          simp at h
-          subst h
-          exact ⟨Nat.le_refl _, Nat.le_refl _, fun b hb => by simp at hb,
-            List.nodup_nil⟩
-  | cons s rest ih =>
-      intro L h hss
-      cases hss with
-      | cons hs hrs =>
-          cases hs with
-          | exprStmt e hstr _ =>
-              simp [lowerStmtsCFG] at h
-              cases he : lowerExpr ρ supply e with
-              | none => rw [he] at h; simp at h
-              | some p =>
-                  obtain ⟨v0, ie, s1⟩ := p
-                  rw [he] at h
-                  simp at h
-                  cases hr : lowerStmtsCFG bId cont false ρ s1 nextB v0 true none rest with
-                  | none => rw [hr] at h; simp at h
-                  | some q =>
-                      rw [hr] at h
-                      simp at h
-                      subst h
-                      have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
-                      obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ _ hr hrs
-                      exact ⟨hmn, Nat.le_trans hs1 hms, hbnd, hnod⟩
-          | varDecl id τ init hstr _ =>
-              simp [lowerStmtsCFG] at h
-              cases he : lowerExpr ρ supply init with
-              | none => rw [he] at h; simp at h
-              | some p =>
-                  obtain ⟨vb, ib, s1⟩ := p
-                  rw [he] at h
-                  simp at h
-                  cases hr : lowerStmtsCFG bId cont false ((id, vb) :: ρ) s1
-                      nextB lastVal true none rest with
-                  | none => rw [hr] at h; simp at h
-                  | some q =>
-                      rw [hr] at h
-                      simp at h
-                      subst h
-                      have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
-                      obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ _ hr hrs
-                      exact ⟨hmn, Nat.le_trans hs1 hms, hbnd, hnod⟩
-          | assign id e hstr _ =>
-              simp [lowerStmtsCFG] at h
-              cases he : lowerExpr ρ supply e with
-              | none => rw [he] at h; simp at h
-              | some p =>
-                  obtain ⟨v, ie, s1⟩ := p
-                  rw [he] at h
-                  simp at h
-                  cases hr : lowerStmtsCFG bId cont false (updAssoc ρ id v) s1
-                      nextB lastVal true none rest with
-                  | none => rw [hr] at h; simp at h
-                  | some q =>
-                      rw [hr] at h
-                      simp at h
-                      subst h
-                      have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
-                      obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ _ hr hrs
-                      exact ⟨hmn, Nat.le_trans hs1 hms, hbnd, hnod⟩
-          | nop =>
-              simp [lowerStmtsCFG] at h
-              cases hr : lowerStmtsCFG bId cont false ρ supply nextB
-                  lastVal hasVal none rest with
-              | none => rw [hr] at h; simp at h
-              | some q =>
-                  rw [hr] at h
-                  simp at h
-                  subst h
-                  obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ _ hr hrs
-                  exact ⟨hmn, hms, hbnd, hnod⟩
-          | ifStmt c th el hstr _ hath hael =>
-              -- Peel with `unfold`, never `simp`: full `simp` normalizes the
-              -- block assembly (`[T] ++ X` to `T :: X`), breaking the syntactic
-              -- match the membership split and `if_assembly_nodup` need.
-              simp only [lowerStmtsCFG] at h
-              cases heC : lowerExpr ρ supply c with
-              | none => rw [heC] at h; simp at h
-              | some p =>
-                  obtain ⟨vc, ic, s1⟩ := p
-                  rw [heC] at h
-                  simp only [] at h
-                  cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
-                      (nextB + 3) lastVal false none th with
-                  | none => rw [ht] at h; simp at h
-                  | some lt =>
-                      rw [ht] at h
-                      simp only [] at h
-                      cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2))
-                          true ρ lt.supply lt.next lastVal false none el with
-                      | none => rw [he] at h; simp at h
-                      | some le =>
-                          rw [he] at h
-                          simp only [] at h
-                          cases hr : lowerStmtsCFG (nextB + 2) cont false ρ
-                              (le.supply + 1) le.next le.supply true none rest with
-                          | none => rw [hr] at h; simp at h
-                          | some lr =>
-                              rw [hr] at h
-                              simp only [] at h
-                              obtain rfl := Option.some.inj h
-                              dsimp only at ⊢
-                              have hs1 : supply ≤ s1 :=
-                                lower_mono.1 _ _ _ _ _ _ heC
-                              obtain ⟨hmnt, hmst, hbndt, hnodt⟩ :=
-                                lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ ht hath
-                              obtain ⟨hmne, hmse, hbnde, hnode⟩ :=
-                                lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ he
-                                  hael
-                              obtain ⟨hmnr, hmsr, hbndr, hnodr⟩ :=
-                                ih _ _ _ _ _ _ _ _ hr hrs
-                              refine ⟨by omega, by omega, ?_, ?_⟩
-                              · intro b hb
-                                simp only [List.mem_append, List.mem_singleton] at hb
-                                rcases hb with (((((hb | rfl) | hb) | rfl) | rfl) | hb)
-                                · obtain ⟨hlo, hhi⟩ := hbndt b hb
-                                  exact ⟨Nat.le_trans (Nat.le_add_right _ _) hlo,
-                                    Nat.lt_of_lt_of_le hhi (Nat.le_trans hmne
-                                      (Nat.le_trans hmnr (Nat.le_succ _)))⟩
-                                · exact ⟨Nat.le_refl _,
-                                    Nat.lt_of_le_of_lt (Nat.le_trans
-                                      (Nat.le_trans (Nat.le_trans
-                                        (Nat.le_add_right _ _) hmnt) hmne) hmnr)
-                                      (Nat.lt_succ_self _)⟩
-                                · obtain ⟨hlo, hhi⟩ := hbnde b hb
-                                  exact ⟨Nat.le_trans (Nat.le_trans
-                                      (Nat.le_add_right _ _) hmnt) hlo,
-                                    Nat.lt_of_lt_of_le hhi (Nat.le_trans hmnr
-                                      (Nat.le_succ _))⟩
-                                · exact ⟨Nat.le_succ _,
-                                    Nat.lt_of_le_of_lt (Nat.le_trans
-                                      (Nat.le_trans (Nat.le_trans
-                                        (Nat.le_trans (Nat.le_succ _)
-                                          (Nat.le_succ _)) hmnt) hmne) hmnr)
-                                      (Nat.lt_succ_self _)⟩
-                                · exact ⟨Nat.le_add_right _ _,
-                                    Nat.lt_of_le_of_lt (Nat.le_trans
-                                      (Nat.le_trans (Nat.le_trans
-                                        (Nat.le_succ _) hmnt) hmne) hmnr)
-                                      (Nat.lt_succ_self _)⟩
-                                · obtain ⟨hlo, hhi⟩ := hbndr b hb
-                                  exact ⟨Nat.le_trans (Nat.le_trans
-                                      (Nat.le_trans (Nat.le_add_right _ _)
-                                        hmnt) hmne) hlo,
-                                    Nat.lt_of_lt_of_le hhi (Nat.le_succ _)⟩
-                              · exact if_assembly_nodup (A := lt.blocks)
-                                  (B := le.blocks) (C := lr.blocks)
-                                  (thenB := ⟨nextB, lt.instrs, lt.term⟩)
-                                  (elseB := ⟨nextB + 1, le.instrs, le.term⟩)
-                                  (joinB := ⟨nextB + 2,
-                                    [Instr.phi le.supply ((lt.blocks.getLast?.map
-                                      (fun b => b.id)).getD nextB) lt.val,
-                                     Instr.phi le.supply ((le.blocks.getLast?.map
-                                      (fun b => b.id)).getD (nextB + 1)) le.val] ++
-                                      lr.instrs,
-                                    lr.term⟩)
-                                  hmnt hmne hmnr hbndt hbnde hbndr
-                                  rfl rfl rfl hnodt hnode hnodr
-      | returnStmt e _ hstr _ =>
-          simp [lowerStmtsCFG] at h
-          cases he : lowerExpr ρ supply e with
-          | none => rw [he] at h; simp at h
-          | some p =>
-              obtain ⟨v, ie, s1⟩ := p
-              rw [he] at h
-              simp at h
-              subst h
-              have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
-              exact ⟨Nat.le_refl _, hs1, fun b hb => by simp at hb,
-                List.nodup_nil⟩
+/-- The five block groups of a lowered `while`: the body below its own join,
+the body-entry/header/exit singletons in id order below the body, the rest
+below everything. Same concat technique as `if_assembly_nodup`. -/
+theorem while_assembly_nodup {nextB lbNext lrNext : Nat}
+    {A C : List Block} {bodyB headerB exitB : Block}
+    (hmn : nextB + 3 ≤ lbNext) (_hmnr : lbNext ≤ lrNext)
+    (hbndA : ∀ b ∈ A, nextB + 3 ≤ b.id ∧ b.id < lbNext)
+    (hbndC : ∀ b ∈ C, lbNext ≤ b.id ∧ b.id < lrNext)
+    (hbody : bodyB.id = nextB + 2) (hheader : headerB.id = nextB)
+    (hexit : exitB.id = nextB + 1)
+    (hnodA : (A.map Block.id).Nodup) (hnodC : (C.map Block.id).Nodup) :
+    ((A ++ [bodyB] ++ [headerB] ++ [exitB] ++ C).map Block.id).Nodup := by
+  have hbA : ∀ x ∈ A.map Block.id, nextB + 3 ≤ x ∧ x < lbNext := by
+    intro x hx
+    obtain ⟨b, hb, rfl⟩ := List.mem_map.mp hx
+    exact hbndA b hb
+  have hbC : ∀ x ∈ C.map Block.id, lbNext ≤ x ∧ x < lrNext := by
+    intro x hx
+    obtain ⟨b, hb, rfl⟩ := List.mem_map.mp hx
+    exact hbndC b hb
+  have e1 : ([nextB + 1] ++ C.map Block.id).Nodup :=
+    nodup_concat (by simp) hnodC (by
+      intro x hx y hy
+      simp only [List.mem_singleton] at hx
+      subst x
+      obtain ⟨hloC, -⟩ := hbC y hy
+      exact ne_of_lt_nat' (Nat.lt_of_lt_of_le
+        (Nat.add_lt_add_left (show 1 < 3 from by decide) nextB)
+        (Nat.le_trans hmn hloC)))
+  have e2 : ([nextB] ++ ([nextB + 1] ++ C.map Block.id)).Nodup :=
+    nodup_concat (by simp) e1 (by
+      intro x hx y hy
+      simp only [List.mem_singleton] at hx
+      subst x
+      simp only [List.mem_append, List.mem_singleton] at hy
+      rcases hy with rfl | hy
+      · exact ne_of_lt_nat'
+          (Nat.add_lt_add_left (show 0 < 1 from by decide) nextB)
+      · obtain ⟨hloC, -⟩ := hbC y hy
+        exact ne_of_lt_nat' (Nat.lt_of_lt_of_le
+          (Nat.add_lt_add_left (show 0 < 3 from by decide) nextB)
+          (Nat.le_trans hmn hloC)))
+  have e3 : ([nextB + 2] ++
+      ([nextB] ++ ([nextB + 1] ++ C.map Block.id))).Nodup :=
+    nodup_concat (by simp) e2 (by
+      intro x hx y hy
+      simp only [List.mem_singleton] at hx
+      simp only [List.mem_append, List.mem_singleton] at hy
+      -- Name the edge equations instead of substituting them: `rfl`/`subst`
+      -- eliminate one side, and when both sides are variables (`y = nextB`)
+      -- that can be `nextB` itself. `omega` reads the equations in place.
+      rcases hy with hy1 | hy1 | hy
+      · omega
+      · omega
+      · obtain ⟨hloC, -⟩ := hbC y hy
+        omega)
+  simp only [List.map_append, List.map_cons, List.map_nil, List.append_assoc,
+    hbody, hheader, hexit]
+  exact nodup_concat hnodA e3 (by
+    intro x hx y hy
+    obtain ⟨hloA, hhiA⟩ := hbA x hx
+    simp only [List.mem_append, List.mem_singleton] at hy
+    rcases hy with hy1 | hy1 | hy1 | hy
+    · omega
+    · omega
+    · omega
+    · obtain ⟨hloC, -⟩ := hbC y hy
+      exact ne_of_lt_nat' (Nat.lt_of_lt_of_le hhiA hloC))
 
 /-- Same invariant for arms: `arm` is fixed `true`, so the lowering never
 takes a binding branch and `ArmStmts` has no such constructor to match. -/
 theorem lowerStmtsCFG_arm_inv (budget : Nat) :
     ∀ (bId : MIR.BlockId) (cont : Option MIR.BlockId) (ρ : List (HIR.Id × ValId))
       (supply nextB : Nat) (lastVal : ValId) (hasVal : Bool)
+      (loop : Option LoopInfo)
       (ss : List HIR.Stmt) (L : Lowered),
-      lowerStmtsCFG bId cont true ρ supply nextB lastVal hasVal none ss = some L →
+      lowerStmtsCFG bId cont true ρ supply nextB lastVal hasVal loop ss = some L →
       ArmStmts budget ss →
       nextB ≤ L.next ∧ supply ≤ L.supply ∧
         (∀ b ∈ L.blocks, nextB ≤ b.id ∧ b.id < L.next) ∧
         (L.blocks.map Block.id).Nodup := by
-  intro bId cont ρ supply nextB lastVal hasVal ss L h hss
-  induction hss generalizing bId cont ρ supply nextB lastVal hasVal L with
+  intro bId cont ρ supply nextB lastVal hasVal loop ss L h hss
+  induction hss generalizing bId cont ρ supply nextB lastVal hasVal loop L with
   | nil =>
       simp only [lowerStmtsCFG.eq_def] at h
       cases hv : hasVal with
@@ -928,23 +1205,23 @@ theorem lowerStmtsCFG_arm_inv (budget : Nat) :
           obtain ⟨v0, ie, s1⟩ := p
           rw [he] at h
           simp at h
-          cases hr : lowerStmtsCFG bId cont true ρ s1 nextB v0 true none rest with
+          cases hr : lowerStmtsCFG bId cont true ρ s1 nextB v0 true loop rest with
           | none => rw [hr] at h; simp at h
           | some q =>
               rw [hr] at h
               simp at h
               subst h
               have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
-              obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ _ hr
+              obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ _ _ hr
               exact ⟨hmn, Nat.le_trans hs1 hms, hbnd, hnod⟩
   | nop rest hrs ih =>
       simp [lowerStmtsCFG] at h
-      cases hr : lowerStmtsCFG bId cont true ρ supply nextB lastVal hasVal none rest with
+      cases hr : lowerStmtsCFG bId cont true ρ supply nextB lastVal hasVal loop rest with
       | none => rw [hr] at h; simp at h          | some q =>
               rw [hr] at h
               simp at h
               subst h
-              obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ _ hr
+              obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ _ _ hr
               exact ⟨hmn, hms, hbnd, hnod⟩
   | ifStmt c th el rest hstr _ hath hael hrs iht ihe ihr =>
       simp only [lowerStmtsCFG] at h
@@ -955,19 +1232,19 @@ theorem lowerStmtsCFG_arm_inv (budget : Nat) :
           rw [heC] at h
           simp only [] at h
           cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
-              (nextB + 3) lastVal false none th with
+              (nextB + 3) lastVal false loop th with
           | none => rw [ht] at h; simp at h
           | some lt =>
               rw [ht] at h
               simp only [] at h
               cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ
-                  lt.supply lt.next lastVal false none el with
+                  lt.supply lt.next lastVal false loop el with
               | none => rw [he] at h; simp at h
               | some le =>
                   rw [he] at h
                   simp only [] at h
                   cases hr : lowerStmtsCFG (nextB + 2) cont true ρ
-                      (le.supply + 1) le.next le.supply true none rest with
+                      (le.supply + 1) le.next le.supply true loop rest with
                   | none => rw [hr] at h; simp at h
                   | some lr =>
                       rw [hr] at h
@@ -976,11 +1253,11 @@ theorem lowerStmtsCFG_arm_inv (budget : Nat) :
                       dsimp only at ⊢
                       have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ heC
                       obtain ⟨hmnt, hmst, hbndt, hnodt⟩ :=
-                        iht _ _ _ _ _ _ _ _ ht
+                        iht _ _ _ _ _ _ _ _ _ ht
                       obtain ⟨hmne, hmse, hbnde, hnode⟩ :=
-                        ihe _ _ _ _ _ _ _ _ he
+                        ihe _ _ _ _ _ _ _ _ _ he
                       obtain ⟨hmnr, hmsr, hbndr, hnodr⟩ :=
-                        ihr _ _ _ _ _ _ _ _ hr
+                        ihr _ _ _ _ _ _ _ _ _ hr
                       refine ⟨by omega, by omega, ?_, ?_⟩
                       · intro b hb
                         simp only [List.mem_append, List.mem_singleton] at hb
@@ -1040,13 +1317,1231 @@ theorem lowerStmtsCFG_arm_inv (budget : Nat) :
           have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
           exact ⟨Nat.le_refl _, hs1, fun b hb => by simp at hb,
             List.nodup_nil⟩
+  | breakStmt rest hrs ih =>
+      -- A `break` is terminal (like `return`): under `loop = none` it
+      -- refuses, under `some` it snapshots the carried regs then exits.
+      cases hlo : loop with
+      | none => simp [lowerStmtsCFG, hlo] at h
+      | some info =>
+          simp only [lowerStmtsCFG, hlo] at h
+          cases hc : carryCopies ρ info.carried with
+          | none => simp [hc] at h
+          | some copies =>
+              simp [hc] at h
+              subst h
+              exact ⟨Nat.le_refl _, Nat.le_refl _, fun b hb => by simp at hb,
+                List.nodup_nil⟩
+  | continueStmt rest hrs ih =>
+      cases hlo : loop with
+      | none => simp [lowerStmtsCFG, hlo] at h
+      | some info =>
+          simp only [lowerStmtsCFG, hlo] at h
+          cases hc : carryCopies ρ info.carried with
+          | none => simp [hc] at h
+          | some copies =>
+              simp [hc] at h
+              subst h
+              exact ⟨Nat.le_refl _, Nat.le_refl _, fun b hb => by simp at hb,
+                List.nodup_nil⟩
 
-end
+/-- Static invariant for loop bodies: the `branch_inv` conclusion under a
+`LoopStmts` hypothesis. `branch_inv` cites this for a loop body, which is not
+a structural subterm of the enclosing statement list. List induction (the
+`induction` tactic does not support the `mutual` inductive) plus `cases`
+inversion of the body proof; each `if` arm cites `arm_inv` as in `branch_inv`. -/
+theorem lowerStmtsCFG_loopBody_inv (budget : Nat) :
+    ∀ (bId : MIR.BlockId) (cont : Option MIR.BlockId) (ρ : List (HIR.Id × ValId))
+      (supply nextB : Nat) (lastVal : ValId) (hasVal : Bool)
+      (loop : Option LoopInfo)
+      (ss : List HIR.Stmt) (L : Lowered),
+      lowerStmtsCFG bId cont false ρ supply nextB lastVal hasVal loop ss = some L →
+      LoopStmts budget ss →
+      nextB ≤ L.next ∧ supply ≤ L.supply ∧
+        (∀ b ∈ L.blocks, nextB ≤ b.id ∧ b.id < L.next) ∧
+        (L.blocks.map Block.id).Nodup := by
+  intro bId cont ρ supply nextB lastVal hasVal loop ss
+  induction ss generalizing bId cont ρ supply nextB lastVal hasVal loop with
+  | nil =>
+      intro L h hss
+      cases hss with
+      | nil =>
+          simp only [lowerStmtsCFG.eq_def] at h
+          simp at h
+          subst h
+          exact ⟨Nat.le_refl _, Nat.le_refl _, fun b hb => by simp at hb,
+            List.nodup_nil⟩
+  | cons s rest ih =>
+      intro L h hss
+      cases hss with
+      | exprStmt e rest hstr _ hrs =>
+          simp [lowerStmtsCFG] at h
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he] at h; simp at h
+          | some p =>
+              obtain ⟨v0, ie, s1⟩ := p
+              rw [he] at h
+              simp at h
+              cases hr : lowerStmtsCFG bId cont false ρ s1 nextB v0 true loop rest with
+              | none => rw [hr] at h; simp at h
+              | some q =>
+                  rw [hr] at h
+                  simp at h
+                  subst h
+                  have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+                  obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ _ _ hr hrs
+                  exact ⟨hmn, Nat.le_trans hs1 hms, hbnd, hnod⟩
+      | varDecl id τ init rest hstr _ hrs _ =>
+          cases hlo : loop with
+          | some _ => simp [lowerStmtsCFG, hlo] at h
+          | none =>
+              simp [lowerStmtsCFG, hlo] at h
+              cases he : lowerExpr ρ supply init with
+              | none => rw [he] at h; simp at h
+              | some p =>
+                  obtain ⟨vb, ib, s1⟩ := p
+                  rw [he] at h
+                  simp at h
+                  cases hr : lowerStmtsCFG bId cont false ((id, vb) :: ρ) s1
+                      nextB lastVal true none rest with
+                  | none => rw [hr] at h; simp at h
+                  | some q =>
+                      rw [hr] at h
+                      simp at h
+                      subst h
+                      have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+                      obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ _ _ hr hrs
+                      exact ⟨hmn, Nat.le_trans hs1 hms, hbnd, hnod⟩
+      | assign id e rest hstr _ hrs _ =>
+          simp [lowerStmtsCFG] at h
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he] at h; simp at h
+          | some p =>
+              obtain ⟨v, ie, s1⟩ := p
+              rw [he] at h
+              simp at h
+              cases hr : lowerStmtsCFG bId cont false (updAssoc ρ id v) s1
+                  nextB lastVal true loop rest with
+              | none => rw [hr] at h; simp at h
+              | some q =>
+                  rw [hr] at h
+                  simp at h
+                  subst h
+                  have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+                  obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ _ _ hr hrs
+                  exact ⟨hmn, Nat.le_trans hs1 hms, hbnd, hnod⟩
+      | nop rest hrs =>
+          simp [lowerStmtsCFG] at h
+          cases hr : lowerStmtsCFG bId cont false ρ supply nextB
+              lastVal hasVal loop rest with
+          | none => rw [hr] at h; simp at h
+          | some q =>
+              rw [hr] at h
+              simp at h
+              subst h
+              obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ _ _ hr hrs
+              exact ⟨hmn, hms, hbnd, hnod⟩
+      | ifStmt c th el rest hstr _ hath hael hrs _ _ =>
+          simp only [lowerStmtsCFG] at h
+          cases heC : lowerExpr ρ supply c with
+          | none => rw [heC] at h; simp at h
+          | some p =>
+              obtain ⟨vc, ic, s1⟩ := p
+              rw [heC] at h
+              simp only [] at h
+              cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
+                  (nextB + 3) lastVal false loop th with
+              | none => rw [ht] at h; simp at h
+              | some lt =>
+                  rw [ht] at h
+                  simp only [] at h
+                  cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2))
+                      true ρ lt.supply lt.next lastVal false loop el with
+                  | none => rw [he] at h; simp at h
+                  | some le =>
+                      rw [he] at h
+                      simp only [] at h
+                      cases hr : lowerStmtsCFG (nextB + 2) cont false ρ
+                          (le.supply + 1) le.next le.supply true loop rest with
+                      | none => rw [hr] at h; simp at h
+                      | some lr =>
+                          rw [hr] at h
+                          obtain rfl := Option.some.inj h
+                          dsimp only at ⊢
+                          have hs1 : supply ≤ s1 :=
+                            lower_mono.1 _ _ _ _ _ _ heC
+                          obtain ⟨hmnt, hmst, hbndt, hnodt⟩ :=
+                            lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _ ht hath
+                          obtain ⟨hmne, hmse, hbnde, hnode⟩ :=
+                            lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _ he
+                              hael
+                          obtain ⟨hmnr, hmsr, hbndr, hnodr⟩ :=
+                            ih _ _ _ _ _ _ _ _ _ hr hrs
+                          refine ⟨by omega, by omega, ?_, ?_⟩
+                          · intro b hb
+                            simp only [List.mem_append, List.mem_singleton] at hb
+                            rcases hb with (((((hb | rfl) | hb) | rfl) | rfl) | hb)
+                            · obtain ⟨hlo, hhi⟩ := hbndt b hb
+                              exact ⟨Nat.le_trans (Nat.le_add_right _ _) hlo,
+                                Nat.lt_of_lt_of_le hhi (Nat.le_trans hmne
+                                  (Nat.le_trans hmnr (Nat.le_succ _)))⟩
+                            · exact ⟨Nat.le_refl _,
+                                Nat.lt_of_le_of_lt (Nat.le_trans
+                                  (Nat.le_trans (Nat.le_trans
+                                    (Nat.le_add_right _ _) hmnt) hmne) hmnr)
+                                  (Nat.lt_succ_self _)⟩
+                            · obtain ⟨hlo, hhi⟩ := hbnde b hb
+                              exact ⟨Nat.le_trans (Nat.le_trans
+                                  (Nat.le_add_right _ _) hmnt) hlo,
+                                Nat.lt_of_lt_of_le hhi (Nat.le_trans hmnr
+                                  (Nat.le_succ _))⟩
+                            · exact ⟨Nat.le_succ _,
+                                Nat.lt_of_le_of_lt (Nat.le_trans
+                                  (Nat.le_trans (Nat.le_trans
+                                    (Nat.le_trans (Nat.le_succ _)
+                                      (Nat.le_succ _)) hmnt) hmne) hmnr)
+                                  (Nat.lt_succ_self _)⟩
+                            · exact ⟨Nat.le_add_right _ _,
+                                Nat.lt_of_le_of_lt (Nat.le_trans
+                                  (Nat.le_trans (Nat.le_trans
+                                    (Nat.le_succ _) hmnt) hmne) hmnr)
+                                  (Nat.lt_succ_self _)⟩
+                            · obtain ⟨hlo, hhi⟩ := hbndr b hb
+                              exact ⟨Nat.le_trans (Nat.le_trans
+                                  (Nat.le_trans (Nat.le_add_right _ _)
+                                    hmnt) hmne) hlo,
+                                Nat.lt_of_lt_of_le hhi (Nat.le_succ _)⟩
+                          · exact if_assembly_nodup (A := lt.blocks)
+                              (B := le.blocks) (C := lr.blocks)
+                              (thenB := ⟨nextB, lt.instrs, lt.term⟩)
+                              (elseB := ⟨nextB + 1, le.instrs, le.term⟩)
+                              (joinB := ⟨nextB + 2,
+                                [Instr.phi le.supply ((lt.blocks.getLast?.map
+                                  (fun b => b.id)).getD nextB) lt.val,
+                                 Instr.phi le.supply ((le.blocks.getLast?.map
+                                  (fun b => b.id)).getD (nextB + 1)) le.val] ++
+                                  lr.instrs,
+                                lr.term⟩)
+                              hmnt hmne hmnr hbndt hbnde hbndr
+                              rfl rfl rfl hnodt hnode hnodr
+      | ifStmtBreak c th el rest hstr _ hath hael hrs harm =>
+          simp only [lowerStmtsCFG] at h
+          cases heC : lowerExpr ρ supply c with
+          | none => rw [heC] at h; simp at h
+          | some p =>
+              obtain ⟨vc, ic, s1⟩ := p
+              rw [heC] at h
+              simp only [] at h
+              cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
+                  (nextB + 3) lastVal false loop th with
+              | none => rw [ht] at h; simp at h
+              | some lt =>
+                  rw [ht] at h
+                  simp only [] at h
+                  cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2))
+                      true ρ lt.supply lt.next lastVal false loop el with
+                  | none => rw [he] at h; simp at h
+                  | some le =>
+                      rw [he] at h
+                      simp only [] at h
+                      cases hr : lowerStmtsCFG (nextB + 2) cont false ρ
+                          (le.supply + 1) le.next le.supply true loop rest with
+                      | none => rw [hr] at h; simp at h
+                      | some lr =>
+                          rw [hr] at h
+                          obtain rfl := Option.some.inj h
+                          dsimp only at ⊢
+                          have hs1 : supply ≤ s1 :=
+                            lower_mono.1 _ _ _ _ _ _ heC
+                          obtain ⟨hmnt, hmst, hbndt, hnodt⟩ :=
+                            lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _ ht hath
+                          obtain ⟨hmne, hmse, hbnde, hnode⟩ :=
+                            lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _ he
+                              hael
+                          obtain ⟨hmnr, hmsr, hbndr, hnodr⟩ :=
+                            ih _ _ _ _ _ _ _ _ _ hr hrs
+                          refine ⟨by omega, by omega, ?_, ?_⟩
+                          · intro b hb
+                            simp only [List.mem_append, List.mem_singleton] at hb
+                            rcases hb with (((((hb | rfl) | hb) | rfl) | rfl) | hb)
+                            · obtain ⟨hlo, hhi⟩ := hbndt b hb
+                              exact ⟨Nat.le_trans (Nat.le_add_right _ _) hlo,
+                                Nat.lt_of_lt_of_le hhi (Nat.le_trans hmne
+                                  (Nat.le_trans hmnr (Nat.le_succ _)))⟩
+                            · exact ⟨Nat.le_refl _,
+                                Nat.lt_of_le_of_lt (Nat.le_trans
+                                  (Nat.le_trans (Nat.le_trans
+                                    (Nat.le_add_right _ _) hmnt) hmne) hmnr)
+                                  (Nat.lt_succ_self _)⟩
+                            · obtain ⟨hlo, hhi⟩ := hbnde b hb
+                              exact ⟨Nat.le_trans (Nat.le_trans
+                                  (Nat.le_add_right _ _) hmnt) hlo,
+                                Nat.lt_of_lt_of_le hhi (Nat.le_trans hmnr
+                                  (Nat.le_succ _))⟩
+                            · exact ⟨Nat.le_succ _,
+                                Nat.lt_of_le_of_lt (Nat.le_trans
+                                  (Nat.le_trans (Nat.le_trans
+                                    (Nat.le_trans (Nat.le_succ _)
+                                      (Nat.le_succ _)) hmnt) hmne) hmnr)
+                                  (Nat.lt_succ_self _)⟩
+                            · exact ⟨Nat.le_add_right _ _,
+                                Nat.lt_of_le_of_lt (Nat.le_trans
+                                  (Nat.le_trans (Nat.le_trans
+                                    (Nat.le_succ _) hmnt) hmne) hmnr)
+                                  (Nat.lt_succ_self _)⟩
+                            · obtain ⟨hlo, hhi⟩ := hbndr b hb
+                              exact ⟨Nat.le_trans (Nat.le_trans
+                                  (Nat.le_trans (Nat.le_add_right _ _)
+                                    hmnt) hmne) hlo,
+                                Nat.lt_of_lt_of_le hhi (Nat.le_succ _)⟩
+                          · exact if_assembly_nodup (A := lt.blocks)
+                              (B := le.blocks) (C := lr.blocks)
+                              (thenB := ⟨nextB, lt.instrs, lt.term⟩)
+                              (elseB := ⟨nextB + 1, le.instrs, le.term⟩)
+                              (joinB := ⟨nextB + 2,
+                                [Instr.phi le.supply ((lt.blocks.getLast?.map
+                                  (fun b => b.id)).getD nextB) lt.val,
+                                 Instr.phi le.supply ((le.blocks.getLast?.map
+                                  (fun b => b.id)).getD (nextB + 1)) le.val] ++
+                                  lr.instrs,
+                                lr.term⟩)
+                              hmnt hmne hmnr hbndt hbnde hbndr
+                              rfl rfl rfl hnodt hnode hnodr
+      | returnStmt e rest hstr _ =>
+          simp [lowerStmtsCFG] at h
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he] at h; simp at h
+          | some p =>
+              obtain ⟨v, ie, s1⟩ := p
+              rw [he] at h
+              simp at h
+              subst h
+              have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+              exact ⟨Nat.le_refl _, hs1, fun b hb => by simp at hb,
+                List.nodup_nil⟩
+      | breakStmt rest _ =>
+          cases hlo : loop with
+          | none => simp [lowerStmtsCFG, hlo] at h
+          | some info =>
+              simp only [lowerStmtsCFG, hlo] at h
+              cases hc : carryCopies ρ info.carried with
+              | none => simp [hc] at h
+              | some copies =>
+                  simp [hc] at h
+                  subst h
+                  exact ⟨Nat.le_refl _, Nat.le_refl _, fun b hb => by simp at hb,
+                    List.nodup_nil⟩
+      | continueStmt rest _ =>
+          cases hlo : loop with
+          | none => simp [lowerStmtsCFG, hlo] at h
+          | some info =>
+              simp only [lowerStmtsCFG, hlo] at h
+              cases hc : carryCopies ρ info.carried with
+              | none => simp [hc] at h
+              | some copies =>
+                  simp [hc] at h
+                  subst h
+                  exact ⟨Nat.le_refl _, Nat.le_refl _, fun b hb => by simp at hb,
+                    List.nodup_nil⟩
+
+/-! ## Freshness is preserved (C7-core, piece 1)
+
+`whileLoop_correct` concludes `FreshAbove lb.ρ (lb.supply + 1)` — the loop
+body's exit env mentions only registers below its supply — and all three
+`whileLoop_correct` use-sites take that fact from the deferred theorem. These
+three lemmas prove it outright, mirroring the `branch_inv`/`arm_inv`/
+`loopBody_inv` trio case-for-case (same inductions, same supply-growth facts
+from `arm_inv`, only the conclusion changes): arm lowering never rebinds, so
+its input freshness suffices; loop bodies and branch programs thread it
+through `lowerExpr` (`lower_result_lt`), `varDecl` (fresh head register),
+`assign` (`updAssoc_mem`), and the `mkCarried` allocation
+(`mkCarried_growth_fresh`). -/
+theorem lowerStmtsCFG_arm_fresh (budget : Nat) :
+    ∀ (bId : MIR.BlockId) (cont : Option MIR.BlockId) (ρ : List (HIR.Id × ValId))
+      (supply nextB : Nat) (lastVal : ValId) (hasVal : Bool)
+      (loop : Option LoopInfo)
+      (ss : List HIR.Stmt) (L : Lowered),
+      lowerStmtsCFG bId cont true ρ supply nextB lastVal hasVal loop ss = some L →
+      ArmStmts budget ss →
+      FreshAbove ρ supply → lastVal < supply →
+      FreshAbove L.ρ L.supply := by
+  intro bId cont ρ supply nextB lastVal hasVal loop ss L h hss hfresh hlast
+  induction hss generalizing bId cont ρ supply nextB lastVal hasVal loop L with
+  | nil =>
+      simp only [lowerStmtsCFG.eq_def] at h
+      cases hv : hasVal with
+      | true =>
+          simp only [hv] at h
+          simp at h
+          subst h
+          exact hfresh
+      | false =>
+          simp only [hv] at h
+          simp at h
+          subst h
+          exact FreshAbove.mono ρ supply (supply + 1) (Nat.le_succ _) hfresh
+  | exprStmt e rest hstr _ hrs ih =>
+      simp only [lowerStmtsCFG] at h
+      cases he : lowerExpr ρ supply e with
+      | none => rw [he] at h; simp at h
+      | some p =>
+          obtain ⟨v, ie, s1⟩ := p
+          rw [he] at h
+          simp only [] at h
+          cases hr : lowerStmtsCFG bId cont true ρ s1 nextB v true loop rest with
+          | none => rw [hr] at h; simp at h
+          | some q =>
+              rw [hr] at h
+              simp only [] at h
+              have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+              have hv : v < s1 := lower_result_lt.1 _ _ _ _ _ _ he hfresh
+              have hq := ih _ _ _ _ _ _ _ _ _ hr
+                (FreshAbove.mono ρ supply s1 hs1 hfresh) hv
+              obtain rfl := Option.some.inj h
+              exact hq
+  | nop rest hrs ih =>
+      simp only [lowerStmtsCFG] at h
+      exact ih _ _ _ _ _ _ _ _ _ h hfresh hlast
+  | ifStmt c th el rest hstr _ hath hael hrs iht ihe ihr =>
+      simp only [lowerStmtsCFG] at h
+      cases heC : lowerExpr ρ supply c with
+      | none => rw [heC] at h; simp at h
+      | some p =>
+          obtain ⟨vc, ic, s1⟩ := p
+          rw [heC] at h
+          simp only [] at h
+          cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
+              (nextB + 3) lastVal false loop th with
+          | none => rw [ht] at h; simp at h
+          | some lt =>
+              rw [ht] at h
+              simp only [] at h
+              cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2))
+                  true ρ lt.supply lt.next lastVal false loop el with
+              | none => rw [he] at h; simp at h
+              | some le =>
+                  rw [he] at h
+                  simp only [] at h
+                  cases hr : lowerStmtsCFG (nextB + 2) cont true ρ
+                      (le.supply + 1) le.next le.supply true loop rest with
+                  | none => rw [hr] at h; simp at h
+                  | some lr =>
+                      rw [hr] at h
+                      simp only [] at h
+                      have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ heC
+                      have hlt : s1 ≤ lt.supply :=
+                        (lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _ ht
+                          hath).2.1
+                      have hle : lt.supply ≤ le.supply :=
+                        (lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _ he
+                          hael).2.1
+                      have hq := ihr _ _ _ _ _ _ _ _ _ hr
+                        (FreshAbove.mono ρ supply (le.supply + 1) (by omega)
+                          hfresh)
+                        (Nat.lt_succ_self _)
+                      obtain rfl := Option.some.inj h
+                      dsimp only at ⊢
+                      exact hq
+  | returnStmt e rest hstr _ =>
+      simp [lowerStmtsCFG] at h
+      cases he : lowerExpr ρ supply e with
+      | none => rw [he] at h; simp at h
+      | some p =>
+          obtain ⟨v, ie, s1⟩ := p
+          rw [he] at h
+          simp at h
+          subst h
+          exact FreshAbove.mono ρ supply s1
+            (lower_mono.1 _ _ _ _ _ _ he) hfresh
+  | breakStmt rest hrs ih =>
+      cases hlo : loop with
+      | none => simp [lowerStmtsCFG, hlo] at h
+      | some info =>
+          simp only [lowerStmtsCFG, hlo] at h
+          cases hc : carryCopies ρ info.carried with
+          | none => simp [hc] at h
+          | some copies =>
+              simp [hc] at h
+              subst h
+              exact hfresh
+  | continueStmt rest hrs ih =>
+      cases hlo : loop with
+      | none => simp [lowerStmtsCFG, hlo] at h
+      | some info =>
+          simp only [lowerStmtsCFG, hlo] at h
+          cases hc : carryCopies ρ info.carried with
+          | none => simp [hc] at h
+          | some copies =>
+              simp [hc] at h
+              subst h
+              exact hfresh
+
+/-- Freshness is preserved by loop-body lowering (list induction plus `cases`
+inversion, exactly as in `loopBody_inv`; each `if` arm cites `arm_fresh`). -/
+theorem lowerStmtsCFG_loopBody_fresh (budget : Nat) :
+    ∀ (bId : MIR.BlockId) (cont : Option MIR.BlockId) (ρ : List (HIR.Id × ValId))
+      (supply nextB : Nat) (lastVal : ValId) (hasVal : Bool)
+      (loop : Option LoopInfo)
+      (ss : List HIR.Stmt) (L : Lowered),
+      lowerStmtsCFG bId cont false ρ supply nextB lastVal hasVal loop ss = some L →
+      LoopStmts budget ss →
+      FreshAbove ρ supply → lastVal < supply →
+      FreshAbove L.ρ L.supply := by
+  intro bId cont ρ supply nextB lastVal hasVal loop ss
+  induction ss generalizing bId cont ρ supply nextB lastVal hasVal loop with
+  | nil =>
+      intro L h hss hfresh hlast
+      cases hss with
+      | nil =>
+          simp only [lowerStmtsCFG.eq_def] at h
+          simp at h
+          subst h
+          exact hfresh
+  | cons s rest ih =>
+      intro L h hss hfresh hlast
+      cases hss with
+      | exprStmt e rest hstr _ hloop =>
+          simp [lowerStmtsCFG] at h
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he] at h; simp at h
+          | some p =>
+              obtain ⟨v, ie, s1⟩ := p
+              rw [he] at h
+              simp at h
+              cases hr : lowerStmtsCFG bId cont false ρ s1 nextB v true loop rest with
+              | none => rw [hr] at h; simp at h
+              | some q =>
+                  rw [hr] at h
+                  simp at h
+                  have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+                  have hv : v < s1 := lower_result_lt.1 _ _ _ _ _ _ he hfresh
+                  have hq := ih _ _ _ _ _ _ _ _ _ hr hloop
+                    (FreshAbove.mono ρ supply s1 hs1 hfresh) hv
+                  subst h
+                  exact hq
+      | varDecl id τ init rest hstr _ hloop _ =>
+          cases hlo : loop with
+          | some _ => simp [lowerStmtsCFG, hlo] at h
+          | none =>
+              simp [lowerStmtsCFG, hlo] at h
+              cases he : lowerExpr ρ supply init with
+              | none => rw [he] at h; simp at h
+              | some p =>
+                  obtain ⟨vb, ib, s1⟩ := p
+                  rw [he] at h
+                  simp at h
+                  cases hr : lowerStmtsCFG bId cont false ((id, vb) :: ρ) s1
+                      nextB lastVal true none rest with
+                  | none => rw [hr] at h; simp at h
+                  | some q =>
+                      rw [hr] at h
+                      simp at h
+                      have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+                      have hvb : vb < s1 := lower_result_lt.1 _ _ _ _ _ _ he hfresh
+                      have hfr1 : FreshAbove ((id, vb) :: ρ) s1 := by
+                        intro j v hmem
+                        simp only [List.mem_cons, Prod.mk.injEq] at hmem
+                        rcases hmem with ⟨rfl, rfl⟩ | hmem
+                        · exact hvb
+                        · exact Nat.lt_of_lt_of_le (hfresh _ _ hmem) hs1
+                      have hq := ih _ _ _ _ _ _ _ _ _ hr hloop hfr1
+                        (Nat.lt_of_lt_of_le hlast hs1)
+                      subst h
+                      exact hq
+      | assign id e rest hstr _ hloop _ =>
+          simp [lowerStmtsCFG] at h
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he] at h; simp at h
+          | some p =>
+              obtain ⟨v, ie, s1⟩ := p
+              rw [he] at h
+              simp at h
+              cases hr : lowerStmtsCFG bId cont false (updAssoc ρ id v) s1
+                  nextB lastVal true loop rest with
+              | none => rw [hr] at h; simp at h
+              | some q =>
+                  rw [hr] at h
+                  simp at h
+                  have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+                  have hv : v < s1 := lower_result_lt.1 _ _ _ _ _ _ he hfresh
+                  have hfr1 : FreshAbove (updAssoc ρ id v) s1 := by
+                    intro j w hmem
+                    rcases updAssoc_mem ρ id v j w hmem with ⟨rfl, rfl⟩ | hmem
+                    · exact hv
+                    · exact Nat.lt_of_lt_of_le (hfresh _ _ hmem) hs1
+                  have hq := ih _ _ _ _ _ _ _ _ _ hr hloop hfr1
+                    (Nat.lt_of_lt_of_le hlast hs1)
+                  subst h
+                  exact hq
+      | nop rest hloop =>
+          simp only [lowerStmtsCFG] at h
+          exact ih _ _ _ _ _ _ _ _ L h hloop hfresh hlast
+      | ifStmt c th el rest hstr _ hath hael hloop _ _ =>
+          simp only [lowerStmtsCFG] at h
+          cases heC : lowerExpr ρ supply c with
+          | none => rw [heC] at h; simp at h
+          | some p =>
+              obtain ⟨vc, ic, s1⟩ := p
+              rw [heC] at h
+              simp only [] at h
+              cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
+                  (nextB + 3) lastVal false loop th with
+              | none => rw [ht] at h; simp at h
+              | some lt =>
+                  rw [ht] at h
+                  simp only [] at h
+                  cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2))
+                      true ρ lt.supply lt.next lastVal false loop el with
+                  | none => rw [he] at h; simp at h
+                  | some le =>
+                      rw [he] at h
+                      simp only [] at h
+                      cases hr : lowerStmtsCFG (nextB + 2) cont false ρ
+                          (le.supply + 1) le.next le.supply true loop rest with
+                      | none => rw [hr] at h; simp at h
+                      | some lr =>
+                          rw [hr] at h
+                          simp only [] at h
+                          have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ heC
+                          have hlt : s1 ≤ lt.supply :=
+                            (lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _ ht
+                              hath).2.1
+                          have hle : lt.supply ≤ le.supply :=
+                            (lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _ he
+                              hael).2.1
+                          have hq := ih _ _ _ _ _ _ _ _ _ hr hloop
+                            (FreshAbove.mono ρ supply (le.supply + 1) (by omega)
+                              hfresh)
+                            (Nat.lt_succ_self _)
+                          obtain rfl := Option.some.inj h
+                          dsimp only at ⊢
+                          exact hq
+      | ifStmtBreak c th el rest hstr _ hath hael hloop _ =>
+          simp only [lowerStmtsCFG] at h
+          cases heC : lowerExpr ρ supply c with
+          | none => rw [heC] at h; simp at h
+          | some p =>
+              obtain ⟨vc, ic, s1⟩ := p
+              rw [heC] at h
+              simp only [] at h
+              cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
+                  (nextB + 3) lastVal false loop th with
+              | none => rw [ht] at h; simp at h
+              | some lt =>
+                  rw [ht] at h
+                  simp only [] at h
+                  cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2))
+                      true ρ lt.supply lt.next lastVal false loop el with
+                  | none => rw [he] at h; simp at h
+                  | some le =>
+                      rw [he] at h
+                      simp only [] at h
+                      cases hr : lowerStmtsCFG (nextB + 2) cont false ρ
+                          (le.supply + 1) le.next le.supply true loop rest with
+                      | none => rw [hr] at h; simp at h
+                      | some lr =>
+                          rw [hr] at h
+                          simp only [] at h
+                          have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ heC
+                          have hlt : s1 ≤ lt.supply :=
+                            (lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _ ht
+                              hath).2.1
+                          have hle : lt.supply ≤ le.supply :=
+                            (lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _ he
+                              hael).2.1
+                          have hq := ih _ _ _ _ _ _ _ _ _ hr hloop
+                            (FreshAbove.mono ρ supply (le.supply + 1) (by omega)
+                              hfresh)
+                            (Nat.lt_succ_self _)
+                          obtain rfl := Option.some.inj h
+                          dsimp only at ⊢
+                          exact hq
+      | returnStmt e rest hstr _ =>
+          simp [lowerStmtsCFG] at h
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he] at h; simp at h
+          | some p =>
+              obtain ⟨v, ie, s1⟩ := p
+              rw [he] at h
+              simp at h
+              subst h
+              exact FreshAbove.mono ρ supply s1
+                (lower_mono.1 _ _ _ _ _ _ he) hfresh
+      | breakStmt rest hloop =>
+          cases hlo : loop with
+          | none => simp [lowerStmtsCFG, hlo] at h
+          | some info =>
+              simp only [lowerStmtsCFG, hlo] at h
+              cases hc : carryCopies ρ info.carried with
+              | none => simp [hc] at h
+              | some copies =>
+                  simp [hc] at h
+                  subst h
+                  exact hfresh
+      | continueStmt rest hloop =>
+          cases hlo : loop with
+          | none => simp [lowerStmtsCFG, hlo] at h
+          | some info =>
+              simp only [lowerStmtsCFG, hlo] at h
+              cases hc : carryCopies ρ info.carried with
+              | none => simp [hc] at h
+              | some copies =>
+                  simp [hc] at h
+                  subst h
+                  exact hfresh
+
+/-- Freshness is preserved by branch lowering: the `branch_inv` induction
+with a freshness conclusion. The `whileStmt` body cites `loopBody_fresh`
+(exactly as `branch_inv` cites `loopBody_inv`); arms cite `arm_fresh`. -/
+theorem lowerStmtsCFG_branch_fresh (budget : Nat) :
+    ∀ (bId : MIR.BlockId) (cont : Option MIR.BlockId) (ρ : List (HIR.Id × ValId))
+      (supply nextB : Nat) (lastVal : ValId) (hasVal : Bool)
+      (loop : Option LoopInfo)
+      (ss : List HIR.Stmt) (L : Lowered),
+      lowerStmtsCFG bId cont false ρ supply nextB lastVal hasVal loop ss = some L →
+      BranchStmts budget ss →
+      FreshAbove ρ supply → lastVal < supply →
+      FreshAbove L.ρ L.supply := by
+  intro bId cont ρ supply nextB lastVal hasVal loop ss
+  induction ss generalizing bId cont ρ supply nextB lastVal hasVal loop with
+  | nil =>
+      intro L h hss hfresh hlast
+      cases hss with
+      | nil =>
+          simp only [lowerStmtsCFG.eq_def] at h
+          simp at h
+          subst h
+          exact hfresh
+  | cons s rest ih =>
+      intro L h hss hfresh hlast
+      cases hss with
+      | cons hs hrs =>
+          cases hs with
+          | exprStmt e hstr _ =>
+              simp only [lowerStmtsCFG] at h
+              cases he : lowerExpr ρ supply e with
+              | none => rw [he] at h; simp at h
+              | some p =>
+                  obtain ⟨v, ie, s1⟩ := p
+                  rw [he] at h
+                  simp only [] at h
+                  cases hr : lowerStmtsCFG bId cont false ρ s1 nextB v true loop rest with
+                  | none => rw [hr] at h; simp at h
+                  | some q =>
+                      rw [hr] at h
+                      simp only [] at h
+                      have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+                      have hv : v < s1 := lower_result_lt.1 _ _ _ _ _ _ he hfresh
+                      have hq := ih _ _ _ _ _ _ _ _ _ hr hrs
+                        (FreshAbove.mono ρ supply s1 hs1 hfresh) hv
+                      obtain rfl := Option.some.inj h
+                      exact hq
+          | varDecl id τ init hstr _ =>
+              cases hlo : loop with
+              | some _ => simp [lowerStmtsCFG, hlo] at h
+              | none =>
+                  simp [lowerStmtsCFG, hlo] at h
+                  cases he : lowerExpr ρ supply init with
+                  | none => rw [he] at h; simp at h
+                  | some p =>
+                      obtain ⟨vb, ib, s1⟩ := p
+                      rw [he] at h
+                      simp only [] at h
+                      cases hr : lowerStmtsCFG bId cont false ((id, vb) :: ρ) s1
+                          nextB lastVal true none rest with
+                      | none => rw [hr] at h; simp at h
+                      | some q =>
+                          rw [hr] at h
+                          simp only [] at h
+                          have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+                          have hvb : vb < s1 := lower_result_lt.1 _ _ _ _ _ _ he hfresh
+                          have hfr1 : FreshAbove ((id, vb) :: ρ) s1 := by
+                            intro j v hmem
+                            simp only [List.mem_cons, Prod.mk.injEq] at hmem
+                            rcases hmem with ⟨rfl, rfl⟩ | hmem
+                            · exact hvb
+                            · exact Nat.lt_of_lt_of_le (hfresh _ _ hmem) hs1
+                          have hq := ih _ _ _ _ _ _ _ _ _ hr hrs hfr1
+                            (Nat.lt_of_lt_of_le hlast hs1)
+                          obtain rfl := Option.some.inj h
+                          exact hq
+          | assign id e hstr _ =>
+              simp only [lowerStmtsCFG] at h
+              cases he : lowerExpr ρ supply e with
+              | none => rw [he] at h; simp at h
+              | some p =>
+                  obtain ⟨v, ie, s1⟩ := p
+                  rw [he] at h
+                  simp only [] at h
+                  cases hr : lowerStmtsCFG bId cont false (updAssoc ρ id v) s1
+                      nextB lastVal true loop rest with
+                  | none => rw [hr] at h; simp at h
+                  | some q =>
+                      rw [hr] at h
+                      simp only [] at h
+                      have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+                      have hv : v < s1 := lower_result_lt.1 _ _ _ _ _ _ he hfresh
+                      have hfr1 : FreshAbove (updAssoc ρ id v) s1 := by
+                        intro j w hmem
+                        rcases updAssoc_mem ρ id v j w hmem with ⟨rfl, rfl⟩ | hmem
+                        · exact hv
+                        · exact Nat.lt_of_lt_of_le (hfresh _ _ hmem) hs1
+                      have hq := ih _ _ _ _ _ _ _ _ _ hr hrs hfr1
+                        (Nat.lt_of_lt_of_le hlast hs1)
+                      obtain rfl := Option.some.inj h
+                      exact hq
+          | nop =>
+              simp only [lowerStmtsCFG] at h
+              exact ih _ _ _ _ _ _ _ _ _ h hrs hfresh hlast
+          | ifStmt c th el hstr _ hath hael =>
+              simp only [lowerStmtsCFG] at h
+              cases heC : lowerExpr ρ supply c with
+              | none => rw [heC] at h; simp at h
+              | some p =>
+                  obtain ⟨vc, ic, s1⟩ := p
+                  rw [heC] at h
+                  simp only [] at h
+                  cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
+                      (nextB + 3) lastVal false loop th with
+                  | none => rw [ht] at h; simp at h
+                  | some lt =>
+                      rw [ht] at h
+                      simp only [] at h
+                      cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2))
+                          true ρ lt.supply lt.next lastVal false loop el with
+                      | none => rw [he] at h; simp at h
+                      | some le =>
+                          rw [he] at h
+                          simp only [] at h
+                          cases hr : lowerStmtsCFG (nextB + 2) cont false ρ
+                              (le.supply + 1) le.next le.supply true loop rest with
+                          | none => rw [hr] at h; simp at h
+                          | some lr =>
+                              rw [hr] at h
+                              simp only [] at h
+                              have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ heC
+                              have hlt : s1 ≤ lt.supply :=
+                                (lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _ ht
+                                  hath).2.1
+                              have hle : lt.supply ≤ le.supply :=
+                                (lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _ he
+                                  hael).2.1
+                              have hq := ih _ _ _ _ _ _ _ _ _ hr hrs
+                                (FreshAbove.mono ρ supply (le.supply + 1) (by omega)
+                                  hfresh)
+                                (Nat.lt_succ_self _)
+                              obtain rfl := Option.some.inj h
+                              dsimp only at ⊢
+                              exact hq
+          | breakStmt =>
+              cases hlo : loop with
+              | none => simp [lowerStmtsCFG, hlo] at h
+              | some info =>
+                  simp only [lowerStmtsCFG, hlo] at h
+                  cases hc : carryCopies ρ info.carried with
+                  | none => simp [hc] at h
+                  | some copies =>
+                      simp [hc] at h
+                      subst h
+                      exact hfresh
+          | continueStmt =>
+              cases hlo : loop with
+              | none => simp [lowerStmtsCFG, hlo] at h
+              | some info =>
+                  simp only [lowerStmtsCFG, hlo] at h
+                  cases hc : carryCopies ρ info.carried with
+                  | none => simp [hc] at h
+                  | some copies =>
+                      simp [hc] at h
+                      subst h
+                      exact hfresh
+          | whileStmt c body hstr _ hloop =>
+              cases hlo : loop with
+              | some info => simp [lowerStmtsCFG, hlo] at h
+              | none =>
+                  rw [hlo] at h
+                  simp only [lowerStmtsCFG] at h
+                  cases hm : mkCarried ρ supply ((dedupIds (assignedIds body)).filterMap
+                      (fun id => (rhoLookup ρ id).map (fun _ => id))) with
+                  | none => rw [hm] at h; simp at h
+                  | some q =>
+                      obtain ⟨carried, sA, ρb⟩ := q
+                      rw [hm] at h
+                      simp only [] at h
+                      cases heC : lowerExpr ρb sA c with
+                      | none => rw [heC] at h; simp at h
+                      | some p =>
+                          obtain ⟨vc, ic, s1⟩ := p
+                          rw [heC] at h
+                          simp only [] at h
+                          cases hb : lowerStmtsCFG (nextB + 2) (some nextB) false ρb
+                              (s1 + 1) (nextB + 3) s1 true
+                              (loop := some ⟨nextB, nextB + 1, carried⟩) body with
+                          | none => rw [hb] at h; simp at h
+                          | some lb =>
+                              rw [hb] at h
+                              simp only [] at h
+                              cases hr : lowerStmtsCFG (nextB + 1) cont false ρb
+                                  (lb.supply + 1) lb.next lb.supply true none rest with
+                              | none => rw [hr] at h; simp at h
+                              | some lr =>
+                                  rw [hr] at h
+                                  simp only [] at h
+                                  cases hp : mkHeaderPhis ρ bId carried
+                                      ((lb.blocks.getLast?.map fun b => b.id).getD
+                                        (nextB + 2))
+                                      lb.ρ
+                                      (lb.blocks.filterMap (fun b =>
+                                        match b.terminator with
+                                        | .goto t =>
+                                            if t == nextB &&
+                                                b.id != (lb.blocks.getLast?.map
+                                                  fun b => b.id).getD (nextB + 2) then
+                                              some b.id
+                                            else none
+                                        | _ => none)) with
+                                  | none => rw [hp] at h; simp at h
+                                  | some phis =>
+                                      rw [hp] at h
+                                      simp only [] at h
+                                      have hfrb : FreshAbove ρb sA :=
+                                        (mkCarried_growth_fresh hfresh hm).2
+                                      have hsA : sA ≤ s1 :=
+                                        lower_mono.1 _ _ _ _ _ _ heC
+                                      have hbody : FreshAbove lb.ρ lb.supply :=
+                                        lowerStmtsCFG_loopBody_fresh budget _ _ _ _ _ _ _ _ _ _ hb
+                                          hloop
+                                          (FreshAbove.mono ρb sA (s1 + 1) (by omega)
+                                            hfrb)
+                                          (Nat.lt_succ_self _)
+                                      have hgrow : s1 + 1 ≤ lb.supply :=
+                                        (lowerStmtsCFG_loopBody_inv budget _ _ _ _ _ _ _ _ _ _ hb
+                                          hloop).2.1
+                                      have hfrb' : FreshAbove ρb (lb.supply + 1) :=
+                                        FreshAbove.mono ρb sA (lb.supply + 1)
+                                          (by omega) hfrb
+                                      have hq := ih _ _ _ _ _ _ _ _ _ hr hrs hfrb'
+                                        (Nat.lt_succ_self _)
+                                      obtain rfl := Option.some.inj h
+                                      dsimp only at ⊢
+                                      exact hq
+      | returnStmt e rest hstr _ =>
+          simp [lowerStmtsCFG] at h
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he] at h; simp at h
+          | some p =>
+              obtain ⟨v, ie, s1⟩ := p
+              rw [he] at h
+              simp at h
+              subst h
+              exact FreshAbove.mono ρ supply s1
+                (lower_mono.1 _ _ _ _ _ _ he) hfresh
+
+/-- Master invariant over the straight-line-carrying fragment: supply and
+block ids only grow, every produced block id is fresh for the call and
+below the returned supply of ids, and the produced ids are duplicate-free.
+`arm` is fixed `false`: bindings are allowed and the lowering handles them. -/
+theorem lowerStmtsCFG_branch_inv (budget : Nat) :
+    ∀ (bId : MIR.BlockId) (cont : Option MIR.BlockId) (ρ : List (HIR.Id × ValId))
+      (supply nextB : Nat) (lastVal : ValId) (hasVal : Bool)
+      (loop : Option LoopInfo)
+      (ss : List HIR.Stmt) (L : Lowered),
+      lowerStmtsCFG bId cont false ρ supply nextB lastVal hasVal loop ss = some L →
+      BranchStmts budget ss →
+      nextB ≤ L.next ∧ supply ≤ L.supply ∧
+        (∀ b ∈ L.blocks, nextB ≤ b.id ∧ b.id < L.next) ∧
+        (L.blocks.map Block.id).Nodup := by
+  intro bId cont ρ supply nextB lastVal hasVal loop ss
+  induction ss generalizing bId cont ρ supply nextB lastVal hasVal loop with
+  | nil =>
+      intro L h hss
+      cases hss with
+      | nil =>
+          simp only [lowerStmtsCFG.eq_def] at h
+          simp at h
+          subst h
+          exact ⟨Nat.le_refl _, Nat.le_refl _, fun b hb => by simp at hb,
+            List.nodup_nil⟩
+  | cons s rest ih =>
+      intro L h hss
+      cases hss with
+      | cons hs hrs =>
+          cases hs with
+          | exprStmt e hstr _ =>
+              simp [lowerStmtsCFG] at h
+              cases he : lowerExpr ρ supply e with
+              | none => rw [he] at h; simp at h
+              | some p =>
+                  obtain ⟨v0, ie, s1⟩ := p
+                  rw [he] at h
+                  simp at h
+                  cases hr : lowerStmtsCFG bId cont false ρ s1 nextB v0 true loop rest with
+                  | none => rw [hr] at h; simp at h
+                  | some q =>
+                      rw [hr] at h
+                      simp at h
+                      subst h
+                      have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+                      obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ _ _ hr hrs
+                      exact ⟨hmn, Nat.le_trans hs1 hms, hbnd, hnod⟩
+          | varDecl id τ init hstr _ =>
+              cases hlo : loop with
+              | some _ => simp [lowerStmtsCFG, hlo] at h
+              | none =>
+                  simp [lowerStmtsCFG, hlo] at h
+                  cases he : lowerExpr ρ supply init with
+                  | none => rw [he] at h; simp at h
+                  | some p =>
+                      obtain ⟨vb, ib, s1⟩ := p
+                      rw [he] at h
+                      simp at h
+                      cases hr : lowerStmtsCFG bId cont false ((id, vb) :: ρ) s1
+                          nextB lastVal true none rest with
+                      | none => rw [hr] at h; simp at h
+                      | some q =>
+                          rw [hr] at h
+                          simp at h
+                          subst h
+                          have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+                          obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ _ _ hr hrs
+                          exact ⟨hmn, Nat.le_trans hs1 hms, hbnd, hnod⟩
+          | assign id e hstr _ =>
+              simp [lowerStmtsCFG] at h
+              cases he : lowerExpr ρ supply e with
+              | none => rw [he] at h; simp at h
+              | some p =>
+                  obtain ⟨v, ie, s1⟩ := p
+                  rw [he] at h
+                  simp at h
+                  cases hr : lowerStmtsCFG bId cont false (updAssoc ρ id v) s1
+                      nextB lastVal true loop rest with
+                  | none => rw [hr] at h; simp at h
+                  | some q =>
+                      rw [hr] at h
+                      simp at h
+                      subst h
+                      have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+                      obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ _ _ hr hrs
+                      exact ⟨hmn, Nat.le_trans hs1 hms, hbnd, hnod⟩
+          | nop =>
+              simp [lowerStmtsCFG] at h
+              cases hr : lowerStmtsCFG bId cont false ρ supply nextB
+                  lastVal hasVal loop rest with
+              | none => rw [hr] at h; simp at h
+              | some q =>
+                  rw [hr] at h
+                  simp at h
+                  subst h
+                  obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ _ _ hr hrs
+                  exact ⟨hmn, hms, hbnd, hnod⟩
+          | ifStmt c th el hstr _ hath hael =>
+              -- Peel with `unfold`, never `simp`: full `simp` normalizes the
+              -- block assembly (`[T] ++ X` to `T :: X`), breaking the syntactic
+              -- match the membership split and `if_assembly_nodup` need.
+              simp only [lowerStmtsCFG] at h
+              cases heC : lowerExpr ρ supply c with
+              | none => rw [heC] at h; simp at h
+              | some p =>
+                  obtain ⟨vc, ic, s1⟩ := p
+                  rw [heC] at h
+                  simp only [] at h
+                  cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
+                      (nextB + 3) lastVal false loop th with
+                  | none => rw [ht] at h; simp at h
+                  | some lt =>
+                      rw [ht] at h
+                      simp only [] at h
+                      cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2))
+                          true ρ lt.supply lt.next lastVal false loop el with
+                      | none => rw [he] at h; simp at h
+                      | some le =>
+                          rw [he] at h
+                          simp only [] at h
+                          cases hr : lowerStmtsCFG (nextB + 2) cont false ρ
+                              (le.supply + 1) le.next le.supply true loop rest with
+                          | none => rw [hr] at h; simp at h
+                          | some lr =>
+                              rw [hr] at h
+                              obtain rfl := Option.some.inj h
+                              dsimp only at ⊢
+                              have hs1 : supply ≤ s1 :=
+                                lower_mono.1 _ _ _ _ _ _ heC
+                              obtain ⟨hmnt, hmst, hbndt, hnodt⟩ :=
+                                lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _ ht hath
+                              obtain ⟨hmne, hmse, hbnde, hnode⟩ :=
+                                lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _ he
+                                  hael
+                              obtain ⟨hmnr, hmsr, hbndr, hnodr⟩ :=
+                                ih _ _ _ _ _ _ _ _ _ hr hrs
+                              refine ⟨by omega, by omega, ?_, ?_⟩
+                              · intro b hb
+                                simp only [List.mem_append, List.mem_singleton] at hb
+                                rcases hb with (((((hb | rfl) | hb) | rfl) | rfl) | hb)
+                                · obtain ⟨hlo, hhi⟩ := hbndt b hb
+                                  exact ⟨Nat.le_trans (Nat.le_add_right _ _) hlo,
+                                    Nat.lt_of_lt_of_le hhi (Nat.le_trans hmne
+                                      (Nat.le_trans hmnr (Nat.le_succ _)))⟩
+                                · exact ⟨Nat.le_refl _,
+                                    Nat.lt_of_le_of_lt (Nat.le_trans
+                                      (Nat.le_trans (Nat.le_trans
+                                        (Nat.le_add_right _ _) hmnt) hmne) hmnr)
+                                      (Nat.lt_succ_self _)⟩
+                                · obtain ⟨hlo, hhi⟩ := hbnde b hb
+                                  exact ⟨Nat.le_trans (Nat.le_trans
+                                      (Nat.le_add_right _ _) hmnt) hlo,
+                                    Nat.lt_of_lt_of_le hhi (Nat.le_trans hmnr
+                                      (Nat.le_succ _))⟩
+                                · exact ⟨Nat.le_succ _,
+                                    Nat.lt_of_le_of_lt (Nat.le_trans
+                                      (Nat.le_trans (Nat.le_trans
+                                        (Nat.le_trans (Nat.le_succ _)
+                                          (Nat.le_succ _)) hmnt) hmne) hmnr)
+                                      (Nat.lt_succ_self _)⟩
+                                · exact ⟨Nat.le_add_right _ _,
+                                    Nat.lt_of_le_of_lt (Nat.le_trans
+                                      (Nat.le_trans (Nat.le_trans
+                                        (Nat.le_succ _) hmnt) hmne) hmnr)
+                                      (Nat.lt_succ_self _)⟩
+                                · obtain ⟨hlo, hhi⟩ := hbndr b hb
+                                  exact ⟨Nat.le_trans (Nat.le_trans
+                                      (Nat.le_trans (Nat.le_add_right _ _)
+                                        hmnt) hmne) hlo,
+                                    Nat.lt_of_lt_of_le hhi (Nat.le_succ _)⟩
+                              · exact if_assembly_nodup (A := lt.blocks)
+                                  (B := le.blocks) (C := lr.blocks)
+                                  (thenB := ⟨nextB, lt.instrs, lt.term⟩)
+                                  (elseB := ⟨nextB + 1, le.instrs, le.term⟩)
+                                  (joinB := ⟨nextB + 2,
+                                    [Instr.phi le.supply ((lt.blocks.getLast?.map
+                                      (fun b => b.id)).getD nextB) lt.val,
+                                     Instr.phi le.supply ((le.blocks.getLast?.map
+                                      (fun b => b.id)).getD (nextB + 1)) le.val] ++
+                                      lr.instrs,
+                                    lr.term⟩)
+                                  hmnt hmne hmnr hbndt hbnde hbndr
+                                  rfl rfl rfl hnodt hnode hnodr
+          | breakStmt =>
+              cases hlo : loop with
+              | none => simp [lowerStmtsCFG, hlo] at h
+              | some info =>
+                  simp only [lowerStmtsCFG, hlo] at h
+                  cases hc : carryCopies ρ info.carried with
+                  | none => simp [hc] at h
+                  | some copies =>
+                      simp [hc] at h
+                      subst h
+                      exact ⟨Nat.le_refl _, Nat.le_refl _, fun b hb => by simp at hb,
+                        List.nodup_nil⟩
+          | continueStmt =>
+              cases hlo : loop with
+              | none => simp [lowerStmtsCFG, hlo] at h
+              | some info =>
+                  simp only [lowerStmtsCFG, hlo] at h
+                  cases hc : carryCopies ρ info.carried with
+                  | none => simp [hc] at h
+                  | some copies =>
+                      simp [hc] at h
+                      subst h
+                      exact ⟨Nat.le_refl _, Nat.le_refl _, fun b hb => by simp at hb,
+                        List.nodup_nil⟩
+          | whileStmt c body hstr _ hloop =>
+              cases hlo : loop with
+              | some info => simp [lowerStmtsCFG, hlo] at h
+              | none =>
+                  rw [hlo] at h
+                  simp only [lowerStmtsCFG] at h
+                  cases hm : mkCarried ρ supply ((dedupIds (assignedIds body)).filterMap
+                      (fun id => (rhoLookup ρ id).map (fun _ => id))) with
+                  | none => rw [hm] at h; simp at h
+                  | some q =>
+                      obtain ⟨carried, sA, ρb⟩ := q
+                      rw [hm] at h
+                      simp only [] at h
+                      cases heC : lowerExpr ρb sA c with
+                      | none => rw [heC] at h; simp at h
+                      | some p =>
+                          obtain ⟨vc, ic, s1⟩ := p
+                          rw [heC] at h
+                          simp only [] at h
+                          cases hb : lowerStmtsCFG (nextB + 2) (some nextB) false ρb
+                              (s1 + 1) (nextB + 3) s1 true
+                              (loop := some ⟨nextB, nextB + 1, carried⟩) body with
+                          | none => rw [hb] at h; simp at h
+                          | some lb =>
+                              rw [hb] at h
+                              simp only [] at h
+                              cases hr : lowerStmtsCFG (nextB + 1) cont false ρb
+                                  (lb.supply + 1) lb.next lb.supply true none rest with
+                              | none => rw [hr] at h; simp at h
+                              | some lr =>
+                                  rw [hr] at h
+                                  simp only [] at h
+                                  cases hp : mkHeaderPhis ρ bId carried
+                                      ((lb.blocks.getLast?.map fun b => b.id).getD
+                                        (nextB + 2))
+                                      lb.ρ
+                                      (lb.blocks.filterMap (fun b =>
+                                        match b.terminator with
+                                        | .goto t =>
+                                            if t == nextB &&
+                                                b.id != (lb.blocks.getLast?.map
+                                                  fun b => b.id).getD (nextB + 2) then
+                                              some b.id
+                                            else none
+                                        | _ => none)) with
+                                  | none => rw [hp] at h; simp at h
+                                  | some phis =>
+                                      rw [hp] at h
+                                      obtain rfl := Option.some.inj h
+                                      dsimp only at ⊢
+                                      have hsA : supply ≤ sA := mkCarried_le hm
+                                      have hs1 : sA ≤ s1 :=
+                                        lower_mono.1 _ _ _ _ _ _ heC
+                                      obtain ⟨hmnb, hmsb, hbndb, hnodlb⟩ :=
+                                        lowerStmtsCFG_loopBody_inv budget _ _ _ _ _ _ _ _ _ _ hb hloop
+                                      obtain ⟨hmnr, hmsr, hbndr, hnodr⟩ :=
+                                        ih _ _ _ _ _ _ _ _ _ hr hrs
+                                      refine ⟨by omega, by omega, ?_, ?_⟩
+                                      · intro b hb
+                                        simp only [List.mem_append, List.mem_singleton] at hb
+                                        rcases hb with ((((hb | rfl) | rfl) | rfl) | hb)
+                                        · obtain ⟨hlo, hhi⟩ := hbndb b hb
+                                          exact ⟨by omega,
+                                            Nat.lt_of_lt_of_le hhi (by omega)⟩
+                                        · exact ⟨Nat.le_add_right _ _,
+                                            Nat.lt_of_lt_of_le
+                                              (show nextB + 2 < lb.next from by omega)
+                                              hmnr⟩
+                                        · exact ⟨Nat.le_refl _,
+                                            Nat.lt_of_lt_of_le
+                                              (show nextB < lb.next from by omega)
+                                              hmnr⟩
+                                        · exact ⟨Nat.le_succ _,
+                                            Nat.lt_of_lt_of_le
+                                              (show nextB + 1 < lb.next from by omega)
+                                              hmnr⟩
+                                        · obtain ⟨hlo, hhi⟩ := hbndr b hb
+                                          exact ⟨by omega,
+                                            Nat.lt_of_lt_of_le hhi (by omega)⟩
+                                      · exact while_assembly_nodup hmnb hmnr hbndb hbndr
+                                          rfl rfl rfl hnodlb hnodr
+      | returnStmt e _ hstr _ =>
+          simp [lowerStmtsCFG] at h
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he] at h; simp at h
+          | some p =>
+              obtain ⟨v, ie, s1⟩ := p
+              rw [he] at h
+              simp at h
+              subst h
+              have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+              exact ⟨Nat.le_refl _, hs1, fun b hb => by simp at hb,
+                List.nodup_nil⟩
+
 
 /-! ## The boundary is real
 
 The four facts below are the ones an auditor would ask for: `if` is in, nesting
-is in, `while` is out, and a binding arm is out (until C2c). -/
+is in, a loop body is in (nesting is not), and a binding arm is out (until C2c). -/
 
 /-- A two-arm `return` program is in the fragment. -/
 example :
@@ -1070,12 +2565,20 @@ example :
       (.lit _) (by simp [SLWeight]) (.nop [] .nil) .nil .nil)
     .nil) .nil
 
-/-- `while` is outside the fragment: `BranchStep` has no arm for it, and the
-`returnStmt` shape cannot unify with a `whileLoop`. -/
-example : ¬ BranchStmts 256 [.whileLoop (.lit (.bool true)) []] := by
+/-- A loop with an empty body is in the fragment (C7): the header carries
+nothing and the body is one empty block. -/
+example : BranchStmts 256 [.whileLoop (.lit (.bool true)) []] :=
+  .cons (.whileStmt _ _ (.lit _) (by simp [SLWeight]) .nil) .nil
+
+/-- Nesting is outside the fragment: `LoopStmts` has no `while` arm, so the
+inner loop cannot unify with any body constructor. -/
+example : ¬ BranchStmts 256
+    [.whileLoop (.lit (.bool true)) [.whileLoop (.lit (.bool false)) []]] := by
   intro h
   cases h with
-  | cons hs _ => cases hs
+  | cons hs _ =>
+      cases hs with
+      | whileStmt _ _ _ _ hloop => cases hloop
 
 /-- A binding `if` arm is outside the fragment: `ArmStmts` has no `varDecl`. -/
 example : ¬ ArmStmts 256 [.varDecl ⟨0, "x"⟩ Typ.intType (.lit (.int 1))] := by
@@ -1611,7 +3114,7 @@ theorem lowerStmtsCFG_instrs_pure :
                   | some lb =>
                       rw [hb] at h
                       simp only [] at h
-                      cases hr : lowerStmtsCFG (nextB + 1) cont arm lb.ρ
+                      cases hr : lowerStmtsCFG (nextB + 1) cont arm ρb
                           (lb.supply + 1) lb.next lb.supply true none rest with
                       | none => rw [hr] at h; simp at h
                       | some lr =>
@@ -1678,12 +3181,13 @@ needs it to transport the arm's `RelEnv` into the rest segment. -/
 theorem lowerStmtsCFG_arm_rho (budget : Nat) :
     ∀ (bId : MIR.BlockId) (cont : Option MIR.BlockId) (ρ : List (HIR.Id × ValId))
       (supply nextB : Nat) (lastVal : ValId) (hasVal : Bool)
+      (loop : Option LoopInfo)
       (ss : List HIR.Stmt) (L : Lowered),
-      lowerStmtsCFG bId cont true ρ supply nextB lastVal hasVal none ss = some L →
+      lowerStmtsCFG bId cont true ρ supply nextB lastVal hasVal loop ss = some L →
       ArmStmts budget ss →
       L.ρ = ρ := by
-  intro bId cont ρ supply nextB lastVal hasVal ss L h hss
-  induction hss generalizing bId cont ρ supply nextB lastVal hasVal L with
+  intro bId cont ρ supply nextB lastVal hasVal loop ss L h hss
+  induction hss generalizing bId cont ρ supply nextB lastVal hasVal loop L with
   | nil =>
       simp only [lowerStmtsCFG.eq_def] at h
       cases hv : hasVal with
@@ -1703,24 +3207,24 @@ theorem lowerStmtsCFG_arm_rho (budget : Nat) :
           obtain ⟨v0, ie, s1⟩ := p
           rw [he] at h
           simp only [] at h
-          cases hr : lowerStmtsCFG bId cont true ρ s1 nextB v0 true none rest with
+          cases hr : lowerStmtsCFG bId cont true ρ s1 nextB v0 true loop rest with
           | none => rw [hr] at h; simp at h
           | some q =>
               rw [hr] at h
               simp only [] at h
               obtain rfl := Option.some.inj h
               show q.ρ = ρ
-              exact ih _ _ _ _ _ _ _ _ hr
+              exact ih _ _ _ _ _ _ _ _ _ hr
   | nop rest hrs ih =>
       simp only [lowerStmtsCFG] at h
       cases hr : lowerStmtsCFG bId cont true ρ supply nextB lastVal
-          hasVal none rest with
+          hasVal loop rest with
       | none => rw [hr] at h; simp at h
       | some q =>
           rw [hr] at h
           obtain rfl := Option.some.inj h
           show q.ρ = ρ
-          exact ih _ _ _ _ _ _ _ _ hr
+          exact ih _ _ _ _ _ _ _ _ _ hr
   | ifStmt c th el rest hstr _ hath hael hrs iht ihe ihr =>
       simp only [lowerStmtsCFG] at h
       cases heC : lowerExpr ρ supply c with
@@ -1730,26 +3234,26 @@ theorem lowerStmtsCFG_arm_rho (budget : Nat) :
           rw [heC] at h
           simp only [] at h
           cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
-              (nextB + 3) lastVal false none th with
+              (nextB + 3) lastVal false loop th with
           | none => rw [ht] at h; simp at h
           | some lt =>
               rw [ht] at h
               simp only [] at h
               cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ
-                  lt.supply lt.next lastVal false none el with
+                  lt.supply lt.next lastVal false loop el with
               | none => rw [he] at h; simp at h
               | some le =>
                   rw [he] at h
                   simp only [] at h
                   cases hr : lowerStmtsCFG (nextB + 2) cont true ρ
-                      (le.supply + 1) le.next le.supply true none rest with
+                      (le.supply + 1) le.next le.supply true loop rest with
                   | none => rw [hr] at h; simp at h
                   | some lr =>
                       rw [hr] at h
                       simp only [] at h
                       obtain rfl := Option.some.inj h
                       show lr.ρ = ρ
-                      exact ihr _ _ _ _ _ _ _ _ hr
+                      exact ihr _ _ _ _ _ _ _ _ _ hr
   | returnStmt e rest hstr _ =>
       simp only [lowerStmtsCFG] at h
       cases he : lowerExpr ρ supply e with
@@ -1760,6 +3264,133 @@ theorem lowerStmtsCFG_arm_rho (budget : Nat) :
           simp only [] at h
           obtain rfl := Option.some.inj h
           rfl
+  | breakStmt rest _ =>
+      cases hlo : loop with
+      | none => simp [lowerStmtsCFG, hlo] at h
+      | some info =>
+          simp only [lowerStmtsCFG, hlo] at h
+          cases hc : carryCopies ρ info.carried with
+          | none => rw [hc] at h; simp at h
+          | some copies =>
+              rw [hc] at h
+              obtain rfl := Option.some.inj h
+              rfl
+  | continueStmt rest _ =>
+      cases hlo : loop with
+      | none => simp [lowerStmtsCFG, hlo] at h
+      | some info =>
+          simp only [lowerStmtsCFG, hlo] at h
+          cases hc : carryCopies ρ info.carried with
+          | none => rw [hc] at h; simp at h
+          | some copies =>
+              rw [hc] at h
+              obtain rfl := Option.some.inj h
+              rfl
+
+/-- Branch-mode lowering over a binding-free list preserves `ρ`: an `if`'s
+arms preserve it (`arm_rho`) and the rest stays in the outer env, so with no
+`varDecl`/`assign` (impossible for `ArmStmts`) nothing rebinds. The
+loop-body worker cites this for an `ifStmtBreak` tail: after an arm `break`
+the static exit env is exactly the `if`-point env, matching the HIR env the
+`break` stopped in. -/
+theorem lowerStmtsCFG_branchArm_rho (budget : Nat) :
+    ∀ (bId : MIR.BlockId) (cont : Option MIR.BlockId) (ρ : List (HIR.Id × ValId))
+      (supply nextB : Nat) (lastVal : ValId) (hasVal : Bool)
+      (loop : Option LoopInfo)
+      (ss : List HIR.Stmt) (L : Lowered),
+      lowerStmtsCFG bId cont false ρ supply nextB lastVal hasVal loop ss = some L →
+      ArmStmts budget ss →
+      L.ρ = ρ := by
+  intro bId cont ρ supply nextB lastVal hasVal loop ss L h hss
+  induction hss generalizing bId cont ρ supply nextB lastVal hasVal loop L with
+  | nil =>
+      simp only [lowerStmtsCFG.eq_def] at h
+      obtain rfl := Option.some.inj h
+      rfl
+  | exprStmt e rest hstr _ hrs ih =>
+      simp only [lowerStmtsCFG] at h
+      cases he : lowerExpr ρ supply e with
+      | none => rw [he] at h; simp at h
+      | some p =>
+          obtain ⟨v0, ie, s1⟩ := p
+          rw [he] at h
+          simp only [] at h
+          cases hr : lowerStmtsCFG bId cont false ρ s1 nextB v0 true loop rest with
+          | none => rw [hr] at h; simp at h
+          | some q =>
+              rw [hr] at h
+              obtain rfl := Option.some.inj h
+              show q.ρ = ρ
+              exact ih _ _ _ _ _ _ _ _ _ hr
+  | nop rest hrs ih =>
+      simp only [lowerStmtsCFG] at h
+      cases hr : lowerStmtsCFG bId cont false ρ supply nextB lastVal
+          hasVal loop rest with
+      | none => rw [hr] at h; simp at h
+      | some q =>
+          rw [hr] at h
+          obtain rfl := Option.some.inj h
+          show q.ρ = ρ
+          exact ih _ _ _ _ _ _ _ _ _ hr
+  | ifStmt c th el rest hstr _ hath hael hrs iht ihe ihr =>
+      simp only [lowerStmtsCFG] at h
+      cases heC : lowerExpr ρ supply c with
+      | none => rw [heC] at h; simp at h
+      | some p =>
+          obtain ⟨vc, ic, s1⟩ := p
+          rw [heC] at h
+          simp only [] at h
+          cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
+              (nextB + 3) lastVal false loop th with
+          | none => rw [ht] at h; simp at h
+          | some lt =>
+              rw [ht] at h
+              simp only [] at h
+              cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ
+                  lt.supply lt.next lastVal false loop el with
+              | none => rw [he] at h; simp at h
+              | some le =>
+                  rw [he] at h
+                  simp only [] at h
+                  cases hr : lowerStmtsCFG (nextB + 2) cont false ρ
+                      (le.supply + 1) le.next le.supply true loop rest with
+                  | none => rw [hr] at h; simp at h
+                  | some lr =>
+                      rw [hr] at h
+                      obtain rfl := Option.some.inj h
+                      show lr.ρ = ρ
+                      exact ihr _ _ _ _ _ _ _ _ _ hr
+  | returnStmt e rest hstr _ =>
+      simp only [lowerStmtsCFG] at h
+      cases he : lowerExpr ρ supply e with
+      | none => rw [he] at h; simp at h
+      | some p =>
+          obtain ⟨v, ie, s1⟩ := p
+          rw [he] at h
+          obtain rfl := Option.some.inj h
+          rfl
+  | breakStmt rest _ =>
+      cases hlo : loop with
+      | none => simp [lowerStmtsCFG, hlo] at h
+      | some info =>
+          simp only [lowerStmtsCFG, hlo] at h
+          cases hc : carryCopies ρ info.carried with
+          | none => rw [hc] at h; simp at h
+          | some copies =>
+              rw [hc] at h
+              obtain rfl := Option.some.inj h
+              rfl
+  | continueStmt rest _ =>
+      cases hlo : loop with
+      | none => simp [lowerStmtsCFG, hlo] at h
+      | some info =>
+          simp only [lowerStmtsCFG, hlo] at h
+          cases hc : carryCopies ρ info.carried with
+          | none => rw [hc] at h; simp at h
+          | some copies =>
+              rw [hc] at h
+              obtain rfl := Option.some.inj h
+              rfl
 
 /-- A block whose instructions are phi-free runs the same from any
 predecessor edge: the program parameter is inert on non-phis
@@ -1845,8 +3476,9 @@ makes the empty-arm equation close). -/
 theorem lowerStmtsCFG_arm_total (budget : Nat) :
     ∀ (bId j : MIR.BlockId) (ρ : List (HIR.Id × ValId))
       (supply nextB : Nat) (lastVal : ValId) (hasVal : Bool)
+      (loop : Option LoopInfo)
       (ss : List HIR.Stmt) (L : Lowered),
-      lowerStmtsCFG bId (some j) true ρ supply nextB lastVal hasVal none ss =
+      lowerStmtsCFG bId (some j) true ρ supply nextB lastVal hasVal loop ss =
         some L →
       ArmStmts budget ss →
       FreshAbove ρ supply → lastVal < supply →
@@ -1870,13 +3502,14 @@ theorem lowerStmtsCFG_arm_total (budget : Nat) :
             = execBlockFromIn prog F' f
                 (some ((L.blocks.getLast?.map (fun b => b.id)).getD bId))
                 jblock fenv_arr ∧
-          RelEnv henv' L.ρ fenv_arr.env ∧ fenv_arr.env L.val = some w_u) ∧
+          RelEnv henv' L.ρ fenv_arr.env ∧ fenv_arr.env L.val = some w_u ∧
+          (∀ r, r < supply → fenv_arr.env r = fenv.env r)) ∧
       (∀ (e : HIR.Expr), out = .returned e →
         ∃ w_e, e = .lit w_e ∧
         execBlockFromIn prog F f prev ⟨bId, L.instrs, L.term⟩ fenv =
           some w_e) := by
-  intro bId j ρ supply nextB lastVal hasVal ss L h hss hfresh hlast
-  induction hss generalizing bId j ρ supply nextB lastVal hasVal L with
+  intro bId j ρ supply nextB lastVal hasVal loop ss L h hss hfresh hlast
+  induction hss generalizing bId j ρ supply nextB lastVal hasVal loop L with
   | nil =>
       intro accH henv fenv hrel hval0 hreg fuelH henv' out hrun prog f prev
         jblock F hsub hnodf hfind fuelB C hg
@@ -1926,7 +3559,7 @@ theorem lowerStmtsCFG_arm_total (budget : Nat) :
                         (by simp [evalInstrFull])
                     refine ⟨accH, hu, F',
                       ⟨fenv.env.update supply .unit, fenv.store⟩,
-                      Nat.le_succ _, ?_, ?_, ?_, ?_⟩
+                      Nat.le_succ _, ?_, ?_, ?_, ?_, ?_⟩
                     · omega
                     · dsimp only
                       exact execBlockFromIn_goto prog F' f prev bId
@@ -1944,6 +3577,8 @@ theorem lowerStmtsCFG_arm_total (budget : Nat) :
                       rw [hupd]
                       exact hreg0
                     · simp [Env.update, hacc]
+                    · intro r hr
+                      simp [Env.update, Nat.ne_of_lt hr]
           | true =>
               simp only [hv] at h
               obtain rfl := Option.some.inj h
@@ -1972,7 +3607,7 @@ theorem lowerStmtsCFG_arm_total (budget : Nat) :
                       omega
                   | succ F' =>
                       refine ⟨accH, hu, F', fenv, Nat.le_succ _, ?_, ?_,
-                        ?_, ?_⟩
+                        ?_, ?_, ?_⟩
                       · have hbb : blockBound fuelB ([] : List HIR.Stmt)
                             = 1 := by simp [blockBound]
                         omega
@@ -1981,6 +3616,7 @@ theorem lowerStmtsCFG_arm_total (budget : Nat) :
                           fenv fenv jblock rfl hfind
                       · rw [← h2]; exact hrel
                       · exact hreg hv
+                      · intro r _; rfl
       · intro e hout
         simp only [lowerStmtsCFG.eq_def] at h
         cases hv : hasVal with
@@ -2035,11 +3671,10 @@ theorem lowerStmtsCFG_arm_total (budget : Nat) :
             obtain ⟨v0, ie, s1⟩ := p
             rw [he] at h
             simp only [] at h
-            cases hr : lowerStmtsCFG bId (some j) true ρ s1 nextB v0 true none rest with
+            cases hr : lowerStmtsCFG bId (some j) true ρ s1 nextB v0 true loop rest with
             | none => rw [hr] at h; simp at h
             | some Lr =>
                 rw [hr] at h
-                simp only [] at h
                 obtain rfl := Option.some.inj h
                 cases fuelH with
                 | zero =>
@@ -2115,15 +3750,21 @@ theorem lowerStmtsCFG_arm_total (budget : Nat) :
                               rw [← hbb]; exact hg
                             have hsub' : ∀ b ∈ Lr.blocks, b ∈ f.blocks :=
                               fun b hb => hsub b hb
+                            have hpl : ∀ r, r < supply → fenv1.env r = fenv.env r :=
+                              fun r hr => lower_preserv_regs ρ supply e v0 ie s1
+                                he fenv fenv1 hexec1 r hr
                             obtain ⟨w_u, hu, F', fenv_arr, hle, hge, heq_rest,
-                                hrel_arr, hreg_arr⟩ :=
-                              ((ih bId j ρ s1 nextB v0 true Lr hr hf1
+                                hrel_arr, hreg_arr, hpres_arr⟩ :=
+                              ((ih bId j ρ s1 nextB v0 true loop Lr hr hf1
                                 hlast1 wE henv fenv1 hrel1
                                 (fun hh => absurd hh (by simp)) (fun _ => hregE')
                                 fh henv' out hrun prog f prev jblock (F'' + 1)
                                 hsub' hnodf hfind fuelB C hg' u).1 hout)
-                            exact ⟨w_u, hu, F', fenv_arr, hle, hge,
-                              hLHS.trans heq_rest, hrel_arr, hreg_arr⟩
+                            refine ⟨w_u, hu, F', fenv_arr, hle, hge,
+                              hLHS.trans heq_rest, hrel_arr, hreg_arr, ?_⟩
+                            intro r hr
+                            rw [hpres_arr r (Nat.lt_of_lt_of_le hr hs1)]
+                            exact hpl r hr
       · intro e_ret hout
         simp only [lowerStmtsCFG] at h
         cases he : lowerExpr ρ supply e with
@@ -2132,11 +3773,10 @@ theorem lowerStmtsCFG_arm_total (budget : Nat) :
             obtain ⟨v0, ie, s1⟩ := p
             rw [he] at h
             simp only [] at h
-            cases hr : lowerStmtsCFG bId (some j) true ρ s1 nextB v0 true none rest with
+            cases hr : lowerStmtsCFG bId (some j) true ρ s1 nextB v0 true loop rest with
             | none => rw [hr] at h; simp at h
             | some Lr =>
                 rw [hr] at h
-                simp only [] at h
                 obtain rfl := Option.some.inj h
                 cases fuelH with
                 | zero =>
@@ -2213,7 +3853,7 @@ theorem lowerStmtsCFG_arm_total (budget : Nat) :
                             have hsub' : ∀ b ∈ Lr.blocks, b ∈ f.blocks :=
                               fun b hb => hsub b hb
                             obtain ⟨w_e, hu_e, heq_rest⟩ :=
-                              ((ih bId j ρ s1 nextB v0 true Lr hr hf1
+                              ((ih bId j ρ s1 nextB v0 true loop Lr hr hf1
                                 hlast1 wE henv fenv1 hrel1
                                 (fun hh => absurd hh (by simp)) (fun _ => hregE')
                                 fh henv' out hrun prog f prev jblock (F'' + 1)
@@ -2227,7 +3867,7 @@ theorem lowerStmtsCFG_arm_total (budget : Nat) :
       · intro hout
         simp only [lowerStmtsCFG] at h
         cases hr : lowerStmtsCFG bId (some j) true ρ supply nextB lastVal
-            hasVal none rest with
+            hasVal loop rest with
         | none => rw [hr] at h; simp at h
         | some Lr =>
             rw [hr] at h
@@ -2254,17 +3894,17 @@ theorem lowerStmtsCFG_arm_total (budget : Nat) :
                 have hg' : F ≥ blockBound fuelB rest + C := by
                   rw [← hbb]; exact hg
                 obtain ⟨w_u, hu, F', fenv_arr, hle, hge, heq_rest,
-                    hrel_arr, hreg_arr⟩ :=
-                  ((ih bId j ρ supply nextB lastVal hasVal Lr hr hfresh
+                    hrel_arr, hreg_arr, hpres_arr⟩ :=
+                  ((ih bId j ρ supply nextB lastVal hasVal loop Lr hr hfresh
                     hlast accH henv fenv hrel hval0 hreg fh henv' out hrun
                     prog f prev jblock F hsub hnodf hfind fuelB C hg'
                     u).1 hout)
                 exact ⟨w_u, hu, F', fenv_arr, hle, hge, heq_rest,
-                  hrel_arr, hreg_arr⟩
+                  hrel_arr, hreg_arr, hpres_arr⟩
       · intro e_ret hout
         simp only [lowerStmtsCFG] at h
         cases hr : lowerStmtsCFG bId (some j) true ρ supply nextB lastVal
-            hasVal none rest with
+            hasVal loop rest with
         | none => rw [hr] at h; simp at h
         | some Lr =>
             rw [hr] at h
@@ -2291,7 +3931,7 @@ theorem lowerStmtsCFG_arm_total (budget : Nat) :
                 have hg' : F ≥ blockBound fuelB rest + C := by
                   rw [← hbb]; exact hg
                 obtain ⟨w_e, hu_e, heq_rest⟩ :=
-                  ((ih bId j ρ supply nextB lastVal hasVal Lr hr hfresh
+                  ((ih bId j ρ supply nextB lastVal hasVal loop Lr hr hfresh
                     hlast accH henv fenv hrel hval0 hreg fh henv' out hrun
                     prog f prev jblock F hsub hnodf hfind fuelB C hg'
                     u).2 e_ret hout)
@@ -2307,23 +3947,22 @@ theorem lowerStmtsCFG_arm_total (budget : Nat) :
           rw [heC] at h
           simp only [] at h
           cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
-              (nextB + 3) lastVal false none th with
+              (nextB + 3) lastVal false loop th with
           | none => rw [ht] at h; simp at h
           | some lt =>
               rw [ht] at h
               simp only [] at h
               cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ
-                  lt.supply lt.next lastVal false none el with
+                  lt.supply lt.next lastVal false loop el with
               | none => rw [he] at h; simp at h
               | some le =>
                   rw [he] at h
                   simp only [] at h
                   cases hr : lowerStmtsCFG (nextB + 2) (some j) true ρ
-                      (le.supply + 1) le.next le.supply true none rest with
+                      (le.supply + 1) le.next le.supply true loop rest with
                   | none => rw [hr] at h; simp at h
                   | some lr =>
                       rw [hr] at h
-                      simp only [] at h
                       obtain rfl := Option.some.inj h
                       dsimp only at hsub ⊢
                       generalize hTdef : ((lt.blocks.getLast?.map
@@ -2337,17 +3976,17 @@ theorem lowerStmtsCFG_arm_total (budget : Nat) :
                       have hlast1 : lastVal < s1 :=
                         Nat.lt_of_lt_of_le hlast hs1
                       obtain ⟨hmnt, hmst, hbndt, hnodt⟩ :=
-                        lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ ht hath
+                        lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _ ht hath
                       obtain ⟨hmne, hmse, hbnde, hnode⟩ :=
-                        lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ he hael
+                        lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _ he hael
                       obtain ⟨hmnr, hmsr, hbndr, hnodr⟩ :=
-                        lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ hr hrs
+                        lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _ hr hrs
                       have hrho_t : lt.ρ = ρ :=
-                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ ht hath
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
                       have hrho_e : le.ρ = ρ :=
-                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ he hael
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
                       have hrho_r : lr.ρ = ρ :=
-                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ hr hrs
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ hr hrs
                       have hbb_if : blockBound fuelB (.ifStmt c th el :: rest) =
                           1 + (3 + max (armBlockBound fuelB th)
                             (armBlockBound fuelB el) +
@@ -2560,10 +4199,10 @@ theorem lowerStmtsCFG_arm_total (budget : Nat) :
                                                   obtain ⟨w_arm, hu_arm, F',
                                                       fenv_arr, hle, hge,
                                                       heq_arm, hrel_arm,
-                                                      hreg_arr⟩ :=
+                                                      hreg_arr, hpres_arm⟩ :=
                                                     ((iht nextB (nextB + 2) ρ s1
                                                       (nextB + 3) lastVal false
-                                                      lt ht hf1 hlast1 .unit
+                                                        loop lt ht hf1 hlast1 .unit
                                                       henv fenvC hrelC
                                                       (fun _ => rfl)
                                                       (fun h => absurd h
@@ -2710,7 +4349,7 @@ theorem lowerStmtsCFG_arm_total (budget : Nat) :
                                                       have hihr := ihr
                                                         (nextB + 2) j ρ
                                                         (le.supply + 1) le.next
-                                                        le.supply true lr hr
+                                                        le.supply true loop lr hr
                                                         hf_r hlast_r w_arm
                                                         env_arm
                                                         ⟨fenv_arr.env.update
@@ -2730,11 +4369,12 @@ theorem lowerStmtsCFG_arm_total (budget : Nat) :
                                                             fenv_arr2, hle2,
                                                             hge2, heq_rest,
                                                             hrel_final,
-                                                            hreg_final⟩ :=
+                                                            hreg_final,
+                                                            hpres_tail⟩ :=
                                                           (hihr.1 hout)
                                                         rw [if_assembly_exit
                                                           rfl]
-                                                        exact ⟨w_u, hu, F2,
+                                                        refine ⟨w_u, hu, F2,
                                                           fenv_arr2,
                                                           Nat.le_trans
                                                             (Nat.le_trans hle2
@@ -2746,7 +4386,34 @@ theorem lowerStmtsCFG_arm_total (budget : Nat) :
                                                             (hJeq.trans
                                                             heq_rest)),
                                                           hrel_final,
-                                                          hreg_final⟩
+                                                          hreg_final, ?_⟩
+                                                        have hpc : ∀ r, r < supply →
+                                                            fenvC.env r = fenv.env r :=
+                                                          fun r hr =>
+                                                            lower_preserv_regs ρ supply c vc ic s1 heC
+                                                              fenv fenvC hexecC r hr
+                                                        have hle_sup : supply ≤ le.supply :=
+                                                          Nat.le_trans hs1
+                                                            (Nat.le_trans hmst hmse)
+                                                        intro r hr
+                                                        have e1 : fenvC.env r = fenv.env r :=
+                                                          hpc r hr
+                                                        have e2 : fenv_arr.env r = fenvC.env r :=
+                                                          hpres_arm r
+                                                            (Nat.lt_of_lt_of_le hr hs1)
+                                                        have e3 : (fenv_arr.env.update le.supply
+                                                            w_arm) r = fenv_arr.env r := by
+                                                          simp [Env.update,
+                                                            Nat.ne_of_lt
+                                                              (Nat.lt_of_lt_of_le hr hle_sup)]
+                                                        have e4 : fenv_arr2.env r =
+                                                            (fenv_arr.env.update le.supply
+                                                            w_arm) r :=
+                                                          hpres_tail r
+                                                            (Nat.lt_of_lt_of_le hr
+                                                            (Nat.le_trans hle_sup
+                                                            (Nat.le_succ _)))
+                                                        exact e4.trans (e3.trans (e2.trans e1))
                                                       · intro e_ret hout2
                                                         obtain ⟨w_e, hu_e,
                                                             heq_rest⟩ :=
@@ -2832,7 +4499,7 @@ theorem lowerStmtsCFG_arm_total (budget : Nat) :
                                                         hexec_arm⟩ :=
                                                       ((iht nextB (nextB + 2)
                                                         ρ s1 (nextB + 3)
-                                                        lastVal false lt ht
+                                                        lastVal false loop lt ht
                                                         hf1 hlast1 .unit henv
                                                         fenvC hrelC
                                                         (fun _ => rfl)
@@ -2979,11 +4646,11 @@ theorem lowerStmtsCFG_arm_total (budget : Nat) :
                                                   obtain ⟨w_arm, hu_arm, F',
                                                       fenv_arr, hle, hge,
                                                       heq_arm, hrel_arm,
-                                                      hreg_arr⟩ :=
+                                                      hreg_arr, hpres_arm⟩ :=
                                                     ((ihe (nextB + 1)
                                                       (nextB + 2) ρ lt.supply
                                                       lt.next lastVal false
-                                                      le he hf_e hlast_e .unit
+                                                        loop le he hf_e hlast_e .unit
                                                       henv fenvC hrelC
                                                       (fun _ => rfl)
                                                       (fun h => absurd h
@@ -3137,7 +4804,7 @@ theorem lowerStmtsCFG_arm_total (budget : Nat) :
                                                       have hihr := ihr
                                                         (nextB + 2) j ρ
                                                         (le.supply + 1) le.next
-                                                        le.supply true lr hr
+                                                        le.supply true loop lr hr
                                                         hf_r hlast_r w_arm
                                                         env_arm
                                                         ⟨fenv_arr.env.update
@@ -3157,11 +4824,12 @@ theorem lowerStmtsCFG_arm_total (budget : Nat) :
                                                             fenv_arr2, hle2,
                                                             hge2, heq_rest,
                                                             hrel_final,
-                                                            hreg_final⟩ :=
+                                                            hreg_final,
+                                                            hpres_tail⟩ :=
                                                           (hihr.1 hout)
                                                         rw [if_assembly_exit
                                                           rfl]
-                                                        exact ⟨w_u, hu, F2,
+                                                        refine ⟨w_u, hu, F2,
                                                           fenv_arr2,
                                                           Nat.le_trans
                                                             (Nat.le_trans hle2
@@ -3173,7 +4841,34 @@ theorem lowerStmtsCFG_arm_total (budget : Nat) :
                                                             (hJeq.trans
                                                             heq_rest)),
                                                           hrel_final,
-                                                          hreg_final⟩
+                                                          hreg_final, ?_⟩
+                                                        have hpc : ∀ r, r < supply →
+                                                            fenvC.env r = fenv.env r :=
+                                                          fun r hr =>
+                                                            lower_preserv_regs ρ supply c vc ic s1 heC
+                                                              fenv fenvC hexecC r hr
+                                                        have hle_sup : supply ≤ le.supply :=
+                                                          Nat.le_trans hs1
+                                                            (Nat.le_trans hmst hmse)
+                                                        intro r hr
+                                                        have e1 : fenvC.env r = fenv.env r :=
+                                                          hpc r hr
+                                                        have e2 : fenv_arr.env r = fenvC.env r :=
+                                                          hpres_arm r
+                                                            (Nat.lt_of_lt_of_le hr (Nat.le_trans hs1 hmst))
+                                                        have e3 : (fenv_arr.env.update le.supply
+                                                            w_arm) r = fenv_arr.env r := by
+                                                          simp [Env.update,
+                                                            Nat.ne_of_lt
+                                                              (Nat.lt_of_lt_of_le hr hle_sup)]
+                                                        have e4 : fenv_arr2.env r =
+                                                            (fenv_arr.env.update le.supply
+                                                            w_arm) r :=
+                                                          hpres_tail r
+                                                            (Nat.lt_of_lt_of_le hr
+                                                            (Nat.le_trans hle_sup
+                                                            (Nat.le_succ _)))
+                                                        exact e4.trans (e3.trans (e2.trans e1))
                                                       · intro e_ret hout2
                                                         obtain ⟨w_e, hu_e,
                                                             heq_rest⟩ :=
@@ -3259,7 +4954,7 @@ theorem lowerStmtsCFG_arm_total (budget : Nat) :
                                                       ((ihe (nextB + 1)
                                                         (nextB + 2) ρ lt.supply
                                                         lt.next lastVal false
-                                                        le he hf_e hlast_e
+                                                        loop le he hf_e hlast_e
                                                         .unit henv fenvC hrelC
                                                         (fun _ => rfl)
                                                         (fun h => absurd h
@@ -3574,6 +5269,12072 @@ theorem lowerStmtsCFG_arm_total (budget : Nat) :
                           HIR.Expr.lit.inj (hrE.symm.trans hrE2)
                         rw [hLHS, hww]
                         exact hregE
+  | breakStmt rest _ =>
+      intro accH henv fenv hrel hval0 hreg fuelH henv' out hrun prog f prev
+        jblock F hsub hnodf hfind fuelB C hg
+      intro u
+      refine ⟨?_, ?_⟩
+      · intro hout
+        cases fuelH with
+        | zero =>
+            have hz : runHIRStmts 0 henv (.break :: rest)
+                (.value (.lit accH)) = (.stuck, henv) := rfl
+            rw [hz] at hrun
+            have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+            rw [hst] at hout
+            exact absurd hout (by simp)
+        | succ fh =>
+            have hstep : runHIRStmts (fh + 1) henv (.break :: rest)
+                (.value (.lit accH)) = (.broke, henv) := rfl
+            rw [hstep] at hrun
+            have hst : out = .broke := (congrArg Prod.fst hrun).symm
+            rw [hst] at hout
+            exact absurd hout (by simp)
+      · intro e_ret hout
+        cases fuelH with
+        | zero =>
+            have hz : runHIRStmts 0 henv (.break :: rest)
+                (.value (.lit accH)) = (.stuck, henv) := rfl
+            rw [hz] at hrun
+            have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+            rw [hst] at hout
+            exact absurd hout (by simp)
+        | succ fh =>
+            have hstep : runHIRStmts (fh + 1) henv (.break :: rest)
+                (.value (.lit accH)) = (.broke, henv) := rfl
+            rw [hstep] at hrun
+            have hst : out = .broke := (congrArg Prod.fst hrun).symm
+            rw [hst] at hout
+            exact absurd hout (by simp)
+  | continueStmt rest _ =>
+      intro accH henv fenv hrel hval0 hreg fuelH henv' out hrun prog f prev
+        jblock F hsub hnodf hfind fuelB C hg
+      intro u
+      refine ⟨?_, ?_⟩
+      · intro hout
+        cases fuelH with
+        | zero =>
+            have hz : runHIRStmts 0 henv (.continue :: rest)
+                (.value (.lit accH)) = (.stuck, henv) := rfl
+            rw [hz] at hrun
+            have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+            rw [hst] at hout
+            exact absurd hout (by simp)
+        | succ fh =>
+            have hstep : runHIRStmts (fh + 1) henv (.continue :: rest)
+                (.value (.lit accH)) = (.continued, henv) := rfl
+            rw [hstep] at hrun
+            have hst : out = .continued := (congrArg Prod.fst hrun).symm
+            rw [hst] at hout
+            exact absurd hout (by simp)
+      · intro e_ret hout
+        cases fuelH with
+        | zero =>
+            have hz : runHIRStmts 0 henv (.continue :: rest)
+                (.value (.lit accH)) = (.stuck, henv) := rfl
+            rw [hz] at hrun
+            have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+            rw [hst] at hout
+            exact absurd hout (by simp)
+        | succ fh =>
+            have hstep : runHIRStmts (fh + 1) henv (.continue :: rest)
+                (.value (.lit accH)) = (.continued, henv) := rfl
+            rw [hstep] at hrun
+            have hst : out = .continued := (congrArg Prod.fst hrun).symm
+            rw [hst] at hout
+            exact absurd hout (by simp)
+
+
+/-- Non-variable expressions allocate at or above the incoming supply:
+literals take the supply itself, operations allocate above it. Variables read
+below-supply registers, so `VarFree` excludes exactly the aliasing case.
+Induction on `IsStraight`; the `block` case runs a nested list induction
+using the outer IH for heads and the inner IH for tails. -/
+theorem lowerExpr_result_ge (ρ : List (HIR.Id × ValId)) (supply : Nat)
+    (e : HIR.Expr) (v : ValId) (is : List Instr) (s' : Nat)
+    (hstr : IsStraight e) (hvf : VarFree e)
+    (h : lowerExpr ρ supply e = some (v, is, s')) : supply ≤ v := by
+  induction hstr generalizing ρ supply v is s' with
+  | var id =>
+      cases hvf
+  | lit val =>
+      simp only [lowerExpr] at h
+      obtain ⟨rfl, rfl, rfl⟩ := h
+      exact Nat.le_refl _
+  | unop op e _ _ _ih =>
+      simp only [lowerExpr] at h
+      cases hto : toUnOp op with
+      | none => rw [hto] at h; simp at h
+      | some u =>
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he, hto] at h; simp at h
+          | some p =>
+              obtain ⟨ve, ie, s⟩ := p
+              rw [he] at h
+              rw [hto] at h
+              obtain ⟨rfl, rfl, rfl⟩ := h
+              exact lower_mono.1 _ _ _ _ _ _ he
+  | binop op a b _ _ _ _iha _ihb =>
+      simp only [lowerExpr] at h
+      cases hto : toBinOp op with
+      | none => rw [hto] at h; simp at h
+      | some bo =>
+          cases he1 : lowerExpr ρ supply a with
+          | none => rw [he1] at h; simp at h
+          | some p =>
+              obtain ⟨va, ia, s1⟩ := p
+              rw [he1] at h
+              cases he2 : lowerExpr ρ s1 b with
+              | none => simp only [he2, hto] at h; cases h
+              | some q =>
+                  obtain ⟨vb, ib, s2⟩ := q
+                  simp only [he2, hto] at h
+                  obtain ⟨rfl, rfl, rfl⟩ := h
+                  exact Nat.le_trans (lower_mono.1 _ _ _ _ _ _ he1)
+                    (lower_mono.1 _ _ _ _ _ _ he2)
+  | let_ id init body _ _ _ihinit ihbody =>
+      simp only [lowerExpr] at h
+      cases he1 : lowerExpr ρ supply init with
+      | none => rw [he1] at h; simp at h
+      | some p =>
+          obtain ⟨va, ia, s1⟩ := p
+          rw [he1] at h
+          cases he2 : lowerExpr ((id, va) :: ρ) s1 body with
+          | none => simp only [he2] at h; cases h
+          | some q =>
+              obtain ⟨vb, ib, s2⟩ := q
+              simp only [he2] at h
+              obtain ⟨rfl, rfl, rfl⟩ := h
+              cases hvf with
+              | let_ _ _ _ hvi hvb =>
+                  have hle1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he1
+                  have hle2 : s1 ≤ v := ihbody _ _ _ _ _ hvb he2
+                  exact Nat.le_trans hle1 hle2
+  | block es hall ih =>
+      simp only [lowerExpr] at h
+      cases hvf with
+      | block _ hallv =>
+          have nest : ∀ (ρ : List (HIR.Id × ValId)) (supply : Nat)
+              (l : List HIR.Expr) (v : ValId) (is : List Instr) (s' : Nat),
+              (∀ e ∈ l, IsStraight e) → (∀ e ∈ l, VarFree e) →
+              (∀ e ∈ l, ∀ (ρ' : List (HIR.Id × ValId)) (supply' : Nat)
+                (v' : ValId) (is' : List Instr) (s'' : Nat), VarFree e →
+                lowerExpr ρ' supply' e = some (v', is', s'') → supply' ≤ v') →
+              lowerBlock ρ supply l = some (v, is, s') → supply ≤ v := by
+            intro ρ supply l v is s' halll hvfl single h
+            induction l generalizing ρ supply v is s' with
+            | nil =>
+                simp only [lowerBlock] at h
+                obtain ⟨rfl, rfl, rfl⟩ := h
+                exact Nat.le_refl _
+            | cons e l inner =>
+                cases l with
+                | nil =>
+                    simp only [lowerBlock] at h
+                    exact single e (List.mem_cons.mpr (Or.inl rfl)) _ _ _ _ _
+                      (hvfl e (List.mem_cons.mpr (Or.inl rfl))) h
+                | cons e2 l2 =>
+                    simp only [lowerBlock] at h
+                    cases he : lowerExpr ρ supply e with
+                    | none => rw [he] at h; simp at h
+                    | some p =>
+                        obtain ⟨ve, ie, s1⟩ := p
+                        rw [he] at h
+                        cases ht : lowerBlock ρ s1 (e2 :: l2) with
+                        | none => simp only [ht] at h; cases h
+                        | some q =>
+                            obtain ⟨v', ibe', s2'⟩ := q
+                            simp only [ht] at h
+                            have hmem : ∀ e' ∈ e2 :: l2, IsStraight e' := by
+                              intro e' hm
+                              exact halll e' (List.mem_cons_of_mem _ hm)
+                            have hmemv : ∀ e' ∈ e2 :: l2, VarFree e' := by
+                              intro e' hm
+                              exact hvfl e' (List.mem_cons_of_mem _ hm)
+                            have hsingle : ∀ e ∈ e2 :: l2,
+                                ∀ (ρ' : List (HIR.Id × ValId)) (supply' : Nat)
+                                (v' : ValId) (is' : List Instr) (s'' : Nat),
+                                VarFree e →
+                                lowerExpr ρ' supply' e = some (v', is', s'') →
+                                supply' ≤ v' := by
+                              intro e' hm
+                              exact single e' (List.mem_cons_of_mem _ hm)
+                            have hle1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+                            have hle2 : s1 ≤ v' := inner _ _ _ _ _ hmem hmemv hsingle ht
+                            obtain ⟨rfl, rfl, rfl⟩ := h
+                            exact Nat.le_trans hle1 hle2
+          exact nest _ _ _ _ _ _ hall hallv (fun e hmem => ih e hmem) h
+
+/-- `lowerBlock` results also sit at or above the incoming supply. Induction on
+the list (the head threads the supply into the tail); the singleton case cites
+the expression lemma above. -/
+theorem lowerBlock_result_ge (ρ : List (HIR.Id × ValId)) (supply : Nat)
+    (es : List HIR.Expr) (v : ValId) (is : List Instr) (s' : Nat)
+    (hall : ∀ e ∈ es, IsStraight e) (hvf : ∀ e ∈ es, VarFree e)
+    (h : lowerBlock ρ supply es = some (v, is, s')) : supply ≤ v := by
+  induction es generalizing ρ supply v is s' with
+  | nil =>
+      simp only [lowerBlock] at h
+      obtain ⟨rfl, rfl, rfl⟩ := h
+      exact Nat.le_refl _
+  | cons e es ih =>
+      cases es with
+      | nil =>
+          simp only [lowerBlock] at h
+          exact lowerExpr_result_ge _ _ _ _ _ _
+            (hall e (by simp)) (hvf e (by simp)) h
+      | cons e2 es2 =>
+          simp only [lowerBlock] at h
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he] at h; simp at h
+          | some p =>
+              obtain ⟨ve, ie, s1⟩ := p
+              rw [he] at h
+              cases ht : lowerBlock ρ s1 (e2 :: es2) with
+              | none => simp only [ht] at h; cases h
+              | some q =>
+                  obtain ⟨v', ibe', s2'⟩ := q
+                  simp only [ht] at h
+                  have hmem : ∀ e' ∈ e2 :: es2, IsStraight e' := by
+                    intro e' hm
+                    exact hall e' (List.mem_cons_of_mem _ hm)
+                  have hmemv : ∀ e' ∈ e2 :: es2, VarFree e' := by
+                    intro e' hm
+                    exact hvf e' (List.mem_cons_of_mem _ hm)
+                  have hle1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+                  have hle2 : s1 ≤ v' := ih _ _ _ _ _ hmem hmemv ht
+                  obtain ⟨rfl, rfl, rfl⟩ := h
+                  exact Nat.le_trans hle1 hle2
+
+
+
+/-- Carried registers sit at or above the allocation supply: `mkCarried`
+hands out `s, s + 1, …` in order. -/
+theorem mkCarried_mem_lo {ρ : List (HIR.Id × ValId)} {s : Nat}
+    {ids : List HIR.Id} {cs : List (HIR.Id × ValId)} {s' : Nat}
+    {ρ' : List (HIR.Id × ValId)} {id : HIR.Id} {r : ValId}
+    (h : mkCarried ρ s ids = some (cs, s', ρ')) (hmem : (id, r) ∈ cs) :
+    s ≤ r := by
+  induction ids generalizing ρ s cs s' ρ' with
+  | nil =>
+      simp only [mkCarried] at h
+      obtain ⟨rfl, rfl, rfl⟩ := h
+      simp at hmem
+  | cons hd tl ih =>
+      simp only [mkCarried] at h
+      cases hρ : rhoLookup ρ hd with
+      | none => rw [hρ] at h; simp at h
+      | some _ =>
+          rw [hρ] at h
+          cases hrec : mkCarried (updAssoc ρ hd s) (s + 1) tl with
+          | none => rw [hrec] at h; simp at h
+          | some q =>
+              obtain ⟨cs', s'', ρ''⟩ := q
+              rw [hrec] at h
+              obtain ⟨rfl, rfl, rfl⟩ := h
+              simp only [List.mem_cons] at hmem
+              rcases hmem with hmem | hmem
+              · obtain ⟨rfl, rfl⟩ := Prod.mk.inj hmem
+                exact Nat.le_refl _
+              · exact Nat.le_trans (Nat.le_succ _) (ih hrec hmem)
+
+/-- Carried registers sit strictly below the final supply. -/
+theorem mkCarried_mem_hi {ρ : List (HIR.Id × ValId)} {s : Nat}
+    {ids : List HIR.Id} {cs : List (HIR.Id × ValId)} {s' : Nat}
+    {ρ' : List (HIR.Id × ValId)} {id : HIR.Id} {r : ValId}
+    (h : mkCarried ρ s ids = some (cs, s', ρ')) (hmem : (id, r) ∈ cs) :
+    r < s' := by
+  induction ids generalizing ρ s cs s' ρ' with
+  | nil =>
+      simp only [mkCarried] at h
+      obtain ⟨rfl, rfl, rfl⟩ := h
+      simp at hmem
+  | cons hd tl ih =>
+      simp only [mkCarried] at h
+      cases hρ : rhoLookup ρ hd with
+      | none => rw [hρ] at h; simp at h
+      | some _ =>
+          rw [hρ] at h
+          cases hrec : mkCarried (updAssoc ρ hd s) (s + 1) tl with
+          | none => rw [hrec] at h; simp at h
+          | some q =>
+              obtain ⟨cs', s'', ρ''⟩ := q
+              rw [hrec] at h
+              obtain ⟨rfl, rfl, rfl⟩ := h
+              simp only [List.mem_cons] at hmem
+              rcases hmem with hmem | hmem
+              · obtain ⟨rfl, rfl⟩ := Prod.mk.inj hmem
+                exact Nat.lt_of_lt_of_le (Nat.lt_succ_self _)
+                  (mkCarried_le hrec)
+              · exact ih hrec hmem
+
+/-- Allocation order makes carried registers injective: the same register
+means the same allocation step, hence the same id. -/
+theorem mkCarried_reg_inj {ρ : List (HIR.Id × ValId)} {s : Nat}
+    {ids : List HIR.Id} {cs : List (HIR.Id × ValId)} {s' : Nat}
+    {ρ' : List (HIR.Id × ValId)} {id₁ id₂ : HIR.Id} {r : ValId}
+    (h : mkCarried ρ s ids = some (cs, s', ρ'))
+    (h₁ : (id₁, r) ∈ cs) (h₂ : (id₂, r) ∈ cs) : id₁ = id₂ := by
+  induction ids generalizing ρ s cs s' ρ' with
+  | nil =>
+      simp only [mkCarried] at h
+      obtain ⟨rfl, rfl, rfl⟩ := h
+      simp at h₁
+  | cons hd tl ih =>
+      simp only [mkCarried] at h
+      cases hρ : rhoLookup ρ hd with
+      | none => rw [hρ] at h; simp at h
+      | some _ =>
+          rw [hρ] at h
+          cases hrec : mkCarried (updAssoc ρ hd s) (s + 1) tl with
+          | none => rw [hrec] at h; simp at h
+          | some q =>
+              obtain ⟨cs', s'', ρ''⟩ := q
+              rw [hrec] at h
+              obtain ⟨rfl, rfl, rfl⟩ := h
+              simp only [List.mem_cons] at h₁ h₂
+              rcases h₁ with h₁ | h₁ <;> rcases h₂ with h₂ | h₂
+              · exact (Prod.mk.inj h₁).1.trans ((Prod.mk.inj h₂).1).symm
+              · obtain ⟨-, hr⟩ := Prod.mk.inj h₁
+                have hle : s + 1 ≤ r := mkCarried_mem_lo hrec h₂
+                rw [hr] at hle
+                exact absurd hle (Nat.not_succ_le_self s)
+              · obtain ⟨-, hr⟩ := Prod.mk.inj h₂
+                have hle : s + 1 ≤ r := mkCarried_mem_lo hrec h₁
+                rw [hr] at hle
+                exact absurd hle (Nat.not_succ_le_self s)
+              · exact ih hrec h₁ h₂
+
+/-- A `mkCarried` environment resolves every id either to its carried pair
+or to the pre-loop environment: the update chain only remaps. -/
+theorem mkCarried_lookup {ρ : List (HIR.Id × ValId)} {s : Nat}
+    {ids : List HIR.Id} {cs : List (HIR.Id × ValId)} {s' : Nat}
+    {ρ' : List (HIR.Id × ValId)} {id' : HIR.Id} {u' : ValId}
+    (h : mkCarried ρ s ids = some (cs, s', ρ'))
+    (hlook : rhoLookup ρ' id' = some u') :
+    (∃ id r, (id, r) ∈ cs ∧ id' = id ∧ u' = r) ∨
+      rhoLookup ρ id' = some u' := by
+  induction ids generalizing ρ s cs s' ρ' with
+  | nil =>
+      simp only [mkCarried] at h
+      obtain ⟨rfl, rfl, rfl⟩ := h
+      exact Or.inr hlook
+  | cons hd tl ih =>
+      simp only [mkCarried] at h
+      cases hρ : rhoLookup ρ hd with
+      | none => rw [hρ] at h; simp at h
+      | some _ =>
+          rw [hρ] at h
+          cases hrec : mkCarried (updAssoc ρ hd s) (s + 1) tl with
+          | none => rw [hrec] at h; simp at h
+          | some q =>
+              obtain ⟨cs', s'', ρ''⟩ := q
+              rw [hrec] at h
+              obtain ⟨rfl, rfl, rfl⟩ := h
+              rcases ih hrec hlook with ⟨i, rr, hmem, hid, hu⟩ | hbase
+              · exact Or.inl ⟨i, rr, List.mem_cons_of_mem _ hmem, hid, hu⟩
+              · by_cases heq : id' = hd
+                · have hss : u' = s := by
+                    have hupd : rhoLookup (updAssoc ρ hd s) hd = some s := by
+                      rw [rhoLookup_updAssoc_id ρ hd s, hρ]
+                      rfl
+                    rw [heq, hupd] at hbase
+                    exact (Option.some.inj hbase).symm
+                  exact Or.inl ⟨hd, s, List.mem_cons_self .., heq, hss⟩
+                · rw [rhoLookup_updAssoc_ne (fun hh => heq hh.symm) ρ] at hbase
+                  exact Or.inr hbase
+
+/-- Carried exclusivity: every carried register is its id's exclusive effective
+register. A `continue` snapshot writes each carried register from its id's
+current register; exclusivity is what keeps those writes from clobbering
+another id's register (aliasing through variable reads is excluded by
+`VarFree`, fresh allocations never hit carried registers, and shadowing puts
+the newest mapping first). Threaded through the loop-body worker. -/
+def CarriedExcl (ρ : List (HIR.Id × ValId))
+    (carried : List (HIR.Id × ValId)) : Prop :=
+  ∀ id r, (id, r) ∈ carried → ∀ id' u',
+    rhoLookup ρ id' = some u' → u' = r → id' = id
+
+/-- `mkCarried` environments are exclusive over the carried set: a carried
+register is fresh (at or above the pre-loop supply), so any id resolving to
+it through the carried env must name a carried pair with that register —
+and allocation order makes the id unique. Otherwise the id resolved through
+the pre-loop env, whose registers sit below the supply: contradiction. -/
+theorem mkCarried_excl {ρ : List (HIR.Id × ValId)} {s : Nat}
+    {ids : List HIR.Id} {cs : List (HIR.Id × ValId)} {s' : Nat}
+    {ρ' : List (HIR.Id × ValId)}
+    (hf : FreshAbove ρ s)
+    (h : mkCarried ρ s ids = some (cs, s', ρ')) :
+    CarriedExcl ρ' cs := by
+  intro id r hmem id' u' hlook heq
+  rcases mkCarried_lookup h hlook with ⟨i, rr, hmem2, rfl, hu⟩ | hbase
+  · have hrr : rr = r := hu.symm.trans heq
+    rw [hrr] at hmem2
+    exact (mkCarried_reg_inj h hmem hmem2).symm
+  · have hlt : u' < s := hf _ _ (rhoLookup_some_mem _ _ _ hbase)
+    have hle : s ≤ r := mkCarried_mem_lo h hmem
+    rw [heq] at hlt
+    exact absurd hle (Nat.not_le_of_gt hlt)
+
+/-- A high register in a `mkCarried` environment is carried: anything
+resolving through the pre-loop env sits below the supply. The header-phi
+chaining uses this to classify back-edge sources. -/
+theorem mkCarried_lookup_high {ρ : List (HIR.Id × ValId)} {s : Nat}
+    {ids : List HIR.Id} {cs : List (HIR.Id × ValId)} {s' : Nat}
+    {ρ' : List (HIR.Id × ValId)}
+    (hf : FreshAbove ρ s)
+    (h : mkCarried ρ s ids = some (cs, s', ρ'))
+    {id : HIR.Id} {r : ValId}
+    (hlook : rhoLookup ρ' id = some r) (hle : s ≤ r) :
+    (id, r) ∈ cs := by
+  rcases mkCarried_lookup h hlook with ⟨i, rr, hmem, rfl, rfl⟩ | hbase
+  · exact hmem
+  · exfalso
+    have hlt : r < s := hf _ _ (rhoLookup_some_mem _ _ _ hbase)
+    exact absurd hle (Nat.not_le_of_gt hlt)
+
+/-- Carried registers are fresh for the pre-loop env too: every `ρ` register
+sits below the supply, hence below every carried register. The entry-edge
+phi chaining uses this for its frame argument. -/
+theorem mkCarried_excl_pre {ρ : List (HIR.Id × ValId)} {s : Nat}
+    {ids : List HIR.Id} {cs : List (HIR.Id × ValId)} {s' : Nat}
+    {ρ' : List (HIR.Id × ValId)}
+    (hf : FreshAbove ρ s)
+    (h : mkCarried ρ s ids = some (cs, s', ρ')) :
+    CarriedExcl ρ cs := by
+  intro id r hmem id' u' hlook heq
+  have hlt : u' < s := hf _ _ (rhoLookup_some_mem _ _ _ hlook)
+  have hle : s ≤ r := mkCarried_mem_lo h hmem
+  rw [heq] at hlt
+  exact absurd hle (Nat.not_le_of_gt hlt)
+
+/-- Loop bodies preserve carried exclusivity: straight-line steps only bind
+fresh registers (at or above the supply, hence above every carried
+register), `varDecl` is refused under `loop = some`, arms preserve the env
+(`arm_rho`), and `break`/`continue`/`return` leave it unchanged. The spine
+needs this for the back edge: body-exit registers resolve carried ids
+without aliasing, so sequential back-phi writes never clobber a later
+source. -/
+theorem lowerStmtsCFG_loopBody_excl (budget : Nat) :
+    ∀ (bId : MIR.BlockId) (cont : Option MIR.BlockId)
+      (ρ : List (HIR.Id × ValId)) (supply nextB : Nat) (lastVal : ValId)
+      (hasVal : Bool) (loop : Option LoopInfo) (info : LoopInfo)
+      (ss : List HIR.Stmt) (L : Lowered) (carried : List (HIR.Id × ValId)),
+      loop = some info →
+      lowerStmtsCFG bId cont false ρ supply nextB lastVal hasVal loop ss = some L →
+      LoopStmts budget ss →
+      CarriedExcl ρ carried →
+      (∀ id r, (id, r) ∈ carried → r < supply) →
+      CarriedExcl L.ρ carried := by
+  intro bId cont ρ supply nextB lastVal hasVal loop info ss
+  induction ss generalizing bId cont ρ supply nextB lastVal hasVal loop with
+  | nil =>
+      intro L carried hlo h hss hexcl hsup
+      cases hss with
+      | nil =>
+          simp only [lowerStmtsCFG.eq_def] at h
+          simp at h
+          subst h
+          exact hexcl
+  | cons s rest ih =>
+      intro L carried hlo h hss hexcl hsup
+      cases hss with
+      | exprStmt e rest hstr _ hrs =>
+          simp [lowerStmtsCFG] at h
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he] at h; simp at h
+          | some p =>
+              obtain ⟨v0, ie, s1⟩ := p
+              rw [he] at h
+              simp only [] at h
+              cases hr : lowerStmtsCFG bId cont false ρ s1 nextB v0 true
+                  loop rest with
+              | none => rw [hr] at h; simp at h
+              | some q =>
+                  rw [hr] at h
+                  simp only [] at h
+                  obtain rfl := Option.some.inj h
+                  have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+                  have hsup1 : ∀ id r, (id, r) ∈ carried → r < s1 :=
+                    fun id r hmem =>
+                      Nat.lt_of_lt_of_le (hsup _ _ hmem) hs1
+                  exact ih bId cont ρ s1 nextB v0 true loop q carried hlo hr
+                    hrs hexcl hsup1
+      | varDecl id τ init rest hstr _ hrs _ =>
+          cases hlo' : loop with
+          | some _ => simp [lowerStmtsCFG, hlo'] at h
+          | none => rw [hlo] at hlo'; simp at hlo'
+      | assign id e rest hstr _ hrs hvf =>
+          simp [lowerStmtsCFG] at h
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he] at h; simp at h
+          | some p =>
+              obtain ⟨v, ie, s1⟩ := p
+              rw [he] at h
+              simp only [] at h
+              cases hr : lowerStmtsCFG bId cont false (updAssoc ρ id v) s1
+                  nextB lastVal true loop rest with
+              | none => rw [hr] at h; simp at h
+              | some q =>
+                  rw [hr] at h
+                  simp only [] at h
+                  obtain rfl := Option.some.inj h
+                  have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+                  have hsup1 : ∀ id0 r0, (id0, r0) ∈ carried → r0 < s1 :=
+                    fun id0 r0 hmem =>
+                      Nat.lt_of_lt_of_le (hsup _ _ hmem) hs1
+                  have hexcl' : CarriedExcl (updAssoc ρ id v) carried := by
+                    intro id0 r0 hmem id' u' hlook heq
+                    by_cases heq' : id' = id
+                    · rw [heq'] at hlook
+                      have huv : u' = v := by
+                        have h1 := rhoLookup_updAssoc_id ρ id v
+                        rw [h1] at hlook
+                        cases hρ : rhoLookup ρ id with
+                        | none => simp [hρ] at hlook
+                        | some _ =>
+                            simp [hρ] at hlook
+                            exact hlook.symm
+                      have hrS : r0 < supply := hsup _ _ hmem
+                      have hge : supply ≤ v :=
+                        lowerExpr_result_ge _ _ _ _ _ _ hstr hvf he
+                      have hlt : r0 < v := Nat.lt_of_lt_of_le hrS hge
+                      rw [← huv, heq] at hlt
+                      exact absurd hlt (Nat.lt_irrefl _)
+                    · have hlook' : rhoLookup ρ id' = some u' := by
+                        have hrr := rhoLookup_updAssoc_ne
+                          (fun hh => heq' hh.symm) (v := v) ρ
+                        rw [hrr] at hlook
+                        exact hlook
+                      exact hexcl id0 r0 hmem id' u' hlook' heq
+                  exact ih bId cont (updAssoc ρ id v) s1 nextB lastVal true
+                    loop q carried hlo hr hrs hexcl' hsup1
+      | nop rest hrs =>
+          simp only [lowerStmtsCFG] at h
+          exact ih bId cont ρ supply nextB lastVal hasVal loop L carried hlo
+            h hrs hexcl hsup
+      | ifStmt c th el rest hstr _ hath hael hrs =>
+          simp only [lowerStmtsCFG] at h
+          cases heC : lowerExpr ρ supply c with
+          | none => rw [heC] at h; simp at h
+          | some p =>
+              obtain ⟨vc, ic, s1⟩ := p
+              rw [heC] at h
+              simp only [] at h
+              cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
+                  (nextB + 3) lastVal false loop th with
+              | none => rw [ht] at h; simp at h
+              | some lt =>
+                  rw [ht] at h
+                  simp only [] at h
+                  cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2))
+                      true ρ lt.supply lt.next lastVal false loop el with
+                  | none => rw [he] at h; simp at h
+                  | some le =>
+                      rw [he] at h
+                      simp only [] at h
+                      cases hr : lowerStmtsCFG (nextB + 2) cont false ρ
+                          (le.supply + 1) le.next le.supply true loop rest with
+                      | none => rw [hr] at h; simp at h
+                      | some lr =>
+                          rw [hr] at h
+                          simp only [] at h
+                          obtain rfl := Option.some.inj h
+                          have hs1 : supply ≤ s1 :=
+                            lower_mono.1 _ _ _ _ _ _ heC
+                          obtain ⟨hmnt, hmst, -, -⟩ :=
+                            lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _
+                              ht hath
+                          obtain ⟨hmne, hmse, -, -⟩ :=
+                            lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _
+                              he hael
+                          have hle : supply ≤ le.supply :=
+                            Nat.le_trans hs1 (Nat.le_trans hmst hmse)
+                          have hsupR : ∀ id r, (id, r) ∈ carried →
+                              r < le.supply + 1 :=
+                            fun id r hmem => Nat.lt_of_lt_of_le
+                              (hsup _ _ hmem)
+                              (Nat.le_trans hle (Nat.le_succ _))
+                          exact ih (nextB + 2) cont ρ (le.supply + 1) le.next
+                            le.supply true loop lr carried hlo hr hrs hexcl
+                            hsupR
+      | ifStmtBreak c th el rest hstr _ hath hael hrs _ =>
+          simp only [lowerStmtsCFG] at h
+          cases heC : lowerExpr ρ supply c with
+          | none => rw [heC] at h; simp at h
+          | some p =>
+              obtain ⟨vc, ic, s1⟩ := p
+              rw [heC] at h
+              simp only [] at h
+              cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
+                  (nextB + 3) lastVal false loop th with
+              | none => rw [ht] at h; simp at h
+              | some lt =>
+                  rw [ht] at h
+                  simp only [] at h
+                  cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2))
+                      true ρ lt.supply lt.next lastVal false loop el with
+                  | none => rw [he] at h; simp at h
+                  | some le =>
+                      rw [he] at h
+                      simp only [] at h
+                      cases hr : lowerStmtsCFG (nextB + 2) cont false ρ
+                          (le.supply + 1) le.next le.supply true loop rest with
+                      | none => rw [hr] at h; simp at h
+                      | some lr =>
+                          rw [hr] at h
+                          simp only [] at h
+                          obtain rfl := Option.some.inj h
+                          have hs1 : supply ≤ s1 :=
+                            lower_mono.1 _ _ _ _ _ _ heC
+                          obtain ⟨hmnt, hmst, -, -⟩ :=
+                            lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _
+                              ht hath
+                          obtain ⟨hmne, hmse, -, -⟩ :=
+                            lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _
+                              he hael
+                          have hle : supply ≤ le.supply :=
+                            Nat.le_trans hs1 (Nat.le_trans hmst hmse)
+                          have hsupR : ∀ id r, (id, r) ∈ carried →
+                              r < le.supply + 1 :=
+                            fun id r hmem => Nat.lt_of_lt_of_le
+                              (hsup _ _ hmem)
+                              (Nat.le_trans hle (Nat.le_succ _))
+                          exact ih (nextB + 2) cont ρ (le.supply + 1) le.next
+                            le.supply true loop lr carried hlo hr hrs hexcl
+                            hsupR
+      | returnStmt e rest hstr _ =>
+          simp [lowerStmtsCFG] at h
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he] at h; simp at h
+          | some p =>
+              obtain ⟨v, ie, s1⟩ := p
+              rw [he] at h
+              simp only [] at h
+              obtain rfl := Option.some.inj h
+              exact hexcl
+      | breakStmt rest _ =>
+          cases hloop : loop with
+          | some j =>
+              simp only [lowerStmtsCFG, hloop] at h
+              cases hc : carryCopies ρ j.carried with
+              | none => simp [hc] at h
+              | some copies =>
+                  simp [hc] at h
+                  subst h
+                  exact hexcl
+          | none => rw [hlo] at hloop; simp at hloop
+      | continueStmt rest _ =>
+          cases hloop : loop with
+          | some j =>
+              simp only [lowerStmtsCFG, hloop] at h
+              cases hc : carryCopies ρ j.carried with
+              | none => simp [hc] at h
+              | some copies =>
+                  simp [hc] at h
+                  subst h
+                  exact hexcl
+          | none => rw [hlo] at hloop; simp at hloop
+
+/-- The header-phi fold maps `none` to `none`: a failed accumulator never
+recovers, so a successful fold had every lookup succeed. -/
+theorem mkHeaderPhis_foldl_none (ρ : List (HIR.Id × ValId))
+    (entryPred : MIR.BlockId) (fallEnd : MIR.BlockId)
+    (ρout : List (HIR.Id × ValId)) (tramps : List MIR.BlockId) :
+    ∀ (l : List (HIR.Id × ValId)),
+    l.foldl (fun (a : Option (List Instr)) (p : HIR.Id × ValId) =>
+      match a with
+      | none => none
+      | some ps =>
+          match rhoLookup ρ p.1, rhoLookup ρout p.1 with
+          | some entrySrc, some backSrc =>
+              some (ps ++ [.phi p.2 entryPred entrySrc, .phi p.2 fallEnd backSrc] ++
+                tramps.map (.phi p.2 · p.2))
+          | _, _ => none) none = none := by
+  intro l
+  induction l with
+  | nil => rfl
+  | cons _ rest ih =>
+      simp only [List.foldl]
+      exact ih
+
+/-- The header-phi fold builds one phi group per carried pair: an entry phi
+(`pred = entryPred`, source in the pre-loop env), a back-edge phi
+(`pred = fallEnd`, source in the body's exit env), and one self-copy per
+`continue` trampoline. The fold appends left-to-right, so the result is the
+concatenation of the per-pair groups. The header-chaining lemmas execute
+the groups one by one (each entry/back phi fires on exactly one edge),
+which needs the group structure, not just membership. -/
+theorem mkHeaderPhis_flatMap (ρ : List (HIR.Id × ValId))
+    (entryPred : MIR.BlockId) (fallEnd : MIR.BlockId)
+    (ρout : List (HIR.Id × ValId)) (tramps : List MIR.BlockId) :
+    ∀ (l : List (HIR.Id × ValId)) (acc phis : List Instr),
+    l.foldl (fun (a : Option (List Instr)) (p : HIR.Id × ValId) =>
+      match a with
+      | none => none
+      | some ps =>
+          match rhoLookup ρ p.1, rhoLookup ρout p.1 with
+          | some entrySrc, some backSrc =>
+              some (ps ++ [.phi p.2 entryPred entrySrc, .phi p.2 fallEnd backSrc] ++
+                tramps.map (.phi p.2 · p.2))
+          | _, _ => none) (some acc) = some phis →
+    ∃ f : HIR.Id × ValId → List Instr,
+      (∀ q ∈ l, ∃ esrc bsrc, rhoLookup ρ q.1 = some esrc ∧
+        rhoLookup ρout q.1 = some bsrc ∧
+        f q = ([.phi q.2 entryPred esrc, .phi q.2 fallEnd bsrc] ++
+          tramps.map (.phi q.2 · q.2))) ∧
+      phis = acc ++ (l.map f).flatten := by
+  intro l acc phis h
+  revert acc phis h
+  induction l with
+  | nil =>
+      intro acc phis h
+      simp only [List.foldl] at h
+      obtain rfl := Option.some.inj h
+      exact ⟨fun _ => [], by simp, by simp⟩
+  | cons p rest ih =>
+      intro acc phis h
+      simp only [List.foldl] at h
+      cases he1 : rhoLookup ρ p.1 with
+      | none =>
+          have hnone := mkHeaderPhis_foldl_none ρ entryPred fallEnd ρout
+            tramps rest
+          simp only [he1] at h
+          rw [hnone] at h
+          simp at h
+      | some esrc =>
+          cases he2 : rhoLookup ρout p.1 with
+          | none =>
+              have hnone := mkHeaderPhis_foldl_none ρ entryPred fallEnd ρout
+                tramps rest
+              simp only [he1, he2] at h
+              rw [hnone] at h
+              simp at h
+          | some bsrc =>
+              simp only [he1, he2] at h
+              obtain ⟨f', hf', hflat⟩ := ih _ _ h
+              refine ⟨fun q => if q = p then ([.phi p.2 entryPred esrc,
+                .phi p.2 fallEnd bsrc] ++
+                tramps.map (.phi p.2 · p.2)) else f' q, ?_, ?_⟩
+              · intro q hq
+                rw [List.mem_cons] at hq
+                cases hq with
+                | inl heq =>
+                    subst heq
+                    exact ⟨esrc, bsrc, he1, he2, by simp⟩
+                | inr hmem =>
+                    obtain ⟨e, b, he1q, he2q, hfq⟩ := hf' q hmem
+                    by_cases heq : q = p
+                    · subst heq
+                      obtain rfl := Option.some.inj (he1.symm.trans he1q)
+                      obtain rfl := Option.some.inj (he2.symm.trans he2q)
+                      exact ⟨esrc, bsrc, he1, he2, by simp⟩
+                    · exact ⟨e, b, he1q, he2q, by simp [heq, hfq]⟩
+              · have hmap : (rest.map fun q =>
+                    if q = p then ([.phi p.2 entryPred esrc,
+                      .phi p.2 fallEnd bsrc] ++
+                      tramps.map (.phi p.2 · p.2)) else f' q) =
+                    rest.map f' := by
+                  apply List.map_congr_left
+                  intro q hq
+                  by_cases heq : q = p
+                  · subst heq
+                    obtain ⟨e, b, he1q, he2q, hfq⟩ := hf' q hq
+                    obtain rfl := Option.some.inj (he1.symm.trans he1q)
+                    obtain rfl := Option.some.inj (he2.symm.trans he2q)
+                    simp [hfq]
+                  · simp [heq]
+                simp only [List.map_cons, hmap, List.flatten_cons, hflat,
+                  List.append_assoc]
+                simp
+
+/-- Trampoline self-copies all miss on a non-tramp edge, so the group tail
+is a no-op. By induction on the trampoline list. -/
+theorem trampPhis_exec_miss (prog : Program) (e : MIR.BlockId)
+    (tramps : List MIR.BlockId) (r : ValId) (fenv : FullEnv)
+    (h : ∀ t ∈ tramps, t ≠ e) :
+    execInstrsFullFromIn prog (some e) fenv (tramps.map (.phi r · r)) =
+      some fenv := by
+  induction tramps generalizing fenv with
+  | nil => simp [List.map_nil, execInstrsFullFromIn_eq, execInstrsFullFrom]
+  | cons t ts ih =>
+      have hhead : t ≠ e := h t (List.mem_cons_self ..)
+      have htail : ∀ t' ∈ ts, t' ≠ e :=
+        fun t' hm => h t' (List.mem_cons_of_mem _ hm)
+      simp only [List.map_cons]
+      rw [execInstrsFullFromIn_eq,
+        execInstrsFullFrom_phi_miss _ _ _ _ _ _ hhead,
+        ← execInstrsFullFromIn_eq]
+      exact ih fenv htail
+
+/-- One header group on the entry edge: the entry phi hits (its source reads
+through the pre-loop relation), the back phi and every trampoline self-copy
+miss, and the tail runs from the updated environment. -/
+theorem headerGroup_exec_entry (entryPred fallEnd : MIR.BlockId)
+    (tramps : List MIR.BlockId) (r esrc backSrc : ValId) (fenv : FullEnv)
+    (w : Value) (hfall : fallEnd ≠ entryPred)
+    (hsrc : fenv.env esrc = some w) :
+    execInstrsFullFrom (some entryPred) fenv
+        ([.phi r entryPred esrc, .phi r fallEnd backSrc] ++
+          tramps.map (.phi r · r)) =
+      execInstrsFullFrom (some entryPred) ⟨fenv.env.update r w, fenv.store⟩
+        (tramps.map (.phi r · r)) := by
+  simp only [List.cons_append, List.nil_append,
+    execInstrsFullFrom_phi_hit _ _ _ _ _ _ rfl, hsrc,
+    execInstrsFullFrom_phi_miss _ _ _ _ _ _ hfall]
+
+/-- One header group on the back edge: the back phi hits (its source reads
+through the body-exit relation), the entry phi and every trampoline
+self-copy miss, and the tail runs from the updated environment. -/
+theorem headerGroup_exec_back (entryPred fallEnd : MIR.BlockId)
+    (tramps : List MIR.BlockId) (r entrySrc backSrc : ValId) (fenv : FullEnv)
+    (w : Value) (hentry : entryPred ≠ fallEnd)
+    (hsrc : fenv.env backSrc = some w) :
+    execInstrsFullFrom (some fallEnd) fenv
+        ([.phi r entryPred entrySrc, .phi r fallEnd backSrc] ++
+          tramps.map (.phi r · r)) =
+      execInstrsFullFrom (some fallEnd) ⟨fenv.env.update r w, fenv.store⟩
+        (tramps.map (.phi r · r)) := by
+  simp only [List.cons_append, List.nil_append,
+    execInstrsFullFrom_phi_miss _ _ _ _ _ _ hentry,
+    execInstrsFullFrom_phi_hit _ _ _ _ _ _ rfl, hsrc]
+
+/-- Header phis on the back edge preserve the body-exit relation and thread
+values through: each carried register ends holding its id's HIR value, and
+registers outside the carried set are untouched. A back-edge source may
+itself be a carried register (self-copy or body aliasing), but exclusivity
+says it then names the same id, so the overwrite agrees with the relation —
+the same argument as `carryCopies_exec`. Duplicate pairs rewrite the same
+value. -/
+theorem headerPhis_exec_back (ρout : List (HIR.Id × ValId))
+    (entryPred fallEnd : MIR.BlockId)
+    (tramps : List MIR.BlockId) :
+    ∀ (l : List (HIR.Id × ValId)) (f : HIR.Id × ValId → List Instr),
+    (∀ q ∈ l, ∃ entrySrc backSrc, rhoLookup ρout q.1 = some backSrc ∧
+      f q = ([.phi q.2 entryPred entrySrc, .phi q.2 fallEnd backSrc] ++
+        tramps.map (.phi q.2 · q.2))) →
+    entryPred ≠ fallEnd → (∀ t ∈ tramps, t ≠ fallEnd) →
+    CarriedExcl ρout l →
+    (∀ id₁ r₁ id₂ r₂, (id₁, r₁) ∈ l → (id₂, r₂) ∈ l → r₁ = r₂ → id₁ = id₂) →
+    ∀ (prog : Program) (fenv : FullEnv) (henv : HEnv),
+    RelEnv henv ρout fenv.env →
+    ∃ fenv_arr, execInstrsFullFromIn prog (some fallEnd) fenv
+        ((l.map f).flatten) = some fenv_arr ∧
+      RelEnv henv ρout fenv_arr.env ∧
+      (∀ id r w, (id, r) ∈ l → lookupHEnv henv id = some (.lit w) →
+        fenv_arr.env r = some w) ∧
+      (∀ r', (∀ id, (id, r') ∉ l) → fenv_arr.env r' = fenv.env r') := by
+  intro l f hf hentry htr hexcl hdist prog fenv henv hrel
+  revert hf hentry htr hexcl hdist fenv hrel
+  induction l with
+  | nil =>
+      intro hf hentry htr hexcl hdist fenv hrel
+      refine ⟨fenv, by simp [execInstrsFullFromIn_eq], hrel, ?_, ?_⟩
+      · intro id r w hmem
+        simp at hmem
+      · intro r' _
+        rfl
+  | cons p rest ih =>
+      obtain ⟨id₀, r₀⟩ := p
+      intro hf hentry htr hexcl hdist fenv hrel
+      have hfhead : ∃ entrySrc backSrc, rhoLookup ρout id₀ = some backSrc ∧
+          f (id₀, r₀) = ([.phi r₀ entryPred entrySrc,
+            .phi r₀ fallEnd backSrc] ++
+            tramps.map (.phi r₀ · r₀)) :=
+        hf _ (List.mem_cons_self ..)
+      obtain ⟨entrySrc, backSrc, he2, hfp⟩ := hfhead
+      have hf_rest : ∀ q ∈ rest, ∃ entrySrc backSrc,
+          rhoLookup ρout q.1 = some backSrc ∧
+          f q = ([.phi q.2 entryPred entrySrc, .phi q.2 fallEnd backSrc] ++
+            tramps.map (.phi q.2 · q.2)) :=
+        fun q hq => hf q (List.mem_cons_of_mem _ hq)
+      have hexcl_rest : CarriedExcl ρout rest := by
+        intro id r hmem id' u' hlook heq
+        exact hexcl id r (List.mem_cons_of_mem _ hmem) id' u' hlook heq
+      have hdist_rest : ∀ id₁ r₁ id₂ r₂, (id₁, r₁) ∈ rest →
+          (id₂, r₂) ∈ rest → r₁ = r₂ → id₁ = id₂ := by
+        intro id₁ r₁ id₂ r₂ h₁ h₂ heq
+        exact hdist id₁ r₁ id₂ r₂ (List.mem_cons_of_mem _ h₁)
+          (List.mem_cons_of_mem _ h₂) heq
+      obtain ⟨w, hlookH, hreg⟩ := hrel id₀ backSrc he2
+      have hexec1 : execInstrsFullFrom (some fallEnd) fenv (f (id₀, r₀)) =
+          execInstrsFullFrom (some fallEnd)
+            ⟨fenv.env.update r₀ w, fenv.store⟩
+            (tramps.map (.phi r₀ · r₀)) := by
+        rw [hfp]
+        exact headerGroup_exec_back entryPred fallEnd tramps r₀ entrySrc
+          backSrc fenv w hentry hreg
+      have hexecT : execInstrsFullFrom (some fallEnd)
+          ⟨fenv.env.update r₀ w, fenv.store⟩ (tramps.map (.phi r₀ · r₀)) =
+          some ⟨fenv.env.update r₀ w, fenv.store⟩ := by
+        rw [← execInstrsFullFromIn_eq]
+        exact trampPhis_exec_miss prog fallEnd tramps r₀ _ htr
+      have hrel1 : RelEnv henv ρout
+          (⟨fenv.env.update r₀ w, fenv.store⟩ : FullEnv).env := by
+        intro id' u' hlook
+        by_cases heq : u' = r₀
+        · have hid : id' = id₀ := hexcl id₀ r₀
+            (List.mem_cons.mpr (Or.inl rfl)) id' u' hlook heq
+          refine ⟨w, ?_, ?_⟩
+          · rwa [hid]
+          · rw [heq]
+            simp [Env.update]
+        · have hbeq : ¬ (u' == r₀) := by simpa using heq
+          obtain ⟨w0, h1, h2⟩ := hrel id' u' hlook
+          exact ⟨w0, h1, by simp [Env.update, hbeq, h2]⟩
+      obtain ⟨fenv_arr, hexec_rest, hrel_arr, hval_arr, hframe_arr⟩ :=
+        ih hf_rest hentry htr hexcl_rest hdist_rest
+          ⟨fenv.env.update r₀ w, fenv.store⟩ hrel1
+      have happ : execInstrsFullFromIn prog (some fallEnd) fenv
+          (f (id₀, r₀) ++ (rest.map f).flatten) =
+          execInstrsFullFromIn prog (some fallEnd)
+            ⟨fenv.env.update r₀ w, fenv.store⟩ (rest.map f).flatten := by
+        rw [execInstrsFullFromIn_eq, execInstrsFullFromIn_eq,
+          execInstrsFullFrom_append, hexec1, hexecT]
+      refine ⟨fenv_arr, ?_, hrel_arr, ?_, ?_⟩
+      · show execInstrsFullFromIn prog (some fallEnd) fenv
+            (f (id₀, r₀) ++ (rest.map f).flatten) = some fenv_arr
+        rw [happ]
+        exact hexec_rest
+      · intro id r w' hmem hlookH'
+        simp only [List.mem_cons] at hmem
+        rcases hmem with hmem | hmem
+        · obtain ⟨hid, hr⟩ := Prod.mk.inj hmem
+          rw [hid] at hlookH'
+          rw [hr]
+          have hw_eq : w' = w := by
+            have h1 := hlookH
+            rw [hlookH'] at h1
+            exact HIR.Expr.lit.inj (Option.some.inj h1)
+          subst hw_eq
+          by_cases hdup : (id₀, r₀) ∈ rest
+          · exact hval_arr id₀ r₀ w' hdup hlookH
+          · have hnotin : ∀ idx, (idx, r₀) ∉ rest := by
+              intro idx hcon
+              exact hdup (hdist idx r₀ id₀ r₀ (List.mem_cons_of_mem _ hcon)
+                (List.mem_cons.mpr (Or.inl rfl)) rfl ▸ hcon)
+            rw [hframe_arr r₀ hnotin]
+            simp [Env.update]
+        · exact hval_arr id r w' hmem hlookH'
+      · intro r' hnotin
+        have hne : r' ≠ r₀ := by
+          intro heq
+          subst heq
+          exact hnotin id₀ (List.mem_cons.mpr (Or.inl rfl))
+        have h1 : fenv_arr.env r' =
+              (fenv.env.update r₀ w) r' :=
+          hframe_arr r' (by
+            intro idx hcon
+            exact hnotin idx (List.mem_cons_of_mem _ hcon))
+        have hne_b : ¬ (r' == r₀) := by simpa using hne
+        simp only [Env.update, if_neg hne_b] at h1
+        exact h1
+
+/-- Rewriting a register with its current value is a no-op. Trampoline
+self-copies hit exactly on their own edge, so each one reduces to this. -/
+theorem Env.update_eq_self (env : Morph.MIR.Env) (dst : ValId) (v : Value)
+    (h : env dst = some v) : env.update dst v = env := by
+  funext x
+  by_cases heq : x = dst
+  · subst heq
+    simp [Env.update, h]
+  · simp [Env.update, heq]
+
+/-- Trampoline self-copies on any edge leave the environment unchanged: a
+miss skips, and a hit rewrites the register with its current value. No
+membership or duplicate-freedom needed — every case is a no-op. -/
+theorem trampSelf_exec (t : MIR.BlockId) (r : ValId)
+    (ts : List MIR.BlockId) (fenv : FullEnv) (w₀ : Value)
+    (hreg : fenv.env r = some w₀) :
+    execInstrsFullFrom (some t) fenv (ts.map (.phi r · r)) = some fenv := by
+  induction ts generalizing fenv with
+  | nil => simp [List.map_nil]
+  | cons t' ts' ih =>
+      by_cases heq : t' = t
+      · subst heq
+        simp only [List.map_cons,
+          execInstrsFullFrom_phi_hit _ _ _ _ _ _ rfl, hreg]
+        rw [Env.update_eq_self _ _ _ hreg]
+        exact ih _ hreg
+      · simp only [List.map_cons,
+          execInstrsFullFrom_phi_miss _ _ _ _ _ _ heq]
+        exact ih _ hreg
+
+/-- One header group on a trampoline edge: both edge phis miss and every
+self-copy is a no-op, so the group runs to the unchanged environment. -/
+theorem headerGroup_exec_tramp (t entryPred fallEnd : MIR.BlockId)
+    (tramps : List MIR.BlockId) (r entrySrc backSrc : ValId) (fenv : FullEnv)
+    (w₀ : Value) (hentry : entryPred ≠ t) (hfall : fallEnd ≠ t)
+    (hreg : fenv.env r = some w₀) :
+    execInstrsFullFrom (some t) fenv
+        ([.phi r entryPred entrySrc, .phi r fallEnd backSrc] ++
+          tramps.map (.phi r · r)) = some fenv := by
+  simp only [List.cons_append, List.nil_append,
+    execInstrsFullFrom_phi_miss _ _ _ _ _ _ hentry,
+    execInstrsFullFrom_phi_miss _ _ _ _ _ _ hfall]
+  exact trampSelf_exec t r tramps fenv w₀ hreg
+
+/-- Header phis on a trampoline edge preserve the environment outright:
+self-copies rewrite carried registers with their current values, so the
+whole fold is a no-op. The value invariant (every carried register already
+holds its HIR value — established by the trampoline's snapshot copies) and
+the relation pass straight through. -/
+theorem headerPhis_exec_tramp (ρout : List (HIR.Id × ValId))
+    (entryPred fallEnd : MIR.BlockId)
+    (tramps : List MIR.BlockId) :
+    ∀ (l : List (HIR.Id × ValId)) (f : HIR.Id × ValId → List Instr),
+    (∀ q ∈ l, ∃ entrySrc backSrc, rhoLookup ρout q.1 = some backSrc ∧
+      f q = ([.phi q.2 entryPred entrySrc, .phi q.2 fallEnd backSrc] ++
+        tramps.map (.phi q.2 · q.2))) →
+    ∀ (t : MIR.BlockId), t ∈ tramps →
+    entryPred ≠ t → fallEnd ≠ t →
+    (∀ id₁ r₁ id₂ r₂, (id₁, r₁) ∈ l → (id₂, r₂) ∈ l → r₁ = r₂ → id₁ = id₂) →
+    ∀ (prog : Program) (fenv : FullEnv) (henv : HEnv),
+    RelEnv henv ρout fenv.env →
+    (∀ id r, (id, r) ∈ l → ∃ w, lookupHEnv henv id = some (.lit w) ∧
+      fenv.env r = some w) →
+    ∃ fenv_arr, execInstrsFullFromIn prog (some t) fenv
+        ((l.map f).flatten) = some fenv_arr ∧
+      RelEnv henv ρout fenv_arr.env ∧
+      (∀ id r w, (id, r) ∈ l → lookupHEnv henv id = some (.lit w) →
+        fenv_arr.env r = some w) ∧
+      (∀ r', (∀ id, (id, r') ∉ l) → fenv_arr.env r' = fenv.env r') := by
+  intro l f hf t htmem hentry hfall hdist prog fenv henv hrel hval
+  revert hf hentry hfall hdist fenv hrel hval
+  induction l with
+  | nil =>
+      intro hf hentry hfall hdist fenv hrel hval
+      refine ⟨fenv, by simp [execInstrsFullFromIn_eq], hrel, ?_, ?_⟩
+      · intro id r w hmem
+        simp at hmem
+      · intro r' _
+        rfl
+  | cons p rest ih =>
+      obtain ⟨id₀, r₀⟩ := p
+      intro hf hentry hfall hdist fenv hrel hval
+      have hfhead : ∃ entrySrc backSrc, rhoLookup ρout id₀ = some backSrc ∧
+          f (id₀, r₀) = ([.phi r₀ entryPred entrySrc,
+            .phi r₀ fallEnd backSrc] ++
+            tramps.map (.phi r₀ · r₀)) :=
+        hf _ (List.mem_cons_self ..)
+      obtain ⟨entrySrc, backSrc, he2, hfp⟩ := hfhead
+      have hf_rest : ∀ q ∈ rest, ∃ entrySrc backSrc,
+          rhoLookup ρout q.1 = some backSrc ∧
+          f q = ([.phi q.2 entryPred entrySrc, .phi q.2 fallEnd backSrc] ++
+            tramps.map (.phi q.2 · q.2)) :=
+        fun q hq => hf q (List.mem_cons_of_mem _ hq)
+      have hval_rest : ∀ id r, (id, r) ∈ rest → ∃ w,
+          lookupHEnv henv id = some (.lit w) ∧ fenv.env r = some w :=
+        fun id r hmem => hval id r (List.mem_cons_of_mem _ hmem)
+      obtain ⟨w₀, hlookH, hreg0⟩ := hval id₀ r₀ (List.mem_cons_self ..)
+      have hexec1 : execInstrsFullFrom (some t) fenv (f (id₀, r₀)) =
+          some fenv := by
+        rw [hfp]
+        exact headerGroup_exec_tramp t entryPred fallEnd tramps r₀ entrySrc
+          backSrc fenv w₀ hentry hfall hreg0
+      have hdist_rest : ∀ id₁ r₁ id₂ r₂, (id₁, r₁) ∈ rest →
+          (id₂, r₂) ∈ rest → r₁ = r₂ → id₁ = id₂ := by
+        intro id₁ r₁ id₂ r₂ h₁ h₂ heq
+        exact hdist id₁ r₁ id₂ r₂ (List.mem_cons_of_mem _ h₁)
+          (List.mem_cons_of_mem _ h₂) heq
+      obtain ⟨fenv_arr, hexec_rest, hrel_arr, hval_arr, hframe_arr⟩ :=
+        ih hf_rest hentry hfall hdist_rest fenv hrel hval_rest
+      have happ : execInstrsFullFromIn prog (some t) fenv
+          (f (id₀, r₀) ++ (rest.map f).flatten) =
+          execInstrsFullFromIn prog (some t) fenv (rest.map f).flatten := by
+        rw [execInstrsFullFromIn_eq, execInstrsFullFromIn_eq,
+          execInstrsFullFrom_append, hexec1]
+      refine ⟨fenv_arr, ?_, hrel_arr, ?_, ?_⟩
+      · show execInstrsFullFromIn prog (some t) fenv
+            (f (id₀, r₀) ++ (rest.map f).flatten) = some fenv_arr
+        rw [happ]
+        exact hexec_rest
+      · intro id r w' hmem hlookH'
+        simp only [List.mem_cons] at hmem
+        rcases hmem with hmem | hmem
+        · obtain ⟨hid, hr⟩ := Prod.mk.inj hmem
+          rw [hid] at hlookH'
+          rw [hr]
+          have hw_eq : w' = w₀ := by
+            have h1 := hlookH
+            rw [hlookH'] at h1
+            exact HIR.Expr.lit.inj (Option.some.inj h1)
+          rw [hw_eq] at hlookH' ⊢
+          by_cases hdup : (id₀, r₀) ∈ rest
+          · exact hval_arr id₀ r₀ w₀ hdup hlookH
+          · have hnotin : ∀ idx, (idx, r₀) ∉ rest := by
+              intro idx hcon
+              exact hdup (hdist idx r₀ id₀ r₀ (List.mem_cons_of_mem _ hcon)
+                (List.mem_cons.mpr (Or.inl rfl)) rfl ▸ hcon)
+            rw [hframe_arr r₀ hnotin]
+            exact hreg0
+        · exact hval_arr id r w' hmem hlookH'
+      · intro r' hnotin
+        exact hframe_arr r' (by
+          intro idx hcon
+          exact hnotin idx (List.mem_cons_of_mem _ hcon))
+
+/-- Header phis on the entry edge preserve the pre-loop relation and thread
+values through: each carried register ends holding its id's HIR value, and
+registers outside the carried set are untouched. Entry sources sit below the
+supply (freshness), so entry writes never clobber a later source; duplicate
+pairs rewrite the same value. By induction on the carried list, mirroring
+`carryCopies_exec`. -/
+theorem headerPhis_exec_entry (ρ : List (HIR.Id × ValId))
+    (entryPred fallEnd : MIR.BlockId) (ρout : List (HIR.Id × ValId))
+    (tramps : List MIR.BlockId) :
+    ∀ (l : List (HIR.Id × ValId)) (f : HIR.Id × ValId → List Instr),
+    (∀ q ∈ l, ∃ esrc backSrc, rhoLookup ρ q.1 = some esrc ∧
+      rhoLookup ρout q.1 = some backSrc ∧
+      f q = ([.phi q.2 entryPred esrc, .phi q.2 fallEnd backSrc] ++
+        tramps.map (.phi q.2 · q.2))) →
+    fallEnd ≠ entryPred → (∀ t ∈ tramps, t ≠ entryPred) →
+    ∀ (supply : Nat), FreshAbove ρ supply → (∀ q ∈ l, supply ≤ q.2) →
+    (∀ id₁ r₁ id₂ r₂, (id₁, r₁) ∈ l → (id₂, r₂) ∈ l → r₁ = r₂ → id₁ = id₂) →
+    ∀ (prog : Program) (fenv : FullEnv) (henv : HEnv),
+    RelEnv henv ρ fenv.env →
+    ∃ fenv_arr, execInstrsFullFromIn prog (some entryPred) fenv
+        ((l.map f).flatten) = some fenv_arr ∧
+      RelEnv henv ρ fenv_arr.env ∧
+      (∀ id r w, (id, r) ∈ l → lookupHEnv henv id = some (.lit w) →
+        fenv_arr.env r = some w) ∧
+      (∀ r', (∀ id, (id, r') ∉ l) → fenv_arr.env r' = fenv.env r') := by
+  intro l f hf hfall htr supply hfresh hs hdist prog fenv henv hrel
+  revert hf hfall htr hs hdist fenv hrel
+  induction l with
+  | nil =>
+      intro hf hfall htr hs hdist fenv hrel
+      refine ⟨fenv, by simp [execInstrsFullFromIn_eq], hrel, ?_, ?_⟩
+      · intro id r w hmem
+        simp at hmem
+      · intro r' _
+        rfl
+  | cons p rest ih =>
+      obtain ⟨id₀, r₀⟩ := p
+      intro hf hfall htr hs hdist fenv hrel
+      have hfhead : ∃ esrc backSrc, rhoLookup ρ id₀ = some esrc ∧
+          rhoLookup ρout id₀ = some backSrc ∧
+          f (id₀, r₀) = ([.phi r₀ entryPred esrc, .phi r₀ fallEnd backSrc] ++
+            tramps.map (.phi r₀ · r₀)) :=
+        hf _ (List.mem_cons_self ..)
+      obtain ⟨esrc, backSrc, he1, he2, hfp⟩ := hfhead
+      have hfresh_rest : FreshAbove ρ supply := hfresh
+      have hs_rest : ∀ q ∈ rest, supply ≤ q.2 :=
+        fun q hq => hs q (List.mem_cons_of_mem _ hq)
+      have hf_rest : ∀ q ∈ rest, ∃ esrc backSrc, rhoLookup ρ q.1 = some esrc ∧
+          rhoLookup ρout q.1 = some backSrc ∧
+          f q = ([.phi q.2 entryPred esrc, .phi q.2 fallEnd backSrc] ++
+            tramps.map (.phi q.2 · q.2)) :=
+        fun q hq => hf q (List.mem_cons_of_mem _ hq)
+      have hdist_rest : ∀ id₁ r₁ id₂ r₂, (id₁, r₁) ∈ rest →
+          (id₂, r₂) ∈ rest → r₁ = r₂ → id₁ = id₂ := by
+        intro id₁ r₁ id₂ r₂ h₁ h₂ heq
+        exact hdist id₁ r₁ id₂ r₂ (List.mem_cons_of_mem _ h₁)
+          (List.mem_cons_of_mem _ h₂) heq
+      obtain ⟨w, hlookH, hreg⟩ := hrel id₀ esrc he1
+      have hsup : supply ≤ r₀ := hs _ (List.mem_cons_self ..)
+      have hexec1 : execInstrsFullFrom (some entryPred) fenv (f (id₀, r₀)) =
+          execInstrsFullFrom (some entryPred)
+            ⟨fenv.env.update r₀ w, fenv.store⟩
+            (tramps.map (.phi r₀ · r₀)) := by
+        rw [hfp]
+        exact headerGroup_exec_entry entryPred fallEnd tramps r₀ esrc
+          backSrc fenv w hfall hreg
+      have hexecT : execInstrsFullFrom (some entryPred)
+          ⟨fenv.env.update r₀ w, fenv.store⟩ (tramps.map (.phi r₀ · r₀)) =
+          some ⟨fenv.env.update r₀ w, fenv.store⟩ := by
+        rw [← execInstrsFullFromIn_eq]
+        exact trampPhis_exec_miss prog entryPred tramps r₀ _ htr
+      have hrel1 : RelEnv henv ρ
+          (⟨fenv.env.update r₀ w, fenv.store⟩ : FullEnv).env := by
+        intro id' u' hlook
+        have hlt : u' < supply := hfresh _ _ (rhoLookup_some_mem _ _ _ hlook)
+        have hne : u' ≠ r₀ := Nat.ne_of_lt (Nat.lt_of_lt_of_le hlt hsup)
+        have hbeq : ¬ (u' == r₀) := by simpa using hne
+        obtain ⟨w0, h1, h2⟩ := hrel id' u' hlook
+        exact ⟨w0, h1, by simp [Env.update, hbeq, h2]⟩
+      obtain ⟨fenv_arr, hexec_rest, hrel_arr, hval_arr, hframe_arr⟩ :=
+        ih hf_rest hfall htr hs_rest hdist_rest
+          ⟨fenv.env.update r₀ w, fenv.store⟩ hrel1
+      have happ : execInstrsFullFromIn prog (some entryPred) fenv
+          (f (id₀, r₀) ++ (rest.map f).flatten) =
+          execInstrsFullFromIn prog (some entryPred)
+            ⟨fenv.env.update r₀ w, fenv.store⟩ (rest.map f).flatten := by
+        rw [execInstrsFullFromIn_eq, execInstrsFullFromIn_eq,
+          execInstrsFullFrom_append, hexec1, hexecT]
+      refine ⟨fenv_arr, ?_, hrel_arr, ?_, ?_⟩
+      · show execInstrsFullFromIn prog (some entryPred) fenv
+            (f (id₀, r₀) ++ (rest.map f).flatten) = some fenv_arr
+        rw [happ]
+        exact hexec_rest
+      · intro id r w' hmem hlookH'
+        simp only [List.mem_cons] at hmem
+        rcases hmem with hmem | hmem
+        · obtain ⟨hid, hr⟩ := Prod.mk.inj hmem
+          rw [hid] at hlookH'
+          rw [hr]
+          have hw_eq : w' = w := by
+            have h1 := hlookH
+            rw [hlookH'] at h1
+            exact HIR.Expr.lit.inj (Option.some.inj h1)
+          subst hw_eq
+          by_cases hdup : (id₀, r₀) ∈ rest
+          · exact hval_arr id₀ r₀ w' hdup hlookH
+          · have hnotin : ∀ idx, (idx, r₀) ∉ rest := by
+              intro idx hcon
+              exact hdup (hdist idx r₀ id₀ r₀ (List.mem_cons_of_mem _ hcon)
+                (List.mem_cons.mpr (Or.inl rfl)) rfl ▸ hcon)
+            rw [hframe_arr r₀ hnotin]
+            simp [Env.update]
+        · exact hval_arr id r w' hmem hlookH'
+      · intro r' hnotin
+        have hne : r' ≠ r₀ := by
+          intro heq
+          subst heq
+          exact hnotin id₀ (List.mem_cons.mpr (Or.inl rfl))
+        have h1 : fenv_arr.env r' =
+              (fenv.env.update r₀ w) r' :=
+          hframe_arr r' (by
+            intro idx hcon
+            exact hnotin idx (List.mem_cons_of_mem _ hcon))
+        have hne_b : ¬ (r' == r₀) := by simpa using hne
+        simp only [Env.update, if_neg hne_b] at h1
+        exact h1
+
+/-- `continue` snapshots preserve the environment relation: copies only write
+carried registers, and exclusivity says no other id reads those registers,
+so every id's register still holds its value. The value invariant says each
+carried register ends holding its id's HIR value (duplicate pairs rewrite
+the same value); the frame says registers outside the carried set are
+untouched (used for a duplicate-free head register). By induction on the
+carried list; each copy's source reads correctly because any earlier
+overwrite of that source would itself be an exclusivity violation. -/
+theorem carryCopies_exec (ρ : List (HIR.Id × ValId))
+    (carried : List (HIR.Id × ValId)) :
+    ∀ (copies : List Instr), carryCopies ρ carried = some copies →
+    ∀ (prog : Program) (prev : Option MIR.BlockId) (fenv : FullEnv)
+      (henv : HEnv),
+      RelEnv henv ρ fenv.env → CarriedExcl ρ carried →
+      (∀ id₁ r₁ id₂ r₂, (id₁, r₁) ∈ carried → (id₂, r₂) ∈ carried →
+        r₁ = r₂ → id₁ = id₂) →
+      ∃ fenv_arr, execInstrsFullFromIn prog prev fenv copies = some fenv_arr ∧
+        RelEnv henv ρ fenv_arr.env ∧
+        (∀ id r w, (id, r) ∈ carried →
+          lookupHEnv henv id = some (.lit w) → fenv_arr.env r = some w) ∧
+        (∀ r', (∀ id, (id, r') ∉ carried) →
+          fenv_arr.env r' = fenv.env r') := by
+  induction carried generalizing ρ with
+  | nil =>
+      intro copies hc prog prev fenv henv hrel _ _
+      simp only [carryCopies] at hc
+      obtain rfl := Option.some.inj hc
+      refine ⟨fenv, rfl, hrel, ?_, ?_⟩
+      · intro id r w hmem
+        simp at hmem
+      · intro r' _
+        rfl
+  | cons pr rest ih =>
+      obtain ⟨id₀, r₀⟩ := pr
+      intro copies hc prog prev fenv henv hrel hexcl hdist
+      simp only [carryCopies] at hc
+      cases hρ : rhoLookup ρ id₀ with
+      | none => rw [hρ] at hc; simp at hc
+      | some s =>
+          rw [hρ] at hc
+          simp only [] at hc
+          cases hrec : carryCopies ρ rest with
+          | none => simp [hrec] at hc
+          | some copies' =>
+              rw [hrec] at hc
+              simp only [Option.map_some] at hc
+              obtain rfl := Option.some.inj hc
+              obtain ⟨w, hlookH, hreg⟩ := hrel id₀ s hρ
+              have hexec1 : execInstrsFullFromIn prog prev fenv
+                  [.copy r₀ s] =
+                  some ⟨fenv.env.update r₀ w, fenv.store⟩ := by
+                simp [execInstrsFullFromIn, evalInstrFull, hreg]
+              have hrel1 : RelEnv henv ρ
+                  (⟨fenv.env.update r₀ w, fenv.store⟩ : FullEnv).env := by
+                intro id' u' hlook
+                by_cases heq : u' = r₀
+                · have hid : id' = id₀ := hexcl id₀ r₀
+                    (List.mem_cons.mpr (Or.inl rfl)) id' u' hlook heq
+                  refine ⟨w, ?_, ?_⟩
+                  · rwa [hid]
+                  · rw [heq]
+                    simp [Env.update]
+                · have hbeq : ¬ (u' == r₀) := by simpa using heq
+                  obtain ⟨w0, h1, h2⟩ := hrel id' u' hlook
+                  exact ⟨w0, h1, by simp [Env.update, hbeq, h2]⟩
+              have hexcl_rest : CarriedExcl ρ rest := by
+                intro id r hmem id' u' hlook heq
+                exact hexcl id r (List.mem_cons_of_mem _ hmem) id' u'
+                  hlook heq
+              have hdist_rest : ∀ id₁ r₁ id₂ r₂, (id₁, r₁) ∈ rest →
+                  (id₂, r₂) ∈ rest → r₁ = r₂ → id₁ = id₂ := by
+                intro id₁ r₁ id₂ r₂ h₁ h₂ heq
+                exact hdist id₁ r₁ id₂ r₂ (List.mem_cons_of_mem _ h₁)
+                  (List.mem_cons_of_mem _ h₂) heq
+              obtain ⟨fenv_arr, hexec_rest, hrel_arr, hval_arr, hframe_arr⟩ :=
+                ih ρ copies' hrec prog prev ⟨fenv.env.update r₀ w, fenv.store⟩ henv hrel1 hexcl_rest hdist_rest
+              have happ : execInstrsFullFromIn prog prev fenv
+                  ([.copy r₀ s] ++ copies') =
+                  execInstrsFullFromIn prog prev
+                    ⟨fenv.env.update r₀ w, fenv.store⟩ copies' := by
+                rw [execInstrsFullFromIn_append, hexec1]
+              refine ⟨fenv_arr, ?_, hrel_arr, ?_, ?_⟩
+              · show execInstrsFullFromIn prog prev fenv
+                      ([.copy r₀ s] ++ copies') = some fenv_arr
+                rw [happ]
+                exact hexec_rest
+              · intro id r w' hmem hlookH'
+                simp only [List.mem_cons] at hmem
+                rcases hmem with hmem | hmem
+                · obtain ⟨hid, hr⟩ := Prod.mk.inj hmem
+                  rw [hid] at hlookH'
+                  rw [hr]
+                  have hw_eq : w' = w := by
+                    have h1 := hlookH
+                    rw [hlookH'] at h1
+                    exact HIR.Expr.lit.inj (Option.some.inj h1)
+                  subst hw_eq
+                  by_cases hdup : (id₀, r₀) ∈ rest
+                  · exact hval_arr id₀ r₀ w' hdup hlookH
+                  · have hnotin : ∀ idx, (idx, r₀) ∉ rest := by
+                      intro idx hcon
+                      exact hdup (hdist idx r₀ id₀ r₀ (List.mem_cons_of_mem _ hcon)
+                        (List.mem_cons.mpr (Or.inl rfl)) rfl ▸ hcon)
+                    rw [hframe_arr r₀ hnotin]
+                    simp [Env.update]
+                · exact hval_arr id r w' hmem hlookH'
+              · intro r' hnotin
+                have hne : r' ≠ r₀ := by
+                  intro heq
+                  subst heq
+                  exact hnotin id₀ (List.mem_cons.mpr (Or.inl rfl))
+                have h1 : fenv_arr.env r' =
+                      (fenv.env.update r₀ w) r' :=
+                  hframe_arr r' (by
+                    intro idx hcon
+                    exact hnotin idx (List.mem_cons_of_mem _ hcon))
+                have hne_b : ¬ (r' == r₀) := by simpa using hne
+                simp only [Env.update, if_neg hne_b] at h1
+                exact h1
+
+/-- Arm execution on `break`: when the HIR arm breaks, the MIR entry block
+runs to the loop-exit block (looked up by the caller, who owns it) with a
+related environment. Straight-line steps peel via `lower_total.1` exactly
+as in `arm_total`; an `if` chains the taken arm through the join (citing
+`arm_total` for a value arm) and the rest through the induction hypothesis;
+a breaking arm chains directly to the exit. -/
+theorem lowerStmtsCFG_arm_broke (budget : Nat) :
+    ∀ (bId j : MIR.BlockId) (ρ : List (HIR.Id × ValId))
+      (supply nextB : Nat) (lastVal : ValId) (hasVal : Bool)
+      (loop : Option LoopInfo)
+      (ss : List HIR.Stmt) (L : Lowered),
+      lowerStmtsCFG bId (some j) true ρ supply nextB lastVal hasVal loop ss =
+        some L →
+      ArmStmts budget ss →
+      FreshAbove ρ supply → lastVal < supply →
+      ∀ (accH : Value) (henv : HEnv) (fenv : FullEnv),
+      RelEnv henv ρ fenv.env →
+      (hasVal = false → accH = .unit) →
+      (hasVal = true → fenv.env lastVal = some accH) →
+      ∀ (fuelH : Nat) (henv' : HEnv) (out : HFlow),
+      runHIRStmts fuelH henv ss (.value (.lit accH)) = (out, henv') →
+      out = .broke →
+      ∀ (prog : Program) (f : Func) (prev : Option MIR.BlockId) (F : Nat),
+      (∀ b ∈ L.blocks, b ∈ f.blocks) →
+      (f.blocks.map Block.id).Nodup →
+      ∀ (fuelB C : Nat), F ≥ blockBound fuelB ss + C →
+      ∀ (info : LoopInfo), loop = some info →
+      CarriedExcl ρ info.carried →
+      (∀ id₁ r₁ id₂ r₂, (id₁, r₁) ∈ info.carried → (id₂, r₂) ∈ info.carried →
+        r₁ = r₂ → id₁ = id₂) →
+      ∀ (blk : Block), findBlock f info.exit = some blk →
+      ∃ F' fenv_arr blkPrev, F' ≤ F ∧ F' ≥ C ∧
+        execBlockFromIn prog F f prev ⟨bId, L.instrs, L.term⟩ fenv =
+          execBlockFromIn prog F' f (some blkPrev) blk fenv_arr ∧
+        RelEnv henv' L.ρ fenv_arr.env ∧
+        (∀ id r w, (id, r) ∈ info.carried →
+          lookupHEnv henv' id = some (.lit w) → fenv_arr.env r = some w) := by
+  intro bId j ρ supply nextB lastVal hasVal loop ss L h hss hfresh hlast
+  induction hss generalizing bId j ρ supply nextB lastVal hasVal loop L with
+  | nil =>
+      intro accH henv fenv hrel hval0 hreg fuelH henv' out hrun hbroke prog f
+        prev F hsub hnodf fuelB C hg info hlo hexcl hdist blk hfindE
+      cases fuelH with
+      | zero =>
+          have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+          rw [hst] at hbroke
+          exact absurd hbroke (by simp)
+      | succ fh =>
+          have hstep : runHIRStmts (fh + 1) henv ([] : List HIR.Stmt)
+              (.value (.lit accH)) = ((.value (.lit accH)), henv) := rfl
+          rw [hstep] at hrun
+          have hacc : out = HFlow.value (.lit accH) :=
+            (congrArg Prod.fst hrun).symm
+          rw [hacc] at hbroke
+          exact absurd hbroke (by simp)
+  | exprStmt e rest hstr _ hrs ih =>
+      intro accH henv fenv hrel hval0 hreg fuelH henv' out hrun hbroke prog f
+        prev F hsub hnodf fuelB C hg info hlo hexcl hdist blk hfindE
+      simp only [lowerStmtsCFG] at h
+      cases he : lowerExpr ρ supply e with
+      | none => rw [he] at h; simp at h
+      | some p =>
+          obtain ⟨v0, ie, s1⟩ := p
+          rw [he] at h
+          simp only [] at h
+          cases hr : lowerStmtsCFG bId (some j) true ρ s1 nextB v0 true loop rest with
+          | none => rw [hr] at h; simp at h
+          | some Lr =>
+              rw [hr] at h
+              obtain rfl := Option.some.inj h
+              cases fuelH with
+              | zero =>
+                  have hz : runHIRStmts 0 henv (.exprStmt e :: rest)
+                      (.value (.lit accH)) = (.stuck, henv) := rfl
+                  rw [hz] at hrun
+                  have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+                  rw [hst] at hbroke
+                  exact absurd hbroke (by simp)
+              | succ fh =>
+                  have hstep : runHIRStmts (fh + 1) henv (.exprStmt e :: rest)
+                      (.value (.lit accH)) =
+                      (match evalHIR 256 henv e with
+                        | none => (HFlow.stuck, henv)
+                        | some v => runHIRStmts fh henv rest (.value v)) := rfl
+                  rw [hstep] at hrun
+                  cases hev : evalHIR 256 henv e with
+                  | none =>
+                      rw [hev] at hrun
+                      have hst : out = .stuck :=
+                        (congrArg Prod.fst hrun).symm
+                      rw [hst] at hbroke
+                      exact absurd hbroke (by simp)
+                  | some r =>
+                      rw [hev] at hrun
+                      obtain ⟨⟨wE, hrE⟩, fenv1, hexec1, hstore1, wE2, hrE2,
+                          hregE⟩ :=
+                        lower_total.1 ρ supply e v0 ie s1 he hstr hfresh
+                          henv fenv hrel 256 r hev
+                      rw [hrE] at hrun
+                      have hww : wE = wE2 :=
+                        HIR.Expr.lit.inj (hrE.symm.trans hrE2)
+                      have hregE' : fenv1.env v0 = some wE := hww ▸ hregE
+                      have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+                      have hf1 : FreshAbove ρ s1 :=
+                        FreshAbove.mono ρ supply s1 hs1 hfresh
+                      have hlast1 : v0 < s1 :=
+                        lower_result_lt.1 ρ supply e v0 ie s1 he hfresh
+                      have hrel1 : RelEnv henv ρ fenv1.env :=
+                        RelEnv_exec henv ρ supply e v0 ie s1 he fenv fenv1
+                          hrel hfresh hexec1
+                      have hnp_ie : ∀ dst pred src,
+                          .phi dst pred src ∉ ie := by
+                        intro d p s hm
+                        exact IsPure_not_phi
+                          (lower_isPure.1 _ _ _ _ _ _ he _ hm) d p s rfl
+                      have hexec_ie : execInstrsFullFromIn prog prev fenv ie
+                          = some fenv1 := by
+                        rw [execInstrsFullFromIn_of_noPhi prog prev fenv _ hnp_ie]
+                        exact hexec1
+                      have happ : execInstrsFullFromIn prog prev fenv
+                          (ie ++ Lr.instrs) =
+                          execInstrsFullFromIn prog prev fenv1 Lr.instrs := by
+                        rw [execInstrsFullFromIn_append, hexec_ie]
+                      have hbb : blockBound fuelB (.exprStmt e :: rest)
+                          = blockBound fuelB rest := by
+                        rw [blockBound, blockBound,
+                          armBlockBound_cons_not_if fuelB
+                            (fun c th el h => by cases h)
+                            (fun c body h => by cases h)]
+                      cases F with
+                      | zero =>
+                          have h1 : blockBound fuelB rest ≥ 1 := by
+                            rw [blockBound]; omega
+                          omega
+                      | succ F'' =>
+                          have hLHS : execBlockFromIn prog (F'' + 1) f prev
+                              ⟨bId, ie ++ Lr.instrs, Lr.term⟩ fenv =
+                              execBlockFromIn prog (F'' + 1) f prev
+                              ⟨bId, Lr.instrs, Lr.term⟩ fenv1 :=
+                              execBlockFromIn_instrs_prefix prog F'' f prev bId ie
+                              Lr.instrs Lr.term fenv fenv1 happ
+                          have hg' : F'' + 1 ≥ blockBound fuelB rest + C := by
+                            rw [← hbb]; exact hg
+                          have hsub' : ∀ b ∈ Lr.blocks, b ∈ f.blocks :=
+                            fun b hb => hsub b hb
+                          obtain ⟨F', fenv_arr, blkPrev, hle, hge, heq_rest,
+                              hrel_arr, hval_arr⟩ :=
+                            ih bId j ρ s1 nextB v0 true loop Lr hr hf1
+                              hlast1 wE henv fenv1 hrel1
+                              (fun hh => absurd hh (by simp)) (fun _ => hregE')
+                              fh henv' out hrun hbroke prog f prev (F'' + 1)
+                              hsub' hnodf fuelB C hg' info hlo hexcl hdist blk hfindE
+                          exact ⟨F', fenv_arr, blkPrev, hle, hge,
+                            hLHS.trans heq_rest, hrel_arr, hval_arr⟩
+  | nop rest hrs ih =>
+      intro accH henv fenv hrel hval0 hreg fuelH henv' out hrun hbroke prog f
+        prev F hsub hnodf fuelB C hg info hlo hexcl hdist blk hfindE
+      simp only [lowerStmtsCFG] at h
+      cases hr : lowerStmtsCFG bId (some j) true ρ supply nextB lastVal
+          hasVal loop rest with
+      | none => rw [hr] at h; simp at h
+      | some Lr =>
+          rw [hr] at h
+          obtain rfl := Option.some.inj h
+          cases fuelH with
+          | zero =>
+              have hz : runHIRStmts 0 henv (.nop :: rest)
+                  (.value (.lit accH)) = (.stuck, henv) := rfl
+              rw [hz] at hrun
+              have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+              rw [hst] at hbroke
+              exact absurd hbroke (by simp)
+          | succ fh =>
+              have hstep : runHIRStmts (fh + 1) henv (.nop :: rest)
+                  (.value (.lit accH)) =
+                  runHIRStmts fh henv rest (.value (.lit accH)) := rfl
+              rw [hstep] at hrun
+              have hbb : blockBound fuelB (.nop :: rest)
+                  = blockBound fuelB rest := by
+                rw [blockBound, blockBound,
+                  armBlockBound_cons_not_if fuelB
+                    (fun c th el h => by cases h)
+                    (fun c body h => by cases h)]
+              cases F with
+              | zero =>
+                  have h1 : blockBound fuelB rest ≥ 1 := by
+                    rw [blockBound]; omega
+                  omega
+              | succ F'' =>
+                  have hLHS : execBlockFromIn prog (F'' + 1) f prev
+                      ⟨bId, Lr.instrs, Lr.term⟩ fenv =
+                      execBlockFromIn prog (F'' + 1) f prev
+                      ⟨bId, Lr.instrs, Lr.term⟩ fenv := rfl
+                  have hg' : F'' + 1 ≥ blockBound fuelB rest + C := by
+                    rw [← hbb]; exact hg
+                  obtain ⟨F', fenv_arr, blkPrev, hle, hge, heq_rest,
+                      hrel_arr, hval_arr⟩ :=
+                    ih bId j ρ supply nextB lastVal hasVal loop Lr hr hfresh
+                      hlast accH henv fenv hrel hval0 hreg
+                      fh henv' out hrun hbroke prog f prev (F'' + 1)
+                      hsub hnodf fuelB C hg' info hlo hexcl hdist blk hfindE
+                  exact ⟨F', fenv_arr, blkPrev,
+                    hle, hge,
+                    hLHS.trans heq_rest, hrel_arr, hval_arr⟩
+  | returnStmt e rest hstr _ =>
+      intro accH henv fenv hrel hval0 hreg fuelH henv' out hrun hbroke prog f
+        prev F hsub hnodf fuelB C hg info hlo hexcl hdist blk hfindE
+      simp only [lowerStmtsCFG] at h
+      cases he : lowerExpr ρ supply e with
+      | none => rw [he] at h; simp at h
+      | some p =>
+          obtain ⟨v, ie, s1⟩ := p
+          rw [he] at h
+          obtain rfl := Option.some.inj h
+          cases fuelH with
+          | zero =>
+              have hz : runHIRStmts 0 henv (.returnStmt e :: rest)
+                  (.value (.lit accH)) = (.stuck, henv) := rfl
+              rw [hz] at hrun
+              have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+              rw [hst] at hbroke
+              exact absurd hbroke (by simp)
+          | succ fh =>
+              have hstep : runHIRStmts (fh + 1) henv (.returnStmt e :: rest)
+                  (.value (.lit accH)) =
+                  (match evalHIR 256 henv e with
+                    | none => (HFlow.stuck, henv)
+                    | some v => (.returned v, henv)) := rfl
+              rw [hstep] at hrun
+              cases hev : evalHIR 256 henv e with
+              | none =>
+                  rw [hev] at hrun
+                  have hst : out = .stuck :=
+                    (congrArg Prod.fst hrun).symm
+                  rw [hst] at hbroke
+                  exact absurd hbroke (by simp)
+              | some r =>
+                  rw [hev] at hrun
+                  have hret : out = .returned r :=
+                    (congrArg Prod.fst hrun).symm
+                  rw [hret] at hbroke
+                  exact absurd hbroke (by simp)
+  | breakStmt rest _ =>
+      intro accH henv fenv hrel hval0 hreg fuelH henv' out hrun hbroke prog f
+        prev F hsub hnodf fuelB C hg info hlo hexcl hdist blk hfindE
+      subst hlo
+      simp only [lowerStmtsCFG] at h
+      cases hc : carryCopies ρ info.carried with
+      | none => simp [hc] at h
+      | some copies =>
+          simp [hc] at h
+          subst h
+          cases fuelH with
+          | zero =>
+              have hz : runHIRStmts 0 henv (.break :: rest)
+                  (.value (.lit accH)) = (.stuck, henv) := rfl
+              rw [hz] at hrun
+              have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+              rw [hst] at hbroke
+              exact absurd hbroke (by simp)
+          | succ fh =>
+              have hstep : runHIRStmts (fh + 1) henv (.break :: rest)
+                  (.value (.lit accH)) = (.broke, henv) := rfl
+              rw [hstep] at hrun
+              have h2 : henv = henv' := congrArg Prod.snd hrun
+              cases F with
+              | zero =>
+                  have h1 : blockBound fuelB (.break :: rest) ≥ 1 := by
+                    rw [blockBound]; omega
+                  omega
+              | succ F' =>
+                  obtain ⟨fenv_arr, hexec_copies, hrel_arr, hval_arr, _⟩ :=
+                    carryCopies_exec ρ info.carried copies hc prog prev fenv
+                      henv hrel hexcl hdist
+                  have heq : execBlockFromIn prog (F' + 1) f prev
+                      ⟨bId, copies, .goto info.exit⟩ fenv =
+                      execBlockFromIn prog F' f (some bId) blk fenv_arr :=
+                    execBlockFromIn_goto prog F' f prev bId copies info.exit
+                      fenv fenv_arr blk hexec_copies hfindE
+                  have hge : F' ≥ C := by
+                    have hbb : blockBound fuelB (.break :: rest) ≥ 1 := by
+                      rw [blockBound]; omega
+                    omega
+                  refine ⟨F', fenv_arr, bId, Nat.le_succ _, hge, heq, ?_, ?_⟩
+                  · rw [← h2]
+                    exact hrel_arr
+                  · rw [← h2]
+                    exact hval_arr
+  | continueStmt rest _ =>
+      intro accH henv fenv hrel hval0 hreg fuelH henv' out hrun hbroke prog f
+        prev F hsub hnodf fuelB C hg info hlo hexcl hdist blk hfindE
+      cases fuelH with
+      | zero =>
+          have hz : runHIRStmts 0 henv (.continue :: rest)
+              (.value (.lit accH)) = (.stuck, henv) := rfl
+          rw [hz] at hrun
+          have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+          rw [hst] at hbroke
+          exact absurd hbroke (by simp)
+      | succ fh =>
+          have hstep : runHIRStmts (fh + 1) henv (.continue :: rest)
+              (.value (.lit accH)) = (.continued, henv) := rfl
+          rw [hstep] at hrun
+          have hst : out = .continued := (congrArg Prod.fst hrun).symm
+          rw [hst] at hbroke
+          exact absurd hbroke (by simp)
+  | ifStmt c th el rest hstr _ hath hael hrs iht ihe ihr =>
+      intro accH henv fenv hrel hval0 hreg fuelH henv' out hrun hbroke prog f
+        prev F hsub hnodf fuelB C hg info hlo hexcl hdist blk hlexit
+      simp only [lowerStmtsCFG] at h
+      cases heC : lowerExpr ρ supply c with
+      | none => rw [heC] at h; simp at h
+      | some p =>
+          obtain ⟨vc, ic, s1⟩ := p
+          rw [heC] at h
+          simp only [] at h
+          cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
+              (nextB + 3) lastVal false loop th with
+          | none => rw [ht] at h; simp at h
+          | some lt =>
+              rw [ht] at h
+              simp only [] at h
+              cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ
+                  lt.supply lt.next lastVal false loop el with
+              | none => rw [he] at h; simp at h
+              | some le =>
+                  rw [he] at h
+                  simp only [] at h
+                  cases hr : lowerStmtsCFG (nextB + 2) (some j) true ρ
+                      (le.supply + 1) le.next le.supply true loop rest with
+                  | none => rw [hr] at h; simp at h
+                  | some lr =>
+                      rw [hr] at h
+                      simp only [] at h
+                      obtain rfl := Option.some.inj h
+                      dsimp only at hsub ⊢
+                      generalize hTdef : ((lt.blocks.getLast?.map
+                        (fun b => b.id)).getD nextB) = exitT
+                      generalize hEdef : ((le.blocks.getLast?.map
+                        (fun b => b.id)).getD (nextB + 1)) = exitE
+                      rw [hTdef, hEdef] at hsub
+                      have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ heC
+                      have hf1 : FreshAbove ρ s1 :=
+                        FreshAbove.mono ρ supply s1 hs1 hfresh
+                      have hlast1 : lastVal < s1 :=
+                        Nat.lt_of_lt_of_le hlast hs1
+                      obtain ⟨hmnt, hmst, hbndt, hnodt⟩ :=
+                        lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _ ht hath
+                      obtain ⟨hmne, hmse, hbnde, hnode⟩ :=
+                        lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _ he hael
+                      obtain ⟨hmnr, hmsr, hbndr, hnodr⟩ :=
+                        lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _ hr hrs
+                      have hrho_t : lt.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
+                      have hrho_e : le.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
+                      have hrho_r : lr.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ hr hrs
+                      have hbb_if : blockBound fuelB (.ifStmt c th el :: rest) =
+                          1 + (3 + max (armBlockBound fuelB th)
+                            (armBlockBound fuelB el) +
+                            armBlockBound fuelB rest) := by
+                        rw [blockBound, armBlockBound_if]
+                      have hB1 : blockBound fuelB (.ifStmt c th el :: rest)
+                          ≥ 1 := by
+                        rw [blockBound]; omega
+                      have hTmem : (⟨nextB, lt.instrs, lt.term⟩ : Block)
+                          ∈ f.blocks :=
+                        hsub _ if_asm_mem_then
+                      have hfindT : findBlock f nextB =
+                          some ⟨nextB, lt.instrs, lt.term⟩ :=
+                        findBlock_of_nodup_mem hnodf hTmem
+                      have hEmem : (⟨nextB + 1, le.instrs, le.term⟩ : Block)
+                          ∈ f.blocks :=
+                        hsub _ if_asm_mem_else
+                      have hfindE : findBlock f (nextB + 1) =
+                          some ⟨nextB + 1, le.instrs, le.term⟩ :=
+                        findBlock_of_nodup_mem hnodf hEmem
+                      have hJmem : (⟨nextB + 2,
+                          [.phi le.supply exitT lt.val,
+                           .phi le.supply exitE le.val] ++ lr.instrs,
+                          lr.term⟩ : Block) ∈ f.blocks :=
+                        hsub _ if_asm_mem_join
+                      have hfindJ : findBlock f (nextB + 2) =
+                          some ⟨nextB + 2,
+                            [.phi le.supply exitT lt.val,
+                             .phi le.supply exitE le.val] ++ lr.instrs,
+                            lr.term⟩ :=
+                        findBlock_of_nodup_mem hnodf hJmem
+                      -- the two phi edges differ
+                      have hne_pe : exitE ≠ exitT := by
+                        have hexitT : exitT = nextB ∨
+                            ∃ b ∈ lt.blocks, exitT = b.id := by
+                          cases hgl : lt.blocks.getLast? with
+                          | none =>
+                              exact Or.inl (by simp [← hTdef, hgl])
+                          | some b =>
+                              have hm : b ∈ lt.blocks := getLast?_mem hgl
+                              exact Or.inr ⟨b, hm, by simp [← hTdef, hgl]⟩
+                        have hexitE : exitE = nextB + 1 ∨
+                            ∃ b ∈ le.blocks, exitE = b.id := by
+                          cases hgl : le.blocks.getLast? with
+                          | none =>
+                              exact Or.inl (by simp [← hEdef, hgl])
+                          | some b =>
+                              have hm : b ∈ le.blocks := getLast?_mem hgl
+                              exact Or.inr ⟨b, hm, by simp [← hEdef, hgl]⟩
+                        rcases hexitT with hT | ⟨bt, hbt, hT⟩
+                        · rcases hexitE with hE | ⟨be, hbe, hE⟩
+                          · simp [hT, hE]
+                          · obtain ⟨hlo, -⟩ := hbnde be hbe
+                            rw [hE, hT]
+                            exact Nat.ne_of_gt (Nat.lt_of_lt_of_le (by omega)
+                              (Nat.le_trans hmnt hlo))
+                        · rcases hexitE with hE | ⟨be, hbe, hE⟩
+                          · obtain ⟨hlo, -⟩ := hbndt bt hbt
+                            rw [hE, hT]
+                            exact Nat.ne_of_lt (Nat.lt_of_le_of_lt
+                              (Nat.add_le_add_left (by decide) nextB) hlo)
+                          · obtain ⟨-, hhi⟩ := hbndt bt hbt
+                            obtain ⟨hlo, -⟩ := hbnde be hbe
+                            rw [hE, hT]
+                            exact Nat.ne_of_gt
+                              (Nat.lt_of_lt_of_le hhi hlo)
+                      cases F with
+                      | zero =>
+                          have hbb : blockBound fuelB
+                              (.ifStmt c th el :: rest) ≥ 1 := by
+                            show 1 + _ ≥ 1
+                            omega
+                          omega
+                      | succ F'' =>
+                          cases fuelH with
+                          | zero =>
+                              have hz : runHIRStmts 0 henv
+                                  (.ifStmt c th el :: rest)
+                                  (.value (.lit accH)) = (.stuck, henv) := rfl
+                              rw [hz] at hrun
+                              have hst : out = .stuck :=
+                                (congrArg Prod.fst hrun).symm
+                              rw [hst] at hbroke
+                              exact absurd hbroke (by simp)
+                          | succ fh =>
+                              have hstep : runHIRStmts (fh + 1) henv
+                                  (.ifStmt c th el :: rest)
+                                  (.value (.lit accH)) =
+                                  (match evalHIR 256 henv c with
+                                    | some (.lit (.bool true)) =>
+                                      match runHIRStmts fh henv th
+                                          (HFlow.value (.lit .unit)) with
+                                      | (HFlow.value u, env') =>
+                                          runHIRStmts fh env' rest
+                                            ((HFlow.value (.lit accH)).replace
+                                              u)
+                                      | (f, env') => (f, env')
+                                    | some (.lit (.bool false)) =>
+                                      match runHIRStmts fh henv el
+                                          (HFlow.value (.lit .unit)) with
+                                      | (HFlow.value u, env') =>
+                                          runHIRStmts fh env' rest
+                                            ((HFlow.value (.lit accH)).replace
+                                              u)
+                                      | (f, env') => (f, env')
+                                    | _ => (.stuck, henv)) := rfl
+                              rw [hstep] at hrun
+                              cases hevC : evalHIR 256 henv c with
+                              | none =>
+                                  rw [hevC] at hrun
+                                  have hst : out = .stuck :=
+                                    (congrArg Prod.fst hrun).symm
+                                  rw [hst] at hbroke
+                                  exact absurd hbroke (by simp)
+                              | some r =>
+                                  rw [hevC] at hrun
+                                  obtain ⟨⟨w, hrw⟩, fenvC, hexecC, hstoreC,
+                                      wC, hrC, hregC⟩ :=
+                                    lower_total.1 ρ supply c vc ic s1 heC hstr
+                                      hfresh henv fenv hrel 256 r hevC
+                                  subst hrw
+                                  have hnp_ic : ∀ dst pred src,
+                                      .phi dst pred src ∉ ic := by
+                                    intro d p s hm
+                                    exact IsPure_not_phi
+                                      (lower_isPure.1 _ _ _ _ _ _ heC _ hm)
+                                      d p s rfl
+                                  have hexec_ic : execInstrsFullFromIn prog
+                                      prev fenv ic = some fenvC := by
+                                    rw [execInstrsFullFromIn_of_noPhi prog prev
+                                      fenv _ hnp_ic]
+                                    exact hexecC
+                                  have hrelC : RelEnv henv ρ fenvC.env :=
+                                    RelEnv_exec henv ρ supply c vc ic s1 heC
+                                      fenv fenvC hrel hfresh hexecC
+                                  cases w with
+                                  | bool b =>
+                                      cases b with
+                                      | true =>
+                                          simp only [] at hrun
+                                          cases har : runHIRStmts fh henv th
+                                              (HFlow.value (.lit .unit)) with
+                                          | mk out_arm env_arm =>
+                                              rw [har] at hrun
+                                              cases out_arm with
+                                              | value u_arm =>
+                                                  simp only [] at hrun
+                                                  have hregCb : fenvC.env vc =
+                                                      some (.bool true) := by
+                                                    have hww : (.bool true) =
+                                                        wC :=
+                                                      HIR.Expr.lit.inj hrC
+                                                    rw [hww]
+                                                    exact hregC
+                                                  have hbool : fenvC.boolOf vc =
+                                                      some true :=
+                                                    boolOf_of_lit fenvC vc true
+                                                      hregCb
+                                                  have hentry : execBlockFromIn prog
+                                                      (F'' + 1) f prev
+                                                      ⟨bId, ic, .branch vc nextB
+                                                        (nextB + 1)⟩ fenv =
+                                                      execBlockFromIn prog F'' f
+                                                        (some bId)
+                                                        ⟨nextB, lt.instrs,
+                                                          lt.term⟩ fenvC :=
+                                                    execBlockFromIn_branch_true
+                                                      prog F'' f prev bId ic vc
+                                                      nextB (nextB + 1) fenv
+                                                      fenvC ⟨nextB, lt.instrs,
+                                                        lt.term⟩ hexec_ic hbool
+                                                      hfindT
+                                                  have hsub_t : ∀ b ∈ lt.blocks,
+                                                      b ∈ f.blocks :=
+                                                    fun b hb => hsub _
+                                                      (if_asm_mem_of_lt hb)
+                                                  have hC'ge : (2 + max
+                                                      (armBlockBound fuelB th)
+                                                      (armBlockBound fuelB el) +
+                                                      armBlockBound fuelB rest -
+                                                      armBlockBound fuelB th +
+                                                      C) ≥ blockBound fuelB
+                                                      rest + C := by
+                                                    have hBrest : blockBound
+                                                        fuelB rest = 1 +
+                                                        armBlockBound fuelB
+                                                          rest := rfl
+                                                    omega
+                                                  have hg_t : F'' ≥ blockBound
+                                                      fuelB th + (2 + max
+                                                      (armBlockBound fuelB th)
+                                                      (armBlockBound fuelB el) +
+                                                      armBlockBound fuelB rest -
+                                                      armBlockBound fuelB th +
+                                                      C) := by
+                                                    have hBth : blockBound
+                                                        fuelB th = 1 +
+                                                        armBlockBound fuelB
+                                                          th := rfl
+                                                    omega
+                                                  obtain ⟨w_arm, hu_arm, F',
+                                                      fenv_arr, hle, hge,
+                                                      heq_arm, hrel_arm,
+                                                      hreg_arr, _⟩ :=
+                                                    ((lowerStmtsCFG_arm_total budget nextB (nextB + 2) ρ s1
+                                                      (nextB + 3) lastVal false
+                                                        loop th lt ht hath hf1 hlast1 .unit
+                                                      henv fenvC hrelC
+                                                      (fun _ => rfl)
+                                                      (fun h => absurd h
+                                                        (by simp))
+                                                      fh env_arm
+                                                      (HFlow.value u_arm) har prog f
+                                                      (some bId) ⟨nextB + 2,
+                                                        [.phi le.supply exitT
+                                                          lt.val,
+                                                         .phi le.supply exitE
+                                                          le.val] ++ lr.instrs,
+                                                        lr.term⟩ F'' hsub_t
+                                                      hnodf hfindJ fuelB (2 +
+                                                      max (armBlockBound
+                                                      fuelB th)
+                                                      (armBlockBound fuelB el) +
+                                                      armBlockBound fuelB rest -
+                                                      armBlockBound fuelB th +
+                                                      C) hg_t u_arm).1 rfl)
+                                                  rw [hTdef] at heq_arm
+                                                  rw [hrho_t] at hrel_arm
+                                                  have hrep : ((HFlow.value
+                                                      (.lit accH)).replace
+                                                      (.lit w_arm)) =
+                                                      HFlow.value
+                                                        (.lit w_arm) := rfl
+                                                  rw [hu_arm, hrep] at hrun
+                                                  have hfrL : FreshAbove ρ
+                                                      le.supply :=
+                                                    FreshAbove.mono ρ supply
+                                                      le.supply (Nat.le_trans
+                                                      hs1 (Nat.le_trans hmst
+                                                      hmse)) hfresh
+                                                  have hrel_m : RelEnv env_arm ρ
+                                                      (fenv_arr.env.update
+                                                        le.supply
+                                                        w_arm) := by
+                                                    intro id u hlook
+                                                    obtain ⟨w0, hlookH,
+                                                      hreg0⟩ := hrel_arm id u
+                                                      hlook
+                                                    have hu : u < le.supply :=
+                                                      hfrL id u
+                                                        (rhoLookup_some_mem ρ
+                                                          id u hlook)
+                                                    have hne : u ≠ le.supply :=
+                                                      Nat.ne_of_lt hu
+                                                    refine ⟨w0, hlookH, ?_⟩
+                                                    have hupd : (fenv_arr.env.update
+                                                        le.supply w_arm) u =
+                                                        fenv_arr.env u := by
+                                                      simp [Env.update, hne]
+                                                    show (fenv_arr.env.update
+                                                        le.supply w_arm) u =
+                                                      some w0
+                                                    rw [hupd]
+                                                    exact hreg0
+                                                  have hreg_m : (⟨fenv_arr.env.update
+                                                      le.supply w_arm,
+                                                      fenv_arr.store⟩ :
+                                                      FullEnv).env le.supply =
+                                                      some w_arm := by
+                                                    simp [Env.update]
+                                                  have hf_r : FreshAbove ρ
+                                                      (le.supply + 1) :=
+                                                    FreshAbove.mono ρ supply
+                                                      (le.supply + 1)
+                                                      (Nat.le_trans hs1
+                                                      (Nat.le_trans hmst
+                                                      (Nat.le_trans hmse
+                                                      (Nat.le_succ _))))
+                                                      hfresh
+                                                  have hlast_r : le.supply <
+                                                      le.supply + 1 :=
+                                                    Nat.lt_succ_self _
+                                                  have hsub_r : ∀ b ∈ lr.blocks,
+                                                      b ∈ f.blocks :=
+                                                    fun b hb => hsub _
+                                                      (if_asm_mem_of_lr hb)
+                                                  cases F' with
+                                                  | zero =>
+                                                      have hB1r : blockBound
+                                                          fuelB rest ≥ 1 := by
+                                                        rw [blockBound]; omega
+                                                      exact absurd hge (by omega)
+                                                  | succ F1 =>
+                                                      have happ_J : execInstrsFullFromIn
+                                                          prog (some exitT)
+                                                          fenv_arr
+                                                          ([.phi le.supply
+                                                            exitT lt.val,
+                                                            .phi le.supply
+                                                            exitE le.val] ++
+                                                            lr.instrs) =
+                                                          execInstrsFullFromIn
+                                                            prog (some exitT)
+                                                            ⟨fenv_arr.env.update
+                                                              le.supply w_arm,
+                                                              fenv_arr.store⟩
+                                                            lr.instrs :=
+                                                        execInstrsFullFromIn_phis_hit
+                                                          prog exitT fenv_arr
+                                                          le.supply exitT exitE
+                                                          lt.val le.val
+                                                          lr.instrs w_arm rfl
+                                                          hne_pe hreg_arr
+                                                      have hJeq : execBlockFromIn
+                                                          prog (F1 + 1) f
+                                                          (some exitT)
+                                                          ⟨nextB + 2,
+                                                            [.phi le.supply
+                                                              exitT lt.val,
+                                                              .phi le.supply
+                                                              exitE le.val] ++
+                                                              lr.instrs,
+                                                            lr.term⟩ fenv_arr =
+                                                          execBlockFromIn prog
+                                                            (F1 + 1) f
+                                                            (some exitT)
+                                                            ⟨nextB + 2,
+                                                              lr.instrs,
+                                                              lr.term⟩
+                                                            ⟨fenv_arr.env.update
+                                                              le.supply w_arm,
+                                                              fenv_arr.store⟩ :=
+                                                        execBlockFromIn_instrs_prefix
+                                                          prog F1 f (some exitT)
+                                                          (nextB + 2)
+                                                          [.phi le.supply
+                                                            exitT lt.val,
+                                                            .phi le.supply
+                                                            exitE le.val]
+                                                          lr.instrs lr.term
+                                                          fenv_arr
+                                                          ⟨fenv_arr.env.update
+                                                            le.supply w_arm,
+                                                            fenv_arr.store⟩
+                                                          happ_J
+                                                      have hg_r : F1 + 1 ≥
+                                                          blockBound fuelB
+                                                          rest + C :=
+                                                        Nat.le_trans hC'ge hge
+                                                      obtain ⟨F2, fenv_arr2, blkPrev2, hle2,
+                                                          hge2, heq_rest, hrel_final,
+                                                          hval_final⟩ :=
+                                                        ihr (nextB + 2) j ρ (le.supply + 1)
+                                                          le.next le.supply true loop lr hr
+                                                          hf_r hlast_r w_arm env_arm
+                                                          ⟨fenv_arr.env.update le.supply w_arm,
+                                                            fenv_arr.store⟩
+                                                          hrel_m (fun h => absurd h (by simp))
+                                                          (fun _ => hreg_m) fh henv' out hrun
+                                                          hbroke prog f (some exitT) (F1 + 1)
+                                                          hsub_r hnodf fuelB C hg_r info hlo hexcl hdist
+                                                          blk hlexit
+                                                      -- goal is already the join exit
+                                                      exact ⟨F2,
+                                                          fenv_arr2, blkPrev2,
+                                                          Nat.le_trans
+                                                            (Nat.le_trans hle2
+                                                            hle)
+                                                            (Nat.le_succ _),
+                                                          hge2,
+                                                          hentry.trans
+                                                            (heq_arm.trans
+                                                            (hJeq.trans
+                                                            heq_rest)),
+                                                          hrel_final,
+                                                          hval_final⟩
+                                              | returned e_arm =>
+                                                  simp only [] at hrun
+                                                  have hc : out = _ := (congrArg Prod.fst hrun).symm
+                                                  rw [hc] at hbroke
+                                                  exact absurd hbroke (by simp)
+                                              | stuck =>
+                                                  simp only [] at hrun
+                                                  have hc : out = _ := (congrArg Prod.fst hrun).symm
+                                                  rw [hc] at hbroke
+                                                  exact absurd hbroke (by simp)
+                                              | broke =>
+                                                  simp only [] at hrun
+                                                  have henv_eq : env_arm = henv' :=
+                                                  (congrArg Prod.snd hrun)
+                                                  have hregCb : fenvC.env vc =
+                                                      some (.bool true) := by
+                                                    have hww : (.bool true) =
+                                                        wC :=
+                                                      HIR.Expr.lit.inj hrC
+                                                    rw [hww]
+                                                    exact hregC
+                                                  have hbool : fenvC.boolOf vc =
+                                                      some true :=
+                                                    boolOf_of_lit fenvC vc true
+                                                      hregCb
+                                                  have hentry : execBlockFromIn prog
+                                                      (F'' + 1) f prev
+                                                      ⟨bId, ic, .branch vc nextB
+                                                        (nextB + 1)⟩ fenv =
+                                                      execBlockFromIn prog F'' f
+                                                        (some bId)
+                                                        ⟨nextB, lt.instrs,
+                                                          lt.term⟩ fenvC :=
+                                                    execBlockFromIn_branch_true
+                                                      prog F'' f prev bId ic vc
+                                                      nextB (nextB + 1) fenv
+                                                      fenvC ⟨nextB, lt.instrs,
+                                                        lt.term⟩ hexec_ic hbool
+                                                      hfindT
+                                                  have hsub_t : ∀ b ∈ lt.blocks, b ∈ f.blocks :=
+                                                    fun b hb => hsub _ (if_asm_mem_of_lt hb)
+                                                  have hg_t : F'' ≥ blockBound
+                                                      fuelB th + (2 + max
+                                                      (armBlockBound fuelB th)
+                                                      (armBlockBound fuelB el) +
+                                                      armBlockBound fuelB rest -
+                                                      armBlockBound fuelB th +
+                                                      C) := by
+                                                    have hBth : blockBound
+                                                        fuelB th = 1 +
+                                                        armBlockBound fuelB
+                                                          th := rfl
+                                                    omega
+                                                  have hiht := ((iht nextB (nextB + 2) ρ s1
+                                                      (nextB + 3) lastVal false
+                                                        loop lt ht hf1 hlast1 .unit
+                                                      henv fenvC hrelC
+                                                      (fun _ => rfl)
+                                                      (fun h => absurd h
+                                                        (by simp))
+                                                      fh env_arm .broke har rfl prog f
+                                                      (some bId) F'' hsub_t hnodf
+                                                      fuelB (2 + max (armBlockBound fuelB th) (armBlockBound fuelB el) + armBlockBound fuelB rest - armBlockBound fuelB th + C) hg_t info hlo hexcl hdist blk hlexit))
+                                                  obtain ⟨F2, fenv_arr2, blkPrev2, hle2,
+                                                      hge2, heq_arm, hrel_final,
+                                                      hval_final⟩ := hiht
+                                                  rw [henv_eq] at hrel_final
+                                                  rw [hrho_t, ← hrho_r] at hrel_final
+                                                  rw [henv_eq] at hval_final
+                                                  have hgeC : F2 ≥ C := by omega
+                                                  exact ⟨F2, fenv_arr2, blkPrev2,
+                                                    Nat.le_trans hle2 (Nat.le_succ _),
+                                                    hgeC,
+                                                    hentry.trans heq_arm,
+                                                    hrel_final,
+                                                    hval_final⟩
+                                              | continued =>
+                                                  simp only [] at hrun
+                                                  have hc : out = _ := (congrArg Prod.fst hrun).symm
+                                                  rw [hc] at hbroke
+                                                  exact absurd hbroke (by simp)
+                                      | false =>
+                                          simp only [] at hrun
+                                          have hregCb : fenvC.env vc =
+                                              some (.bool false) := by
+                                            have hww : (.bool false) =
+                                                wC :=
+                                              HIR.Expr.lit.inj hrC
+                                            rw [hww]
+                                            exact hregC
+                                          have hbool : fenvC.boolOf vc =
+                                              some false :=
+                                            boolOf_of_lit fenvC vc false
+                                              hregCb
+                                          have hentry : execBlockFromIn prog
+                                              (F'' + 1) f prev
+                                              ⟨bId, ic, .branch vc nextB
+                                                (nextB + 1)⟩ fenv =
+                                              execBlockFromIn prog F'' f
+                                                (some bId)
+                                                ⟨nextB + 1, le.instrs,
+                                                  le.term⟩ fenvC :=
+                                            execBlockFromIn_branch_false
+                                              prog F'' f prev bId ic vc
+                                              nextB (nextB + 1) fenv
+                                              fenvC ⟨nextB + 1, le.instrs,
+                                                le.term⟩ hexec_ic hbool
+                                              hfindE
+                                          have hsub_e : ∀ b ∈ le.blocks,
+                                              b ∈ f.blocks :=
+                                            fun b hb => hsub _
+                                              (if_asm_mem_of_le hb)
+                                          have hf_e : FreshAbove ρ
+                                              lt.supply :=
+                                            FreshAbove.mono ρ s1 lt.supply
+                                              hmst hf1
+                                          have hlast_e : lastVal <
+                                              lt.supply :=
+                                            Nat.lt_of_lt_of_le hlast1 hmst
+                                          have hC'ge : (2 + max
+                                              (armBlockBound fuelB th)
+                                              (armBlockBound fuelB el) +
+                                              armBlockBound fuelB rest -
+                                              armBlockBound fuelB el +
+                                              C) ≥ blockBound fuelB
+                                              rest + C := by
+                                            have hBrest : blockBound
+                                                fuelB rest = 1 +
+                                                armBlockBound fuelB
+                                                  rest := rfl
+                                            omega
+                                          have hg_e : F'' ≥ blockBound
+                                              fuelB el + (2 + max
+                                              (armBlockBound fuelB th)
+                                              (armBlockBound fuelB el) +
+                                              armBlockBound fuelB rest -
+                                              armBlockBound fuelB el +
+                                              C) := by
+                                            have hBel : blockBound
+                                                fuelB el = 1 +
+                                                armBlockBound fuelB
+                                                  el := rfl
+                                            omega
+                                          cases har : runHIRStmts fh henv el
+                                              (HFlow.value (.lit .unit)) with
+                                          | mk out_arm env_arm =>
+                                              rw [har] at hrun
+                                              cases out_arm with
+                                              | value u_arm =>
+                                                  simp only [] at hrun
+                                                  obtain ⟨w_arm, hu_arm, F',
+                                                      fenv_arr, hle, hge,
+                                                      heq_arm, hrel_arm,
+                                                      hreg_arr, _⟩ :=
+                                                    ((lowerStmtsCFG_arm_total budget (nextB + 1)
+                                                      (nextB + 2) ρ lt.supply
+                                                      lt.next lastVal false
+                                                        loop el le he hael hf_e hlast_e .unit
+                                                      henv fenvC hrelC
+                                                      (fun _ => rfl)
+                                                      (fun h => absurd h
+                                                        (by simp))
+                                                      fh env_arm
+                                                      (HFlow.value u_arm) har
+                                                      prog f (some bId)
+                                                      ⟨nextB + 2,
+                                                        [.phi le.supply exitT
+                                                          lt.val,
+                                                         .phi le.supply exitE
+                                                          le.val] ++ lr.instrs,
+                                                        lr.term⟩ F'' hsub_e
+                                                      hnodf hfindJ fuelB (2 +
+                                                      max (armBlockBound
+                                                      fuelB th)
+                                                      (armBlockBound fuelB el) +
+                                                      armBlockBound fuelB rest -
+                                                      armBlockBound fuelB el +
+                                                      C) hg_e u_arm).1 rfl)
+                                                  rw [hEdef] at heq_arm
+                                                  rw [hrho_e] at hrel_arm
+                                                  have hrep : ((HFlow.value
+                                                      (.lit accH)).replace
+                                                      (.lit w_arm)) =
+                                                      HFlow.value
+                                                        (.lit w_arm) := rfl
+                                                  rw [hu_arm, hrep] at hrun
+                                                  have hfrL : FreshAbove ρ
+                                                      le.supply :=
+                                                    FreshAbove.mono ρ supply
+                                                      le.supply (Nat.le_trans
+                                                      hs1 (Nat.le_trans hmst
+                                                      hmse)) hfresh
+                                                  have hrel_m : RelEnv env_arm
+                                                      ρ (fenv_arr.env.update
+                                                        le.supply
+                                                        w_arm) := by
+                                                    intro id u hlook
+                                                    obtain ⟨w0, hlookH,
+                                                      hreg0⟩ := hrel_arm id u
+                                                      hlook
+                                                    have hu : u < le.supply :=
+                                                      hfrL id u
+                                                        (rhoLookup_some_mem ρ
+                                                          id u hlook)
+                                                    have hne : u ≠ le.supply :=
+                                                      Nat.ne_of_lt hu
+                                                    refine ⟨w0, hlookH, ?_⟩
+                                                    have hupd : (fenv_arr.env.update
+                                                        le.supply w_arm) u =
+                                                        fenv_arr.env u := by
+                                                      simp [Env.update, hne]
+                                                    show (fenv_arr.env.update
+                                                        le.supply w_arm) u =
+                                                      some w0
+                                                    rw [hupd]
+                                                    exact hreg0
+                                                  have hreg_m : (⟨fenv_arr.env.update
+                                                      le.supply w_arm,
+                                                      fenv_arr.store⟩ :
+                                                      FullEnv).env le.supply =
+                                                      some w_arm := by
+                                                    simp [Env.update]
+                                                  have hf_r : FreshAbove ρ
+                                                      (le.supply + 1) :=
+                                                    FreshAbove.mono ρ supply
+                                                      (le.supply + 1)
+                                                      (Nat.le_trans hs1
+                                                      (Nat.le_trans hmst
+                                                      (Nat.le_trans hmse
+                                                      (Nat.le_succ _))))
+                                                      hfresh
+                                                  have hlast_r : le.supply <
+                                                      le.supply + 1 :=
+                                                    Nat.lt_succ_self _
+                                                  have hsub_r : ∀ b ∈ lr.blocks,
+                                                      b ∈ f.blocks :=
+                                                    fun b hb => hsub _
+                                                      (if_asm_mem_of_lr hb)
+                                                  cases F' with
+                                                  | zero =>
+                                                      have hB1r : blockBound
+                                                          fuelB rest ≥ 1 := by
+                                                        rw [blockBound]; omega
+                                                      exact absurd hge (by omega)
+                                                  | succ F1 =>
+                                                      have happ_J : execInstrsFullFromIn
+                                                          prog (some exitE)
+                                                          fenv_arr
+                                                          ([.phi le.supply
+                                                            exitT lt.val,
+                                                            .phi le.supply
+                                                            exitE le.val] ++
+                                                            lr.instrs) =
+                                                          execInstrsFullFromIn
+                                                            prog (some exitE)
+                                                            ⟨fenv_arr.env.update
+                                                              le.supply w_arm,
+                                                              fenv_arr.store⟩
+                                                            lr.instrs := by
+                                                        simp only
+                                                          [List.cons_append,
+                                                          List.nil_append]
+                                                        rw [execInstrsFullFromIn_eq,
+                                                          execInstrsFullFromIn_eq,
+                                                          execInstrsFullFrom_phi_miss
+                                                          _ _ _ _ _ _
+                                                          (Ne.symm hne_pe),
+                                                          execInstrsFullFrom_phi_hit
+                                                          _ _ _ _ _ _ rfl,
+                                                          hreg_arr]
+                                                      have hJeq : execBlockFromIn
+                                                          prog (F1 + 1) f
+                                                          (some exitE)
+                                                          ⟨nextB + 2,
+                                                            [.phi le.supply
+                                                              exitT lt.val,
+                                                              .phi le.supply
+                                                              exitE le.val] ++
+                                                              lr.instrs,
+                                                              lr.term⟩ fenv_arr =
+                                                          execBlockFromIn prog
+                                                            (F1 + 1) f
+                                                            (some exitE)
+                                                            ⟨nextB + 2,
+                                                              lr.instrs,
+                                                              lr.term⟩
+                                                            ⟨fenv_arr.env.update
+                                                              le.supply w_arm,
+                                                              fenv_arr.store⟩ :=
+                                                        execBlockFromIn_instrs_prefix
+                                                          prog F1 f (some exitE)
+                                                          (nextB + 2)
+                                                          [.phi le.supply
+                                                            exitT lt.val,
+                                                            .phi le.supply
+                                                            exitE le.val]
+                                                          lr.instrs lr.term
+                                                          fenv_arr
+                                                          ⟨fenv_arr.env.update
+                                                            le.supply w_arm,
+                                                            fenv_arr.store⟩
+                                                          happ_J
+                                                      have hg_r : F1 + 1 ≥
+                                                          blockBound fuelB
+                                                          rest + C :=
+                                                        Nat.le_trans hC'ge
+                                                          hge
+                                                      obtain ⟨F2, fenv_arr2, blkPrev2, hle2,
+                                                          hge2, heq_rest, hrel_final,
+                                                          hval_final⟩ :=
+                                                        ihr (nextB + 2) j ρ (le.supply + 1)
+                                                          le.next le.supply true loop lr hr
+                                                          hf_r hlast_r w_arm env_arm
+                                                          ⟨fenv_arr.env.update le.supply w_arm,
+                                                            fenv_arr.store⟩
+                                                          hrel_m (fun h => absurd h (by simp))
+                                                          (fun _ => hreg_m) fh henv' out hrun
+                                                          hbroke prog f (some exitE) (F1 + 1)
+                                                          hsub_r hnodf fuelB C hg_r info hlo hexcl hdist
+                                                          blk hlexit
+                                                      exact ⟨F2,
+                                                        fenv_arr2, blkPrev2,
+                                                        Nat.le_trans
+                                                          (Nat.le_trans hle2
+                                                          hle)
+                                                          (Nat.le_succ _),
+                                                        hge2,
+                                                        hentry.trans
+                                                        (heq_arm.trans
+                                                        (hJeq.trans
+                                                        heq_rest)),
+                                                        hrel_final,
+                                                        hval_final⟩
+                                              | returned e_arm =>
+                                                  simp only [] at hrun
+                                                  have hc : out = _ := (congrArg Prod.fst hrun).symm
+                                                  rw [hc] at hbroke
+                                                  exact absurd hbroke (by simp)
+                                              | stuck =>
+                                                  simp only [] at hrun
+                                                  have hc : out = _ := (congrArg Prod.fst hrun).symm
+                                                  rw [hc] at hbroke
+                                                  exact absurd hbroke (by simp)
+                                              | broke =>
+                                                  simp only [] at hrun
+                                                  have henv_eq : env_arm = henv' :=
+                                                    (congrArg Prod.snd hrun)
+                                                  have hregCb : fenvC.env vc =
+                                                      some (.bool false) := by
+                                                    have hww : (.bool false) =
+                                                        wC :=
+                                                      HIR.Expr.lit.inj hrC
+                                                    rw [hww]
+                                                    exact hregC
+                                                  have hbool : fenvC.boolOf vc =
+                                                      some false :=
+                                                    boolOf_of_lit fenvC vc false
+                                                      hregCb
+                                                  have hentry : execBlockFromIn prog
+                                                      (F'' + 1) f prev
+                                                      ⟨bId, ic, .branch vc nextB
+                                                        (nextB + 1)⟩ fenv =
+                                                      execBlockFromIn prog F'' f
+                                                        (some bId)
+                                                        ⟨nextB + 1, le.instrs,
+                                                          le.term⟩ fenvC :=
+                                                    execBlockFromIn_branch_false
+                                                      prog F'' f prev bId ic vc
+                                                      nextB (nextB + 1) fenv
+                                                      fenvC ⟨nextB + 1, le.instrs,
+                                                        le.term⟩ hexec_ic hbool
+                                                      hfindE
+                                                  have hg_t : F'' ≥ blockBound
+                                                      fuelB el + (2 + max
+                                                      (armBlockBound fuelB th)
+                                                      (armBlockBound fuelB el) +
+                                                      armBlockBound fuelB rest -
+                                                      armBlockBound fuelB el +
+                                                      C) := by
+                                                    have hBel : blockBound
+                                                        fuelB el = 1 +
+                                                        armBlockBound fuelB
+                                                          el := rfl
+                                                    omega
+                                                  have hsub_e : ∀ b ∈ le.blocks, b ∈ f.blocks :=
+                                                    fun b hb => hsub _ (if_asm_mem_of_le hb)
+                                                  have hiht := ((ihe (nextB + 1) (nextB + 2) ρ lt.supply
+                                                      lt.next lastVal false
+                                                        loop le he hf_e hlast_e .unit
+                                                      henv fenvC hrelC
+                                                      (fun _ => rfl)
+                                                      (fun h => absurd h
+                                                        (by simp))
+                                                      fh env_arm .broke har rfl prog f
+                                                      (some bId) F'' hsub_e hnodf
+                                                      fuelB (2 + max (armBlockBound fuelB th) (armBlockBound fuelB el) + armBlockBound fuelB rest - armBlockBound fuelB el + C) hg_t info hlo hexcl hdist blk hlexit))
+                                                  obtain ⟨F2, fenv_arr2, blkPrev2, hle2,
+                                                      hge2, heq_arm, hrel_final,
+                                                      hval_final⟩ := hiht
+                                                  rw [henv_eq] at hrel_final
+                                                  rw [hrho_e, ← hrho_r] at hrel_final
+                                                  rw [henv_eq] at hval_final
+                                                  have hgeC : F2 ≥ C := by omega
+                                                  exact ⟨F2, fenv_arr2, blkPrev2,
+                                                    Nat.le_trans hle2 (Nat.le_succ _),
+                                                    hgeC,
+                                                    hentry.trans heq_arm,
+                                                    hrel_final,
+                                                    hval_final⟩
+                                              | continued =>
+                                                  simp only [] at hrun
+                                                  have hc : out = _ := (congrArg Prod.fst hrun).symm
+                                                  rw [hc] at hbroke
+                                                  exact absurd hbroke (by simp)
+                                  | int _ =>
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hbroke
+                                      exact absurd hbroke (by simp)
+                                  | string _ =>
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hbroke
+                                      exact absurd hbroke (by simp)
+                                  | pointer _ =>
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hbroke
+                                      exact absurd hbroke (by simp)
+                                  | float _ =>
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hbroke
+                                      exact absurd hbroke (by simp)
+                                  | unit =>
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hbroke
+                                      exact absurd hbroke (by simp)
+                                  | undef =>
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hbroke
+                                      exact absurd hbroke (by simp)
+                                  | some _ =>
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hbroke
+                                      exact absurd hbroke (by simp)
+                                  | none =>
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hbroke
+                                      exact absurd hbroke (by simp)
+                                  | ok _ =>
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hbroke
+                                      exact absurd hbroke (by simp)
+                                  | err _ =>
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hbroke
+                                      exact absurd hbroke (by simp)
+                                  | tuple_ _ =>
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hbroke
+                                      exact absurd hbroke (by simp)
+                                  | array_ _ =>
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hbroke
+                                      exact absurd hbroke (by simp)
+                                  | loc _ =>
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hbroke
+                                      exact absurd hbroke (by simp)
+                                  | closure _ _ =>
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hbroke
+                                      exact absurd hbroke (by simp)
+
+
+/-- Arm execution on `continue`: when the HIR arm continues, the MIR entry
+block runs to the loop-header block (looked up by the caller, who owns it)
+with a related environment, and every carried register holds its HIR value
+(the snapshot copies establish this; the value invariant is what the
+trampoline-edge header chaining consumes). Straight-line steps peel via
+`lower_total.1` exactly as in `arm_broke`; an `if` chains a taken value arm
+through the join (citing `arm_total`) and the rest through the induction
+hypothesis, a continuing arm chains directly to the header, and every other
+arm outcome is vacuous for `continued`. -/
+theorem lowerStmtsCFG_arm_continued (budget : Nat) :
+    ∀ (bId j : MIR.BlockId) (ρ : List (HIR.Id × ValId))
+      (supply nextB : Nat) (lastVal : ValId) (hasVal : Bool)
+      (loop : Option LoopInfo)
+      (ss : List HIR.Stmt) (L : Lowered),
+      lowerStmtsCFG bId (some j) true ρ supply nextB lastVal hasVal loop ss =
+        some L →
+      ArmStmts budget ss →
+      FreshAbove ρ supply → lastVal < supply →
+      ∀ (forbid : MIR.BlockId), forbid < nextB → forbid < bId →
+      ∀ (accH : Value) (henv : HEnv) (fenv : FullEnv),
+      RelEnv henv ρ fenv.env →
+      (hasVal = false → accH = .unit) →
+      (hasVal = true → fenv.env lastVal = some accH) →
+      ∀ (fuelH : Nat) (henv' : HEnv) (out : HFlow),
+      runHIRStmts fuelH henv ss (.value (.lit accH)) = (out, henv') →
+      out = .continued →
+      ∀ (prog : Program) (f : Func) (prev : Option MIR.BlockId) (F : Nat),
+      (∀ b ∈ L.blocks, b ∈ f.blocks) →
+      (f.blocks.map Block.id).Nodup →
+      ∀ (fuelB C : Nat), F ≥ blockBound fuelB ss + C →
+      ∀ (info : LoopInfo), loop = some info →
+      CarriedExcl ρ info.carried →
+      (∀ id₁ r₁ id₂ r₂, (id₁, r₁) ∈ info.carried → (id₂, r₂) ∈ info.carried →
+        r₁ = r₂ → id₁ = id₂) →
+      ∀ (hblk : Block), findBlock f info.header = some hblk →
+      ∃ F' fenv_arr blkPrev, F' ≤ F ∧ F' ≥ C ∧
+        execBlockFromIn prog F f prev ⟨bId, L.instrs, L.term⟩ fenv =
+          execBlockFromIn prog F' f (some blkPrev) hblk fenv_arr ∧
+        RelEnv henv' L.ρ fenv_arr.env ∧
+        (∀ id r w, (id, r) ∈ info.carried →
+          lookupHEnv henv' id = some (.lit w) → fenv_arr.env r = some w) ∧
+        (∀ r, r < supply → (∀ id, (id, r) ∉ info.carried) →
+          fenv_arr.env r = fenv.env r) ∧
+        forbid < blkPrev := by
+  intro bId j ρ supply nextB lastVal hasVal loop ss L h hss hfresh hlast
+    forbid hfN hfB
+  induction hss generalizing bId j ρ supply nextB lastVal hasVal loop L
+    forbid hfN hfB with
+  | nil =>
+      intro accH henv fenv hrel hval0 hreg fuelH henv' out hrun hcont prog f
+        prev F hsub hnodf fuelB C hg info hlo hexcl hdist hblk hfindH
+      cases fuelH with
+      | zero =>
+          have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+          rw [hst] at hcont
+          exact absurd hcont (by simp)
+      | succ fh =>
+          have hstep : runHIRStmts (fh + 1) henv ([] : List HIR.Stmt)
+              (.value (.lit accH)) = ((.value (.lit accH)), henv) := rfl
+          rw [hstep] at hrun
+          have hacc : out = HFlow.value (.lit accH) :=
+            (congrArg Prod.fst hrun).symm
+          rw [hacc] at hcont
+          exact absurd hcont (by simp)
+  | exprStmt e rest hstr _ hrs ih =>
+      intro accH henv fenv hrel hval0 hreg fuelH henv' out hrun hcont prog f
+        prev F hsub hnodf fuelB C hg info hlo hexcl hdist hblk hfindH
+      simp only [lowerStmtsCFG] at h
+      cases he : lowerExpr ρ supply e with
+      | none => rw [he] at h; simp at h
+      | some p =>
+          obtain ⟨v0, ie, s1⟩ := p
+          rw [he] at h
+          simp only [] at h
+          cases hr : lowerStmtsCFG bId (some j) true ρ s1 nextB v0 true loop rest with
+          | none => rw [hr] at h; simp at h
+          | some Lr =>
+              rw [hr] at h
+              obtain rfl := Option.some.inj h
+              cases fuelH with
+              | zero =>
+                  have hz : runHIRStmts 0 henv (.exprStmt e :: rest)
+                      (.value (.lit accH)) = (.stuck, henv) := rfl
+                  rw [hz] at hrun
+                  have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+                  rw [hst] at hcont
+                  exact absurd hcont (by simp)
+              | succ fh =>
+                  have hstep : runHIRStmts (fh + 1) henv (.exprStmt e :: rest)
+                      (.value (.lit accH)) =
+                      (match evalHIR 256 henv e with
+                        | none => (HFlow.stuck, henv)
+                        | some v => runHIRStmts fh henv rest (.value v)) := rfl
+                  rw [hstep] at hrun
+                  cases hev : evalHIR 256 henv e with
+                  | none =>
+                      rw [hev] at hrun
+                      have hst : out = .stuck :=
+                        (congrArg Prod.fst hrun).symm
+                      rw [hst] at hcont
+                      exact absurd hcont (by simp)
+                  | some r =>
+                      rw [hev] at hrun
+                      obtain ⟨⟨wE, hrE⟩, fenv1, hexec1, hstore1, wE2, hrE2,
+                          hregE⟩ :=
+                        lower_total.1 ρ supply e v0 ie s1 he hstr hfresh
+                          henv fenv hrel 256 r hev
+                      rw [hrE] at hrun
+                      have hww : wE = wE2 :=
+                        HIR.Expr.lit.inj (hrE.symm.trans hrE2)
+                      have hregE' : fenv1.env v0 = some wE := hww ▸ hregE
+                      have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+                      have hf1 : FreshAbove ρ s1 :=
+                        FreshAbove.mono ρ supply s1 hs1 hfresh
+                      have hlast1 : v0 < s1 :=
+                        lower_result_lt.1 ρ supply e v0 ie s1 he hfresh
+                      have hrel1 : RelEnv henv ρ fenv1.env :=
+                        RelEnv_exec henv ρ supply e v0 ie s1 he fenv fenv1
+                          hrel hfresh hexec1
+                      have hnp_ie : ∀ dst pred src,
+                          .phi dst pred src ∉ ie := by
+                        intro d p s hm
+                        exact IsPure_not_phi
+                          (lower_isPure.1 _ _ _ _ _ _ he _ hm) d p s rfl
+                      have hexec_ie : execInstrsFullFromIn prog prev fenv ie
+                          = some fenv1 := by
+                        rw [execInstrsFullFromIn_of_noPhi prog prev fenv _ hnp_ie]
+                        exact hexec1
+                      have happ : execInstrsFullFromIn prog prev fenv
+                          (ie ++ Lr.instrs) =
+                          execInstrsFullFromIn prog prev fenv1 Lr.instrs := by
+                        rw [execInstrsFullFromIn_append, hexec_ie]
+                      have hbb : blockBound fuelB (.exprStmt e :: rest)
+                          = blockBound fuelB rest := by
+                        rw [blockBound, blockBound,
+                          armBlockBound_cons_not_if fuelB
+                            (fun c th el h => by cases h)
+                            (fun c body h => by cases h)]
+                      cases F with
+                      | zero =>
+                          have h1 : blockBound fuelB rest ≥ 1 := by
+                            rw [blockBound]; omega
+                          omega
+                      | succ F'' =>
+                          have hLHS : execBlockFromIn prog (F'' + 1) f prev
+                              ⟨bId, ie ++ Lr.instrs, Lr.term⟩ fenv =
+                              execBlockFromIn prog (F'' + 1) f prev
+                              ⟨bId, Lr.instrs, Lr.term⟩ fenv1 :=
+                              execBlockFromIn_instrs_prefix prog F'' f prev bId ie
+                              Lr.instrs Lr.term fenv fenv1 happ
+                          have hg' : F'' + 1 ≥ blockBound fuelB rest + C := by
+                            rw [← hbb]; exact hg
+                          have hsub' : ∀ b ∈ Lr.blocks, b ∈ f.blocks :=
+                            fun b hb => hsub b hb
+                          have hpl : ∀ r, r < supply → fenv1.env r = fenv.env r :=
+                            fun r hr => lower_preserv_regs ρ supply e v0 ie s1
+                              he fenv fenv1 hexec1 r hr
+                          obtain ⟨F', fenv_arr, blkPrev, hle, hge, heq_rest,
+                              hrel_arr, hval_arr, hpres_arr, hforbid⟩ :=
+                            ih bId j ρ s1 nextB v0 true loop Lr hr hf1
+                              hlast1 forbid hfN hfB wE henv fenv1 hrel1
+                              (fun hh => absurd hh (by simp)) (fun _ => hregE')
+                              fh henv' out hrun hcont prog f prev (F'' + 1)
+                              hsub' hnodf fuelB C hg' info hlo hexcl hdist hblk hfindH
+                          refine ⟨F', fenv_arr, blkPrev, hle, hge,
+                            hLHS.trans heq_rest, hrel_arr, hval_arr, ?_, hforbid⟩
+                          intro r hr hnc
+                          rw [hpres_arr r (Nat.lt_of_lt_of_le hr hs1) hnc]
+                          exact hpl r hr
+  | nop rest hrs ih =>
+      intro accH henv fenv hrel hval0 hreg fuelH henv' out hrun hcont prog f
+        prev F hsub hnodf fuelB C hg info hlo hexcl hdist hblk hfindH
+      simp only [lowerStmtsCFG] at h
+      cases hr : lowerStmtsCFG bId (some j) true ρ supply nextB lastVal
+          hasVal loop rest with
+      | none => rw [hr] at h; simp at h
+      | some Lr =>
+          rw [hr] at h
+          obtain rfl := Option.some.inj h
+          cases fuelH with
+          | zero =>
+              have hz : runHIRStmts 0 henv (.nop :: rest)
+                  (.value (.lit accH)) = (.stuck, henv) := rfl
+              rw [hz] at hrun
+              have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+              rw [hst] at hcont
+              exact absurd hcont (by simp)
+          | succ fh =>
+              have hstep : runHIRStmts (fh + 1) henv (.nop :: rest)
+                  (.value (.lit accH)) =
+                  runHIRStmts fh henv rest (.value (.lit accH)) := rfl
+              rw [hstep] at hrun
+              have hbb : blockBound fuelB (.nop :: rest)
+                  = blockBound fuelB rest := by
+                rw [blockBound, blockBound,
+                  armBlockBound_cons_not_if fuelB
+                    (fun c th el h => by cases h)
+                    (fun c body h => by cases h)]
+              cases F with
+              | zero =>
+                  have h1 : blockBound fuelB rest ≥ 1 := by
+                    rw [blockBound]; omega
+                  omega
+              | succ F'' =>
+                  have hLHS : execBlockFromIn prog (F'' + 1) f prev
+                      ⟨bId, Lr.instrs, Lr.term⟩ fenv =
+                      execBlockFromIn prog (F'' + 1) f prev
+                      ⟨bId, Lr.instrs, Lr.term⟩ fenv := rfl
+                  have hg' : F'' + 1 ≥ blockBound fuelB rest + C := by
+                    rw [← hbb]; exact hg
+                  obtain ⟨F', fenv_arr, blkPrev, hle, hge, heq_rest,
+                      hrel_arr, hval_arr, hpres_arr, hforbid⟩ :=
+                    ih bId j ρ supply nextB lastVal hasVal loop Lr hr hfresh
+                      hlast forbid hfN hfB accH henv fenv hrel hval0 hreg
+                      fh henv' out hrun hcont prog f prev (F'' + 1)
+                      hsub hnodf fuelB C hg' info hlo hexcl hdist hblk hfindH
+                  exact ⟨F', fenv_arr, blkPrev,
+                    hle, hge,
+                    hLHS.trans heq_rest, hrel_arr, hval_arr, hpres_arr, hforbid⟩
+  | returnStmt e rest hstr _ =>
+      intro accH henv fenv hrel hval0 hreg fuelH henv' out hrun hcont prog f
+        prev F hsub hnodf fuelB C hg info hlo hexcl hdist hblk hfindH
+      simp only [lowerStmtsCFG] at h
+      cases he : lowerExpr ρ supply e with
+      | none => rw [he] at h; simp at h
+      | some p =>
+          obtain ⟨v, ie, s1⟩ := p
+          rw [he] at h
+          obtain rfl := Option.some.inj h
+          cases fuelH with
+          | zero =>
+              have hz : runHIRStmts 0 henv (.returnStmt e :: rest)
+                  (.value (.lit accH)) = (.stuck, henv) := rfl
+              rw [hz] at hrun
+              have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+              rw [hst] at hcont
+              exact absurd hcont (by simp)
+          | succ fh =>
+              have hstep : runHIRStmts (fh + 1) henv (.returnStmt e :: rest)
+                  (.value (.lit accH)) =
+                  (match evalHIR 256 henv e with
+                    | none => (HFlow.stuck, henv)
+                    | some v => (.returned v, henv)) := rfl
+              rw [hstep] at hrun
+              cases hev : evalHIR 256 henv e with
+              | none =>
+                  rw [hev] at hrun
+                  have hst : out = .stuck :=
+                    (congrArg Prod.fst hrun).symm
+                  rw [hst] at hcont
+                  exact absurd hcont (by simp)
+              | some r =>
+                  rw [hev] at hrun
+                  have hret : out = .returned r :=
+                    (congrArg Prod.fst hrun).symm
+                  rw [hret] at hcont
+                  exact absurd hcont (by simp)
+  | breakStmt rest _ =>
+      intro accH henv fenv hrel hval0 hreg fuelH henv' out hrun hcont prog f
+        prev F hsub hnodf fuelB C hg info hlo hexcl hdist hblk hfindH
+      cases fuelH with
+      | zero =>
+          have hz : runHIRStmts 0 henv (.break :: rest)
+              (.value (.lit accH)) = (.stuck, henv) := rfl
+          rw [hz] at hrun
+          have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+          rw [hst] at hcont
+          exact absurd hcont (by simp)
+      | succ fh =>
+          have hstep : runHIRStmts (fh + 1) henv (.break :: rest)
+              (.value (.lit accH)) = (.broke, henv) := rfl
+          rw [hstep] at hrun
+          have hst : out = .broke := (congrArg Prod.fst hrun).symm
+          rw [hst] at hcont
+          exact absurd hcont (by simp)
+  | continueStmt rest _ =>
+      intro accH henv fenv hrel hval0 hreg fuelH henv' out hrun hcont prog f
+        prev F hsub hnodf fuelB C hg info hlo hexcl hdist hblk hfindH
+      subst hlo
+      simp only [lowerStmtsCFG] at h
+      cases hc : carryCopies ρ info.carried with
+      | none => simp [hc] at h
+      | some copies =>
+          simp [hc] at h
+          subst h
+          cases fuelH with
+          | zero =>
+              have hz : runHIRStmts 0 henv (.continue :: rest)
+                  (.value (.lit accH)) = (.stuck, henv) := rfl
+              rw [hz] at hrun
+              have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+              rw [hst] at hcont
+              exact absurd hcont (by simp)
+          | succ fh =>
+              have hstep : runHIRStmts (fh + 1) henv (.continue :: rest)
+                  (.value (.lit accH)) = (.continued, henv) := rfl
+              rw [hstep] at hrun
+              have h2 : henv = henv' := congrArg Prod.snd hrun
+              cases F with
+              | zero =>
+                  have h1 : blockBound fuelB (.continue :: rest) ≥ 1 := by
+                    rw [blockBound]; omega
+                  omega
+              | succ F' =>
+                  obtain ⟨fenv_arr, hexec_copies, hrel_arr, hval_arr, hframe⟩ :=
+                    carryCopies_exec ρ info.carried copies hc prog prev fenv
+                      henv hrel hexcl hdist
+                  have heq : execBlockFromIn prog (F' + 1) f prev
+                      ⟨bId, copies, .goto info.header⟩ fenv =
+                      execBlockFromIn prog F' f (some bId) hblk fenv_arr :=
+                    execBlockFromIn_goto prog F' f prev bId copies info.header
+                      fenv fenv_arr hblk hexec_copies hfindH
+                  have hge : F' ≥ C := by
+                    have hbb : blockBound fuelB (.continue :: rest) ≥ 1 := by
+                      rw [blockBound]; omega
+                    omega
+                  refine ⟨F', fenv_arr, bId, Nat.le_succ _, hge, heq, ?_, ?_,
+                    ?_, hfB⟩
+                  · rw [← h2]
+                    exact hrel_arr
+                  · rw [← h2]
+                    exact hval_arr
+                  · intro r _ hnc
+                    exact hframe r hnc
+  | ifStmt c th el rest hstr _ hath hael hrs iht ihe ihr =>
+      intro accH henv fenv hrel hval0 hreg fuelH henv' out hrun hcont prog f
+        prev F hsub hnodf fuelB C hg info hlo hexcl hdist hblk hfindH
+      simp only [lowerStmtsCFG] at h
+      cases heC : lowerExpr ρ supply c with
+      | none => rw [heC] at h; simp at h
+      | some p =>
+          obtain ⟨vc, ic, s1⟩ := p
+          rw [heC] at h
+          simp only [] at h
+          cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
+              (nextB + 3) lastVal false loop th with
+          | none => rw [ht] at h; simp at h
+          | some lt =>
+              rw [ht] at h
+              simp only [] at h
+              cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ
+                  lt.supply lt.next lastVal false loop el with
+              | none => rw [he] at h; simp at h
+              | some le =>
+                  rw [he] at h
+                  simp only [] at h
+                  cases hr : lowerStmtsCFG (nextB + 2) (some j) true ρ
+                      (le.supply + 1) le.next le.supply true loop rest with
+                  | none => rw [hr] at h; simp at h
+                  | some lr =>
+                      rw [hr] at h
+                      simp only [] at h
+                      obtain rfl := Option.some.inj h
+                      dsimp only at hsub ⊢
+                      generalize hTdef : ((lt.blocks.getLast?.map
+                        (fun b => b.id)).getD nextB) = exitT
+                      generalize hEdef : ((le.blocks.getLast?.map
+                        (fun b => b.id)).getD (nextB + 1)) = exitE
+                      rw [hTdef, hEdef] at hsub
+                      have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ heC
+                      have hf1 : FreshAbove ρ s1 :=
+                        FreshAbove.mono ρ supply s1 hs1 hfresh
+                      have hlast1 : lastVal < s1 :=
+                        Nat.lt_of_lt_of_le hlast hs1
+                      obtain ⟨hmnt, hmst, hbndt, hnodt⟩ :=
+                        lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _ ht hath
+                      obtain ⟨hmne, hmse, hbnde, hnode⟩ :=
+                        lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _ he hael
+                      obtain ⟨hmnr, hmsr, hbndr, hnodr⟩ :=
+                        lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _ hr hrs
+                      have hrho_t : lt.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
+                      have hrho_e : le.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
+                      have hrho_r : lr.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ hr hrs
+                      have hbb_if : blockBound fuelB (.ifStmt c th el :: rest) =
+                          1 + (3 + max (armBlockBound fuelB th)
+                            (armBlockBound fuelB el) +
+                            armBlockBound fuelB rest) := by
+                        rw [blockBound, armBlockBound_if]
+                      have hB1 : blockBound fuelB (.ifStmt c th el :: rest)
+                          ≥ 1 := by
+                        rw [blockBound]; omega
+                      have hTmem : (⟨nextB, lt.instrs, lt.term⟩ : Block)
+                          ∈ f.blocks :=
+                        hsub _ if_asm_mem_then
+                      have hfindT : findBlock f nextB =
+                          some ⟨nextB, lt.instrs, lt.term⟩ :=
+                        findBlock_of_nodup_mem hnodf hTmem
+                      have hEmem : (⟨nextB + 1, le.instrs, le.term⟩ : Block)
+                          ∈ f.blocks :=
+                        hsub _ if_asm_mem_else
+                      have hfindE : findBlock f (nextB + 1) =
+                          some ⟨nextB + 1, le.instrs, le.term⟩ :=
+                        findBlock_of_nodup_mem hnodf hEmem
+                      have hJmem : (⟨nextB + 2,
+                          [.phi le.supply exitT lt.val,
+                           .phi le.supply exitE le.val] ++ lr.instrs,
+                          lr.term⟩ : Block) ∈ f.blocks :=
+                        hsub _ if_asm_mem_join
+                      have hfindJ : findBlock f (nextB + 2) =
+                          some ⟨nextB + 2,
+                            [.phi le.supply exitT lt.val,
+                             .phi le.supply exitE le.val] ++ lr.instrs,
+                            lr.term⟩ :=
+                        findBlock_of_nodup_mem hnodf hJmem
+                      have hne_pe : exitE ≠ exitT := by
+                        have hexitT : exitT = nextB ∨
+                            ∃ b ∈ lt.blocks, exitT = b.id := by
+                          cases hgl : lt.blocks.getLast? with
+                          | none =>
+                              exact Or.inl (by simp [← hTdef, hgl])
+                          | some b =>
+                              have hm : b ∈ lt.blocks := getLast?_mem hgl
+                              exact Or.inr ⟨b, hm, by simp [← hTdef, hgl]⟩
+                        have hexitE : exitE = nextB + 1 ∨
+                            ∃ b ∈ le.blocks, exitE = b.id := by
+                          cases hgl : le.blocks.getLast? with
+                          | none =>
+                              exact Or.inl (by simp [← hEdef, hgl])
+                          | some b =>
+                              have hm : b ∈ le.blocks := getLast?_mem hgl
+                              exact Or.inr ⟨b, hm, by simp [← hEdef, hgl]⟩
+                        rcases hexitT with hT | ⟨bt, hbt, hT⟩
+                        · rcases hexitE with hE | ⟨be, hbe, hE⟩
+                          · simp [hT, hE]
+                          · obtain ⟨hlo, -⟩ := hbnde be hbe
+                            rw [hE, hT]
+                            exact Nat.ne_of_gt (Nat.lt_of_lt_of_le (by omega)
+                              (Nat.le_trans hmnt hlo))
+                        · rcases hexitE with hE | ⟨be, hbe, hE⟩
+                          · obtain ⟨hlo, -⟩ := hbndt bt hbt
+                            rw [hE, hT]
+                            exact Nat.ne_of_lt (Nat.lt_of_le_of_lt
+                              (Nat.add_le_add_left (by decide) nextB) hlo)
+                          · obtain ⟨-, hhi⟩ := hbndt bt hbt
+                            obtain ⟨hlo, -⟩ := hbnde be hbe
+                            rw [hE, hT]
+                            exact Nat.ne_of_gt
+                              (Nat.lt_of_lt_of_le hhi hlo)
+                      cases F with
+                      | zero =>
+                          have hbb : blockBound fuelB
+                              (.ifStmt c th el :: rest) ≥ 1 := by
+                            show 1 + _ ≥ 1
+                            omega
+                          omega
+                      | succ F'' =>
+                          cases fuelH with
+                          | zero =>
+                              have hz : runHIRStmts 0 henv
+                                  (.ifStmt c th el :: rest)
+                                  (.value (.lit accH)) = (.stuck, henv) := rfl
+                              rw [hz] at hrun
+                              have hst : out = .stuck :=
+                                (congrArg Prod.fst hrun).symm
+                              rw [hst] at hcont
+                              exact absurd hcont (by simp)
+                          | succ fh =>
+                              have hstep : runHIRStmts (fh + 1) henv
+                                  (.ifStmt c th el :: rest)
+                                  (.value (.lit accH)) =
+                                  (match evalHIR 256 henv c with
+                                    | some (.lit (.bool true)) =>
+                                      match runHIRStmts fh henv th
+                                          (HFlow.value (.lit .unit)) with
+                                      | (HFlow.value u, env') =>
+                                          runHIRStmts fh env' rest
+                                            ((HFlow.value (.lit accH)).replace
+                                              u)
+                                      | (f, env') => (f, env')
+                                    | some (.lit (.bool false)) =>
+                                      match runHIRStmts fh henv el
+                                          (HFlow.value (.lit .unit)) with
+                                      | (HFlow.value u, env') =>
+                                          runHIRStmts fh env' rest
+                                            ((HFlow.value (.lit accH)).replace
+                                              u)
+                                      | (f, env') => (f, env')
+                                    | _ => (.stuck, henv)) := rfl
+                              rw [hstep] at hrun
+                              cases hevC : evalHIR 256 henv c with
+                              | none =>
+                                  rw [hevC] at hrun
+                                  have hst : out = .stuck :=
+                                    (congrArg Prod.fst hrun).symm
+                                  rw [hst] at hcont
+                                  exact absurd hcont (by simp)
+                              | some r =>
+                                  rw [hevC] at hrun
+                                  obtain ⟨⟨w, hrw⟩, fenvC, hexecC, hstoreC,
+                                      wC, hrC, hregC⟩ :=
+                                    lower_total.1 ρ supply c vc ic s1 heC hstr
+                                      hfresh henv fenv hrel 256 r hevC
+                                  subst hrw
+                                  have hnp_ic : ∀ dst pred src,
+                                      .phi dst pred src ∉ ic := by
+                                    intro d p s hm
+                                    exact IsPure_not_phi
+                                      (lower_isPure.1 _ _ _ _ _ _ heC _ hm)
+                                      d p s rfl
+                                  have hexec_ic : execInstrsFullFromIn prog
+                                      prev fenv ic = some fenvC := by
+                                    rw [execInstrsFullFromIn_of_noPhi prog prev
+                                      fenv _ hnp_ic]
+                                    exact hexecC
+                                  have hrelC : RelEnv henv ρ fenvC.env :=
+                                    RelEnv_exec henv ρ supply c vc ic s1 heC
+                                      fenv fenvC hrel hfresh hexecC
+                                  cases w with
+                                  | bool b =>
+                                      cases b with
+                                      | true =>
+                                          simp only [] at hrun
+                                          cases har : runHIRStmts fh henv th
+                                              (HFlow.value (.lit .unit)) with
+                                          | mk out_arm env_arm =>
+                                              rw [har] at hrun
+                                              cases out_arm with
+                                              | value u_arm =>
+                                                  simp only [] at hrun
+                                                  have hregCb : fenvC.env vc =
+                                                      some (.bool true) := by
+                                                    have hww : (.bool true) =
+                                                        wC :=
+                                                      HIR.Expr.lit.inj hrC
+                                                    rw [hww]
+                                                    exact hregC
+                                                  have hbool : fenvC.boolOf vc =
+                                                      some true :=
+                                                    boolOf_of_lit fenvC vc true
+                                                      hregCb
+                                                  have hentry : execBlockFromIn prog
+                                                      (F'' + 1) f prev
+                                                      ⟨bId, ic, .branch vc nextB
+                                                        (nextB + 1)⟩ fenv =
+                                                      execBlockFromIn prog F'' f
+                                                        (some bId)
+                                                        ⟨nextB, lt.instrs,
+                                                          lt.term⟩ fenvC :=
+                                                    execBlockFromIn_branch_true
+                                                      prog F'' f prev bId ic vc
+                                                      nextB (nextB + 1) fenv
+                                                      fenvC ⟨nextB, lt.instrs,
+                                                        lt.term⟩ hexec_ic hbool
+                                                      hfindT
+                                                  have hsub_t : ∀ b ∈ lt.blocks,
+                                                      b ∈ f.blocks :=
+                                                    fun b hb => hsub _
+                                                      (if_asm_mem_of_lt hb)
+                                                  have hC'ge : (2 + max
+                                                      (armBlockBound fuelB th)
+                                                      (armBlockBound fuelB el) +
+                                                      armBlockBound fuelB rest -
+                                                      armBlockBound fuelB th +
+                                                      C) ≥ blockBound fuelB
+                                                      rest + C := by
+                                                    have hBrest : blockBound
+                                                        fuelB rest = 1 +
+                                                        armBlockBound fuelB
+                                                          rest := rfl
+                                                    omega
+                                                  have hg_t : F'' ≥ blockBound
+                                                      fuelB th + (2 + max
+                                                      (armBlockBound fuelB th)
+                                                      (armBlockBound fuelB el) +
+                                                      armBlockBound fuelB rest -
+                                                      armBlockBound fuelB th +
+                                                      C) := by
+                                                    have hBth : blockBound
+                                                        fuelB th = 1 +
+                                                        armBlockBound fuelB
+                                                          th := rfl
+                                                    omega
+                                                  obtain ⟨w_arm, hu_arm, F',
+                                                      fenv_arr, hle, hge,
+                                                      heq_arm, hrel_arm,
+                                                      hreg_arr, hpres_arm⟩ :=
+                                                    ((lowerStmtsCFG_arm_total budget nextB (nextB + 2) ρ s1
+                                                      (nextB + 3) lastVal false
+                                                        loop th lt ht hath hf1 hlast1 .unit
+                                                      henv fenvC hrelC
+                                                      (fun _ => rfl)
+                                                      (fun h => absurd h
+                                                        (by simp))
+                                                      fh env_arm
+                                                      (HFlow.value u_arm) har prog f
+                                                      (some bId) ⟨nextB + 2,
+                                                        [.phi le.supply exitT
+                                                          lt.val,
+                                                         .phi le.supply exitE
+                                                          le.val] ++ lr.instrs,
+                                                        lr.term⟩ F'' hsub_t
+                                                      hnodf hfindJ fuelB (2 +
+                                                      max (armBlockBound
+                                                      fuelB th)
+                                                      (armBlockBound fuelB el) +
+                                                      armBlockBound fuelB rest -
+                                                      armBlockBound fuelB th +
+                                                      C) hg_t u_arm).1 rfl)
+                                                  rw [hTdef] at heq_arm
+                                                  rw [hrho_t] at hrel_arm
+                                                  have hrep : ((HFlow.value
+                                                      (.lit accH)).replace
+                                                      (.lit w_arm)) =
+                                                      HFlow.value
+                                                        (.lit w_arm) := rfl
+                                                  rw [hu_arm, hrep] at hrun
+                                                  have hfrL : FreshAbove ρ
+                                                      le.supply :=
+                                                    FreshAbove.mono ρ supply
+                                                      le.supply (Nat.le_trans
+                                                      hs1 (Nat.le_trans hmst
+                                                      hmse)) hfresh
+                                                  have hrel_m : RelEnv env_arm
+                                                      ρ (fenv_arr.env.update
+                                                        le.supply
+                                                        w_arm) := by
+                                                    intro id u hlook
+                                                    obtain ⟨w0, hlookH,
+                                                      hreg0⟩ := hrel_arm id u
+                                                      hlook
+                                                    have hu : u < le.supply :=
+                                                      hfrL id u
+                                                        (rhoLookup_some_mem ρ
+                                                          id u hlook)
+                                                    have hne : u ≠ le.supply :=
+                                                      Nat.ne_of_lt hu
+                                                    refine ⟨w0, hlookH, ?_⟩
+                                                    have hupd : (fenv_arr.env.update
+                                                        le.supply w_arm) u =
+                                                        fenv_arr.env u := by
+                                                      simp [Env.update, hne]
+                                                    show (fenv_arr.env.update
+                                                        le.supply w_arm) u =
+                                                      some w0
+                                                    rw [hupd]
+                                                    exact hreg0
+                                                  have hreg_m : (⟨fenv_arr.env.update
+                                                      le.supply w_arm,
+                                                      fenv_arr.store⟩ :
+                                                      FullEnv).env le.supply =
+                                                      some w_arm := by
+                                                    simp [Env.update]
+                                                  have hf_r : FreshAbove ρ
+                                                      (le.supply + 1) :=
+                                                    FreshAbove.mono ρ supply
+                                                      (le.supply + 1)
+                                                      (Nat.le_trans hs1
+                                                      (Nat.le_trans hmst
+                                                      (Nat.le_trans hmse
+                                                      (Nat.le_succ _))))
+                                                      hfresh
+                                                  have hlast_r : le.supply <
+                                                      le.supply + 1 :=
+                                                    Nat.lt_succ_self _
+                                                  have hsub_r : ∀ b ∈ lr.blocks,
+                                                      b ∈ f.blocks :=
+                                                    fun b hb => hsub _
+                                                      (if_asm_mem_of_lr hb)
+                                                  cases F' with
+                                                  | zero =>
+                                                      have hB1r : blockBound
+                                                          fuelB rest ≥ 1 := by
+                                                        rw [blockBound]; omega
+                                                      exact absurd hge (by omega)
+                                                  | succ F1 =>
+                                                      have happ_J : execInstrsFullFromIn
+                                                          prog (some exitT)
+                                                          fenv_arr
+                                                          ([.phi le.supply
+                                                            exitT lt.val,
+                                                            .phi le.supply
+                                                            exitE le.val] ++
+                                                            lr.instrs) =
+                                                          execInstrsFullFromIn
+                                                            prog (some exitT)
+                                                            ⟨fenv_arr.env.update
+                                                              le.supply w_arm,
+                                                              fenv_arr.store⟩
+                                                            lr.instrs :=
+                                                        execInstrsFullFromIn_phis_hit
+                                                          prog exitT fenv_arr
+                                                          le.supply exitT exitE
+                                                          lt.val le.val
+                                                          lr.instrs w_arm rfl
+                                                          hne_pe hreg_arr
+                                                      have hJeq : execBlockFromIn
+                                                          prog (F1 + 1) f
+                                                          (some exitT)
+                                                          ⟨nextB + 2,
+                                                            [.phi le.supply
+                                                              exitT lt.val,
+                                                              .phi le.supply
+                                                              exitE le.val] ++
+                                                              lr.instrs,
+                                                              lr.term⟩ fenv_arr =
+                                                          execBlockFromIn prog
+                                                            (F1 + 1) f
+                                                            (some exitT)
+                                                            ⟨nextB + 2,
+                                                              lr.instrs,
+                                                              lr.term⟩
+                                                            ⟨fenv_arr.env.update
+                                                              le.supply w_arm,
+                                                              fenv_arr.store⟩ :=
+                                                        execBlockFromIn_instrs_prefix
+                                                          prog F1 f (some exitT)
+                                                          (nextB + 2)
+                                                          [.phi le.supply
+                                                            exitT lt.val,
+                                                            .phi le.supply
+                                                            exitE le.val]
+                                                          lr.instrs lr.term
+                                                          fenv_arr
+                                                          ⟨fenv_arr.env.update
+                                                            le.supply w_arm,
+                                                            fenv_arr.store⟩
+                                                          happ_J
+                                                      have hg_r : F1 + 1 ≥
+                                                          blockBound fuelB
+                                                          rest + C :=
+                                                        Nat.le_trans hC'ge hge
+                                                      obtain ⟨F2, fenv_arr2, blkPrev2, hle2,
+                                                          hge2, heq_rest, hrel_final,
+                                                          hval_final, hpres_tail, hforbid2⟩ :=
+                                                        ihr (nextB + 2) j ρ (le.supply + 1)
+                                                          le.next le.supply true loop lr hr
+                                                          hf_r hlast_r forbid
+                                                          (Nat.lt_of_lt_of_le hfN
+                                                            (Nat.le_trans (Nat.le_add_right nextB 3)
+                                                              (Nat.le_trans hmnt hmne)))
+                                                          (Nat.lt_of_lt_of_le hfN
+                                                            (Nat.le_add_right nextB 2)) w_arm env_arm
+                                                          ⟨fenv_arr.env.update le.supply w_arm,
+                                                            fenv_arr.store⟩
+                                                          hrel_m (fun h => absurd h (by simp))
+                                                          (fun _ => hreg_m) fh henv' out hrun
+                                                          hcont prog f (some exitT) (F1 + 1)
+                                                          hsub_r hnodf fuelB C hg_r info hlo hexcl hdist
+                                                          hblk hfindH
+                                                      refine ⟨F2,
+                                                          fenv_arr2, blkPrev2,
+                                                          Nat.le_trans
+                                                            (Nat.le_trans hle2
+                                                            hle)
+                                                            (Nat.le_succ _),
+                                                          hge2,
+                                                          hentry.trans
+                                                            (heq_arm.trans
+                                                            (hJeq.trans
+                                                            heq_rest)),
+                                                          hrel_final,
+                                                          hval_final, ?_, hforbid2⟩
+                                                      have hpc : ∀ r, r < supply →
+                                                          fenvC.env r = fenv.env r :=
+                                                        fun r hr =>
+                                                          lower_preserv_regs ρ supply c vc ic s1 heC
+                                                            fenv fenvC hexecC r hr
+                                                      have hle_sup : supply ≤ le.supply :=
+                                                        Nat.le_trans hs1
+                                                          (Nat.le_trans hmst hmse)
+                                                      intro r hr hnc
+                                                      have e1 : fenvC.env r = fenv.env r :=
+                                                        hpc r hr
+                                                      have e2 : fenv_arr.env r = fenvC.env r :=
+                                                        hpres_arm r
+                                                          (Nat.lt_of_lt_of_le hr hs1)
+                                                      have e3 : (fenv_arr.env.update le.supply
+                                                          w_arm) r = fenv_arr.env r := by
+                                                        simp [Env.update,
+                                                          Nat.ne_of_lt
+                                                            (Nat.lt_of_lt_of_le hr hle_sup)]
+                                                      have e4 : fenv_arr2.env r =
+                                                          (fenv_arr.env.update le.supply
+                                                          w_arm) r :=
+                                                        hpres_tail r
+                                                          (Nat.lt_of_lt_of_le hr
+                                                          (Nat.le_trans hle_sup
+                                                          (Nat.le_succ _))) hnc
+                                                      exact e4.trans (e3.trans (e2.trans e1))
+                                              | returned e_arm =>
+                                                  simp only [] at hrun
+                                                  have hc : out = _ := (congrArg Prod.fst hrun).symm
+                                                  rw [hc] at hcont
+                                                  exact absurd hcont (by simp)
+                                              | stuck =>
+                                                  simp only [] at hrun
+                                                  have hc : out = _ := (congrArg Prod.fst hrun).symm
+                                                  rw [hc] at hcont
+                                                  exact absurd hcont (by simp)
+                                              | broke =>
+                                                  simp only [] at hrun
+                                                  have hc : out = _ := (congrArg Prod.fst hrun).symm
+                                                  rw [hc] at hcont
+                                                  exact absurd hcont (by simp)
+                                              | continued =>
+                                                  simp only [] at hrun
+                                                  have henv_eq : env_arm = henv' :=
+                                                  (congrArg Prod.snd hrun)
+                                                  have hregCb : fenvC.env vc =
+                                                      some (.bool true) := by
+                                                    have hww : (.bool true) =
+                                                        wC :=
+                                                      HIR.Expr.lit.inj hrC
+                                                    rw [hww]
+                                                    exact hregC
+                                                  have hbool : fenvC.boolOf vc =
+                                                      some true :=
+                                                    boolOf_of_lit fenvC vc true
+                                                      hregCb
+                                                  have hentry : execBlockFromIn prog
+                                                      (F'' + 1) f prev
+                                                      ⟨bId, ic, .branch vc nextB
+                                                        (nextB + 1)⟩ fenv =
+                                                      execBlockFromIn prog F'' f
+                                                        (some bId)
+                                                        ⟨nextB, lt.instrs,
+                                                          lt.term⟩ fenvC :=
+                                                    execBlockFromIn_branch_true
+                                                      prog F'' f prev bId ic vc
+                                                      nextB (nextB + 1) fenv
+                                                      fenvC ⟨nextB, lt.instrs,
+                                                        lt.term⟩ hexec_ic hbool
+                                                      hfindT
+                                                  have hsub_t : ∀ b ∈ lt.blocks, b ∈ f.blocks :=
+                                                    fun b hb => hsub _ (if_asm_mem_of_lt hb)
+                                                  have hg_t : F'' ≥ blockBound
+                                                      fuelB th + (2 + max (armBlockBound fuelB th) (armBlockBound fuelB el) + armBlockBound fuelB rest - armBlockBound fuelB th + C) := by
+                                                    have hBth : blockBound
+                                                        fuelB th = 1 +
+                                                        armBlockBound fuelB
+                                                          th := rfl
+                                                    omega
+                                                  have hiht := ((iht nextB (nextB + 2) ρ s1
+                                                      (nextB + 3) lastVal false
+                                                        loop lt ht hf1 hlast1 forbid
+                                                      (Nat.lt_of_lt_of_le hfN (Nat.le_add_right nextB 3)) hfN .unit
+                                                      henv fenvC hrelC
+                                                      (fun _ => rfl)
+                                                      (fun h => absurd h
+                                                        (by simp))
+                                                      fh env_arm .continued har rfl prog f
+                                                      (some bId) F'' hsub_t hnodf
+                                                      fuelB (2 + max (armBlockBound fuelB th) (armBlockBound fuelB el) + armBlockBound fuelB rest - armBlockBound fuelB th + C) hg_t info hlo hexcl hdist hblk hfindH))
+                                                  obtain ⟨F2, fenv_arr2, blkPrev2, hle2,
+                                                      hge2, heq_arm, hrel_final,
+                                                      hval_final, hpres_final, hforbidT⟩ := hiht
+                                                  rw [henv_eq] at hrel_final
+                                                  rw [hrho_t, ← hrho_r] at hrel_final
+                                                  rw [henv_eq] at hval_final
+                                                  have hgeC : F2 ≥ C := by omega
+                                                  refine ⟨F2, fenv_arr2, blkPrev2,
+                                                    Nat.le_trans hle2 (Nat.le_succ _),
+                                                    hgeC,
+                                                    hentry.trans heq_arm,
+                                                    hrel_final,
+                                                    hval_final, ?_, hforbidT⟩
+                                                  have hpc : ∀ r, r < supply →
+                                                      fenvC.env r = fenv.env r :=
+                                                    fun r hr =>
+                                                      lower_preserv_regs ρ supply c vc ic s1 heC
+                                                        fenv fenvC hexecC r hr
+                                                  intro r hr hnc
+                                                  have e1 : fenvC.env r = fenv.env r :=
+                                                    hpc r hr
+                                                  have e2 : fenv_arr2.env r = fenvC.env r :=
+                                                    hpres_final r
+                                                      (Nat.lt_of_lt_of_le hr hs1) hnc
+                                                  exact e2.trans e1
+                                      | false =>
+                                          simp only [] at hrun
+                                          have hregCb : fenvC.env vc =
+                                              some (.bool false) := by
+                                            have hww : (.bool false) =
+                                                wC :=
+                                              HIR.Expr.lit.inj hrC
+                                            rw [hww]
+                                            exact hregC
+                                          have hbool : fenvC.boolOf vc =
+                                              some false :=
+                                            boolOf_of_lit fenvC vc false
+                                              hregCb
+                                          have hentry : execBlockFromIn prog
+                                              (F'' + 1) f prev
+                                              ⟨bId, ic, .branch vc nextB
+                                                (nextB + 1)⟩ fenv =
+                                              execBlockFromIn prog F'' f
+                                                (some bId)
+                                                ⟨nextB + 1, le.instrs,
+                                                  le.term⟩ fenvC :=
+                                            execBlockFromIn_branch_false
+                                              prog F'' f prev bId ic vc
+                                              nextB (nextB + 1) fenv
+                                              fenvC ⟨nextB + 1, le.instrs,
+                                                le.term⟩ hexec_ic hbool
+                                              hfindE
+                                          have hsub_e : ∀ b ∈ le.blocks,
+                                              b ∈ f.blocks :=
+                                            fun b hb => hsub _
+                                              (if_asm_mem_of_le hb)
+                                          have hf_e : FreshAbove ρ
+                                              lt.supply :=
+                                            FreshAbove.mono ρ s1 lt.supply
+                                              hmst hf1
+                                          have hlast_e : lastVal <
+                                              lt.supply :=
+                                            Nat.lt_of_lt_of_le hlast1 hmst
+                                          have hC'ge : (2 + max
+                                              (armBlockBound fuelB th)
+                                              (armBlockBound fuelB el) +
+                                              armBlockBound fuelB rest -
+                                              armBlockBound fuelB el +
+                                              C) ≥ blockBound fuelB
+                                              rest + C := by
+                                            have hBrest : blockBound
+                                                fuelB rest = 1 +
+                                                armBlockBound fuelB
+                                                  rest := rfl
+                                            omega
+                                          have hg_e : F'' ≥ blockBound
+                                              fuelB el + (2 + max
+                                              (armBlockBound fuelB th)
+                                              (armBlockBound fuelB el) +
+                                              armBlockBound fuelB rest -
+                                              armBlockBound fuelB el +
+                                              C) := by
+                                            have hBel : blockBound
+                                                fuelB el = 1 +
+                                                armBlockBound fuelB
+                                                  el := rfl
+                                            omega
+                                          cases har : runHIRStmts fh henv el
+                                              (HFlow.value (.lit .unit)) with
+                                          | mk out_arm env_arm =>
+                                              rw [har] at hrun
+                                              cases out_arm with
+                                              | value u_arm =>
+                                                  simp only [] at hrun
+                                                  obtain ⟨w_arm, hu_arm, F',
+                                                      fenv_arr, hle, hge,
+                                                      heq_arm, hrel_arm,
+                                                      hreg_arr, hpres_arm⟩ :=
+                                                    ((lowerStmtsCFG_arm_total budget (nextB + 1)
+                                                      (nextB + 2) ρ lt.supply
+                                                      lt.next lastVal false
+                                                        loop el le he hael hf_e hlast_e .unit
+                                                      henv fenvC hrelC
+                                                      (fun _ => rfl)
+                                                      (fun h => absurd h
+                                                        (by simp))
+                                                      fh env_arm
+                                                      (HFlow.value u_arm) har
+                                                      prog f (some bId)
+                                                      ⟨nextB + 2,
+                                                        [.phi le.supply exitT
+                                                          lt.val,
+                                                         .phi le.supply exitE
+                                                          le.val] ++ lr.instrs,
+                                                        lr.term⟩ F'' hsub_e
+                                                      hnodf hfindJ fuelB (2 +
+                                                      max (armBlockBound
+                                                      fuelB th)
+                                                      (armBlockBound fuelB el) +
+                                                      armBlockBound fuelB rest -
+                                                      armBlockBound fuelB el +
+                                                      C) hg_e u_arm).1 rfl)
+                                                  rw [hEdef] at heq_arm
+                                                  rw [hrho_e] at hrel_arm
+                                                  have hrep : ((HFlow.value
+                                                      (.lit accH)).replace
+                                                      (.lit w_arm)) =
+                                                      HFlow.value
+                                                        (.lit w_arm) := rfl
+                                                  rw [hu_arm, hrep] at hrun
+                                                  have hfrL : FreshAbove ρ
+                                                      le.supply :=
+                                                    FreshAbove.mono ρ supply
+                                                      le.supply (Nat.le_trans
+                                                      hs1 (Nat.le_trans hmst
+                                                      hmse)) hfresh
+                                                  have hrel_m : RelEnv env_arm
+                                                      ρ (fenv_arr.env.update
+                                                        le.supply
+                                                        w_arm) := by
+                                                    intro id u hlook
+                                                    obtain ⟨w0, hlookH,
+                                                      hreg0⟩ := hrel_arm id u
+                                                      hlook
+                                                    have hu : u < le.supply :=
+                                                      hfrL id u
+                                                        (rhoLookup_some_mem ρ
+                                                          id u hlook)
+                                                    have hne : u ≠ le.supply :=
+                                                      Nat.ne_of_lt hu
+                                                    refine ⟨w0, hlookH, ?_⟩
+                                                    have hupd : (fenv_arr.env.update
+                                                        le.supply w_arm) u =
+                                                        fenv_arr.env u := by
+                                                      simp [Env.update, hne]
+                                                    show (fenv_arr.env.update
+                                                        le.supply w_arm) u =
+                                                      some w0
+                                                    rw [hupd]
+                                                    exact hreg0
+                                                  have hreg_m : (⟨fenv_arr.env.update
+                                                      le.supply w_arm,
+                                                      fenv_arr.store⟩ :
+                                                      FullEnv).env le.supply =
+                                                      some w_arm := by
+                                                    simp [Env.update]
+                                                  have hf_r : FreshAbove ρ
+                                                      (le.supply + 1) :=
+                                                    FreshAbove.mono ρ supply
+                                                      (le.supply + 1)
+                                                      (Nat.le_trans hs1
+                                                      (Nat.le_trans hmst
+                                                      (Nat.le_trans hmse
+                                                      (Nat.le_succ _))))
+                                                      hfresh
+                                                  have hlast_r : le.supply <
+                                                      le.supply + 1 :=
+                                                    Nat.lt_succ_self _
+                                                  have hsub_r : ∀ b ∈ lr.blocks,
+                                                      b ∈ f.blocks :=
+                                                    fun b hb => hsub _
+                                                      (if_asm_mem_of_lr hb)
+                                                  cases F' with
+                                                  | zero =>
+                                                      have hB1r : blockBound
+                                                          fuelB rest ≥ 1 := by
+                                                        rw [blockBound]; omega
+                                                      exact absurd hge (by omega)
+                                                  | succ F1 =>
+                                                      have happ_J : execInstrsFullFromIn
+                                                          prog (some exitE)
+                                                          fenv_arr
+                                                          ([.phi le.supply
+                                                            exitT lt.val,
+                                                            .phi le.supply
+                                                            exitE le.val] ++
+                                                            lr.instrs) =
+                                                          execInstrsFullFromIn
+                                                            prog (some exitE)
+                                                            ⟨fenv_arr.env.update
+                                                              le.supply w_arm,
+                                                              fenv_arr.store⟩
+                                                            lr.instrs := by
+                                                        simp only
+                                                          [List.cons_append,
+                                                          List.nil_append]
+                                                        rw [execInstrsFullFromIn_eq,
+                                                          execInstrsFullFromIn_eq,
+                                                          execInstrsFullFrom_phi_miss
+                                                          _ _ _ _ _ _
+                                                          (Ne.symm hne_pe),
+                                                          execInstrsFullFrom_phi_hit
+                                                          _ _ _ _ _ _ rfl,
+                                                          hreg_arr]
+                                                      have hJeq : execBlockFromIn
+                                                          prog (F1 + 1) f
+                                                          (some exitE)
+                                                          ⟨nextB + 2,
+                                                            [.phi le.supply
+                                                              exitT lt.val,
+                                                              .phi le.supply
+                                                              exitE le.val] ++
+                                                              lr.instrs,
+                                                              lr.term⟩ fenv_arr =
+                                                          execBlockFromIn prog
+                                                            (F1 + 1) f
+                                                            (some exitE)
+                                                            ⟨nextB + 2,
+                                                              lr.instrs,
+                                                              lr.term⟩
+                                                            ⟨fenv_arr.env.update
+                                                              le.supply w_arm,
+                                                              fenv_arr.store⟩ :=
+                                                        execBlockFromIn_instrs_prefix
+                                                          prog F1 f (some exitE)
+                                                          (nextB + 2)
+                                                          [.phi le.supply
+                                                            exitT lt.val,
+                                                            .phi le.supply
+                                                            exitE le.val]
+                                                          lr.instrs lr.term
+                                                          fenv_arr
+                                                          ⟨fenv_arr.env.update
+                                                            le.supply w_arm,
+                                                            fenv_arr.store⟩
+                                                          happ_J
+                                                      have hg_r : F1 + 1 ≥
+                                                          blockBound fuelB
+                                                          rest + C :=
+                                                        Nat.le_trans hC'ge
+                                                          hge
+                                                      obtain ⟨F2, fenv_arr2, blkPrev2, hle2,
+                                                          hge2, heq_rest, hrel_final,
+                                                          hval_final, hpres_tail, hforbid2⟩ :=
+                                                        ihr (nextB + 2) j ρ (le.supply + 1)
+                                                          le.next le.supply true loop lr hr
+                                                          hf_r hlast_r forbid
+                                                          (Nat.lt_of_lt_of_le hfN
+                                                            (Nat.le_trans (Nat.le_add_right nextB 3)
+                                                              (Nat.le_trans hmnt hmne)))
+                                                          (Nat.lt_of_lt_of_le hfN
+                                                            (Nat.le_add_right nextB 2)) w_arm env_arm
+                                                          ⟨fenv_arr.env.update le.supply w_arm,
+                                                            fenv_arr.store⟩
+                                                          hrel_m (fun h => absurd h (by simp))
+                                                          (fun _ => hreg_m) fh henv' out hrun
+                                                          hcont prog f (some exitE) (F1 + 1)
+                                                          hsub_r hnodf fuelB C hg_r info hlo hexcl hdist
+                                                          hblk hfindH
+                                                      refine ⟨F2,
+                                                        fenv_arr2, blkPrev2,
+                                                        Nat.le_trans
+                                                          (Nat.le_trans hle2
+                                                          hle)
+                                                          (Nat.le_succ _),
+                                                        hge2,
+                                                        hentry.trans
+                                                          (heq_arm.trans
+                                                          (hJeq.trans
+                                                          heq_rest)),
+                                                        hrel_final,
+                                                        hval_final, ?_, hforbid2⟩
+                                                      have hpc : ∀ r, r < supply →
+                                                          fenvC.env r = fenv.env r :=
+                                                        fun r hr =>
+                                                          lower_preserv_regs ρ supply c vc ic s1 heC
+                                                            fenv fenvC hexecC r hr
+                                                      have hle_sup : supply ≤ le.supply :=
+                                                        Nat.le_trans hs1
+                                                          (Nat.le_trans hmst hmse)
+                                                      intro r hr hnc
+                                                      have e1 : fenvC.env r = fenv.env r :=
+                                                        hpc r hr
+                                                      have e2 : fenv_arr.env r = fenvC.env r :=
+                                                        hpres_arm r
+                                                          (Nat.lt_of_lt_of_le hr (Nat.le_trans hs1 hmst))
+                                                      have e3 : (fenv_arr.env.update le.supply
+                                                          w_arm) r = fenv_arr.env r := by
+                                                        simp [Env.update,
+                                                          Nat.ne_of_lt
+                                                            (Nat.lt_of_lt_of_le hr hle_sup)]
+                                                      have e4 : fenv_arr2.env r =
+                                                          (fenv_arr.env.update le.supply
+                                                          w_arm) r :=
+                                                        hpres_tail r
+                                                          (Nat.lt_of_lt_of_le hr
+                                                          (Nat.le_trans hle_sup
+                                                          (Nat.le_succ _))) hnc
+                                                      exact e4.trans (e3.trans (e2.trans e1))
+                                              | returned e_arm =>
+                                                  simp only [] at hrun
+                                                  have hc : out = _ := (congrArg Prod.fst hrun).symm
+                                                  rw [hc] at hcont
+                                                  exact absurd hcont (by simp)
+                                              | stuck =>
+                                                  simp only [] at hrun
+                                                  have hc : out = _ := (congrArg Prod.fst hrun).symm
+                                                  rw [hc] at hcont
+                                                  exact absurd hcont (by simp)
+                                              | broke =>
+                                                  simp only [] at hrun
+                                                  have hc : out = _ := (congrArg Prod.fst hrun).symm
+                                                  rw [hc] at hcont
+                                                  exact absurd hcont (by simp)
+                                              | continued =>
+                                                  simp only [] at hrun
+                                                  have henv_eq : env_arm = henv' :=
+                                                  (congrArg Prod.snd hrun)
+                                                  have hregCb : fenvC.env vc =
+                                                      some (.bool false) := by
+                                                    have hww : (.bool false) =
+                                                        wC :=
+                                                      HIR.Expr.lit.inj hrC
+                                                    rw [hww]
+                                                    exact hregC
+                                                  have hbool : fenvC.boolOf vc =
+                                                      some false :=
+                                                    boolOf_of_lit fenvC vc false
+                                                      hregCb
+                                                  have hentry : execBlockFromIn prog
+                                                      (F'' + 1) f prev
+                                                      ⟨bId, ic, .branch vc nextB
+                                                        (nextB + 1)⟩ fenv =
+                                                      execBlockFromIn prog F'' f
+                                                        (some bId)
+                                                        ⟨nextB + 1, le.instrs,
+                                                          le.term⟩ fenvC :=
+                                                    execBlockFromIn_branch_false
+                                                      prog F'' f prev bId ic vc
+                                                      nextB (nextB + 1) fenv
+                                                      fenvC ⟨nextB + 1, le.instrs,
+                                                        le.term⟩ hexec_ic hbool
+                                                      hfindE
+                                                  have hsub_e : ∀ b ∈ le.blocks,
+                                                      b ∈ f.blocks :=
+                                                    fun b hb => hsub _
+                                                      (if_asm_mem_of_le hb)
+                                                  have hg_e : F'' ≥ blockBound
+                                                      fuelB el + (2 + max (armBlockBound fuelB th) (armBlockBound fuelB el) + armBlockBound fuelB rest - armBlockBound fuelB el + C) := by
+                                                    have hBel : blockBound
+                                                        fuelB el = 1 +
+                                                        armBlockBound fuelB
+                                                          el := rfl
+                                                    omega
+                                                  have hihe := ((ihe (nextB + 1) (nextB + 2) ρ lt.supply
+                                                      lt.next lastVal false
+                                                        loop le he hf_e hlast_e forbid
+                                                      (Nat.lt_of_lt_of_le hfN (Nat.le_trans (Nat.le_add_right nextB 3) hmnt))
+                                                      (Nat.lt_of_lt_of_le hfN (Nat.le_add_right nextB 1)) .unit
+                                                      henv fenvC hrelC
+                                                      (fun _ => rfl)
+                                                      (fun h => absurd h
+                                                        (by simp))
+                                                      fh env_arm .continued har rfl prog f
+                                                      (some bId) F'' hsub_e hnodf
+                                                      fuelB (2 + max (armBlockBound fuelB th) (armBlockBound fuelB el) + armBlockBound fuelB rest - armBlockBound fuelB el + C) hg_e info hlo hexcl hdist hblk hfindH))
+                                                  obtain ⟨F2, fenv_arr2, blkPrev2, hle2,
+                                                      hge2, heq_arm, hrel_final,
+                                                      hval_final, hpres_final, hforbidE⟩ := hihe
+                                                  rw [henv_eq] at hrel_final
+                                                  rw [hrho_e, ← hrho_r] at hrel_final
+                                                  rw [henv_eq] at hval_final
+                                                  have hgeC : F2 ≥ C := by omega
+                                                  refine ⟨F2, fenv_arr2, blkPrev2,
+                                                    Nat.le_trans hle2 (Nat.le_succ _),
+                                                    hgeC,
+                                                    hentry.trans heq_arm,
+                                                    hrel_final,
+                                                    hval_final, ?_, hforbidE⟩
+                                                  have hpc : ∀ r, r < supply →
+                                                      fenvC.env r = fenv.env r :=
+                                                    fun r hr =>
+                                                      lower_preserv_regs ρ supply c vc ic s1 heC
+                                                        fenv fenvC hexecC r hr
+                                                  intro r hr hnc
+                                                  have e1 : fenvC.env r = fenv.env r :=
+                                                    hpc r hr
+                                                  have e2 : fenv_arr2.env r = fenvC.env r :=
+                                                    hpres_final r
+                                                      (Nat.lt_of_lt_of_le hr (Nat.le_trans hs1 hmst)) hnc
+                                                  exact e2.trans e1
+                                  | int _ =>
+                                      simp only [] at hrun
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hcont
+                                      exact absurd hcont (by simp)
+                                  | string _ =>
+                                      simp only [] at hrun
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hcont
+                                      exact absurd hcont (by simp)
+                                  | pointer _ =>
+                                      simp only [] at hrun
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hcont
+                                      exact absurd hcont (by simp)
+                                  | float _ =>
+                                      simp only [] at hrun
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hcont
+                                      exact absurd hcont (by simp)
+                                  | unit =>
+                                      simp only [] at hrun
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hcont
+                                      exact absurd hcont (by simp)
+                                  | undef =>
+                                      simp only [] at hrun
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hcont
+                                      exact absurd hcont (by simp)
+                                  | some _ =>
+                                      simp only [] at hrun
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hcont
+                                      exact absurd hcont (by simp)
+                                  | none =>
+                                      simp only [] at hrun
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hcont
+                                      exact absurd hcont (by simp)
+                                  | ok _ =>
+                                      simp only [] at hrun
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hcont
+                                      exact absurd hcont (by simp)
+                                  | err _ =>
+                                      simp only [] at hrun
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hcont
+                                      exact absurd hcont (by simp)
+                                  | tuple_ _ =>
+                                      simp only [] at hrun
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hcont
+                                      exact absurd hcont (by simp)
+                                  | array_ _ =>
+                                      simp only [] at hrun
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hcont
+                                      exact absurd hcont (by simp)
+                                  | loc _ =>
+                                      simp only [] at hrun
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hcont
+                                      exact absurd hcont (by simp)
+                                  | closure _ _ =>
+                                      simp only [] at hrun
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      rw [hst] at hcont
+                                      exact absurd hcont (by simp)
+
+/-- Loop-body execution (C7 spine worker): a closed body run from unit
+reaches the header on fall-through (back edge, with the body's exit env),
+the loop exit on `break`, the header on `continue` (trampoline edge, with
+carried values snapshotted), or returns its value; anything else is
+vacuous. Straight-line steps peel via `lower_total.1` exactly as in
+`arm_total`; `varDecl` is refused under `loop = some` so that case is
+vacuous by computation; an `if` chains the taken arm (citing `arm_total` /
+`arm_broke` / `arm_continued`) through the join and the rest through the
+induction hypothesis. No accumulator hypothesis: arms always run from unit
+and `nil` never reads `lastVal` on a `goto` continuation. -/
+theorem lowerStmtsCFG_loopBody_run (budget : Nat) :
+    ∀ (bId : MIR.BlockId) (ρ : List (HIR.Id × ValId))
+      (supply nextB : Nat) (contB : MIR.BlockId) (lastVal : ValId)
+      (loop : Option LoopInfo) (info : LoopInfo)
+      (ss : List HIR.Stmt) (L : Lowered),
+      loop = some info →
+      lowerStmtsCFG bId (some contB) false ρ supply nextB lastVal true loop ss =
+        some L →
+      LoopStmts budget ss →
+      FreshAbove ρ supply → lastVal < supply →
+      ∀ (forbid : MIR.BlockId), forbid < nextB → forbid < bId →
+      ∀ (accH : Value) (henv : HEnv) (fenv : FullEnv),
+      RelEnv henv ρ fenv.env →
+      fenv.env lastVal = some accH →
+      ∀ (fuelH : Nat) (henv' : HEnv) (out : HFlow),
+      runHIRStmts fuelH henv ss (.value (.lit accH)) = (out, henv') →
+      ∀ (prog : Program) (f : Func) (prev : Option MIR.BlockId) (F : Nat),
+      (∀ b ∈ L.blocks, b ∈ f.blocks) →
+      (f.blocks.map Block.id).Nodup →
+      ∀ (fuelB C : Nat), F ≥ blockBound fuelB ss + C →
+      CarriedExcl ρ info.carried →
+      (∀ id r, (id, r) ∈ info.carried → r < supply) →
+      (∀ id₁ r₁ id₂ r₂, (id₁, r₁) ∈ info.carried → (id₂, r₂) ∈ info.carried →
+        r₁ = r₂ → id₁ = id₂) →
+      ∀ (hblk : Block) (eblk : Block) (hdr : Block),
+      findBlock f contB = some hblk →
+      findBlock f info.exit = some eblk →
+      findBlock f info.header = some hdr →
+      (∀ (u : HIR.Expr), out = .value u →
+        ∃ F' fenv_arr, F' ≤ F ∧ F' ≥ C ∧
+          execBlockFromIn prog F f prev ⟨bId, L.instrs, L.term⟩ fenv =
+            execBlockFromIn prog F' f
+              (some ((L.blocks.getLast?.map (fun b => b.id)).getD bId))
+              hblk fenv_arr ∧
+          RelEnv henv' L.ρ fenv_arr.env) ∧
+      (out = .broke →
+        ∃ F' fenv_arr blkPrev, F' ≤ F ∧ F' ≥ C ∧
+          execBlockFromIn prog F f prev ⟨bId, L.instrs, L.term⟩ fenv =
+            execBlockFromIn prog F' f (some blkPrev) eblk fenv_arr ∧
+          RelEnv henv' L.ρ fenv_arr.env ∧
+          (∀ id r w, (id, r) ∈ info.carried →
+            lookupHEnv henv' id = some (.lit w) → fenv_arr.env r = some w)) ∧
+      (out = .continued →
+        ∃ F' fenv_arr blkPrev, F' ≤ F ∧ F' ≥ C ∧
+          execBlockFromIn prog F f prev ⟨bId, L.instrs, L.term⟩ fenv =
+            execBlockFromIn prog F' f (some blkPrev) hdr fenv_arr ∧
+          (∀ id r w, (id, r) ∈ info.carried →
+            lookupHEnv henv' id = some (.lit w) → fenv_arr.env r = some w) ∧
+          (∀ r, r < supply → (∀ id, (id, r) ∉ info.carried) →
+            fenv_arr.env r = fenv.env r) ∧
+          forbid < blkPrev) ∧
+      (∀ (e : HIR.Expr), out = .returned e →
+        ∃ w_e, e = .lit w_e ∧
+          execBlockFromIn prog F f prev ⟨bId, L.instrs, L.term⟩ fenv =
+            some w_e) := by
+  intro bId ρ supply nextB contB lastVal loop info ss L hlo h hss hfresh hlast
+    forbid hfN hfB
+  induction ss generalizing bId ρ supply nextB contB lastVal loop L
+    forbid hfN hfB with
+  | nil =>
+      intro accH henv fenv hrel hacc fuelH henv' out hrun prog f prev F
+        hsub hnodf fuelB C hg hexcl hsup hdist hblk eblk hdr hfindC hfindE
+        hfindHdr
+      cases hss with
+      | nil =>
+          simp only [lowerStmtsCFG.eq_def] at h
+          obtain rfl := Option.some.inj h
+          cases fuelH with
+          | zero =>
+              have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+              refine ⟨?_, ?_, ?_, ?_⟩
+              · intro u hout
+                rw [hst] at hout
+                exact absurd hout (by simp)
+              · intro hbroke
+                rw [hst] at hbroke
+                exact absurd hbroke (by simp)
+              · intro hcont
+                rw [hst] at hcont
+                exact absurd hcont (by simp)
+              · intro e_ret hout
+                rw [hst] at hout
+                exact absurd hout (by simp)
+          | succ fh =>
+              have hstep : runHIRStmts (fh + 1) henv ([] : List HIR.Stmt)
+                  (.value (.lit accH)) = ((.value (.lit accH)), henv) := rfl
+              rw [hstep] at hrun
+              have hacc : out = HFlow.value (.lit accH) :=
+                (congrArg Prod.fst hrun).symm
+              have henv_eq : henv = henv' := congrArg Prod.snd hrun
+              refine ⟨?_, ?_, ?_, ?_⟩
+              · intro u _hout
+                cases F with
+                | zero =>
+                    have h1 : blockBound fuelB ([] : List HIR.Stmt) ≥ 1 := by
+                      rw [blockBound]; omega
+                    omega
+                | succ F' =>
+                    have heq : execBlockFromIn prog (F' + 1) f prev
+                        ⟨bId, [], .goto contB⟩ fenv =
+                        execBlockFromIn prog F' f (some bId) hblk fenv :=
+                      execBlockFromIn_goto prog F' f prev bId [] contB
+                        fenv fenv hblk rfl hfindC
+                    refine ⟨F', fenv, Nat.le_succ _, ?_, ?_, ?_⟩
+                    · have hbb : blockBound fuelB ([] : List HIR.Stmt)
+                          ≥ 1 := by
+                        rw [blockBound]; omega
+                      omega
+                    · have hlastB : (([] : List Block).getLast?.map
+                        (fun b => b.id)).getD bId = bId := by simp
+                      rw [hlastB]
+                      exact heq
+                    · rw [← henv_eq]
+                      exact hrel
+              · intro hbroke
+                rw [hacc] at hbroke
+                exact absurd hbroke (by simp)
+              · intro hcont
+                rw [hacc] at hcont
+                exact absurd hcont (by simp)
+              · intro e_ret hout
+                rw [hacc] at hout
+                exact absurd hout (by simp)
+  | cons s rest ih =>
+      intro accH henv fenv hrel hacc fuelH henv' out hrun prog f prev F
+        hsub hnodf fuelB C hg hexcl hsup hdist hblk eblk hdr hfindC hfindE
+        hfindHdr
+      cases hss with
+      | exprStmt e rest hstr _ hrs =>
+          simp only [lowerStmtsCFG] at h
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he] at h; simp at h
+          | some p =>
+              obtain ⟨v0, ie, s1⟩ := p
+              rw [he] at h
+              simp only [] at h
+              cases hr : lowerStmtsCFG bId (some contB) false ρ s1 nextB v0
+                  true loop rest with
+              | none => rw [hr] at h; simp at h
+              | some Lr =>
+                  rw [hr] at h
+                  simp only [] at h
+                  obtain rfl := Option.some.inj h
+                  cases fuelH with
+                  | zero =>
+                      have hz : runHIRStmts 0 henv (.exprStmt e :: rest)
+                          (.value (.lit accH)) = (.stuck, henv) := rfl
+                      rw [hz] at hrun
+                      have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+                      refine ⟨?_, ?_, ?_, ?_⟩
+                      · intro u hout
+                        rw [hst] at hout
+                        exact absurd hout (by simp)
+                      · intro hbroke
+                        rw [hst] at hbroke
+                        exact absurd hbroke (by simp)
+                      · intro hcont
+                        rw [hst] at hcont
+                        exact absurd hcont (by simp)
+                      · intro e_ret hout
+                        rw [hst] at hout
+                        exact absurd hout (by simp)
+                  | succ fh =>
+                      have hstep : runHIRStmts (fh + 1) henv
+                          (.exprStmt e :: rest) (.value (.lit accH)) =
+                          (match evalHIR 256 henv e with
+                            | none => (HFlow.stuck, henv)
+                            | some v => runHIRStmts fh henv rest (.value v)) := rfl
+                      rw [hstep] at hrun
+                      cases hev : evalHIR 256 henv e with
+                      | none =>
+                          rw [hev] at hrun
+                          have hst : out = .stuck :=
+                            (congrArg Prod.fst hrun).symm
+                          refine ⟨?_, ?_, ?_, ?_⟩
+                          · intro u hout
+                            rw [hst] at hout
+                            exact absurd hout (by simp)
+                          · intro hbroke
+                            rw [hst] at hbroke
+                            exact absurd hbroke (by simp)
+                          · intro hcont
+                            rw [hst] at hcont
+                            exact absurd hcont (by simp)
+                          · intro e_ret hout
+                            rw [hst] at hout
+                            exact absurd hout (by simp)
+                      | some r =>
+                          rw [hev] at hrun
+                          obtain ⟨⟨wE, hrE⟩, fenv1, hexec1, hstore1, wE2,
+                              hrE2, hregE⟩ :=
+                            lower_total.1 ρ supply e v0 ie s1 he hstr hfresh
+                              henv fenv hrel 256 r hev
+                          rw [hrE] at hrun
+                          simp only [] at hrun
+                          have hww : wE = wE2 :=
+                            HIR.Expr.lit.inj (hrE.symm.trans hrE2)
+                          have hregE' : fenv1.env v0 = some wE := hww ▸ hregE
+                          have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+                          have hf1 : FreshAbove ρ s1 :=
+                            FreshAbove.mono ρ supply s1 hs1 hfresh
+                          have hlast1 : v0 < s1 :=
+                            lower_result_lt.1 ρ supply e v0 ie s1 he hfresh
+                          have hrel1 : RelEnv henv ρ fenv1.env :=
+                            RelEnv_exec henv ρ supply e v0 ie s1 he fenv fenv1
+                              hrel hfresh hexec1
+                          have hsup1 : ∀ id r, (id, r) ∈ info.carried →
+                              r < s1 :=
+                            fun id r hmem =>
+                              Nat.lt_of_lt_of_le (hsup _ _ hmem) hs1
+                          have hnp_ie : ∀ dst pred src,
+                              .phi dst pred src ∉ ie := by
+                            intro d p s hm
+                            exact IsPure_not_phi
+                              (lower_isPure.1 _ _ _ _ _ _ he _ hm) d p s rfl
+                          have hexec_ie : execInstrsFullFromIn prog prev fenv
+                              ie = some fenv1 := by
+                            rw [execInstrsFullFromIn_of_noPhi prog prev fenv
+                              _ hnp_ie]
+                            exact hexec1
+                          have happ : execInstrsFullFromIn prog prev fenv
+                              (ie ++ Lr.instrs) =
+                              execInstrsFullFromIn prog prev fenv1 Lr.instrs := by
+                            rw [execInstrsFullFromIn_append, hexec_ie]
+                          have hbb : blockBound fuelB (.exprStmt e :: rest)
+                              = blockBound fuelB rest := by
+                            rw [blockBound, blockBound,
+                              armBlockBound_cons_not_if fuelB
+                                (fun c th el h => by cases h)
+                                (fun c body h => by cases h)]
+                          cases F with
+                          | zero =>
+                              have h1 : blockBound fuelB rest ≥ 1 := by
+                                rw [blockBound]; omega
+                              omega
+                          | succ F'' =>
+                              have hLHS : execBlockFromIn prog (F'' + 1) f prev
+                                  ⟨bId, ie ++ Lr.instrs, Lr.term⟩ fenv =
+                                  execBlockFromIn prog (F'' + 1) f prev
+                                  ⟨bId, Lr.instrs, Lr.term⟩ fenv1 :=
+                                  execBlockFromIn_instrs_prefix prog F'' f prev bId ie
+                                  Lr.instrs Lr.term fenv fenv1 happ
+                              have hg' : F'' + 1 ≥ blockBound fuelB rest + C := by
+                                rw [← hbb]; exact hg
+                              have hsub' : ∀ b ∈ Lr.blocks, b ∈ f.blocks :=
+                                fun b hb => hsub b hb
+                              obtain ⟨ihV, ihB, ihC, ihR⟩ :=
+                                ih bId ρ s1 nextB contB v0 loop Lr hlo hr hrs hf1 hlast1 forbid hfN hfB wE henv fenv1 hrel1 hregE' fh henv' out
+                                  hrun prog f prev (F'' + 1) hsub' hnodf fuelB
+                                  C hg' hexcl hsup1 hdist hblk eblk hdr hfindC
+                                  hfindE hfindHdr
+                              refine ⟨?_, ?_, ?_, ?_⟩
+                              · intro u hout
+                                obtain ⟨F', fenv_arr, hle, hge,
+                                    heq_rest, hrel_arr⟩ := ihV u hout
+                                exact ⟨F', fenv_arr, hle, hge,
+                                  hLHS.trans heq_rest, hrel_arr⟩
+                              · intro hbroke
+                                obtain ⟨F', fenv_arr, blkPrev, hle, hge,
+                                    heq_rest, hrel_arr, hval_arr⟩ := ihB hbroke
+                                exact ⟨F', fenv_arr, blkPrev, hle, hge,
+                                  hLHS.trans heq_rest, hrel_arr, hval_arr⟩
+                              · intro hcont
+                                obtain ⟨F', fenv_arr, blkPrev, hle, hge,
+                                    heq_rest, hcarried, hpreserv, hforbid⟩ := ihC hcont
+                                refine ⟨F', fenv_arr, blkPrev, hle, hge,
+                                  hLHS.trans heq_rest, hcarried, ?_, hforbid⟩
+                                intro r hr hnc
+                                exact (hpreserv r (Nat.lt_of_lt_of_le hr hs1) hnc).trans
+                                  (lower_preserv_regs ρ supply e v0 ie s1 he fenv fenv1 hexec1 r hr)
+                              · intro e_ret hout
+                                obtain ⟨w_e, hu_e, heq_rest⟩ := ihR e_ret hout
+                                exact ⟨w_e, hu_e, hLHS.trans heq_rest⟩
+      | varDecl id τ init rest hstr _ hrs _ =>
+          subst hlo
+          simp only [lowerStmtsCFG] at h
+          simp at h
+      | assign id e rest hstr _ hrs hvf =>
+          simp only [lowerStmtsCFG] at h
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he] at h; simp at h
+          | some p =>
+              obtain ⟨v0, ie, s1⟩ := p
+              rw [he] at h
+              simp only [] at h
+              cases hr : lowerStmtsCFG bId (some contB) false
+                  (updAssoc ρ id v0) s1 nextB lastVal true loop rest with
+              | none => rw [hr] at h; simp at h
+              | some Lr =>
+                  rw [hr] at h
+                  simp only [] at h
+                  obtain rfl := Option.some.inj h
+                  have hs1 : supply ≤ s1 :=
+                    lower_mono.1 _ _ _ _ _ _ he
+                  have hlast1 : lastVal < s1 :=
+                    Nat.lt_of_lt_of_le hlast hs1
+                  have hva : v0 < s1 :=
+                    lower_result_lt.1 ρ supply e v0 ie s1 he hfresh
+                  have hf1 : FreshAbove (updAssoc ρ id v0) s1 := by
+                    intro j u hmem
+                    rcases updAssoc_mem ρ id v0 j u hmem with ⟨-, hwu⟩ |
+                      hmem'
+                    · rw [hwu]
+                      exact hva
+                    · exact Nat.lt_of_lt_of_le (hfresh j u hmem') hs1
+                  have hsup1 : ∀ id0 r0, (id0, r0) ∈ info.carried →
+                      r0 < s1 :=
+                    fun id0 r0 hmem =>
+                      Nat.lt_of_lt_of_le (hsup _ _ hmem) hs1
+                  have hexcl' : CarriedExcl (updAssoc ρ id v0)
+                      info.carried := by
+                    intro id0 r0 hmem id' u' hlook heq
+                    by_cases heq' : id' = id
+                    · rw [heq'] at hlook
+                      have huv : u' = v0 := by
+                        have h1 := rhoLookup_updAssoc_id ρ id v0
+                        rw [h1] at hlook
+                        cases hρ : rhoLookup ρ id with
+                        | none => simp [hρ] at hlook
+                        | some _ =>
+                            simp [hρ] at hlook
+                            exact hlook.symm
+                      have hrS : r0 < supply := hsup _ _ hmem
+                      have hge : supply ≤ v0 :=
+                        lowerExpr_result_ge _ _ _ _ _ _ hstr hvf he
+                      have hlt : r0 < v0 :=
+                        Nat.lt_of_lt_of_le hrS hge
+                      rw [← huv, heq] at hlt
+                      exact absurd hlt (Nat.lt_irrefl _)
+                    · have hlook' : rhoLookup ρ id' = some u' := by
+                        have hrr := rhoLookup_updAssoc_ne
+                          (fun hh => heq' hh.symm) (v := v0) ρ
+                        rw [hrr] at hlook
+                        exact hlook
+                      exact hexcl id0 r0 hmem id' u' hlook' heq
+                  have hbb : blockBound fuelB (.assign id e :: rest)
+                      = blockBound fuelB rest := by
+                    rw [blockBound, blockBound,
+                      armBlockBound_cons_not_if fuelB
+                        (fun c th el h => by cases h)
+                        (fun c body h => by cases h)]
+                  have hg0 : F ≥ blockBound fuelB rest + C := by
+                    rw [← hbb]; exact hg
+                  cases fuelH with
+                  | zero =>
+                      have hz : runHIRStmts 0 henv (.assign id e :: rest)
+                          (.value (.lit accH)) = (.stuck, henv) := rfl
+                      rw [hz] at hrun
+                      have hst : out = .stuck :=
+                        (congrArg Prod.fst hrun).symm
+                      refine ⟨?_, ?_, ?_, ?_⟩
+                      · intro u hout
+                        rw [hst] at hout
+                        exact absurd hout (by simp)
+                      · intro hbroke
+                        rw [hst] at hbroke
+                        exact absurd hbroke (by simp)
+                      · intro hcont
+                        rw [hst] at hcont
+                        exact absurd hcont (by simp)
+                      · intro e_ret hout
+                        rw [hst] at hout
+                        exact absurd hout (by simp)
+                  | succ fh =>
+                      have hstep : runHIRStmts (fh + 1) henv
+                          (.assign id e :: rest)
+                          (.value (.lit accH)) =
+                          (match evalHIR 256 henv e with
+                            | none => (HFlow.stuck, henv)
+                            | some v => runHIRStmts fh
+                                (updateHEnv henv id v) rest
+                                (.value (.lit accH))) := rfl
+                      rw [hstep] at hrun
+                      cases hev : evalHIR 256 henv e with
+                      | none =>
+                          rw [hev] at hrun
+                          have hst : out = .stuck :=
+                            (congrArg Prod.fst hrun).symm
+                          refine ⟨?_, ?_, ?_, ?_⟩
+                          · intro u hout
+                            rw [hst] at hout
+                            exact absurd hout (by simp)
+                          · intro hbroke
+                            rw [hst] at hbroke
+                            exact absurd hbroke (by simp)
+                          · intro hcont
+                            rw [hst] at hcont
+                            exact absurd hcont (by simp)
+                          · intro e_ret hout
+                            rw [hst] at hout
+                            exact absurd hout (by simp)
+                      | some r =>
+                          rw [hev] at hrun
+                          obtain ⟨⟨wE, hrE⟩, fenv1, hexec1, hstore1,
+                              wE2, hrE2, hregE⟩ :=
+                            lower_total.1 ρ supply e v0 ie s1 he hstr
+                              hfresh henv fenv hrel 256 r hev
+                          have hww : wE = wE2 :=
+                            HIR.Expr.lit.inj (hrE.symm.trans hrE2)
+                          rw [hrE] at hrun
+                          have hrel1 : RelEnv henv ρ fenv1.env :=
+                            RelEnv_exec henv ρ supply e v0 ie s1 he fenv
+                              fenv1 hrel hfresh hexec1
+                          have hrel2 : RelEnv
+                              (updateHEnv henv id (.lit wE))
+                              (updAssoc ρ id v0) fenv1.env :=
+                            RelEnv_update ρ henv fenv1.env id v0 wE
+                              hrel1 (hww ▸ hregE)
+                          have hacc1 : fenv1.env lastVal = some accH := by
+                            rw [lower_preserv_regs ρ supply e v0 ie s1
+                              he fenv fenv1 hexec1 lastVal hlast]
+                            exact hacc
+                          have hnp : ∀ dst pred src,
+                              .phi dst pred src ∉ ie := by
+                            intro d p s hm
+                            exact IsPure_not_phi
+                              (lower_isPure.1 _ _ _ _ _ _ he _ hm) d p s
+                              rfl
+                          have hexec : execInstrsFullFromIn prog prev
+                              fenv ie = some fenv1 := by
+                            rw [execInstrsFullFromIn_of_noPhi prog prev
+                              fenv _ hnp]
+                            exact hexec1
+                          have happ : execInstrsFullFromIn prog prev
+                              fenv (ie ++ Lr.instrs) =
+                              execInstrsFullFromIn prog prev fenv1
+                                Lr.instrs := by
+                            rw [execInstrsFullFromIn_append, hexec]
+                          cases F with
+                          | zero =>
+                              have h1 : blockBound fuelB rest ≥ 1 := by
+                                rw [blockBound]; omega
+                              omega
+                          | succ F' =>
+                              have hpeel : execBlockFromIn prog (F' + 1)
+                                  f prev ⟨bId, ie ++ Lr.instrs, Lr.term⟩
+                                  fenv = execBlockFromIn prog (F' + 1) f
+                                  prev ⟨bId, Lr.instrs, Lr.term⟩
+                                  fenv1 :=
+                                execBlockFromIn_instrs_prefix prog F' f
+                                  prev bId ie Lr.instrs Lr.term fenv fenv1
+                                  happ
+                              have hg' : F' + 1 ≥ blockBound fuelB rest + C := by
+                                rw [← hbb]; exact hg
+                              have hsub' : ∀ b ∈ Lr.blocks, b ∈ f.blocks :=
+                                fun b hb => hsub b hb
+                              obtain ⟨ihV, ihB, ihC, ihR⟩ :=
+                                ih bId (updAssoc ρ id v0) s1 nextB contB lastVal
+                                  loop Lr hlo hr hrs hf1 hlast1 forbid hfN hfB accH
+                                  (updateHEnv henv id (.lit wE))
+                                  fenv1 hrel2 hacc1 fh henv' out hrun prog f
+                                  prev (F' + 1) hsub' hnodf fuelB C hg'
+                                  hexcl' hsup1 hdist hblk eblk hdr hfindC
+                                  hfindE hfindHdr
+                              refine ⟨?_, ?_, ?_, ?_⟩
+                              · intro u hout
+                                obtain ⟨F', fenv_arr, hle, hge,
+                                    heq_rest, hrel_arr⟩ := ihV u hout
+                                exact ⟨F', fenv_arr, hle, hge,
+                                  hpeel.trans heq_rest, hrel_arr⟩
+                              · intro hbroke
+                                obtain ⟨F', fenv_arr, blkPrev, hle, hge,
+                                    heq_rest, hrel_arr, hval_arr⟩ := ihB hbroke
+                                exact ⟨F', fenv_arr, blkPrev, hle, hge,
+                                  hpeel.trans heq_rest, hrel_arr, hval_arr⟩
+                              · intro hcont
+                                obtain ⟨F', fenv_arr, blkPrev, hle, hge,
+                                    heq_rest, hcarried, hpreserv, hforbid⟩ :=
+                                  ihC hcont
+                                refine ⟨F', fenv_arr, blkPrev, hle, hge,
+                                  hpeel.trans heq_rest, hcarried, ?_, hforbid⟩
+                                intro r hr hnc
+                                exact (hpreserv r (Nat.lt_of_lt_of_le hr hs1) hnc).trans
+                                  (lower_preserv_regs ρ supply e v0 ie s1 he fenv fenv1 hexec1 r hr)
+                              · intro e_ret hout
+                                obtain ⟨w_e, hu_e, heq_rest⟩ :=
+                                  ihR e_ret hout
+                                exact ⟨w_e, hu_e,
+                                  hpeel.trans heq_rest⟩
+      | nop rest hrs =>
+          simp only [lowerStmtsCFG] at h
+          have hbb : blockBound fuelB (Morph.HIR.Stmt.nop :: rest)
+              = blockBound fuelB rest := by
+            rw [blockBound, blockBound,
+              armBlockBound_cons_not_if fuelB
+                (fun c th el h => by cases h)
+                (fun c body h => by cases h)]
+          have hg' : F ≥ blockBound fuelB rest + C := by
+            rw [← hbb]; exact hg
+          cases fuelH with
+          | zero =>
+              have hz : runHIRStmts 0 henv
+                  (Morph.HIR.Stmt.nop :: rest)
+                  (.value (.lit accH)) = (.stuck, henv) := rfl
+              rw [hz] at hrun
+              have hst : out = .stuck := (congrArg Prod.fst hrun).symm
+              refine ⟨?_, ?_, ?_, ?_⟩
+              · intro u hout
+                rw [hst] at hout
+                exact absurd hout (by simp)
+              · intro hbroke
+                rw [hst] at hbroke
+                exact absurd hbroke (by simp)
+              · intro hcont
+                rw [hst] at hcont
+                exact absurd hcont (by simp)
+              · intro e_ret hout
+                rw [hst] at hout
+                exact absurd hout (by simp)
+          | succ fh =>
+              have hstep : runHIRStmts (fh + 1) henv
+                  (Morph.HIR.Stmt.nop :: rest) (.value (.lit accH)) =
+                  runHIRStmts fh henv rest (.value (.lit accH)) := rfl
+              rw [hstep] at hrun
+              exact ih bId ρ supply nextB contB lastVal loop L hlo h hrs hfresh
+                hlast forbid hfN hfB accH henv fenv hrel hacc fh henv' out hrun prog f
+                prev F hsub hnodf fuelB C hg' hexcl hsup hdist hblk eblk hdr
+                hfindC hfindE hfindHdr
+      | ifStmt c th el rest hstr _ hath hael hrs hnb_t hnb_e =>
+          simp only [lowerStmtsCFG] at h
+          cases heC : lowerExpr ρ supply c with
+          | none => rw [heC] at h; simp at h
+          | some p =>
+              obtain ⟨vc, ic, s1⟩ := p
+              rw [heC] at h
+              simp only [] at h
+              cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
+                  (nextB + 3) lastVal false loop th with
+              | none => rw [ht] at h; simp at h
+              | some lt =>
+                  rw [ht] at h
+                  simp only [] at h
+                  cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2))
+                      true ρ lt.supply lt.next lastVal false loop el with
+                  | none => rw [he] at h; simp at h
+                  | some le =>
+                      rw [he] at h
+                      simp only [] at h
+                      cases hr : lowerStmtsCFG (nextB + 2) (some contB) false
+                          ρ (le.supply + 1) le.next le.supply true loop
+                          rest with
+                      | none => rw [hr] at h; simp at h
+                      | some lr =>
+                          rw [hr] at h
+                          simp only [] at h
+                          obtain rfl := Option.some.inj h
+                          dsimp only at hsub ⊢
+                          generalize hTdef : ((lt.blocks.getLast?.map
+                            (fun b => b.id)).getD nextB) = exitT
+                          generalize hEdef : ((le.blocks.getLast?.map
+                            (fun b => b.id)).getD (nextB + 1)) = exitE
+                          rw [hTdef, hEdef] at hsub
+                          have hs1 : supply ≤ s1 :=
+                            lower_mono.1 _ _ _ _ _ _ heC
+                          have hf1 : FreshAbove ρ s1 :=
+                            FreshAbove.mono ρ supply s1 hs1 hfresh
+                          have hlast1 : lastVal < s1 :=
+                            Nat.lt_of_lt_of_le hlast hs1
+                          have hsup1 : ∀ id r, (id, r) ∈ info.carried →
+                              r < s1 :=
+                            fun id r hmem =>
+                              Nat.lt_of_lt_of_le (hsup _ _ hmem) hs1
+                          obtain ⟨hmnt, hmst, hbndt, hnodt⟩ :=
+                            lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _
+                              ht hath
+                          obtain ⟨hmne, hmse, hbnde, hnode⟩ :=
+                            lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _
+                              he hael
+                          obtain ⟨hmnr, hmsr, hbndr, hnodr⟩ :=
+                            lowerStmtsCFG_branch_inv budget _ _ _ _ _ _ _ _
+                              _ _ hr (LoopStmts_to_BranchStmts hrs)
+                          have hrho_t : lt.ρ = ρ :=
+                            lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _
+                              ht hath
+                          have hrho_e : le.ρ = ρ :=
+                            lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _
+                              he hael
+                          have hbb_if : blockBound fuelB
+                              (.ifStmt c th el :: rest) =
+                              1 + (3 + max (armBlockBound fuelB th)
+                                (armBlockBound fuelB el) +
+                                armBlockBound fuelB rest) := by
+                            rw [blockBound, armBlockBound_if]
+                          have hB1 : blockBound fuelB
+                              (.ifStmt c th el :: rest) ≥ 1 := by
+                            rw [blockBound]; omega
+                          have hTmem : (⟨nextB, lt.instrs, lt.term⟩ : Block)
+                              ∈ f.blocks :=
+                            hsub _ if_asm_mem_then
+                          have hfindT : findBlock f nextB =
+                              some ⟨nextB, lt.instrs, lt.term⟩ :=
+                            findBlock_of_nodup_mem hnodf hTmem
+                          have hEmem : (⟨nextB + 1, le.instrs, le.term⟩ :
+                              Block) ∈ f.blocks :=
+                            hsub _ if_asm_mem_else
+                          have hfindEl : findBlock f (nextB + 1) =
+                              some ⟨nextB + 1, le.instrs, le.term⟩ :=
+                            findBlock_of_nodup_mem hnodf hEmem
+                          have hJmem : (⟨nextB + 2,
+                              [.phi le.supply exitT lt.val,
+                               .phi le.supply exitE le.val] ++ lr.instrs,
+                              lr.term⟩ : Block) ∈ f.blocks :=
+                            hsub _ if_asm_mem_join
+                          have hfindJ : findBlock f (nextB + 2) =
+                              some ⟨nextB + 2,
+                                [.phi le.supply exitT lt.val,
+                                 .phi le.supply exitE le.val] ++ lr.instrs,
+                                lr.term⟩ :=
+                            findBlock_of_nodup_mem hnodf hJmem
+                          have hne_pe : exitE ≠ exitT := by
+                            have hexitT : exitT = nextB ∨
+                                ∃ b ∈ lt.blocks, exitT = b.id := by
+                              cases hgl : lt.blocks.getLast? with
+                              | none =>
+                                  exact Or.inl (by simp [← hTdef, hgl])
+                              | some b =>
+                                  have hm : b ∈ lt.blocks :=
+                                    getLast?_mem hgl
+                                  exact Or.inr ⟨b, hm, by simp [← hTdef, hgl]⟩
+                            have hexitE : exitE = nextB + 1 ∨
+                                ∃ b ∈ le.blocks, exitE = b.id := by
+                              cases hgl : le.blocks.getLast? with
+                              | none =>
+                                  exact Or.inl (by simp [← hEdef, hgl])
+                              | some b =>
+                                  have hm : b ∈ le.blocks :=
+                                    getLast?_mem hgl
+                                  exact Or.inr ⟨b, hm, by simp [← hEdef, hgl]⟩
+                            rcases hexitT with hT | ⟨bt, hbt, hT⟩
+                            · rcases hexitE with hE | ⟨be, hbe, hE⟩
+                              · simp [hT, hE]
+                              · obtain ⟨hlo, -⟩ := hbnde be hbe
+                                rw [hE, hT]
+                                exact Nat.ne_of_gt (Nat.lt_of_lt_of_le
+                                  (by omega)
+                                  (Nat.le_trans hmnt hlo))
+                            · rcases hexitE with hE | ⟨be, hbe, hE⟩
+                              · obtain ⟨hlo, -⟩ := hbndt bt hbt
+                                rw [hE, hT]
+                                exact Nat.ne_of_lt (Nat.lt_of_le_of_lt
+                                  (Nat.add_le_add_left (by decide) nextB)
+                                  hlo)
+                              · obtain ⟨-, hhi⟩ := hbndt bt hbt
+                                obtain ⟨hlo, -⟩ := hbnde be hbe
+                                rw [hE, hT]
+                                exact Nat.ne_of_gt
+                                  (Nat.lt_of_lt_of_le hhi hlo)
+                          cases F with
+                          | zero =>
+                              have hbb : blockBound fuelB
+                                  (.ifStmt c th el :: rest) ≥ 1 := by
+                                show 1 + _ ≥ 1
+                                omega
+                              omega
+                          | succ F'' =>
+                              cases fuelH with
+                              | zero =>
+                                  have hz : runHIRStmts 0 henv
+                                      (.ifStmt c th el :: rest)
+                                      (.value (.lit accH)) = (.stuck, henv) :=
+                                    rfl
+                                  rw [hz] at hrun
+                                  have hst : out = .stuck :=
+                                    (congrArg Prod.fst hrun).symm
+                                  refine ⟨?_, ?_, ?_, ?_⟩
+                                  · intro u hout
+                                    rw [hst] at hout
+                                    exact absurd hout (by simp)
+                                  · intro hbroke
+                                    rw [hst] at hbroke
+                                    exact absurd hbroke (by simp)
+                                  · intro hcont
+                                    rw [hst] at hcont
+                                    exact absurd hcont (by simp)
+                                  · intro e_ret hout
+                                    rw [hst] at hout
+                                    exact absurd hout (by simp)
+                              | succ fh =>
+                                  have hstep : runHIRStmts (fh + 1) henv
+                                      (.ifStmt c th el :: rest)
+                                      (.value (.lit accH)) =
+                                      (match evalHIR 256 henv c with
+                                        | some (.lit (.bool true)) =>
+                                          match runHIRStmts fh henv th
+                                              (HFlow.value (.lit .unit)) with
+                                          | (HFlow.value u, env') =>
+                                              runHIRStmts fh env' rest
+                                                (((HFlow.value
+                                                  (.lit accH))).replace u)
+                                          | (f, env') => (f, env')
+                                        | some (.lit (.bool false)) =>
+                                          match runHIRStmts fh henv el
+                                              (HFlow.value (.lit .unit)) with
+                                          | (HFlow.value u, env') =>
+                                              runHIRStmts fh env' rest
+                                                (((HFlow.value
+                                                  (.lit accH))).replace u)
+                                          | (f, env') => (f, env')
+                                        | _ => (.stuck, henv)) := rfl
+                                  rw [hstep] at hrun
+                                  cases hevC : evalHIR 256 henv c with
+                                  | none =>
+                                      rw [hevC] at hrun
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      refine ⟨?_, ?_, ?_, ?_⟩
+                                      · intro u hout
+                                        rw [hst] at hout
+                                        exact absurd hout (by simp)
+                                      · intro hbroke
+                                        rw [hst] at hbroke
+                                        exact absurd hbroke (by simp)
+                                      · intro hcont
+                                        rw [hst] at hcont
+                                        exact absurd hcont (by simp)
+                                      · intro e_ret hout
+                                        rw [hst] at hout
+                                        exact absurd hout (by simp)
+                                  | some r =>
+                                      rw [hevC] at hrun
+                                      obtain ⟨⟨w, hrw⟩, fenvC, hexecC,
+                                          hstoreC, wC, hrC, hregC⟩ :=
+                                        lower_total.1 ρ supply c vc ic s1
+                                          heC hstr hfresh henv fenv hrel
+                                          256 r hevC
+                                      subst hrw
+                                      have hnp_ic : ∀ dst pred src,
+                                          .phi dst pred src ∉ ic := by
+                                        intro d p s hm
+                                        exact IsPure_not_phi
+                                          (lower_isPure.1 _ _ _ _ _ _ heC _
+                                            hm) d p s rfl
+                                      have hexec_ic : execInstrsFullFromIn
+                                          prog prev fenv ic = some fenvC := by
+                                        rw [execInstrsFullFromIn_of_noPhi prog
+                                          prev fenv _ hnp_ic]
+                                        exact hexecC
+                                      have hrelC : RelEnv henv ρ fenvC.env :=
+                                        RelEnv_exec henv ρ supply c vc ic s1
+                                          heC fenv fenvC hrel hfresh hexecC
+                                      cases w with
+                                      | bool b =>
+                                          cases b with
+                                          | true =>
+                                              simp only [] at hrun
+                                              cases har : runHIRStmts fh henv
+                                                  th
+                                                  (HFlow.value
+                                                    (.lit .unit)) with
+                                              | mk out_arm env_arm =>
+                                                  rw [har] at hrun
+                                                  have hregCb : fenvC.env
+                                                      vc =
+                                                      some (.bool true) := by
+                                                    have hww : (.bool true) =
+                                                        wC :=
+                                                      HIR.Expr.lit.inj hrC
+                                                    rw [hww]
+                                                    exact hregC
+                                                  have hbool : fenvC.boolOf
+                                                      vc = some true :=
+                                                    boolOf_of_lit fenvC vc
+                                                      true hregCb
+                                                  have hentry :
+                                                      execBlockFromIn prog
+                                                      (F'' + 1) f prev
+                                                      ⟨bId, ic, .branch vc
+                                                        nextB
+                                                        (nextB + 1)⟩ fenv =
+                                                      execBlockFromIn prog
+                                                        F'' f (some bId)
+                                                        ⟨nextB, lt.instrs,
+                                                          lt.term⟩ fenvC :=
+                                                    execBlockFromIn_branch_true
+                                                      prog F'' f prev bId ic
+                                                      vc nextB (nextB + 1)
+                                                      fenv fenvC
+                                                      ⟨nextB, lt.instrs,
+                                                        lt.term⟩ hexec_ic
+                                                      hbool hfindT
+                                                  have hsub_t : ∀ b ∈
+                                                      lt.blocks, b ∈
+                                                      f.blocks :=
+                                                    fun b hb => hsub _
+                                                      (if_asm_mem_of_lt hb)
+                                                  have hC'ge : (2 + max
+                                                      (armBlockBound
+                                                        fuelB th)
+                                                      (armBlockBound
+                                                        fuelB el) +
+                                                      armBlockBound fuelB
+                                                        rest -
+                                                      armBlockBound fuelB
+                                                        th + C) ≥
+                                                      blockBound fuelB
+                                                        rest + C := by
+                                                    have hBrest : blockBound
+                                                        fuelB rest = 1 +
+                                                        armBlockBound
+                                                          fuelB rest := rfl
+                                                    omega
+                                                  have hg_t : F'' ≥
+                                                      blockBound fuelB th +
+                                                      (2 + max
+                                                      (armBlockBound
+                                                        fuelB th)
+                                                      (armBlockBound
+                                                        fuelB el) +
+                                                      armBlockBound fuelB
+                                                        rest -
+                                                      armBlockBound fuelB
+                                                        th + C) := by
+                                                    have hBth : blockBound
+                                                        fuelB th = 1 +
+                                                        armBlockBound
+                                                          fuelB th := rfl
+                                                    omega
+                                                  cases out_arm with
+                                                  | value u_arm =>
+                                                      simp only [] at hrun
+                                                      obtain ⟨w_arm, hu_arm,
+                                                          F', fenv_arr, hle,
+                                                          hge, heq_arm,
+                                                          hrel_arm,
+                                                          hreg_arr, hpres_arm⟩ :=
+                                                        ((lowerStmtsCFG_arm_total
+                                                          budget nextB
+                                                          (nextB + 2) ρ s1
+                                                          (nextB + 3)
+                                                          lastVal false
+                                                          loop th lt ht hath
+                                                          hf1 hlast1 .unit
+                                                          henv fenvC hrelC
+                                                          (fun _ => rfl)
+                                                          (fun h =>
+                                                            absurd h
+                                                              (by simp))
+                                                          fh env_arm
+                                                          (HFlow.value
+                                                            u_arm) har
+                                                          prog f (some bId)
+                                                          ⟨nextB + 2,
+                                                          [.phi le.supply
+                                                            exitT lt.val,
+                                                           .phi le.supply
+                                                            exitE le.val] ++
+                                                            lr.instrs,
+                                                          lr.term⟩ F''
+                                                          hsub_t hnodf
+                                                          hfindJ fuelB
+                                                          (2 + max
+                                                          (armBlockBound
+                                                          fuelB th)
+                                                          (armBlockBound
+                                                          fuelB el) +
+                                                          armBlockBound
+                                                          fuelB rest -
+                                                          armBlockBound
+                                                          fuelB th + C)
+                                                          hg_t u_arm).1
+                                                          rfl)
+                                                      rw [hTdef] at heq_arm
+                                                      rw [hrho_t] at hrel_arm
+                                                      have hrep :
+                                                          ((HFlow.value
+                                                          (.lit accH)).replace
+                                                          (.lit w_arm)) =
+                                                          HFlow.value
+                                                          (.lit w_arm) :=
+                                                        rfl
+                                                      rw [hu_arm, hrep] at hrun
+                                                      have hfrL : FreshAbove ρ
+                                                          le.supply :=
+                                                        FreshAbove.mono ρ
+                                                          supply le.supply
+                                                          (Nat.le_trans hs1
+                                                          (Nat.le_trans hmst
+                                                          hmse)) hfresh
+                                                      have hrel_m : RelEnv
+                                                          env_arm ρ
+                                                          (fenv_arr.env.update
+                                                          le.supply
+                                                          w_arm) := by
+                                                        intro id u hlook
+                                                        obtain ⟨w0, hlookH,
+                                                            hreg0⟩ :=
+                                                          hrel_arm id u
+                                                            hlook
+                                                        have hu : u <
+                                                            le.supply :=
+                                                          hfrL id u
+                                                            (rhoLookup_some_mem
+                                                              ρ id u hlook)
+                                                        have hne : u ≠
+                                                            le.supply :=
+                                                          Nat.ne_of_lt hu
+                                                        refine ⟨w0, hlookH,
+                                                            ?_⟩
+                                                        have hupd :
+                                                            (fenv_arr.env.update
+                                                            le.supply
+                                                            w_arm) u =
+                                                            fenv_arr.env
+                                                              u := by
+                                                          simp [Env.update,
+                                                            hne]
+                                                        show (fenv_arr.env.update
+                                                          le.supply w_arm)
+                                                            u = some w0
+                                                        rw [hupd]
+                                                        exact hreg0
+                                                      have hreg_m :
+                                                          (⟨fenv_arr.env.update
+                                                          le.supply w_arm,
+                                                          fenv_arr.store⟩ :
+                                                          FullEnv).env
+                                                          le.supply =
+                                                          some w_arm := by
+                                                        simp [Env.update]
+                                                      have hf_r : FreshAbove ρ
+                                                          (le.supply + 1) :=
+                                                        FreshAbove.mono ρ
+                                                          supply
+                                                          (le.supply + 1)
+                                                          (Nat.le_trans hs1
+                                                          (Nat.le_trans hmst
+                                                          (Nat.le_trans hmse
+                                                          (Nat.le_succ _))))
+                                                          hfresh
+                                                      have hlast_r :
+                                                          le.supply <
+                                                          le.supply + 1 :=
+                                                        Nat.lt_succ_self _
+                                                      have hsup_r : ∀ id r,
+                                                          (id, r) ∈
+                                                          info.carried →
+                                                          r < le.supply +
+                                                            1 :=
+                                                        fun id r hmem =>
+                                                          Nat.lt_of_lt_of_le
+                                                            (hsup _ _ hmem)
+                                                            (Nat.le_trans
+                                                              hs1
+                                                              (Nat.le_trans
+                                                              hmst
+                                                              (Nat.le_trans
+                                                              hmse
+                                                              (Nat.le_succ
+                                                              _))))
+                                                      have hsub_r : ∀ b ∈
+                                                          lr.blocks, b ∈
+                                                          f.blocks :=
+                                                        fun b hb => hsub _
+                                                          (if_asm_mem_of_lr
+                                                            hb)
+                                                      cases F' with
+                                                      | zero =>
+                                                          have hB1r :
+                                                              blockBound
+                                                              fuelB rest ≥
+                                                              1 := by
+                                                            rw [blockBound]
+                                                            omega
+                                                          exact absurd hge
+                                                            (by omega)
+                                                      | succ F1 =>
+                                                          have happ_J :
+                                                              execInstrsFullFromIn
+                                                              prog
+                                                              (some exitT)
+                                                              fenv_arr
+                                                              ([.phi
+                                                              le.supply
+                                                              exitT lt.val,
+                                                              .phi
+                                                              le.supply
+                                                              exitE le.val] ++
+                                                              lr.instrs) =
+                                                              execInstrsFullFromIn
+                                                              prog
+                                                              (some exitT)
+                                                              ⟨fenv_arr.env.update
+                                                              le.supply
+                                                              w_arm,
+                                                              fenv_arr.store⟩
+                                                              lr.instrs :=
+                                                            execInstrsFullFromIn_phis_hit
+                                                              prog exitT
+                                                              fenv_arr
+                                                              le.supply
+                                                              exitT exitE
+                                                              lt.val le.val
+                                                              lr.instrs w_arm
+                                                              rfl hne_pe
+                                                              hreg_arr
+                                                          have hJeq :
+                                                              execBlockFromIn
+                                                              prog (F1 + 1)
+                                                              f (some exitT)
+                                                              ⟨nextB + 2,
+                                                              [.phi
+                                                              le.supply
+                                                              exitT lt.val,
+                                                              .phi
+                                                              le.supply
+                                                              exitE le.val] ++
+                                                              lr.instrs,
+                                                              lr.term⟩
+                                                              fenv_arr =
+                                                              execBlockFromIn
+                                                              prog (F1 + 1)
+                                                              f (some exitT)
+                                                              ⟨nextB + 2,
+                                                              lr.instrs,
+                                                              lr.term⟩
+                                                              ⟨fenv_arr.env.update
+                                                              le.supply
+                                                              w_arm,
+                                                              fenv_arr.store⟩ :=
+                                                            execBlockFromIn_instrs_prefix
+                                                              prog F1 f
+                                                              (some exitT)
+                                                              (nextB + 2)
+                                                              [.phi
+                                                              le.supply
+                                                              exitT lt.val,
+                                                              .phi
+                                                              le.supply
+                                                              exitE le.val]
+                                                              lr.instrs
+                                                              lr.term
+                                                              fenv_arr
+                                                              ⟨fenv_arr.env.update
+                                                              le.supply
+                                                              w_arm,
+                                                              fenv_arr.store⟩
+                                                              happ_J
+                                                          have hg_r : F1 + 1 ≥
+                                                              blockBound
+                                                              fuelB rest +
+                                                              C :=
+                                                            Nat.le_trans
+                                                              hC'ge hge
+                                                          obtain ⟨ihV, ihB,
+                                                              ihC, ihR⟩ :=
+                                                            ih (nextB + 2) ρ
+                                                              (le.supply + 1)
+                                                              le.next contB
+                                                              le.supply
+                                                              loop lr hlo hr
+                                                              hrs hf_r
+                                                              hlast_r forbid
+                                                              (Nat.lt_of_lt_of_le hfN
+                                                                (Nat.le_trans (Nat.le_add_right nextB 3)
+                                                                  (Nat.le_trans hmnt hmne)))
+                                                              (Nat.lt_of_lt_of_le hfN
+                                                                (Nat.le_add_right nextB 2)) w_arm
+                                                              env_arm
+                                                              ⟨fenv_arr.env.update
+                                                              le.supply
+                                                              w_arm,
+                                                              fenv_arr.store⟩
+                                                              hrel_m hreg_m
+                                                              fh henv' out
+                                                              hrun prog f
+                                                              (some exitT)
+                                                              (F1 + 1)
+                                                              hsub_r hnodf
+                                                              fuelB C hg_r
+                                                              hexcl hsup_r
+                                                              hdist hblk eblk
+                                                              hdr hfindC
+                                                              hfindE
+                                                              hfindHdr
+                                                          refine ⟨?_, ?_, ?_,
+                                                              ?_⟩
+                                                          · intro u hout
+                                                            obtain ⟨F2,
+                                                              fenv_arr2,
+                                                              hle2, hge2,
+                                                              heq_rest,
+                                                              hrel_final⟩ :=
+                                                              ihV u hout
+                                                            rw
+                                                              [if_assembly_exit
+                                                              rfl]
+                                                            exact ⟨F2,
+                                                              fenv_arr2,
+                                                              Nat.le_trans
+                                                              (Nat.le_trans
+                                                              hle2 hle)
+                                                              (Nat.le_succ _),
+                                                              hge2,
+                                                              hentry.trans
+                                                              (heq_arm.trans
+                                                              (hJeq.trans
+                                                              heq_rest)),
+                                                              hrel_final⟩
+                                                          · intro hbroke
+                                                            obtain ⟨F2,
+                                                              fenv_arr2,
+                                                              blkPrev2,
+                                                              hle2, hge2,
+                                                              heq_rest,
+                                                              hrel_final,
+                                                              hval_final⟩ :=
+                                                              ihB hbroke
+                                                            exact ⟨F2,
+                                                              fenv_arr2,
+                                                              blkPrev2,
+                                                              Nat.le_trans
+                                                              (Nat.le_trans
+                                                              hle2 hle)
+                                                              (Nat.le_succ _),
+                                                              hge2,
+                                                              hentry.trans
+                                                              (heq_arm.trans
+                                                              (hJeq.trans
+                                                              heq_rest)),
+                                                              hrel_final,
+                                                              hval_final⟩
+                                                          · intro hcont
+                                                            obtain ⟨F2,
+                                                              fenv_arr2,
+                                                              blkPrev2,
+                                                              hle2, hge2,
+                                                              heq_rest,
+                                                              hcarried, hpreserv, hforbid⟩ :=
+                                                              ihC hcont
+                                                            refine ⟨F2,
+                                                              fenv_arr2,
+                                                              blkPrev2,
+                                                              Nat.le_trans
+                                                              (Nat.le_trans
+                                                              hle2 hle)
+                                                              (Nat.le_succ _),
+                                                              hge2,
+                                                              hentry.trans
+                                                              (heq_arm.trans
+                                                              (hJeq.trans
+                                                              heq_rest)),
+                                                              hcarried, ?_, hforbid⟩
+                                                            intro r hr hnc
+                                                            have hle_sup : supply ≤ le.supply :=
+                                                              Nat.le_trans hs1
+                                                                (Nat.le_trans hmst hmse)
+                                                            have e1 : fenv_arr2.env r =
+                                                                (fenv_arr.env.update le.supply w_arm) r :=
+                                                              hpreserv r
+                                                                (Nat.lt_of_lt_of_le hr
+                                                                  (Nat.le_trans hle_sup (Nat.le_succ _))) hnc
+                                                            have e2 : (fenv_arr.env.update le.supply
+                                                                w_arm) r = fenv_arr.env r := by
+                                                              simp [Env.update,
+                                                                Nat.ne_of_lt
+                                                                  (Nat.lt_of_lt_of_le hr hle_sup)]
+                                                            have e3 : fenv_arr.env r = fenvC.env r :=
+                                                              hpres_arm r
+                                                                (Nat.lt_of_lt_of_le hr hs1)
+                                                            have e4 : fenvC.env r = fenv.env r :=
+                                                              lower_preserv_regs ρ supply c vc ic s1 heC
+                                                                fenv fenvC hexecC r hr
+                                                            exact e1.trans (e2.trans (e3.trans e4))
+                                                          · intro e_ret hout
+                                                            obtain ⟨w_e, hu_e,
+                                                              heq_rest⟩ :=
+                                                              ihR e_ret hout
+                                                            exact ⟨w_e, hu_e,
+                                                              hentry.trans
+                                                              (heq_arm.trans
+                                                              (hJeq.trans
+                                                              heq_rest))⟩
+                                                  | broke =>
+                                                      simp only [] at hrun
+                                                      have hfalse : False :=
+                                                        ArmNoBreak_run hnb_t
+                                                          fh henv env_arm
+                                                          _ _ (by simp) har
+                                                          rfl
+                                                      exact hfalse.elim
+                                                  | continued =>
+                                                      simp only [] at hrun
+                                                      have hout_c : out =
+                                                          .continued :=
+                                                        (congrArg Prod.fst
+                                                          hrun).symm
+                                                      have henv_eq : env_arm =
+                                                          henv' :=
+                                                        congrArg Prod.snd
+                                                          hrun
+                                                      refine ⟨?_, ?_, ?_, ?_⟩
+                                                      · intro u hout
+                                                        rw [hout_c] at hout
+                                                        exact absurd hout
+                                                          (by simp)
+                                                      · intro hbroke
+                                                        rw [hout_c] at hbroke
+                                                        exact absurd hbroke
+                                                          (by simp)
+                                                      · intro hcont
+                                                        obtain ⟨F2,
+                                                          fenv_arr2,
+                                                          blkPrev2, hle2,
+                                                          hge2, heq_arm, _,
+                                                          hcarried, hpreserv, hforbid⟩ :=
+                                                          lowerStmtsCFG_arm_continued
+                                                          budget nextB
+                                                          (nextB + 2) ρ s1
+                                                          (nextB + 3)
+                                                          lastVal false
+                                                          loop th lt ht
+                                                          hath hf1 hlast1 forbid
+                                                          (Nat.lt_of_lt_of_le hfN
+                                                            (Nat.le_add_right nextB 3)) hfN
+                                                          .unit henv fenvC
+                                                          hrelC
+                                                          (fun _ => rfl)
+                                                          (fun h =>
+                                                            absurd h
+                                                              (by simp))
+                                                          fh env_arm
+                                                          .continued har
+                                                          rfl prog f
+                                                          (some bId) F''
+                                                          hsub_t hnodf
+                                                          fuelB (2 + max
+                                                          (armBlockBound
+                                                          fuelB th)
+                                                          (armBlockBound
+                                                          fuelB el) +
+                                                          armBlockBound
+                                                          fuelB rest -
+                                                          armBlockBound
+                                                          fuelB th + C)
+                                                          hg_t info hlo
+                                                          hexcl hdist hdr
+                                                          hfindHdr
+                                                        rw [henv_eq] at hcarried
+                                                        have hgeC : F2 ≥ C :=
+                                                          by omega
+                                                        refine ⟨F2,
+                                                          fenv_arr2,
+                                                          blkPrev2,
+                                                          Nat.le_trans
+                                                          hle2
+                                                          (Nat.le_succ _),
+                                                          hgeC,
+                                                          hentry.trans
+                                                          heq_arm,
+                                                          hcarried, ?_, hforbid⟩
+                                                        intro r hr hnc
+                                                        have e1 : fenv_arr2.env r = fenvC.env r :=
+                                                          hpreserv r
+                                                            (Nat.lt_of_lt_of_le hr hs1) hnc
+                                                        have e2 : fenvC.env r = fenv.env r :=
+                                                          lower_preserv_regs ρ supply c vc ic s1 heC
+                                                            fenv fenvC hexecC r hr
+                                                        exact e1.trans e2
+                                                      · intro e_ret hout
+                                                        rw [hout_c] at hout
+                                                        exact absurd hout
+                                                          (by simp)
+                                                  | returned e_arm =>
+                                                      simp only [] at hrun
+                                                      have hout_r : out =
+                                                          .returned e_arm :=
+                                                        (congrArg Prod.fst
+                                                          hrun).symm
+                                                      refine ⟨?_, ?_, ?_, ?_⟩
+                                                      · intro u hout
+                                                        rw [hout_r] at hout
+                                                        exact absurd hout
+                                                          (by simp)
+                                                      · intro hbroke
+                                                        rw [hout_r] at hbroke
+                                                        exact absurd hbroke
+                                                          (by simp)
+                                                      · intro hcont
+                                                        rw [hout_r] at hcont
+                                                        exact absurd hcont
+                                                          (by simp)
+                                                      · intro e_ret hout2
+                                                        have hret_e : e_ret =
+                                                            e_arm :=
+                                                          (HFlow.returned.inj
+                                                            (hout_r.symm.trans
+                                                            hout2)).symm
+                                                        obtain ⟨w_e, hu_e,
+                                                            heq_arm⟩ :=
+                                                          ((lowerStmtsCFG_arm_total
+                                                            budget nextB
+                                                            (nextB + 2) ρ
+                                                            s1 (nextB + 3)
+                                                            lastVal false
+                                                            loop th lt ht
+                                                            hath hf1 hlast1
+                                                            .unit henv
+                                                            fenvC hrelC
+                                                            (fun _ => rfl)
+                                                            (fun h =>
+                                                              absurd h
+                                                              (by simp))
+                                                            fh env_arm
+                                                            (HFlow.returned
+                                                              e_arm) har
+                                                            prog f
+                                                            (some bId)
+                                                            ⟨nextB + 2,
+                                                            [.phi le.supply
+                                                              exitT lt.val,
+                                                            .phi le.supply
+                                                              exitE le.val] ++
+                                                              lr.instrs,
+                                                            lr.term⟩ F''
+                                                            hsub_t hnodf
+                                                            hfindJ fuelB
+                                                            (2 + max
+                                                            (armBlockBound
+                                                            fuelB th)
+                                                            (armBlockBound
+                                                            fuelB el) +
+                                                            armBlockBound
+                                                            fuelB rest -
+                                                            armBlockBound
+                                                            fuelB th + C)
+                                                            hg_t e_arm).2
+                                                            e_arm rfl)
+                                                        rw [hret_e]
+                                                        exact ⟨w_e, hu_e,
+                                                          hentry.trans
+                                                          heq_arm⟩
+                                                  | stuck =>
+                                                      simp only [] at hrun
+                                                      have hst : out =
+                                                          .stuck :=
+                                                        (congrArg Prod.fst
+                                                          hrun).symm
+                                                      refine ⟨?_, ?_, ?_, ?_⟩
+                                                      · intro u hout
+                                                        rw [hst] at hout
+                                                        exact absurd hout
+                                                          (by simp)
+                                                      · intro hbroke
+                                                        rw [hst] at hbroke
+                                                        exact absurd hbroke
+                                                          (by simp)
+                                                      · intro hcont
+                                                        rw [hst] at hcont
+                                                        exact absurd hcont
+                                                          (by simp)
+                                                      · intro e_ret hout
+                                                        rw [hst] at hout
+                                                        exact absurd hout
+                                                          (by simp)
+                                          | false =>
+                                              simp only [] at hrun
+                                              cases har : runHIRStmts fh
+                                                  henv el
+                                                  (HFlow.value
+                                                    (.lit .unit)) with
+                                              | mk out_arm env_arm =>
+                                                  rw [har] at hrun
+                                                  have hregCb : fenvC.env
+                                                      vc =
+                                                      some (.bool false) :=
+                                                    by
+                                                    have hww :
+                                                        (.bool false) = wC :=
+                                                      HIR.Expr.lit.inj hrC
+                                                    rw [hww]
+                                                    exact hregC
+                                                  have hbool : fenvC.boolOf
+                                                      vc = some false :=
+                                                    boolOf_of_lit fenvC vc
+                                                      false hregCb
+                                                  have hentry :
+                                                      execBlockFromIn prog
+                                                      (F'' + 1) f prev
+                                                      ⟨bId, ic, .branch vc
+                                                        nextB
+                                                        (nextB + 1)⟩ fenv =
+                                                      execBlockFromIn prog
+                                                        F'' f (some bId)
+                                                        ⟨nextB + 1,
+                                                          le.instrs,
+                                                          le.term⟩ fenvC :=
+                                                    execBlockFromIn_branch_false
+                                                      prog F'' f prev bId ic
+                                                      vc nextB (nextB + 1)
+                                                      fenv fenvC
+                                                      ⟨nextB + 1,
+                                                        le.instrs,
+                                                        le.term⟩ hexec_ic
+                                                      hbool hfindEl
+                                                  have hsub_e : ∀ b ∈
+                                                      le.blocks, b ∈
+                                                      f.blocks :=
+                                                    fun b hb => hsub _
+                                                      (if_asm_mem_of_le hb)
+                                                  have hf_e : FreshAbove ρ
+                                                      lt.supply :=
+                                                    FreshAbove.mono ρ s1
+                                                      lt.supply hmst hf1
+                                                  have hlast_e : lastVal <
+                                                      lt.supply :=
+                                                    Nat.lt_of_lt_of_le
+                                                      hlast1 hmst
+                                                  have hC'ge : (2 + max
+                                                      (armBlockBound
+                                                        fuelB th)
+                                                      (armBlockBound
+                                                        fuelB el) +
+                                                      armBlockBound fuelB
+                                                        rest -
+                                                      armBlockBound fuelB
+                                                        el + C) ≥
+                                                      blockBound fuelB
+                                                        rest + C := by
+                                                    have hBrest : blockBound
+                                                        fuelB rest = 1 +
+                                                        armBlockBound
+                                                          fuelB rest := rfl
+                                                    omega
+                                                  have hg_e : F'' ≥
+                                                      blockBound fuelB el +
+                                                      (2 + max
+                                                      (armBlockBound
+                                                        fuelB th)
+                                                      (armBlockBound
+                                                        fuelB el) +
+                                                      armBlockBound fuelB
+                                                        rest -
+                                                      armBlockBound fuelB
+                                                        el + C) := by
+                                                    have hBel : blockBound
+                                                        fuelB el = 1 +
+                                                        armBlockBound
+                                                          fuelB el := rfl
+                                                    omega
+                                                  cases out_arm with
+                                                  | value u_arm =>
+                                                      simp only [] at hrun
+                                                      obtain ⟨w_arm, hu_arm,
+                                                          F', fenv_arr, hle,
+                                                          hge, heq_arm,
+                                                          hrel_arm,
+                                                          hreg_arr, hpres_arm⟩ :=
+                                                        ((lowerStmtsCFG_arm_total
+                                                          budget (nextB + 1)
+                                                          (nextB + 2) ρ
+                                                          lt.supply lt.next
+                                                          lastVal false
+                                                          loop el le he hael
+                                                          hf_e hlast_e .unit
+                                                          henv fenvC hrelC
+                                                          (fun _ => rfl)
+                                                          (fun h =>
+                                                            absurd h
+                                                              (by simp))
+                                                          fh env_arm
+                                                          (HFlow.value
+                                                            u_arm) har
+                                                          prog f (some bId)
+                                                          ⟨nextB + 2,
+                                                          [.phi le.supply
+                                                            exitT lt.val,
+                                                           .phi le.supply
+                                                            exitE le.val] ++
+                                                            lr.instrs,
+                                                          lr.term⟩ F''
+                                                          hsub_e hnodf
+                                                          hfindJ fuelB
+                                                          (2 + max
+                                                          (armBlockBound
+                                                          fuelB th)
+                                                          (armBlockBound
+                                                          fuelB el) +
+                                                          armBlockBound
+                                                          fuelB rest -
+                                                          armBlockBound
+                                                          fuelB el + C)
+                                                          hg_e u_arm).1
+                                                          rfl)
+                                                      rw [hEdef] at heq_arm
+                                                      rw [hrho_e] at hrel_arm
+                                                      have hrep :
+                                                          ((HFlow.value
+                                                          (.lit accH)).replace
+                                                          (.lit w_arm)) =
+                                                          HFlow.value
+                                                          (.lit w_arm) :=
+                                                        rfl
+                                                      rw [hu_arm, hrep] at hrun
+                                                      have hfrL : FreshAbove ρ
+                                                          le.supply :=
+                                                        FreshAbove.mono ρ
+                                                          supply le.supply
+                                                          (Nat.le_trans hs1
+                                                          (Nat.le_trans hmst
+                                                          hmse)) hfresh
+                                                      have hrel_m : RelEnv
+                                                          env_arm ρ
+                                                          (fenv_arr.env.update
+                                                          le.supply
+                                                          w_arm) := by
+                                                        intro id u hlook
+                                                        obtain ⟨w0, hlookH,
+                                                            hreg0⟩ :=
+                                                          hrel_arm id u
+                                                            hlook
+                                                        have hu : u <
+                                                            le.supply :=
+                                                          hfrL id u
+                                                            (rhoLookup_some_mem
+                                                              ρ id u hlook)
+                                                        have hne : u ≠
+                                                            le.supply :=
+                                                          Nat.ne_of_lt hu
+                                                        refine ⟨w0, hlookH,
+                                                            ?_⟩
+                                                        have hupd :
+                                                            (fenv_arr.env.update
+                                                            le.supply
+                                                            w_arm) u =
+                                                            fenv_arr.env
+                                                              u := by
+                                                          simp [Env.update,
+                                                            hne]
+                                                        show (fenv_arr.env.update
+                                                          le.supply w_arm)
+                                                            u = some w0
+                                                        rw [hupd]
+                                                        exact hreg0
+                                                      have hreg_m :
+                                                          (⟨fenv_arr.env.update
+                                                          le.supply w_arm,
+                                                          fenv_arr.store⟩ :
+                                                          FullEnv).env
+                                                          le.supply =
+                                                          some w_arm := by
+                                                        simp [Env.update]
+                                                      have hf_r : FreshAbove ρ
+                                                          (le.supply + 1) :=
+                                                        FreshAbove.mono ρ
+                                                          supply
+                                                          (le.supply + 1)
+                                                          (Nat.le_trans hs1
+                                                          (Nat.le_trans hmst
+                                                          (Nat.le_trans hmse
+                                                          (Nat.le_succ _))))
+                                                          hfresh
+                                                      have hlast_r :
+                                                          le.supply <
+                                                          le.supply + 1 :=
+                                                        Nat.lt_succ_self _
+                                                      have hsup_r : ∀ id r,
+                                                          (id, r) ∈
+                                                          info.carried →
+                                                          r < le.supply +
+                                                            1 :=
+                                                        fun id r hmem =>
+                                                          Nat.lt_of_lt_of_le
+                                                            (hsup _ _ hmem)
+                                                            (Nat.le_trans
+                                                              hs1
+                                                              (Nat.le_trans
+                                                              hmst
+                                                              (Nat.le_trans
+                                                              hmse
+                                                              (Nat.le_succ
+                                                              _))))
+                                                      have hsub_r : ∀ b ∈
+                                                          lr.blocks, b ∈
+                                                          f.blocks :=
+                                                        fun b hb => hsub _
+                                                          (if_asm_mem_of_lr
+                                                            hb)
+                                                      cases F' with
+                                                      | zero =>
+                                                          have hB1r :
+                                                              blockBound
+                                                              fuelB rest ≥
+                                                              1 := by
+                                                            rw [blockBound]
+                                                            omega
+                                                          exact absurd hge
+                                                            (by omega)
+                                                      | succ F1 =>
+                                                          have happ_J :
+                                                              execInstrsFullFromIn
+                                                              prog
+                                                              (some exitE)
+                                                              fenv_arr
+                                                              ([.phi
+                                                              le.supply
+                                                              exitT lt.val,
+                                                              .phi
+                                                              le.supply
+                                                              exitE le.val] ++
+                                                              lr.instrs) =
+                                                              execInstrsFullFromIn
+                                                              prog
+                                                              (some exitE)
+                                                              ⟨fenv_arr.env.update
+                                                              le.supply
+                                                              w_arm,
+                                                              fenv_arr.store⟩
+                                                              lr.instrs :=
+                                                            by
+                                                            simp only
+                                                              [List.cons_append,
+                                                              List.nil_append]
+                                                            rw [execInstrsFullFromIn_eq,
+                                                              execInstrsFullFromIn_eq,
+                                                              execInstrsFullFrom_phi_miss
+                                                              _ _ _ _ _ _
+                                                              (Ne.symm
+                                                              hne_pe),
+                                                              execInstrsFullFrom_phi_hit
+                                                              _ _ _ _ _ _
+                                                              rfl,
+                                                              hreg_arr]
+                                                          have hJeq :
+                                                              execBlockFromIn
+                                                              prog (F1 + 1)
+                                                              f (some exitE)
+                                                              ⟨nextB + 2,
+                                                              [.phi
+                                                              le.supply
+                                                              exitT lt.val,
+                                                              .phi
+                                                              le.supply
+                                                              exitE le.val] ++
+                                                              lr.instrs,
+                                                              lr.term⟩
+                                                              fenv_arr =
+                                                              execBlockFromIn
+                                                              prog (F1 + 1)
+                                                              f (some exitE)
+                                                              ⟨nextB + 2,
+                                                              lr.instrs,
+                                                              lr.term⟩
+                                                              ⟨fenv_arr.env.update
+                                                              le.supply
+                                                              w_arm,
+                                                              fenv_arr.store⟩ :=
+                                                            execBlockFromIn_instrs_prefix
+                                                              prog F1 f
+                                                              (some exitE)
+                                                              (nextB + 2)
+                                                              [.phi
+                                                              le.supply
+                                                              exitT lt.val,
+                                                              .phi
+                                                              le.supply
+                                                              exitE le.val]
+                                                              lr.instrs
+                                                              lr.term
+                                                              fenv_arr
+                                                              ⟨fenv_arr.env.update
+                                                              le.supply
+                                                              w_arm,
+                                                              fenv_arr.store⟩
+                                                              happ_J
+                                                          have hg_r : F1 + 1 ≥
+                                                              blockBound
+                                                              fuelB rest +
+                                                              C :=
+                                                            Nat.le_trans
+                                                              hC'ge hge
+                                                          obtain ⟨ihV, ihB,
+                                                              ihC, ihR⟩ :=
+                                                            ih (nextB + 2) ρ
+                                                              (le.supply + 1)
+                                                              le.next contB
+                                                              le.supply
+                                                              loop lr hlo hr
+                                                              hrs hf_r
+                                                              hlast_r forbid
+                                                              (Nat.lt_of_lt_of_le hfN
+                                                                (Nat.le_trans (Nat.le_add_right nextB 3)
+                                                                  (Nat.le_trans hmnt hmne)))
+                                                              (Nat.lt_of_lt_of_le hfN
+                                                                (Nat.le_add_right nextB 2)) w_arm
+                                                              env_arm
+                                                              ⟨fenv_arr.env.update
+                                                              le.supply
+                                                              w_arm,
+                                                              fenv_arr.store⟩
+                                                              hrel_m hreg_m
+                                                              fh henv' out
+                                                              hrun prog f
+                                                              (some exitE)
+                                                              (F1 + 1)
+                                                              hsub_r hnodf
+                                                              fuelB C hg_r
+                                                              hexcl hsup_r
+                                                              hdist hblk eblk
+                                                              hdr hfindC
+                                                              hfindE
+                                                              hfindHdr
+                                                          refine ⟨?_, ?_, ?_,
+                                                              ?_⟩
+                                                          · intro u hout
+                                                            obtain ⟨F2,
+                                                              fenv_arr2,
+                                                              hle2, hge2,
+                                                              heq_rest,
+                                                              hrel_final⟩ :=
+                                                              ihV u hout
+                                                            rw
+                                                              [if_assembly_exit
+                                                              rfl]
+                                                            exact ⟨F2,
+                                                              fenv_arr2,
+                                                              Nat.le_trans
+                                                              (Nat.le_trans
+                                                              hle2 hle)
+                                                              (Nat.le_succ _),
+                                                              hge2,
+                                                              hentry.trans
+                                                              (heq_arm.trans
+                                                              (hJeq.trans
+                                                              heq_rest)),
+                                                              hrel_final⟩
+                                                          · intro hbroke
+                                                            obtain ⟨F2,
+                                                              fenv_arr2,
+                                                              blkPrev2,
+                                                              hle2, hge2,
+                                                              heq_rest,
+                                                              hrel_final,
+                                                              hval_final⟩ :=
+                                                              ihB hbroke
+                                                            exact ⟨F2,
+                                                              fenv_arr2,
+                                                              blkPrev2,
+                                                              Nat.le_trans
+                                                              (Nat.le_trans
+                                                              hle2 hle)
+                                                              (Nat.le_succ _),
+                                                              hge2,
+                                                              hentry.trans
+                                                              (heq_arm.trans
+                                                              (hJeq.trans
+                                                              heq_rest)),
+                                                              hrel_final,
+                                                              hval_final⟩
+                                                          · intro hcont
+                                                            obtain ⟨F2,
+                                                              fenv_arr2,
+                                                              blkPrev2,
+                                                              hle2, hge2,
+                                                              heq_rest,
+                                                              hcarried, hpreserv, hforbid⟩ :=
+                                                              ihC hcont
+                                                            refine ⟨F2,
+                                                              fenv_arr2,
+                                                              blkPrev2,
+                                                              Nat.le_trans
+                                                              (Nat.le_trans
+                                                              hle2 hle)
+                                                              (Nat.le_succ _),
+                                                              hge2,
+                                                              hentry.trans
+                                                              (heq_arm.trans
+                                                              (hJeq.trans
+                                                              heq_rest)),
+                                                              hcarried, ?_, hforbid⟩
+                                                            intro r hr hnc
+                                                            have hle_sup : supply ≤ le.supply :=
+                                                              Nat.le_trans hs1
+                                                                (Nat.le_trans hmst hmse)
+                                                            have e1 : fenv_arr2.env r =
+                                                                (fenv_arr.env.update le.supply w_arm) r :=
+                                                              hpreserv r
+                                                                (Nat.lt_of_lt_of_le hr
+                                                                  (Nat.le_trans hle_sup (Nat.le_succ _))) hnc
+                                                            have e2 : (fenv_arr.env.update le.supply
+                                                                w_arm) r = fenv_arr.env r := by
+                                                              simp [Env.update,
+                                                                Nat.ne_of_lt
+                                                                  (Nat.lt_of_lt_of_le hr hle_sup)]
+                                                            have e3 : fenv_arr.env r = fenvC.env r :=
+                                                              hpres_arm r
+                                                                (Nat.lt_of_lt_of_le hr (Nat.le_trans hs1 hmst))
+                                                            have e4 : fenvC.env r = fenv.env r :=
+                                                              lower_preserv_regs ρ supply c vc ic s1 heC
+                                                                fenv fenvC hexecC r hr
+                                                            exact e1.trans (e2.trans (e3.trans e4))
+                                                          · intro e_ret hout
+                                                            obtain ⟨w_e, hu_e,
+                                                              heq_rest⟩ :=
+                                                              ihR e_ret hout
+                                                            exact ⟨w_e, hu_e,
+                                                              hentry.trans
+                                                              (heq_arm.trans
+                                                              (hJeq.trans
+                                                              heq_rest))⟩
+                                                  | broke =>
+                                                      simp only [] at hrun
+                                                      have hfalse : False :=
+                                                        ArmNoBreak_run hnb_e
+                                                          fh henv env_arm
+                                                          _ _ (by simp) har
+                                                          rfl
+                                                      exact hfalse.elim
+                                                  | continued =>
+                                                      simp only [] at hrun
+                                                      have hout_c : out =
+                                                          .continued :=
+                                                        (congrArg Prod.fst
+                                                          hrun).symm
+                                                      have henv_eq : env_arm =
+                                                          henv' :=
+                                                        congrArg Prod.snd
+                                                          hrun
+                                                      refine ⟨?_, ?_, ?_, ?_⟩
+                                                      · intro u hout
+                                                        rw [hout_c] at hout
+                                                        exact absurd hout
+                                                          (by simp)
+                                                      · intro hbroke
+                                                        rw [hout_c] at hbroke
+                                                        exact absurd hbroke
+                                                          (by simp)
+                                                      · intro hcont
+                                                        obtain ⟨F2,
+                                                          fenv_arr2,
+                                                          blkPrev2, hle2,
+                                                          hge2, heq_arm, _,
+                                                          hcarried, hpreserv, hforbid⟩ :=
+                                                          lowerStmtsCFG_arm_continued
+                                                          budget
+                                                          (nextB + 1)
+                                                          (nextB + 2) ρ
+                                                          lt.supply lt.next
+                                                          lastVal false
+                                                          loop el le he
+                                                          hael hf_e hlast_e forbid
+                                                          (Nat.lt_of_lt_of_le hfN
+                                                            (Nat.le_trans (Nat.le_add_right nextB 3) hmnt))
+                                                          (Nat.lt_of_lt_of_le hfN
+                                                            (Nat.le_add_right nextB 1))
+                                                          .unit henv fenvC
+                                                          hrelC
+                                                          (fun _ => rfl)
+                                                          (fun h =>
+                                                            absurd h
+                                                              (by simp))
+                                                          fh env_arm
+                                                          .continued har
+                                                          rfl prog f
+                                                          (some bId) F''
+                                                          hsub_e hnodf
+                                                          fuelB (2 + max
+                                                          (armBlockBound
+                                                          fuelB th)
+                                                          (armBlockBound
+                                                          fuelB el) +
+                                                          armBlockBound
+                                                          fuelB rest -
+                                                          armBlockBound
+                                                          fuelB el + C)
+                                                          hg_e info hlo
+                                                          hexcl hdist hdr
+                                                          hfindHdr
+                                                        rw [henv_eq] at hcarried
+                                                        have hgeC : F2 ≥ C :=
+                                                          by omega
+                                                        refine ⟨F2,
+                                                          fenv_arr2,
+                                                          blkPrev2,
+                                                          Nat.le_trans
+                                                          hle2
+                                                          (Nat.le_succ _),
+                                                          hgeC,
+                                                          hentry.trans
+                                                          heq_arm,
+                                                          hcarried, ?_, hforbid⟩
+                                                        intro r hr hnc
+                                                        have e1 : fenv_arr2.env r = fenvC.env r :=
+                                                          hpreserv r
+                                                            (Nat.lt_of_lt_of_le hr (Nat.le_trans hs1 hmst)) hnc
+                                                        have e2 : fenvC.env r = fenv.env r :=
+                                                          lower_preserv_regs ρ supply c vc ic s1 heC
+                                                            fenv fenvC hexecC r hr
+                                                        exact e1.trans e2
+                                                      · intro e_ret hout
+                                                        rw [hout_c] at hout
+                                                        exact absurd hout
+                                                          (by simp)
+                                                  | returned e_arm =>
+                                                      simp only [] at hrun
+                                                      have hout_r : out =
+                                                          .returned e_arm :=
+                                                        (congrArg Prod.fst
+                                                          hrun).symm
+                                                      refine ⟨?_, ?_, ?_, ?_⟩
+                                                      · intro u hout
+                                                        rw [hout_r] at hout
+                                                        exact absurd hout
+                                                          (by simp)
+                                                      · intro hbroke
+                                                        rw [hout_r] at hbroke
+                                                        exact absurd hbroke
+                                                          (by simp)
+                                                      · intro hcont
+                                                        rw [hout_r] at hcont
+                                                        exact absurd hcont
+                                                          (by simp)
+                                                      · intro e_ret hout2
+                                                        have hret_e : e_ret =
+                                                            e_arm :=
+                                                          (HFlow.returned.inj
+                                                            (hout_r.symm.trans
+                                                            hout2)).symm
+                                                        obtain ⟨w_e, hu_e,
+                                                            heq_arm⟩ :=
+                                                          ((lowerStmtsCFG_arm_total
+                                                            budget
+                                                            (nextB + 1)
+                                                            (nextB + 2) ρ
+                                                            lt.supply
+                                                            lt.next lastVal
+                                                            false loop el le
+                                                            he hael hf_e
+                                                            hlast_e .unit
+                                                            henv fenvC hrelC
+                                                            (fun _ => rfl)
+                                                            (fun h =>
+                                                              absurd h
+                                                              (by simp))
+                                                            fh env_arm
+                                                            (HFlow.returned
+                                                              e_arm) har
+                                                            prog f
+                                                            (some bId)
+                                                            ⟨nextB + 2,
+                                                            [.phi le.supply
+                                                              exitT lt.val,
+                                                            .phi le.supply
+                                                              exitE le.val] ++
+                                                              lr.instrs,
+                                                            lr.term⟩ F''
+                                                            hsub_e hnodf
+                                                            hfindJ fuelB
+                                                            (2 + max
+                                                            (armBlockBound
+                                                            fuelB th)
+                                                            (armBlockBound
+                                                            fuelB el) +
+                                                            armBlockBound
+                                                            fuelB rest -
+                                                            armBlockBound
+                                                            fuelB el + C)
+                                                            hg_e e_arm).2
+                                                            e_arm rfl)
+                                                        rw [hret_e]
+                                                        exact ⟨w_e, hu_e,
+                                                          hentry.trans
+                                                          heq_arm⟩
+                                                  | stuck =>
+                                                      simp only [] at hrun
+                                                      have hst : out =
+                                                          .stuck :=
+                                                        (congrArg Prod.fst
+                                                          hrun).symm
+                                                      refine ⟨?_, ?_, ?_, ?_⟩
+                                                      · intro u hout
+                                                        rw [hst] at hout
+                                                        exact absurd hout
+                                                          (by simp)
+                                                      · intro hbroke
+                                                        rw [hst] at hbroke
+                                                        exact absurd hbroke
+                                                          (by simp)
+                                                      · intro hcont
+                                                        rw [hst] at hcont
+                                                        exact absurd hcont
+                                                          (by simp)
+                                                      · intro e_ret hout
+                                                        rw [hst] at hout
+                                                        exact absurd hout
+                                                          (by simp)
+                                      | int _ =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                      | string _ =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                      | pointer _ =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                      | float _ =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                      | unit =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                      | undef =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                      | some _ =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                      | none =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                      | ok _ =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                      | err _ =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                      | tuple_ _ =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                      | array_ _ =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                      | loc _ =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                      | closure _ _ =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+      | ifStmtBreak c th el rest hstr _ hath hael hrs harm =>
+          simp only [lowerStmtsCFG] at h
+          cases heC : lowerExpr ρ supply c with
+          | none => rw [heC] at h; simp at h
+          | some p =>
+              obtain ⟨vc, ic, s1⟩ := p
+              rw [heC] at h
+              simp only [] at h
+              cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
+                  (nextB + 3) lastVal false loop th with
+              | none => rw [ht] at h; simp at h
+              | some lt =>
+                  rw [ht] at h
+                  simp only [] at h
+                  cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2))
+                      true ρ lt.supply lt.next lastVal false loop el with
+                  | none => rw [he] at h; simp at h
+                  | some le =>
+                      rw [he] at h
+                      simp only [] at h
+                      cases hr : lowerStmtsCFG (nextB + 2) (some contB) false
+                          ρ (le.supply + 1) le.next le.supply true loop
+                          rest with
+                      | none => rw [hr] at h; simp at h
+                      | some lr =>
+                          rw [hr] at h
+                          simp only [] at h
+                          obtain rfl := Option.some.inj h
+                          dsimp only at hsub ⊢
+                          generalize hTdef : ((lt.blocks.getLast?.map
+                            (fun b => b.id)).getD nextB) = exitT
+                          generalize hEdef : ((le.blocks.getLast?.map
+                            (fun b => b.id)).getD (nextB + 1)) = exitE
+                          rw [hTdef, hEdef] at hsub
+                          have hs1 : supply ≤ s1 :=
+                            lower_mono.1 _ _ _ _ _ _ heC
+                          have hf1 : FreshAbove ρ s1 :=
+                            FreshAbove.mono ρ supply s1 hs1 hfresh
+                          have hlast1 : lastVal < s1 :=
+                            Nat.lt_of_lt_of_le hlast hs1
+                          have hsup1 : ∀ id r, (id, r) ∈ info.carried →
+                              r < s1 :=
+                            fun id r hmem =>
+                              Nat.lt_of_lt_of_le (hsup _ _ hmem) hs1
+                          obtain ⟨hmnt, hmst, hbndt, hnodt⟩ :=
+                            lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _
+                              ht hath
+                          obtain ⟨hmne, hmse, hbnde, hnode⟩ :=
+                            lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _
+                              he hael
+                          obtain ⟨hmnr, hmsr, hbndr, hnodr⟩ :=
+                            lowerStmtsCFG_branch_inv budget _ _ _ _ _ _ _ _
+                              _ _ hr (LoopStmts_to_BranchStmts hrs)
+                          have hrho_t : lt.ρ = ρ :=
+                            lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _
+                              ht hath
+                          have hrho_e : le.ρ = ρ :=
+                            lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _
+                              he hael
+                          have hrho_r : lr.ρ = ρ :=
+                            lowerStmtsCFG_branchArm_rho budget (nextB + 2)
+                              (some contB) ρ (le.supply + 1) le.next
+                              le.supply true loop rest lr hr harm
+                          have hbb_if : blockBound fuelB
+                              (.ifStmt c th el :: rest) =
+                              1 + (3 + max (armBlockBound fuelB th)
+                                (armBlockBound fuelB el) +
+                                armBlockBound fuelB rest) := by
+                            rw [blockBound, armBlockBound_if]
+                          have hB1 : blockBound fuelB
+                              (.ifStmt c th el :: rest) ≥ 1 := by
+                            rw [blockBound]; omega
+                          have hTmem : (⟨nextB, lt.instrs, lt.term⟩ : Block)
+                              ∈ f.blocks :=
+                            hsub _ if_asm_mem_then
+                          have hfindT : findBlock f nextB =
+                              some ⟨nextB, lt.instrs, lt.term⟩ :=
+                            findBlock_of_nodup_mem hnodf hTmem
+                          have hEmem : (⟨nextB + 1, le.instrs, le.term⟩ :
+                              Block) ∈ f.blocks :=
+                            hsub _ if_asm_mem_else
+                          have hfindEl : findBlock f (nextB + 1) =
+                              some ⟨nextB + 1, le.instrs, le.term⟩ :=
+                            findBlock_of_nodup_mem hnodf hEmem
+                          have hJmem : (⟨nextB + 2,
+                              [.phi le.supply exitT lt.val,
+                               .phi le.supply exitE le.val] ++ lr.instrs,
+                              lr.term⟩ : Block) ∈ f.blocks :=
+                            hsub _ if_asm_mem_join
+                          have hfindJ : findBlock f (nextB + 2) =
+                              some ⟨nextB + 2,
+                                [.phi le.supply exitT lt.val,
+                                 .phi le.supply exitE le.val] ++ lr.instrs,
+                                lr.term⟩ :=
+                            findBlock_of_nodup_mem hnodf hJmem
+                          have hne_pe : exitE ≠ exitT := by
+                            have hexitT : exitT = nextB ∨
+                                ∃ b ∈ lt.blocks, exitT = b.id := by
+                              cases hgl : lt.blocks.getLast? with
+                              | none =>
+                                  exact Or.inl (by simp [← hTdef, hgl])
+                              | some b =>
+                                  have hm : b ∈ lt.blocks :=
+                                    getLast?_mem hgl
+                                  exact Or.inr ⟨b, hm, by simp [← hTdef, hgl]⟩
+                            have hexitE : exitE = nextB + 1 ∨
+                                ∃ b ∈ le.blocks, exitE = b.id := by
+                              cases hgl : le.blocks.getLast? with
+                              | none =>
+                                  exact Or.inl (by simp [← hEdef, hgl])
+                              | some b =>
+                                  have hm : b ∈ le.blocks :=
+                                    getLast?_mem hgl
+                                  exact Or.inr ⟨b, hm, by simp [← hEdef, hgl]⟩
+                            rcases hexitT with hT | ⟨bt, hbt, hT⟩
+                            · rcases hexitE with hE | ⟨be, hbe, hE⟩
+                              · simp [hT, hE]
+                              · obtain ⟨hlo, -⟩ := hbnde be hbe
+                                rw [hE, hT]
+                                exact Nat.ne_of_gt (Nat.lt_of_lt_of_le
+                                  (by omega)
+                                  (Nat.le_trans hmnt hlo))
+                            · rcases hexitE with hE | ⟨be, hbe, hE⟩
+                              · obtain ⟨hlo, -⟩ := hbndt bt hbt
+                                rw [hE, hT]
+                                exact Nat.ne_of_lt (Nat.lt_of_le_of_lt
+                                  (Nat.add_le_add_left (by decide) nextB)
+                                  hlo)
+                              · obtain ⟨-, hhi⟩ := hbndt bt hbt
+                                obtain ⟨hlo, -⟩ := hbnde be hbe
+                                rw [hE, hT]
+                                exact Nat.ne_of_gt
+                                  (Nat.lt_of_lt_of_le hhi hlo)
+                          cases F with
+                          | zero =>
+                              have hbb : blockBound fuelB
+                                  (.ifStmt c th el :: rest) ≥ 1 := by
+                                show 1 + _ ≥ 1
+                                omega
+                              omega
+                          | succ F'' =>
+                              cases fuelH with
+                              | zero =>
+                                  have hz : runHIRStmts 0 henv
+                                      (.ifStmt c th el :: rest)
+                                      (.value (.lit accH)) = (.stuck, henv) :=
+                                    rfl
+                                  rw [hz] at hrun
+                                  have hst : out = .stuck :=
+                                    (congrArg Prod.fst hrun).symm
+                                  refine ⟨?_, ?_, ?_, ?_⟩
+                                  · intro u hout
+                                    rw [hst] at hout
+                                    exact absurd hout (by simp)
+                                  · intro hbroke
+                                    rw [hst] at hbroke
+                                    exact absurd hbroke (by simp)
+                                  · intro hcont
+                                    rw [hst] at hcont
+                                    exact absurd hcont (by simp)
+                                  · intro e_ret hout
+                                    rw [hst] at hout
+                                    exact absurd hout (by simp)
+                              | succ fh =>
+                                  have hstep : runHIRStmts (fh + 1) henv
+                                      (.ifStmt c th el :: rest)
+                                      (.value (.lit accH)) =
+                                      (match evalHIR 256 henv c with
+                                        | some (.lit (.bool true)) =>
+                                          match runHIRStmts fh henv th
+                                              (HFlow.value (.lit .unit)) with
+                                          | (HFlow.value u, env') =>
+                                              runHIRStmts fh env' rest
+                                                (((HFlow.value
+                                                  (.lit accH))).replace u)
+                                          | (f, env') => (f, env')
+                                        | some (.lit (.bool false)) =>
+                                          match runHIRStmts fh henv el
+                                              (HFlow.value (.lit .unit)) with
+                                          | (HFlow.value u, env') =>
+                                              runHIRStmts fh env' rest
+                                                (((HFlow.value
+                                                  (.lit accH))).replace u)
+                                          | (f, env') => (f, env')
+                                        | _ => (.stuck, henv)) := rfl
+                                  rw [hstep] at hrun
+                                  cases hevC : evalHIR 256 henv c with
+                                  | none =>
+                                      rw [hevC] at hrun
+                                      have hst : out = .stuck :=
+                                        (congrArg Prod.fst hrun).symm
+                                      refine ⟨?_, ?_, ?_, ?_⟩
+                                      · intro u hout
+                                        rw [hst] at hout
+                                        exact absurd hout (by simp)
+                                      · intro hbroke
+                                        rw [hst] at hbroke
+                                        exact absurd hbroke (by simp)
+                                      · intro hcont
+                                        rw [hst] at hcont
+                                        exact absurd hcont (by simp)
+                                      · intro e_ret hout
+                                        rw [hst] at hout
+                                        exact absurd hout (by simp)
+                                  | some r =>
+                                      rw [hevC] at hrun
+                                      obtain ⟨⟨w, hrw⟩, fenvC, hexecC,
+                                          hstoreC, wC, hrC, hregC⟩ :=
+                                        lower_total.1 ρ supply c vc ic s1
+                                          heC hstr hfresh henv fenv hrel
+                                          256 r hevC
+                                      subst hrw
+                                      have hnp_ic : ∀ dst pred src,
+                                          .phi dst pred src ∉ ic := by
+                                        intro d p s hm
+                                        exact IsPure_not_phi
+                                          (lower_isPure.1 _ _ _ _ _ _ heC _
+                                            hm) d p s rfl
+                                      have hexec_ic : execInstrsFullFromIn
+                                          prog prev fenv ic = some fenvC := by
+                                        rw [execInstrsFullFromIn_of_noPhi prog
+                                          prev fenv _ hnp_ic]
+                                        exact hexecC
+                                      have hrelC : RelEnv henv ρ fenvC.env :=
+                                        RelEnv_exec henv ρ supply c vc ic s1
+                                          heC fenv fenvC hrel hfresh hexecC
+                                      cases w with
+                                      | bool b =>
+                                          cases b with
+                                          | true =>
+                                              simp only [] at hrun
+                                              cases har : runHIRStmts fh henv
+                                                  th
+                                                  (HFlow.value
+                                                    (.lit .unit)) with
+                                              | mk out_arm env_arm =>
+                                                  rw [har] at hrun
+                                                  have hregCb : fenvC.env
+                                                      vc =
+                                                      some (.bool true) := by
+                                                    have hww : (.bool true) =
+                                                        wC :=
+                                                      HIR.Expr.lit.inj hrC
+                                                    rw [hww]
+                                                    exact hregC
+                                                  have hbool : fenvC.boolOf
+                                                      vc = some true :=
+                                                    boolOf_of_lit fenvC vc
+                                                      true hregCb
+                                                  have hentry :
+                                                      execBlockFromIn prog
+                                                      (F'' + 1) f prev
+                                                      ⟨bId, ic, .branch vc
+                                                        nextB
+                                                        (nextB + 1)⟩ fenv =
+                                                      execBlockFromIn prog
+                                                        F'' f (some bId)
+                                                        ⟨nextB, lt.instrs,
+                                                          lt.term⟩ fenvC :=
+                                                    execBlockFromIn_branch_true
+                                                      prog F'' f prev bId ic
+                                                      vc nextB (nextB + 1)
+                                                      fenv fenvC
+                                                      ⟨nextB, lt.instrs,
+                                                        lt.term⟩ hexec_ic
+                                                      hbool hfindT
+                                                  have hsub_t : ∀ b ∈
+                                                      lt.blocks, b ∈
+                                                      f.blocks :=
+                                                    fun b hb => hsub _
+                                                      (if_asm_mem_of_lt hb)
+                                                  have hC'ge : (2 + max
+                                                      (armBlockBound
+                                                        fuelB th)
+                                                      (armBlockBound
+                                                        fuelB el) +
+                                                      armBlockBound fuelB
+                                                        rest -
+                                                      armBlockBound fuelB
+                                                        th + C) ≥
+                                                      blockBound fuelB
+                                                        rest + C := by
+                                                    have hBrest : blockBound
+                                                        fuelB rest = 1 +
+                                                        armBlockBound
+                                                          fuelB rest := rfl
+                                                    omega
+                                                  have hg_t : F'' ≥
+                                                      blockBound fuelB th +
+                                                      (2 + max
+                                                      (armBlockBound
+                                                        fuelB th)
+                                                      (armBlockBound
+                                                        fuelB el) +
+                                                      armBlockBound fuelB
+                                                        rest -
+                                                      armBlockBound fuelB
+                                                        th + C) := by
+                                                    have hBth : blockBound
+                                                        fuelB th = 1 +
+                                                        armBlockBound
+                                                          fuelB th := rfl
+                                                    omega
+                                                  cases out_arm with
+                                                  | value u_arm =>
+                                                      simp only [] at hrun
+                                                      obtain ⟨w_arm, hu_arm,
+                                                          F', fenv_arr, hle,
+                                                          hge, heq_arm,
+                                                          hrel_arm,
+                                                          hreg_arr, hpres_arm⟩ :=
+                                                        ((lowerStmtsCFG_arm_total
+                                                          budget nextB
+                                                          (nextB + 2) ρ s1
+                                                          (nextB + 3)
+                                                          lastVal false
+                                                          loop th lt ht hath
+                                                          hf1 hlast1 .unit
+                                                          henv fenvC hrelC
+                                                          (fun _ => rfl)
+                                                          (fun h =>
+                                                            absurd h
+                                                              (by simp))
+                                                          fh env_arm
+                                                          (HFlow.value
+                                                            u_arm) har
+                                                          prog f (some bId)
+                                                          ⟨nextB + 2,
+                                                          [.phi le.supply
+                                                            exitT lt.val,
+                                                           .phi le.supply
+                                                            exitE le.val] ++
+                                                            lr.instrs,
+                                                          lr.term⟩ F''
+                                                          hsub_t hnodf
+                                                          hfindJ fuelB
+                                                          (2 + max
+                                                          (armBlockBound
+                                                          fuelB th)
+                                                          (armBlockBound
+                                                          fuelB el) +
+                                                          armBlockBound
+                                                          fuelB rest -
+                                                          armBlockBound
+                                                          fuelB th + C)
+                                                          hg_t u_arm).1
+                                                          rfl)
+                                                      rw [hTdef] at heq_arm
+                                                      rw [hrho_t] at hrel_arm
+                                                      have hrep :
+                                                          ((HFlow.value
+                                                          (.lit accH)).replace
+                                                          (.lit w_arm)) =
+                                                          HFlow.value
+                                                          (.lit w_arm) :=
+                                                        rfl
+                                                      rw [hu_arm, hrep] at hrun
+                                                      have hfrL : FreshAbove ρ
+                                                          le.supply :=
+                                                        FreshAbove.mono ρ
+                                                          supply le.supply
+                                                          (Nat.le_trans hs1
+                                                          (Nat.le_trans hmst
+                                                          hmse)) hfresh
+                                                      have hrel_m : RelEnv
+                                                          env_arm ρ
+                                                          (fenv_arr.env.update
+                                                          le.supply
+                                                          w_arm) := by
+                                                        intro id u hlook
+                                                        obtain ⟨w0, hlookH,
+                                                            hreg0⟩ :=
+                                                          hrel_arm id u
+                                                            hlook
+                                                        have hu : u <
+                                                            le.supply :=
+                                                          hfrL id u
+                                                            (rhoLookup_some_mem
+                                                              ρ id u hlook)
+                                                        have hne : u ≠
+                                                            le.supply :=
+                                                          Nat.ne_of_lt hu
+                                                        refine ⟨w0, hlookH,
+                                                            ?_⟩
+                                                        have hupd :
+                                                            (fenv_arr.env.update
+                                                            le.supply
+                                                            w_arm) u =
+                                                            fenv_arr.env
+                                                              u := by
+                                                          simp [Env.update,
+                                                            hne]
+                                                        show (fenv_arr.env.update
+                                                          le.supply w_arm)
+                                                            u = some w0
+                                                        rw [hupd]
+                                                        exact hreg0
+                                                      have hreg_m :
+                                                          (⟨fenv_arr.env.update
+                                                          le.supply w_arm,
+                                                          fenv_arr.store⟩ :
+                                                          FullEnv).env
+                                                          le.supply =
+                                                          some w_arm := by
+                                                        simp [Env.update]
+                                                      have hf_r : FreshAbove ρ
+                                                          (le.supply + 1) :=
+                                                        FreshAbove.mono ρ
+                                                          supply
+                                                          (le.supply + 1)
+                                                          (Nat.le_trans hs1
+                                                          (Nat.le_trans hmst
+                                                          (Nat.le_trans hmse
+                                                          (Nat.le_succ _))))
+                                                          hfresh
+                                                      have hlast_r :
+                                                          le.supply <
+                                                          le.supply + 1 :=
+                                                        Nat.lt_succ_self _
+                                                      have hsup_r : ∀ id r,
+                                                          (id, r) ∈
+                                                          info.carried →
+                                                          r < le.supply +
+                                                            1 :=
+                                                        fun id r hmem =>
+                                                          Nat.lt_of_lt_of_le
+                                                            (hsup _ _ hmem)
+                                                            (Nat.le_trans
+                                                              hs1
+                                                              (Nat.le_trans
+                                                              hmst
+                                                              (Nat.le_trans
+                                                              hmse
+                                                              (Nat.le_succ
+                                                              _))))
+                                                      have hsub_r : ∀ b ∈
+                                                          lr.blocks, b ∈
+                                                          f.blocks :=
+                                                        fun b hb => hsub _
+                                                          (if_asm_mem_of_lr
+                                                            hb)
+                                                      cases F' with
+                                                      | zero =>
+                                                          have hB1r :
+                                                              blockBound
+                                                              fuelB rest ≥
+                                                              1 := by
+                                                            rw [blockBound]
+                                                            omega
+                                                          exact absurd hge
+                                                            (by omega)
+                                                      | succ F1 =>
+                                                          have happ_J :
+                                                              execInstrsFullFromIn
+                                                              prog
+                                                              (some exitT)
+                                                              fenv_arr
+                                                              ([.phi
+                                                              le.supply
+                                                              exitT lt.val,
+                                                              .phi
+                                                              le.supply
+                                                              exitE le.val] ++
+                                                              lr.instrs) =
+                                                              execInstrsFullFromIn
+                                                              prog
+                                                              (some exitT)
+                                                              ⟨fenv_arr.env.update
+                                                              le.supply
+                                                              w_arm,
+                                                              fenv_arr.store⟩
+                                                              lr.instrs :=
+                                                            execInstrsFullFromIn_phis_hit
+                                                              prog exitT
+                                                              fenv_arr
+                                                              le.supply
+                                                              exitT exitE
+                                                              lt.val le.val
+                                                              lr.instrs w_arm
+                                                              rfl hne_pe
+                                                              hreg_arr
+                                                          have hJeq :
+                                                              execBlockFromIn
+                                                              prog (F1 + 1)
+                                                              f (some exitT)
+                                                              ⟨nextB + 2,
+                                                              [.phi
+                                                              le.supply
+                                                              exitT lt.val,
+                                                              .phi
+                                                              le.supply
+                                                              exitE le.val] ++
+                                                              lr.instrs,
+                                                              lr.term⟩
+                                                              fenv_arr =
+                                                              execBlockFromIn
+                                                              prog (F1 + 1)
+                                                              f (some exitT)
+                                                              ⟨nextB + 2,
+                                                              lr.instrs,
+                                                              lr.term⟩
+                                                              ⟨fenv_arr.env.update
+                                                              le.supply
+                                                              w_arm,
+                                                              fenv_arr.store⟩ :=
+                                                            execBlockFromIn_instrs_prefix
+                                                              prog F1 f
+                                                              (some exitT)
+                                                              (nextB + 2)
+                                                              [.phi
+                                                              le.supply
+                                                              exitT lt.val,
+                                                              .phi
+                                                              le.supply
+                                                              exitE le.val]
+                                                              lr.instrs
+                                                              lr.term
+                                                              fenv_arr
+                                                              ⟨fenv_arr.env.update
+                                                              le.supply
+                                                              w_arm,
+                                                              fenv_arr.store⟩
+                                                              happ_J
+                                                          have hg_r : F1 + 1 ≥
+                                                              blockBound
+                                                              fuelB rest +
+                                                              C :=
+                                                            Nat.le_trans
+                                                              hC'ge hge
+                                                          obtain ⟨ihV, ihB,
+                                                              ihC, ihR⟩ :=
+                                                            ih (nextB + 2) ρ
+                                                              (le.supply + 1)
+                                                              le.next contB
+                                                              le.supply
+                                                              loop lr hlo hr
+                                                              hrs hf_r
+                                                              hlast_r forbid
+                                                              (Nat.lt_of_lt_of_le hfN
+                                                                (Nat.le_trans (Nat.le_add_right nextB 3)
+                                                                  (Nat.le_trans hmnt hmne)))
+                                                              (Nat.lt_of_lt_of_le hfN
+                                                                (Nat.le_add_right nextB 2)) w_arm
+                                                              env_arm
+                                                              ⟨fenv_arr.env.update
+                                                              le.supply
+                                                              w_arm,
+                                                              fenv_arr.store⟩
+                                                              hrel_m hreg_m
+                                                              fh henv' out
+                                                              hrun prog f
+                                                              (some exitT)
+                                                              (F1 + 1)
+                                                              hsub_r hnodf
+                                                              fuelB C hg_r
+                                                              hexcl hsup_r
+                                                              hdist hblk eblk
+                                                              hdr hfindC
+                                                              hfindE
+                                                              hfindHdr
+                                                          refine ⟨?_, ?_, ?_,
+                                                              ?_⟩
+                                                          · intro u hout
+                                                            obtain ⟨F2,
+                                                              fenv_arr2,
+                                                              hle2, hge2,
+                                                              heq_rest,
+                                                              hrel_final⟩ :=
+                                                              ihV u hout
+                                                            rw
+                                                              [if_assembly_exit
+                                                              rfl]
+                                                            exact ⟨F2,
+                                                              fenv_arr2,
+                                                              Nat.le_trans
+                                                              (Nat.le_trans
+                                                              hle2 hle)
+                                                              (Nat.le_succ _),
+                                                              hge2,
+                                                              hentry.trans
+                                                              (heq_arm.trans
+                                                              (hJeq.trans
+                                                              heq_rest)),
+                                                              hrel_final⟩
+                                                          · intro hbroke
+                                                            obtain ⟨F2,
+                                                              fenv_arr2,
+                                                              blkPrev2,
+                                                              hle2, hge2,
+                                                              heq_rest,
+                                                              hrel_final,
+                                                              hval_final⟩ :=
+                                                              ihB hbroke
+                                                            exact ⟨F2,
+                                                              fenv_arr2,
+                                                              blkPrev2,
+                                                              Nat.le_trans
+                                                              (Nat.le_trans
+                                                              hle2 hle)
+                                                              (Nat.le_succ _),
+                                                              hge2,
+                                                              hentry.trans
+                                                              (heq_arm.trans
+                                                              (hJeq.trans
+                                                              heq_rest)),
+                                                              hrel_final,
+                                                              hval_final⟩
+                                                          · intro hcont
+                                                            obtain ⟨F2,
+                                                              fenv_arr2,
+                                                              blkPrev2,
+                                                              hle2, hge2,
+                                                              heq_rest,
+                                                              hcarried, hpreserv, hforbid⟩ :=
+                                                              ihC hcont
+                                                            refine ⟨F2,
+                                                              fenv_arr2,
+                                                              blkPrev2,
+                                                              Nat.le_trans
+                                                              (Nat.le_trans
+                                                              hle2 hle)
+                                                              (Nat.le_succ _),
+                                                              hge2,
+                                                              hentry.trans
+                                                              (heq_arm.trans
+                                                              (hJeq.trans
+                                                              heq_rest)),
+                                                              hcarried, ?_, hforbid⟩
+                                                            intro r hr hnc
+                                                            have hle_sup : supply ≤ le.supply :=
+                                                              Nat.le_trans hs1
+                                                                (Nat.le_trans hmst hmse)
+                                                            have e1 : fenv_arr2.env r =
+                                                                (fenv_arr.env.update le.supply w_arm) r :=
+                                                              hpreserv r
+                                                                (Nat.lt_of_lt_of_le hr
+                                                                  (Nat.le_trans hle_sup (Nat.le_succ _))) hnc
+                                                            have e2 : (fenv_arr.env.update le.supply
+                                                                w_arm) r = fenv_arr.env r := by
+                                                              simp [Env.update,
+                                                                Nat.ne_of_lt
+                                                                  (Nat.lt_of_lt_of_le hr hle_sup)]
+                                                            have e3 : fenv_arr.env r = fenvC.env r :=
+                                                              hpres_arm r
+                                                                (Nat.lt_of_lt_of_le hr hs1)
+                                                            have e4 : fenvC.env r = fenv.env r :=
+                                                              lower_preserv_regs ρ supply c vc ic s1 heC
+                                                                fenv fenvC hexecC r hr
+                                                            exact e1.trans (e2.trans (e3.trans e4))
+                                                          · intro e_ret hout
+                                                            obtain ⟨w_e, hu_e,
+                                                              heq_rest⟩ :=
+                                                              ihR e_ret hout
+                                                            exact ⟨w_e, hu_e,
+                                                              hentry.trans
+                                                              (heq_arm.trans
+                                                              (hJeq.trans
+                                                              heq_rest))⟩
+                                                  | broke =>
+                                                      simp only [] at hrun
+                                                      have hout_b : out =
+                                                          .broke :=
+                                                        (congrArg Prod.fst
+                                                          hrun).symm
+                                                      have henv_eq : env_arm =
+                                                          henv' :=
+                                                        congrArg Prod.snd
+                                                          hrun
+                                                      refine ⟨?_, ?_, ?_, ?_⟩
+                                                      · intro u hout
+                                                        rw [hout_b] at hout
+                                                        exact absurd hout
+                                                          (by simp)
+                                                      · intro hbroke
+                                                        obtain ⟨F2,
+                                                          fenv_arr2,
+                                                          blkPrev2, hle2,
+                                                          hge2, heq_arm,
+                                                          hrel_final,
+                                                          hval_final⟩ :=
+                                                          lowerStmtsCFG_arm_broke
+                                                          budget nextB
+                                                          (nextB + 2) ρ s1
+                                                          (nextB + 3)
+                                                          lastVal false
+                                                          loop th lt ht
+                                                          hath hf1 hlast1
+                                                          .unit henv fenvC
+                                                          hrelC
+                                                          (fun _ => rfl)
+                                                          (fun h =>
+                                                            absurd h
+                                                              (by simp))
+                                                          fh env_arm .broke
+                                                          har rfl prog f
+                                                          (some bId) F''
+                                                          hsub_t hnodf
+                                                          fuelB (2 + max
+                                                          (armBlockBound
+                                                          fuelB th)
+                                                          (armBlockBound
+                                                          fuelB el) +
+                                                          armBlockBound
+                                                          fuelB rest -
+                                                          armBlockBound
+                                                          fuelB th + C)
+                                                          hg_t info hlo
+                                                          hexcl hdist eblk
+                                                          hfindE
+                                                        rw [henv_eq, hrho_t,
+                                                          ← hrho_r] at hrel_final
+                                                        rw [henv_eq] at hval_final
+                                                        have hgeC : F2 ≥ C :=
+                                                          by omega
+                                                        exact ⟨F2,
+                                                          fenv_arr2,
+                                                          blkPrev2,
+                                                          Nat.le_trans
+                                                          hle2
+                                                          (Nat.le_succ _),
+                                                          hgeC,
+                                                          hentry.trans
+                                                          heq_arm,
+                                                          hrel_final,
+                                                          hval_final⟩
+                                                      · intro hcont
+                                                        rw [hout_b] at hcont
+                                                        exact absurd hcont
+                                                          (by simp)
+                                                      · intro e_ret hout
+                                                        rw [hout_b] at hout
+                                                        exact absurd hout
+                                                          (by simp)
+                                                  | continued =>
+                                                      simp only [] at hrun
+                                                      have hout_c : out =
+                                                          .continued :=
+                                                        (congrArg Prod.fst
+                                                          hrun).symm
+                                                      have henv_eq : env_arm =
+                                                          henv' :=
+                                                        congrArg Prod.snd
+                                                          hrun
+                                                      refine ⟨?_, ?_, ?_, ?_⟩
+                                                      · intro u hout
+                                                        rw [hout_c] at hout
+                                                        exact absurd hout
+                                                          (by simp)
+                                                      · intro hbroke
+                                                        rw [hout_c] at hbroke
+                                                        exact absurd hbroke
+                                                          (by simp)
+                                                      · intro hcont
+                                                        obtain ⟨F2,
+                                                          fenv_arr2,
+                                                          blkPrev2, hle2,
+                                                          hge2, heq_arm, _,
+                                                          hcarried, hpreserv, hforbid⟩ :=
+                                                          lowerStmtsCFG_arm_continued
+                                                          budget nextB
+                                                          (nextB + 2) ρ s1
+                                                          (nextB + 3)
+                                                          lastVal false
+                                                          loop th lt ht
+                                                          hath hf1 hlast1 forbid
+                                                          (Nat.lt_of_lt_of_le hfN
+                                                            (Nat.le_add_right nextB 3)) hfN
+                                                          .unit henv fenvC
+                                                          hrelC
+                                                          (fun _ => rfl)
+                                                          (fun h =>
+                                                            absurd h
+                                                              (by simp))
+                                                          fh env_arm
+                                                          .continued har
+                                                          rfl prog f
+                                                          (some bId) F''
+                                                          hsub_t hnodf
+                                                          fuelB (2 + max
+                                                          (armBlockBound
+                                                          fuelB th)
+                                                          (armBlockBound
+                                                          fuelB el) +
+                                                          armBlockBound
+                                                          fuelB rest -
+                                                          armBlockBound
+                                                          fuelB th + C)
+                                                          hg_t info hlo
+                                                          hexcl hdist hdr
+                                                          hfindHdr
+                                                        rw [henv_eq] at hcarried
+                                                        have hgeC : F2 ≥ C :=
+                                                          by omega
+                                                        refine ⟨F2,
+                                                          fenv_arr2,
+                                                          blkPrev2,
+                                                          Nat.le_trans
+                                                          hle2
+                                                          (Nat.le_succ _),
+                                                          hgeC,
+                                                          hentry.trans
+                                                          heq_arm,
+                                                          hcarried, ?_, hforbid⟩
+                                                        intro r hr hnc
+                                                        have e1 : fenv_arr2.env r = fenvC.env r :=
+                                                          hpreserv r
+                                                            (Nat.lt_of_lt_of_le hr hs1) hnc
+                                                        have e2 : fenvC.env r = fenv.env r :=
+                                                          lower_preserv_regs ρ supply c vc ic s1 heC
+                                                            fenv fenvC hexecC r hr
+                                                        exact e1.trans e2
+                                                      · intro e_ret hout
+                                                        rw [hout_c] at hout
+                                                        exact absurd hout
+                                                          (by simp)
+                                                  | returned e_arm =>
+                                                      simp only [] at hrun
+                                                      have hout_r : out =
+                                                          .returned e_arm :=
+                                                        (congrArg Prod.fst
+                                                          hrun).symm
+                                                      refine ⟨?_, ?_, ?_, ?_⟩
+                                                      · intro u hout
+                                                        rw [hout_r] at hout
+                                                        exact absurd hout
+                                                          (by simp)
+                                                      · intro hbroke
+                                                        rw [hout_r] at hbroke
+                                                        exact absurd hbroke
+                                                          (by simp)
+                                                      · intro hcont
+                                                        rw [hout_r] at hcont
+                                                        exact absurd hcont
+                                                          (by simp)
+                                                      · intro e_ret hout2
+                                                        have hret_e : e_ret =
+                                                            e_arm :=
+                                                          (HFlow.returned.inj
+                                                            (hout_r.symm.trans
+                                                            hout2)).symm
+                                                        obtain ⟨w_e, hu_e,
+                                                            heq_arm⟩ :=
+                                                          ((lowerStmtsCFG_arm_total
+                                                            budget nextB
+                                                            (nextB + 2) ρ
+                                                            s1 (nextB + 3)
+                                                            lastVal false
+                                                            loop th lt ht
+                                                            hath hf1 hlast1
+                                                            .unit henv
+                                                            fenvC hrelC
+                                                            (fun _ => rfl)
+                                                            (fun h =>
+                                                              absurd h
+                                                              (by simp))
+                                                            fh env_arm
+                                                            (HFlow.returned
+                                                              e_arm) har
+                                                            prog f
+                                                            (some bId)
+                                                            ⟨nextB + 2,
+                                                            [.phi le.supply
+                                                              exitT lt.val,
+                                                            .phi le.supply
+                                                              exitE le.val] ++
+                                                              lr.instrs,
+                                                            lr.term⟩ F''
+                                                            hsub_t hnodf
+                                                            hfindJ fuelB
+                                                            (2 + max
+                                                            (armBlockBound
+                                                            fuelB th)
+                                                            (armBlockBound
+                                                            fuelB el) +
+                                                            armBlockBound
+                                                            fuelB rest -
+                                                            armBlockBound
+                                                            fuelB th + C)
+                                                            hg_t e_arm).2
+                                                            e_arm rfl)
+                                                        rw [hret_e]
+                                                        exact ⟨w_e, hu_e,
+                                                          hentry.trans
+                                                          heq_arm⟩
+                                                  | stuck =>
+                                                      simp only [] at hrun
+                                                      have hst : out =
+                                                          .stuck :=
+                                                        (congrArg Prod.fst
+                                                          hrun).symm
+                                                      refine ⟨?_, ?_, ?_, ?_⟩
+                                                      · intro u hout
+                                                        rw [hst] at hout
+                                                        exact absurd hout
+                                                          (by simp)
+                                                      · intro hbroke
+                                                        rw [hst] at hbroke
+                                                        exact absurd hbroke
+                                                          (by simp)
+                                                      · intro hcont
+                                                        rw [hst] at hcont
+                                                        exact absurd hcont
+                                                          (by simp)
+                                                      · intro e_ret hout
+                                                        rw [hst] at hout
+                                                        exact absurd hout
+                                                          (by simp)
+                                          | false =>
+                                              simp only [] at hrun
+                                              cases har : runHIRStmts fh henv
+                                                  el
+                                                  (HFlow.value
+                                                    (.lit .unit)) with
+                                              | mk out_arm env_arm =>
+                                                  rw [har] at hrun
+                                                  have hregCb : fenvC.env
+                                                      vc =
+                                                      some (.bool false) :=
+                                                    by
+                                                    have hww :
+                                                        (.bool false) = wC :=
+                                                      HIR.Expr.lit.inj hrC
+                                                    rw [hww]
+                                                    exact hregC
+                                                  have hbool : fenvC.boolOf
+                                                      vc = some false :=
+                                                    boolOf_of_lit fenvC vc
+                                                      false hregCb
+                                                  have hentry :
+                                                      execBlockFromIn prog
+                                                      (F'' + 1) f prev
+                                                      ⟨bId, ic, .branch vc
+                                                        nextB
+                                                        (nextB + 1)⟩ fenv =
+                                                      execBlockFromIn prog
+                                                        F'' f (some bId)
+                                                        ⟨nextB + 1,
+                                                          le.instrs,
+                                                          le.term⟩ fenvC :=
+                                                    execBlockFromIn_branch_false
+                                                      prog F'' f prev bId ic
+                                                      vc nextB (nextB + 1)
+                                                      fenv fenvC
+                                                      ⟨nextB + 1,
+                                                        le.instrs,
+                                                        le.term⟩ hexec_ic
+                                                      hbool hfindEl
+                                                  have hsub_e : ∀ b ∈
+                                                      le.blocks, b ∈
+                                                      f.blocks :=
+                                                    fun b hb => hsub _
+                                                      (if_asm_mem_of_le hb)
+                                                  have hf_e : FreshAbove ρ
+                                                      lt.supply :=
+                                                    FreshAbove.mono ρ s1
+                                                      lt.supply hmst hf1
+                                                  have hlast_e : lastVal <
+                                                      lt.supply :=
+                                                    Nat.lt_of_lt_of_le
+                                                      hlast1 hmst
+                                                  have hC'ge : (2 + max
+                                                      (armBlockBound
+                                                        fuelB th)
+                                                      (armBlockBound
+                                                        fuelB el) +
+                                                      armBlockBound fuelB
+                                                        rest -
+                                                      armBlockBound fuelB
+                                                        el + C) ≥
+                                                      blockBound fuelB
+                                                        rest + C := by
+                                                    have hBrest : blockBound
+                                                        fuelB rest = 1 +
+                                                        armBlockBound
+                                                          fuelB rest := rfl
+                                                    omega
+                                                  have hg_e : F'' ≥
+                                                      blockBound fuelB el +
+                                                      (2 + max
+                                                      (armBlockBound
+                                                        fuelB th)
+                                                      (armBlockBound
+                                                        fuelB el) +
+                                                      armBlockBound fuelB
+                                                        rest -
+                                                      armBlockBound fuelB
+                                                        el + C) := by
+                                                    have hBel : blockBound
+                                                        fuelB el = 1 +
+                                                        armBlockBound
+                                                          fuelB el := rfl
+                                                    omega
+                                                  cases out_arm with
+                                                  | value u_arm =>
+                                                      simp only [] at hrun
+                                                      obtain ⟨w_arm, hu_arm,
+                                                          F', fenv_arr, hle,
+                                                          hge, heq_arm,
+                                                          hrel_arm,
+                                                          hreg_arr, hpres_arm⟩ :=
+                                                        ((lowerStmtsCFG_arm_total
+                                                          budget (nextB + 1)
+                                                          (nextB + 2) ρ
+                                                          lt.supply lt.next
+                                                          lastVal false
+                                                          loop el le he hael
+                                                          hf_e hlast_e .unit
+                                                          henv fenvC hrelC
+                                                          (fun _ => rfl)
+                                                          (fun h =>
+                                                            absurd h
+                                                              (by simp))
+                                                          fh env_arm
+                                                          (HFlow.value
+                                                            u_arm) har
+                                                          prog f (some bId)
+                                                          ⟨nextB + 2,
+                                                          [.phi le.supply
+                                                            exitT lt.val,
+                                                           .phi le.supply
+                                                            exitE le.val] ++
+                                                            lr.instrs,
+                                                          lr.term⟩ F''
+                                                          hsub_e hnodf
+                                                          hfindJ fuelB
+                                                          (2 + max
+                                                          (armBlockBound
+                                                          fuelB th)
+                                                          (armBlockBound
+                                                          fuelB el) +
+                                                          armBlockBound
+                                                          fuelB rest -
+                                                          armBlockBound
+                                                          fuelB el + C)
+                                                          hg_e u_arm).1
+                                                          rfl)
+                                                      rw [hEdef] at heq_arm
+                                                      rw [hrho_e] at hrel_arm
+                                                      have hrep :
+                                                          ((HFlow.value
+                                                          (.lit accH)).replace
+                                                          (.lit w_arm)) =
+                                                          HFlow.value
+                                                          (.lit w_arm) :=
+                                                        rfl
+                                                      rw [hu_arm, hrep] at hrun
+                                                      have hfrL : FreshAbove ρ
+                                                          le.supply :=
+                                                        FreshAbove.mono ρ
+                                                          supply le.supply
+                                                          (Nat.le_trans hs1
+                                                          (Nat.le_trans hmst
+                                                          hmse)) hfresh
+                                                      have hrel_m : RelEnv
+                                                          env_arm ρ
+                                                          (fenv_arr.env.update
+                                                          le.supply
+                                                          w_arm) := by
+                                                        intro id u hlook
+                                                        obtain ⟨w0, hlookH,
+                                                            hreg0⟩ :=
+                                                          hrel_arm id u
+                                                            hlook
+                                                        have hu : u <
+                                                            le.supply :=
+                                                          hfrL id u
+                                                            (rhoLookup_some_mem
+                                                              ρ id u hlook)
+                                                        have hne : u ≠
+                                                            le.supply :=
+                                                          Nat.ne_of_lt hu
+                                                        refine ⟨w0, hlookH,
+                                                            ?_⟩
+                                                        have hupd :
+                                                            (fenv_arr.env.update
+                                                            le.supply
+                                                            w_arm) u =
+                                                            fenv_arr.env
+                                                              u := by
+                                                          simp [Env.update,
+                                                            hne]
+                                                        show (fenv_arr.env.update
+                                                          le.supply w_arm)
+                                                            u = some w0
+                                                        rw [hupd]
+                                                        exact hreg0
+                                                      have hreg_m :
+                                                          (⟨fenv_arr.env.update
+                                                          le.supply w_arm,
+                                                          fenv_arr.store⟩ :
+                                                          FullEnv).env
+                                                          le.supply =
+                                                          some w_arm := by
+                                                        simp [Env.update]
+                                                      have hf_r : FreshAbove ρ
+                                                          (le.supply + 1) :=
+                                                        FreshAbove.mono ρ
+                                                          supply
+                                                          (le.supply + 1)
+                                                          (Nat.le_trans hs1
+                                                          (Nat.le_trans hmst
+                                                          (Nat.le_trans hmse
+                                                          (Nat.le_succ _))))
+                                                          hfresh
+                                                      have hlast_r :
+                                                          le.supply <
+                                                          le.supply + 1 :=
+                                                        Nat.lt_succ_self _
+                                                      have hsup_r : ∀ id r,
+                                                          (id, r) ∈
+                                                          info.carried →
+                                                          r < le.supply +
+                                                            1 :=
+                                                        fun id r hmem =>
+                                                          Nat.lt_of_lt_of_le
+                                                            (hsup _ _ hmem)
+                                                            (Nat.le_trans
+                                                              hs1
+                                                              (Nat.le_trans
+                                                              hmst
+                                                              (Nat.le_trans
+                                                              hmse
+                                                              (Nat.le_succ
+                                                              _))))
+                                                      have hsub_r : ∀ b ∈
+                                                          lr.blocks, b ∈
+                                                          f.blocks :=
+                                                        fun b hb => hsub _
+                                                          (if_asm_mem_of_lr
+                                                            hb)
+                                                      cases F' with
+                                                      | zero =>
+                                                          have hB1r :
+                                                              blockBound
+                                                              fuelB rest ≥
+                                                              1 := by
+                                                            rw [blockBound]
+                                                            omega
+                                                          exact absurd hge
+                                                            (by omega)
+                                                      | succ F1 =>
+                                                          have happ_J :
+                                                              execInstrsFullFromIn
+                                                              prog
+                                                              (some exitE)
+                                                              fenv_arr
+                                                              ([.phi
+                                                              le.supply
+                                                              exitT lt.val,
+                                                              .phi
+                                                              le.supply
+                                                              exitE le.val] ++
+                                                              lr.instrs) =
+                                                              execInstrsFullFromIn
+                                                              prog
+                                                              (some exitE)
+                                                              ⟨fenv_arr.env.update
+                                                              le.supply
+                                                              w_arm,
+                                                              fenv_arr.store⟩
+                                                              lr.instrs :=
+                                                            by
+                                                            simp only
+                                                              [List.cons_append,
+                                                              List.nil_append]
+                                                            rw [execInstrsFullFromIn_eq,
+                                                              execInstrsFullFromIn_eq,
+                                                              execInstrsFullFrom_phi_miss
+                                                              _ _ _ _ _ _
+                                                              (Ne.symm
+                                                              hne_pe),
+                                                              execInstrsFullFrom_phi_hit
+                                                              _ _ _ _ _ _
+                                                              rfl,
+                                                              hreg_arr]
+                                                          have hJeq :
+                                                              execBlockFromIn
+                                                              prog (F1 + 1)
+                                                              f (some exitE)
+                                                              ⟨nextB + 2,
+                                                              [.phi
+                                                              le.supply
+                                                              exitT lt.val,
+                                                              .phi
+                                                              le.supply
+                                                              exitE le.val] ++
+                                                              lr.instrs,
+                                                              lr.term⟩
+                                                              fenv_arr =
+                                                              execBlockFromIn
+                                                              prog (F1 + 1)
+                                                              f (some exitE)
+                                                              ⟨nextB + 2,
+                                                              lr.instrs,
+                                                              lr.term⟩
+                                                              ⟨fenv_arr.env.update
+                                                              le.supply
+                                                              w_arm,
+                                                              fenv_arr.store⟩ :=
+                                                            execBlockFromIn_instrs_prefix
+                                                              prog F1 f
+                                                              (some exitE)
+                                                              (nextB + 2)
+                                                              [.phi
+                                                              le.supply
+                                                              exitT lt.val,
+                                                              .phi
+                                                              le.supply
+                                                              exitE le.val]
+                                                              lr.instrs
+                                                              lr.term
+                                                              fenv_arr
+                                                              ⟨fenv_arr.env.update
+                                                              le.supply
+                                                              w_arm,
+                                                              fenv_arr.store⟩
+                                                              happ_J
+                                                          have hg_r : F1 + 1 ≥
+                                                              blockBound
+                                                              fuelB rest +
+                                                              C :=
+                                                            Nat.le_trans
+                                                              hC'ge hge
+                                                          obtain ⟨ihV, ihB,
+                                                              ihC, ihR⟩ :=
+                                                            ih (nextB + 2) ρ
+                                                              (le.supply + 1)
+                                                              le.next contB
+                                                              le.supply
+                                                              loop lr hlo hr
+                                                              hrs hf_r
+                                                              hlast_r forbid
+                                                              (Nat.lt_of_lt_of_le hfN
+                                                                (Nat.le_trans (Nat.le_add_right nextB 3)
+                                                                  (Nat.le_trans hmnt hmne)))
+                                                              (Nat.lt_of_lt_of_le hfN
+                                                                (Nat.le_add_right nextB 2)) w_arm
+                                                              env_arm
+                                                              ⟨fenv_arr.env.update
+                                                              le.supply
+                                                              w_arm,
+                                                              fenv_arr.store⟩
+                                                              hrel_m hreg_m
+                                                              fh henv' out
+                                                              hrun prog f
+                                                              (some exitE)
+                                                              (F1 + 1)
+                                                              hsub_r hnodf
+                                                              fuelB C hg_r
+                                                              hexcl hsup_r
+                                                              hdist hblk eblk
+                                                              hdr hfindC
+                                                              hfindE
+                                                              hfindHdr
+                                                          refine ⟨?_, ?_, ?_,
+                                                              ?_⟩
+                                                          · intro u hout
+                                                            obtain ⟨F2,
+                                                              fenv_arr2,
+                                                              hle2, hge2,
+                                                              heq_rest,
+                                                              hrel_final⟩ :=
+                                                              ihV u hout
+                                                            rw
+                                                              [if_assembly_exit
+                                                              rfl]
+                                                            exact ⟨F2,
+                                                              fenv_arr2,
+                                                              Nat.le_trans
+                                                              (Nat.le_trans
+                                                              hle2 hle)
+                                                              (Nat.le_succ _),
+                                                              hge2,
+                                                              hentry.trans
+                                                              (heq_arm.trans
+                                                              (hJeq.trans
+                                                              heq_rest)),
+                                                              hrel_final⟩
+                                                          · intro hbroke
+                                                            obtain ⟨F2,
+                                                              fenv_arr2,
+                                                              blkPrev2,
+                                                              hle2, hge2,
+                                                              heq_rest,
+                                                              hrel_final,
+                                                              hval_final⟩ :=
+                                                              ihB hbroke
+                                                            exact ⟨F2,
+                                                              fenv_arr2,
+                                                              blkPrev2,
+                                                              Nat.le_trans
+                                                              (Nat.le_trans
+                                                              hle2 hle)
+                                                              (Nat.le_succ _),
+                                                              hge2,
+                                                              hentry.trans
+                                                              (heq_arm.trans
+                                                              (hJeq.trans
+                                                              heq_rest)),
+                                                              hrel_final,
+                                                              hval_final⟩
+                                                          · intro hcont
+                                                            obtain ⟨F2,
+                                                              fenv_arr2,
+                                                              blkPrev2,
+                                                              hle2, hge2,
+                                                              heq_rest,
+                                                              hcarried, hpreserv, hforbid⟩ :=
+                                                              ihC hcont
+                                                            refine ⟨F2,
+                                                              fenv_arr2,
+                                                              blkPrev2,
+                                                              Nat.le_trans
+                                                              (Nat.le_trans
+                                                              hle2 hle)
+                                                              (Nat.le_succ _),
+                                                              hge2,
+                                                              hentry.trans
+                                                              (heq_arm.trans
+                                                              (hJeq.trans
+                                                              heq_rest)),
+                                                              hcarried, ?_, hforbid⟩
+                                                            intro r hr hnc
+                                                            have hle_sup : supply ≤ le.supply :=
+                                                              Nat.le_trans hs1
+                                                                (Nat.le_trans hmst hmse)
+                                                            have e1 : fenv_arr2.env r =
+                                                                (fenv_arr.env.update le.supply w_arm) r :=
+                                                              hpreserv r
+                                                                (Nat.lt_of_lt_of_le hr
+                                                                  (Nat.le_trans hle_sup (Nat.le_succ _))) hnc
+                                                            have e2 : (fenv_arr.env.update le.supply
+                                                                w_arm) r = fenv_arr.env r := by
+                                                              simp [Env.update,
+                                                                Nat.ne_of_lt
+                                                                  (Nat.lt_of_lt_of_le hr hle_sup)]
+                                                            have e3 : fenv_arr.env r = fenvC.env r :=
+                                                              hpres_arm r
+                                                                (Nat.lt_of_lt_of_le hr (Nat.le_trans hs1 hmst))
+                                                            have e4 : fenvC.env r = fenv.env r :=
+                                                              lower_preserv_regs ρ supply c vc ic s1 heC
+                                                                fenv fenvC hexecC r hr
+                                                            exact e1.trans (e2.trans (e3.trans e4))
+                                                          · intro e_ret hout
+                                                            obtain ⟨w_e, hu_e,
+                                                              heq_rest⟩ :=
+                                                              ihR e_ret hout
+                                                            exact ⟨w_e, hu_e,
+                                                              hentry.trans
+                                                              (heq_arm.trans
+                                                              (hJeq.trans
+                                                              heq_rest))⟩
+                                                  | broke =>
+                                                      simp only [] at hrun
+                                                      have hout_b : out =
+                                                          .broke :=
+                                                        (congrArg Prod.fst
+                                                          hrun).symm
+                                                      have henv_eq : env_arm =
+                                                          henv' :=
+                                                        congrArg Prod.snd
+                                                          hrun
+                                                      refine ⟨?_, ?_, ?_, ?_⟩
+                                                      · intro u hout
+                                                        rw [hout_b] at hout
+                                                        exact absurd hout
+                                                          (by simp)
+                                                      · intro hbroke
+                                                        obtain ⟨F2,
+                                                          fenv_arr2,
+                                                          blkPrev2, hle2,
+                                                          hge2, heq_arm,
+                                                          hrel_final,
+                                                          hval_final⟩ :=
+                                                          lowerStmtsCFG_arm_broke
+                                                          budget
+                                                          (nextB + 1)
+                                                          (nextB + 2) ρ
+                                                          lt.supply lt.next
+                                                          lastVal false
+                                                          loop el le he
+                                                          hael hf_e hlast_e
+                                                          .unit henv fenvC
+                                                          hrelC
+                                                          (fun _ => rfl)
+                                                          (fun h =>
+                                                            absurd h
+                                                              (by simp))
+                                                          fh env_arm .broke
+                                                          har rfl prog f
+                                                          (some bId) F''
+                                                          hsub_e hnodf
+                                                          fuelB (2 + max
+                                                          (armBlockBound
+                                                          fuelB th)
+                                                          (armBlockBound
+                                                          fuelB el) +
+                                                          armBlockBound
+                                                          fuelB rest -
+                                                          armBlockBound
+                                                          fuelB el + C)
+                                                          hg_e info hlo
+                                                          hexcl hdist eblk
+                                                          hfindE
+                                                        rw [henv_eq, hrho_e,
+                                                          ← hrho_r] at hrel_final
+                                                        rw [henv_eq] at hval_final
+                                                        have hgeC : F2 ≥ C :=
+                                                          by omega
+                                                        exact ⟨F2,
+                                                          fenv_arr2,
+                                                          blkPrev2,
+                                                          Nat.le_trans
+                                                          hle2
+                                                          (Nat.le_succ _),
+                                                          hgeC,
+                                                          hentry.trans
+                                                          heq_arm,
+                                                          hrel_final,
+                                                          hval_final⟩
+                                                      · intro hcont
+                                                        rw [hout_b] at hcont
+                                                        exact absurd hcont
+                                                          (by simp)
+                                                      · intro e_ret hout
+                                                        rw [hout_b] at hout
+                                                        exact absurd hout
+                                                          (by simp)
+                                                  | continued =>
+                                                      simp only [] at hrun
+                                                      have hout_c : out =
+                                                          .continued :=
+                                                        (congrArg Prod.fst
+                                                          hrun).symm
+                                                      have henv_eq : env_arm =
+                                                          henv' :=
+                                                        congrArg Prod.snd
+                                                          hrun
+                                                      refine ⟨?_, ?_, ?_, ?_⟩
+                                                      · intro u hout
+                                                        rw [hout_c] at hout
+                                                        exact absurd hout
+                                                          (by simp)
+                                                      · intro hbroke
+                                                        rw [hout_c] at hbroke
+                                                        exact absurd hbroke
+                                                          (by simp)
+                                                      · intro hcont
+                                                        obtain ⟨F2,
+                                                          fenv_arr2,
+                                                          blkPrev2, hle2,
+                                                          hge2, heq_arm, _,
+                                                          hcarried, hpreserv, hforbid⟩ :=
+                                                          lowerStmtsCFG_arm_continued
+                                                          budget
+                                                          (nextB + 1)
+                                                          (nextB + 2) ρ
+                                                          lt.supply lt.next
+                                                          lastVal false
+                                                          loop el le he
+                                                          hael hf_e hlast_e forbid
+                                                          (Nat.lt_of_lt_of_le hfN
+                                                            (Nat.le_trans (Nat.le_add_right nextB 3) hmnt))
+                                                          (Nat.lt_of_lt_of_le hfN
+                                                            (Nat.le_add_right nextB 1))
+                                                          .unit henv fenvC
+                                                          hrelC
+                                                          (fun _ => rfl)
+                                                          (fun h =>
+                                                            absurd h
+                                                              (by simp))
+                                                          fh env_arm
+                                                          .continued har
+                                                          rfl prog f
+                                                          (some bId) F''
+                                                          hsub_e hnodf
+                                                          fuelB (2 + max
+                                                          (armBlockBound
+                                                          fuelB th)
+                                                          (armBlockBound
+                                                          fuelB el) +
+                                                          armBlockBound
+                                                          fuelB rest -
+                                                          armBlockBound
+                                                          fuelB el + C)
+                                                          hg_e info hlo
+                                                          hexcl hdist hdr
+                                                          hfindHdr
+                                                        rw [henv_eq] at hcarried
+                                                        have hgeC : F2 ≥ C :=
+                                                          by omega
+                                                        refine ⟨F2,
+                                                          fenv_arr2,
+                                                          blkPrev2,
+                                                          Nat.le_trans
+                                                          hle2
+                                                          (Nat.le_succ _),
+                                                          hgeC,
+                                                          hentry.trans
+                                                          heq_arm,
+                                                          hcarried, ?_, hforbid⟩
+                                                        intro r hr hnc
+                                                        have e1 : fenv_arr2.env r = fenvC.env r :=
+                                                          hpreserv r
+                                                            (Nat.lt_of_lt_of_le hr (Nat.le_trans hs1 hmst)) hnc
+                                                        have e2 : fenvC.env r = fenv.env r :=
+                                                          lower_preserv_regs ρ supply c vc ic s1 heC
+                                                            fenv fenvC hexecC r hr
+                                                        exact e1.trans e2
+                                                      · intro e_ret hout
+                                                        rw [hout_c] at hout
+                                                        exact absurd hout
+                                                          (by simp)
+                                                  | returned e_arm =>
+                                                      simp only [] at hrun
+                                                      have hout_r : out =
+                                                          .returned e_arm :=
+                                                        (congrArg Prod.fst
+                                                          hrun).symm
+                                                      refine ⟨?_, ?_, ?_, ?_⟩
+                                                      · intro u hout
+                                                        rw [hout_r] at hout
+                                                        exact absurd hout
+                                                          (by simp)
+                                                      · intro hbroke
+                                                        rw [hout_r] at hbroke
+                                                        exact absurd hbroke
+                                                          (by simp)
+                                                      · intro hcont
+                                                        rw [hout_r] at hcont
+                                                        exact absurd hcont
+                                                          (by simp)
+                                                      · intro e_ret hout2
+                                                        have hret_e : e_ret =
+                                                            e_arm :=
+                                                          (HFlow.returned.inj
+                                                            (hout_r.symm.trans
+                                                            hout2)).symm
+                                                        obtain ⟨w_e, hu_e,
+                                                            heq_arm⟩ :=
+                                                          ((lowerStmtsCFG_arm_total
+                                                            budget
+                                                            (nextB + 1)
+                                                            (nextB + 2) ρ
+                                                            lt.supply
+                                                            lt.next lastVal
+                                                            false loop el le
+                                                            he hael hf_e
+                                                            hlast_e .unit
+                                                            henv fenvC hrelC
+                                                            (fun _ => rfl)
+                                                            (fun h =>
+                                                              absurd h
+                                                              (by simp))
+                                                            fh env_arm
+                                                            (HFlow.returned
+                                                              e_arm) har
+                                                            prog f
+                                                            (some bId)
+                                                            ⟨nextB + 2,
+                                                            [.phi le.supply
+                                                              exitT lt.val,
+                                                            .phi le.supply
+                                                              exitE le.val] ++
+                                                              lr.instrs,
+                                                            lr.term⟩ F''
+                                                            hsub_e hnodf
+                                                            hfindJ fuelB
+                                                            (2 + max
+                                                            (armBlockBound
+                                                            fuelB th)
+                                                            (armBlockBound
+                                                            fuelB el) +
+                                                            armBlockBound
+                                                            fuelB rest -
+                                                            armBlockBound
+                                                            fuelB el + C)
+                                                            hg_e e_arm).2
+                                                            e_arm rfl)
+                                                        rw [hret_e]
+                                                        exact ⟨w_e, hu_e,
+                                                          hentry.trans
+                                                          heq_arm⟩
+                                                  | stuck =>
+                                                      simp only [] at hrun
+                                                      have hst : out =
+                                                          .stuck :=
+                                                        (congrArg Prod.fst
+                                                          hrun).symm
+                                                      refine ⟨?_, ?_, ?_, ?_⟩
+                                                      · intro u hout
+                                                        rw [hst] at hout
+                                                        exact absurd hout
+                                                          (by simp)
+                                                      · intro hbroke
+                                                        rw [hst] at hbroke
+                                                        exact absurd hbroke
+                                                          (by simp)
+                                                      · intro hcont
+                                                        rw [hst] at hcont
+                                                        exact absurd hcont
+                                                          (by simp)
+                                                      · intro e_ret hout
+                                                        rw [hst] at hout
+                                                        exact absurd hout
+                                                          (by simp)
+                                      | int _ =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                      | string _ =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                      | pointer _ =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                      | float _ =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                      | unit =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                      | undef =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                      | some _ =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                      | none =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                      | ok _ =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                      | err _ =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                      | tuple_ _ =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                      | array_ _ =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                      | loc _ =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                      | closure _ _ =>
+                                          have hst : out = .stuck :=
+                                            (congrArg Prod.fst hrun).symm
+                                          refine ⟨?_, ?_, ?_, ?_⟩
+                                          · intro u hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+                                          · intro hbroke
+                                            rw [hst] at hbroke
+                                            exact absurd hbroke (by simp)
+                                          · intro hcont
+                                            rw [hst] at hcont
+                                            exact absurd hcont (by simp)
+                                          · intro e_ret hout
+                                            rw [hst] at hout
+                                            exact absurd hout (by simp)
+      | returnStmt e rest hstr _ =>
+          simp only [lowerStmtsCFG] at h
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he] at h; simp at h
+          | some p =>
+              obtain ⟨v0, ie, s1⟩ := p
+              rw [he] at h
+              simp only [] at h
+              obtain rfl := Option.some.inj h
+              refine ⟨?_, ?_, ?_, ?_⟩
+              · intro u hout
+                cases fuelH with
+                | zero =>
+                    have hz : runHIRStmts 0 henv (.returnStmt e :: rest)
+                        (.value (.lit accH)) = (.stuck, henv) := rfl
+                    rw [hz] at hrun
+                    have hst : out = .stuck :=
+                      (congrArg Prod.fst hrun).symm
+                    rw [hst] at hout
+                    exact absurd hout (by simp)
+                | succ fh =>
+                    have hstep : runHIRStmts (fh + 1) henv
+                        (.returnStmt e :: rest) (.value (.lit accH)) =
+                        (match evalHIR 256 henv e with
+                          | none => (HFlow.stuck, henv)
+                          | some v => (.returned v, henv)) := rfl
+                    rw [hstep] at hrun
+                    cases hev : evalHIR 256 henv e with
+                    | none =>
+                        rw [hev] at hrun
+                        have hst : out = .stuck :=
+                          (congrArg Prod.fst hrun).symm
+                        rw [hst] at hout
+                        exact absurd hout (by simp)
+                    | some r =>
+                        rw [hev] at hrun
+                        have hret : out = .returned r :=
+                          (congrArg Prod.fst hrun).symm
+                        rw [hret] at hout
+                        exact absurd hout (by simp)
+              · intro hbroke
+                cases fuelH with
+                | zero =>
+                    have hz : runHIRStmts 0 henv (.returnStmt e :: rest)
+                        (.value (.lit accH)) = (.stuck, henv) := rfl
+                    rw [hz] at hrun
+                    have hst : out = .stuck :=
+                      (congrArg Prod.fst hrun).symm
+                    rw [hst] at hbroke
+                    exact absurd hbroke (by simp)
+                | succ fh =>
+                    have hstep : runHIRStmts (fh + 1) henv
+                        (.returnStmt e :: rest) (.value (.lit accH)) =
+                        (match evalHIR 256 henv e with
+                          | none => (HFlow.stuck, henv)
+                          | some v => (.returned v, henv)) := rfl
+                    rw [hstep] at hrun
+                    cases hev : evalHIR 256 henv e with
+                    | none =>
+                        rw [hev] at hrun
+                        have hst : out = .stuck :=
+                          (congrArg Prod.fst hrun).symm
+                        rw [hst] at hbroke
+                        exact absurd hbroke (by simp)
+                    | some r =>
+                        rw [hev] at hrun
+                        have hret : out = .returned r :=
+                          (congrArg Prod.fst hrun).symm
+                        rw [hret] at hbroke
+                        exact absurd hbroke (by simp)
+              · intro hcont
+                cases fuelH with
+                | zero =>
+                    have hz : runHIRStmts 0 henv (.returnStmt e :: rest)
+                        (.value (.lit accH)) = (.stuck, henv) := rfl
+                    rw [hz] at hrun
+                    have hst : out = .stuck :=
+                      (congrArg Prod.fst hrun).symm
+                    rw [hst] at hcont
+                    exact absurd hcont (by simp)
+                | succ fh =>
+                    have hstep : runHIRStmts (fh + 1) henv
+                        (.returnStmt e :: rest) (.value (.lit accH)) =
+                        (match evalHIR 256 henv e with
+                          | none => (HFlow.stuck, henv)
+                          | some v => (.returned v, henv)) := rfl
+                    rw [hstep] at hrun
+                    cases hev : evalHIR 256 henv e with
+                    | none =>
+                        rw [hev] at hrun
+                        have hst : out = .stuck :=
+                          (congrArg Prod.fst hrun).symm
+                        rw [hst] at hcont
+                        exact absurd hcont (by simp)
+                    | some r =>
+                        rw [hev] at hrun
+                        have hret : out = .returned r :=
+                          (congrArg Prod.fst hrun).symm
+                        rw [hret] at hcont
+                        exact absurd hcont (by simp)
+              · intro e_ret hout2
+                cases fuelH with
+                | zero =>
+                    have hz : runHIRStmts 0 henv (.returnStmt e :: rest)
+                        (.value (.lit accH)) = (.stuck, henv) := rfl
+                    rw [hz] at hrun
+                    have hst : out = .stuck :=
+                      (congrArg Prod.fst hrun).symm
+                    rw [hst] at hout2
+                    exact absurd hout2 (by simp)
+                | succ fh =>
+                    have hstep : runHIRStmts (fh + 1) henv
+                        (.returnStmt e :: rest) (.value (.lit accH)) =
+                        (match evalHIR 256 henv e with
+                          | none => (HFlow.stuck, henv)
+                          | some v => (.returned v, henv)) := rfl
+                    rw [hstep] at hrun
+                    cases hev : evalHIR 256 henv e with
+                    | none =>
+                        rw [hev] at hrun
+                        have hst : out = .stuck :=
+                          (congrArg Prod.fst hrun).symm
+                        rw [hst] at hout2
+                        exact absurd hout2 (by simp)
+                    | some r =>
+                        rw [hev] at hrun
+                        have hret : out = .returned r :=
+                          (congrArg Prod.fst hrun).symm
+                        rw [hret] at hout2
+                        obtain ⟨⟨wE, hrE⟩, fenv1, hexec1, hstore1, wE2,
+                            hrE2, hregE⟩ :=
+                          lower_total.1 ρ supply e v0 ie s1 he hstr hfresh
+                            henv fenv hrel 256 r hev
+                        have hrr : r = e_ret := HFlow.returned.inj hout2
+                        have heq : e_ret = .lit wE := hrr.symm ▸ hrE
+                        have hnp : ∀ dst pred src,
+                            .phi dst pred src ∉ ie := by
+                          intro d p s hm
+                          exact IsPure_not_phi
+                            (lower_isPure.1 _ _ _ _ _ _ he _ hm) d p s rfl
+                        have hexec : execInstrsFullFromIn prog prev fenv ie
+                            = some fenv1 := by
+                          rw [execInstrsFullFromIn_of_noPhi prog prev fenv _
+                            hnp]
+                          exact hexec1
+                        have hbb : blockBound fuelB (.returnStmt e :: rest)
+                            = blockBound fuelB rest := by
+                          rw [blockBound, blockBound,
+                            armBlockBound_cons_not_if fuelB
+                              (fun c th el h => by cases h)
+                              (fun c body h => by cases h)]
+                        have h1 : blockBound fuelB rest ≥ 1 := by
+                          rw [blockBound]; omega
+                        cases F with
+                        | zero => omega
+                        | succ F' =>
+                            refine ⟨wE, heq, ?_⟩
+                            have hLHS : execBlockFromIn prog (F' + 1) f prev
+                                    ⟨bId, ie, .return_ v0⟩ fenv =
+                                    fenv1.env v0 := by
+                              have hret' : execBlockFromIn prog (F' + 1) f
+                                      prev ⟨bId, ie, .return_ v0⟩ fenv =
+                                  (match execInstrsFullFromIn prog prev fenv
+                                      ie with
+                                   | none => (none : Option Value)
+                                   | some g => g.env v0) := rfl
+                              rw [hret', hexec]
+                            have hww : wE = wE2 :=
+                              HIR.Expr.lit.inj (hrE.symm.trans hrE2)
+                            rw [hLHS, hww]
+                            exact hregE
+      | breakStmt rest _ =>
+          subst hlo
+          simp only [lowerStmtsCFG] at h
+          cases hc : carryCopies ρ info.carried with
+          | none => simp [hc] at h
+          | some copies =>
+              simp [hc] at h
+              subst h
+              cases fuelH with
+              | zero =>
+                  have hz : runHIRStmts 0 henv (.break :: rest)
+                      (.value (.lit accH)) = (.stuck, henv) := rfl
+                  rw [hz] at hrun
+                  have hst : out = .stuck :=
+                    (congrArg Prod.fst hrun).symm
+                  refine ⟨?_, ?_, ?_, ?_⟩
+                  · intro u hout
+                    rw [hst] at hout
+                    exact absurd hout (by simp)
+                  · intro hbroke
+                    rw [hst] at hbroke
+                    exact absurd hbroke (by simp)
+                  · intro hcont
+                    rw [hst] at hcont
+                    exact absurd hcont (by simp)
+                  · intro e_ret hout
+                    rw [hst] at hout
+                    exact absurd hout (by simp)
+              | succ fh =>
+                  have hstep : runHIRStmts (fh + 1) henv (.break :: rest)
+                      (.value (.lit accH)) = (.broke, henv) := rfl
+                  rw [hstep] at hrun
+                  have hout_b : out = .broke :=
+                    (congrArg Prod.fst hrun).symm
+                  have h2 : henv = henv' := congrArg Prod.snd hrun
+                  refine ⟨?_, ?_, ?_, ?_⟩
+                  · intro u hout
+                    rw [hout_b] at hout
+                    exact absurd hout (by simp)
+                  · intro hbroke
+                    cases F with
+                    | zero =>
+                        have h1 : blockBound fuelB (.break :: rest) ≥ 1 := by
+                          rw [blockBound]; omega
+                        omega
+                    | succ F' =>
+                        obtain ⟨fenv_arr, hexec_copies, hrel_arr, hval_arr, _⟩ :=
+                          carryCopies_exec ρ info.carried copies hc prog prev
+                            fenv henv hrel hexcl hdist
+                        have heq : execBlockFromIn prog (F' + 1) f prev
+                            ⟨bId, copies, .goto info.exit⟩ fenv =
+                            execBlockFromIn prog F' f (some bId) eblk
+                              fenv_arr :=
+                          execBlockFromIn_goto prog F' f prev bId copies
+                            info.exit fenv fenv_arr eblk hexec_copies hfindE
+                        have hge : F' ≥ C := by
+                          have hbb : blockBound fuelB (.break :: rest) ≥ 1 := by
+                            rw [blockBound]; omega
+                          omega
+                        refine ⟨F', fenv_arr, bId, Nat.le_succ _, hge, heq,
+                          ?_, ?_⟩
+                        · rw [← h2]
+                          exact hrel_arr
+                        · rw [← h2]
+                          exact hval_arr
+                  · intro hcont
+                    rw [hout_b] at hcont
+                    exact absurd hcont (by simp)
+                  · intro e_ret hout
+                    rw [hout_b] at hout
+                    exact absurd hout (by simp)
+      | continueStmt rest _ =>
+          subst hlo
+          simp only [lowerStmtsCFG] at h
+          cases hc : carryCopies ρ info.carried with
+          | none => simp [hc] at h
+          | some copies =>
+              simp [hc] at h
+              subst h
+              cases fuelH with
+              | zero =>
+                  have hz : runHIRStmts 0 henv (.continue :: rest)
+                      (.value (.lit accH)) = (.stuck, henv) := rfl
+                  rw [hz] at hrun
+                  have hst : out = .stuck :=
+                    (congrArg Prod.fst hrun).symm
+                  refine ⟨?_, ?_, ?_, ?_⟩
+                  · intro u hout
+                    rw [hst] at hout
+                    exact absurd hout (by simp)
+                  · intro hbroke
+                    rw [hst] at hbroke
+                    exact absurd hbroke (by simp)
+                  · intro hcont
+                    rw [hst] at hcont
+                    exact absurd hcont (by simp)
+                  · intro e_ret hout
+                    rw [hst] at hout
+                    exact absurd hout (by simp)
+              | succ fh =>
+                  have hstep : runHIRStmts (fh + 1) henv (.continue :: rest)
+                      (.value (.lit accH)) = (.continued, henv) := rfl
+                  rw [hstep] at hrun
+                  have hout_c : out = .continued :=
+                    (congrArg Prod.fst hrun).symm
+                  have h2 : henv = henv' := congrArg Prod.snd hrun
+                  refine ⟨?_, ?_, ?_, ?_⟩
+                  · intro u hout
+                    rw [hout_c] at hout
+                    exact absurd hout (by simp)
+                  · intro hbroke
+                    rw [hout_c] at hbroke
+                    exact absurd hbroke (by simp)
+                  · intro hcont
+                    cases F with
+                    | zero =>
+                        have h1 : blockBound fuelB (.continue :: rest) ≥ 1 :=
+                          by
+                          rw [blockBound]; omega
+                        omega
+                    | succ F' =>
+                        obtain ⟨fenv_arr, hexec_copies, _, hval_arr,
+                            hpres_copies⟩ :=
+                          carryCopies_exec ρ info.carried copies hc prog prev
+                            fenv henv hrel hexcl hdist
+                        have heq : execBlockFromIn prog (F' + 1) f prev
+                            ⟨bId, copies, .goto info.header⟩ fenv =
+                            execBlockFromIn prog F' f (some bId) hdr
+                              fenv_arr :=
+                          execBlockFromIn_goto prog F' f prev bId copies
+                            info.header fenv fenv_arr hdr hexec_copies
+                            hfindHdr
+                        have hge : F' ≥ C := by
+                          have hbb : blockBound fuelB (.continue :: rest) ≥
+                              1 := by
+                            rw [blockBound]; omega
+                          omega
+                        refine ⟨F', fenv_arr, bId, Nat.le_succ _, hge, heq,
+                          ?_⟩
+                        rw [← h2]
+                        exact ⟨hval_arr,
+                          fun r _ hnc => hpres_copies r hnc, hfB⟩
+                  · intro e_ret hout
+                    rw [hout_c] at hout
+                    exact absurd hout (by simp)
+
+/-- A `while` loop's value outcome is always the unit literal: `break` exits
+as completed and a `false` condition ends the loop, both yielding unit. By
+induction on fuel. -/
+theorem runHIRWhile_value_unit (fuel : Nat) (henv : HEnv) (c : HIR.Expr)
+    (body : List HIR.Stmt) (v : HIR.Expr) (env' : HEnv) :
+    runHIRWhile fuel henv c body = ((.value v), env') → v = .lit .unit := by
+  induction fuel generalizing henv with
+  | zero =>
+      intro hcon
+      have hz : runHIRWhile 0 henv c body = (.stuck, henv) := rfl
+      rw [hz] at hcon
+      simp at hcon
+  | succ fh ih =>
+      intro hcon
+      simp only [runHIRWhile] at hcon
+      cases hev : evalHIR 256 henv c with
+      | none => rw [hev] at hcon; simp at hcon
+      | some r =>
+          rw [hev] at hcon
+          cases r with
+          | lit w =>
+              cases w with
+              | bool b =>
+                  cases b with
+                  | true =>
+                      simp only [] at hcon
+                      cases hb : runHIRStmts fh henv body
+                          (.value (.lit .unit)) with
+                      | mk res env'' =>
+                          rw [hb] at hcon
+                          cases res with
+                          | value u =>
+                              simp only [] at hcon
+                              exact ih env'' hcon
+                          | returned e =>
+                              simp only [] at hcon
+                              simp at hcon
+                          | broke =>
+                              simp only [] at hcon
+                              exact (HFlow.value.inj
+                                (congrArg Prod.fst hcon)).symm
+                          | continued =>
+                              simp only [] at hcon
+                              exact ih env'' hcon
+                          | stuck =>
+                              simp only [] at hcon
+                              simp at hcon
+                  | false =>
+                      simp only [] at hcon
+                      exact (HFlow.value.inj
+                        (congrArg Prod.fst hcon)).symm
+              | _ =>
+                  simp only [] at hcon
+                  simp at hcon
+          | _ =>
+              simp only [] at hcon
+              simp at hcon
+
+/-- A `while` loop never leaks `break`/`continue`: `break` exits as a unit
+value and `continue` recurses. By induction on fuel, generalizing the outcome
+so the recursive cases reuse the hypothesis directly. -/
+theorem runHIRWhile_outcome (fuel : Nat) (henv : HEnv) (c : HIR.Expr)
+    (body : List HIR.Stmt) (res : HFlow) (env' : HEnv) :
+    runHIRWhile fuel henv c body = (res, env') →
+    res ≠ .broke ∧ res ≠ .continued := by
+  induction fuel generalizing henv res env' with
+  | zero =>
+      intro hcon
+      have hz : runHIRWhile 0 henv c body = (.stuck, henv) := rfl
+      rw [hz] at hcon
+      have hr : res = .stuck := (congrArg Prod.fst hcon).symm
+      subst hr
+      exact ⟨by simp, by simp⟩
+  | succ fh ih =>
+      intro hcon
+      simp only [runHIRWhile] at hcon
+      cases hev : evalHIR 256 henv c with
+      | none =>
+          rw [hev] at hcon
+          simp only [] at hcon
+          have hr : res = .stuck := (congrArg Prod.fst hcon).symm
+          subst hr
+          exact ⟨by simp, by simp⟩
+      | some r =>
+          rw [hev] at hcon
+          cases r with
+          | lit w =>
+              cases w with
+              | bool b =>
+                  cases b with
+                  | true =>
+                      simp only [] at hcon
+                      cases hb : runHIRStmts fh henv body
+                          (.value (.lit .unit)) with
+                      | mk res' env'' =>
+                          rw [hb] at hcon
+                          cases res' with
+                          | value u =>
+                              simp only [] at hcon
+                              exact ih env'' res env' hcon
+                          | returned e =>
+                              simp only [] at hcon
+                              have hr : res = .returned e :=
+                                (congrArg Prod.fst hcon).symm
+                              subst hr
+                              exact ⟨by simp, by simp⟩
+                          | broke =>
+                              simp only [] at hcon
+                              have hr : res = .value (.lit .unit) :=
+                                (congrArg Prod.fst hcon).symm
+                              subst hr
+                              exact ⟨by simp, by simp⟩
+                          | continued =>
+                              simp only [] at hcon
+                              exact ih env'' res env' hcon
+                          | stuck =>
+                              simp only [] at hcon
+                              have hr : res = .stuck :=
+                                (congrArg Prod.fst hcon).symm
+                              subst hr
+                              exact ⟨by simp, by simp⟩
+                  | false =>
+                      simp only [] at hcon
+                      have hr : res = .value (.lit .unit) :=
+                        (congrArg Prod.fst hcon).symm
+                      subst hr
+                      exact ⟨by simp, by simp⟩
+              | _ =>
+                  simp only [] at hcon
+                  have hr : res = .stuck :=
+                    (congrArg Prod.fst hcon).symm
+                  subst hr
+                  exact ⟨by simp, by simp⟩
+          | _ =>
+              simp only [] at hcon
+              have hr : res = .stuck := (congrArg Prod.fst hcon).symm
+              subst hr
+              exact ⟨by simp, by simp⟩
+
+/-- The freshness conjunct of `whileLoop_correct`, proved outright (C7-core,
+piece 1 glue): the body lowering runs under the carried env `ρb`, so
+`loopBody_fresh` plus the `mkCarried` growth fact yields `FreshAbove lb.ρ
+(lb.supply + 1)`. The three `whileLoop_correct` use-sites take `hfrX` from
+the deferred theorem; this is its proof. -/
+theorem whileLoop_correct_fresh (budget : Nat)
+    (bId nextB : MIR.BlockId) (ρ : List (HIR.Id × ValId)) (supply : Nat)
+    (c : HIR.Expr) (body rest : List HIR.Stmt)
+    (carried : List (HIR.Id × ValId)) (sA : Nat) (ρb : List (HIR.Id × ValId))
+    (vc : ValId) (ic : List MIR.Instr) (s1 : Nat)
+    (lb lr : Lowered) (phis : List MIR.Instr)
+    (hmk : mkCarried ρ supply
+        ((dedupIds (assignedIds body)).filterMap
+          (fun id => (rhoLookup ρ id).map (fun _ => id))) =
+        some (carried, sA, ρb))
+    (hcond : lowerExpr ρb sA c = some (vc, ic, s1))
+    (hbody : lowerStmtsCFG (nextB + 2) (some nextB) false ρb (s1 + 1)
+        (nextB + 3) s1 true (some ⟨nextB, nextB + 1, carried⟩) body = some lb)
+    (_hrest : lowerStmtsCFG (nextB + 1) none false ρb (lb.supply + 1) lb.next
+        lb.supply true none rest = some lr)
+    (_hphis : mkHeaderPhis ρ bId carried
+        ((lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2)) lb.ρ
+        (lb.blocks.filterMap (fun b =>
+          match b.terminator with
+          | .goto t =>
+              if t == nextB &&
+                  b.id != (lb.blocks.getLast?.map fun b => b.id).getD
+                    (nextB + 2) then
+                some b.id
+              else none
+          | _ => none)) = some phis)
+    (hloop : LoopStmts budget body) (_hrestP : BranchStmts budget rest)
+    (_hstr : IsStraight c) (_hlt : SLWeight c < budget)
+    (hfresh : FreshAbove ρ supply) :
+    FreshAbove ρb (lb.supply + 1) := by
+  have hfrb : FreshAbove ρb sA := (mkCarried_growth_fresh hfresh hmk).2
+  have hsA : sA ≤ s1 := lower_mono.1 _ _ _ _ _ _ hcond
+  have hgrow : s1 + 1 ≤ lb.supply :=
+    (lowerStmtsCFG_loopBody_inv budget _ _ _ _ _ _ _ _ _ _ hbody hloop).2.1
+  exact FreshAbove.mono ρb sA (lb.supply + 1) (by omega) hfrb
+
+/-- Condition instructions execute to the oracle's value (C7-core, piece 2a):
+`lowerExpr` code is phi-free (`lower_isPure`/`IsPure_not_phi`), so the
+program- and edge-aware executor agrees with the straight-line one
+(`execInstrsFullFromIn_of_noPhi`), and `lower_total.1` says that run stores
+the evaluated literal at the result register. The main induction cites this
+for every header visit; re-establishing `RelEnv` under the carried env is
+piece 4 (header-phi chaining), not here. -/
+theorem lowerCond_exec_agree (budget : Nat)
+    (ρb : List (HIR.Id × ValId)) (sA : Nat) (c : HIR.Expr)
+    (vc : ValId) (ic : List MIR.Instr) (s1 : Nat)
+    (hcond : lowerExpr ρb sA c = some (vc, ic, s1))
+    (hstr : IsStraight c) (_hlt : SLWeight c < budget)
+    (hfresh : FreshAbove ρb sA)
+    (henv : HEnv) (fenv : FullEnv)
+    (hrel : RelEnv henv ρb fenv.env)
+    (prog : Program) (prev : Option MIR.BlockId)
+    (r : HIR.Expr) (heval : evalHIR 256 henv c = some r) :
+    ∃ w, r = .lit w ∧
+      ∃ fenv', execInstrsFullFromIn prog prev fenv ic = some fenv' ∧
+        fenv'.store = fenv.store ∧ fenv'.env vc = some w := by
+  obtain ⟨⟨w, hrw⟩, fenv', hexec, hstore, w', hrw', hreg⟩ :=
+    lower_total.1 _ _ _ _ _ _ hcond hstr hfresh _ _ hrel _ _ heval
+  have hww : w = w' := HIR.Expr.lit.inj (hrw.symm.trans hrw')
+  have hnp : ∀ dst pred src, .phi dst pred src ∉ ic := by
+    intro d p s hm
+    exact IsPure_not_phi (lower_isPure.1 _ _ _ _ _ _ hcond _ hm) d p s rfl
+  refine ⟨w, hrw, fenv', ?_, hstore, hww ▸ hreg⟩
+  rw [execInstrsFullFromIn_of_noPhi prog prev fenv _ hnp]
+  exact hexec
+
+/-- Triage for the C7 soundness obstruction below: a register mapping whose
+id is unbound in the HIR env refutes `RelEnv` for every MIR env. -/
+theorem RelEnv_of_lookup_none {henv : HEnv} {ρ : List (HIR.Id × ValId)}
+    {fenv : Morph.MIR.Env} {id : HIR.Id} {u : ValId}
+    (hρ : rhoLookup ρ id = some u) (hnone : lookupHEnv henv id = none) :
+    ¬ RelEnv henv ρ fenv := by
+  intro hrel
+  obtain ⟨w, hw, _⟩ := hrel id u hρ
+  simp [hnone] at hw
+
+/-- C7 fragment fix pin (was: soundness obstruction for `whileLoop_correct`).
+`varDecl` under `loop = some` is refused by `lowerStmtsCFG`, so a loop body
+declaring a fresh variable no longer lowers at all: the old refutation
+(`while false { varDecl x … }` exiting with `lb.ρ ∋ (x, _)` while `x` is
+unbound in `henv`) is unstatable, since its `= some lb` hypothesis is now
+`False` by computation. `RelEnv_of_lookup_none` above stays as the triage
+lemma pinning why the old behavior was unsound. -/
+example : lowerStmtsCFG 2 (some 0) false ([] : List (HIR.Id × ValId)) 1 3 0
+    true (some ⟨0, 1, []⟩)
+    [.varDecl ⟨0, "x"⟩ Typ.intType (.lit (.int 1))] = none := by
+  simp [lowerStmtsCFG]
+
+/-! ## Oracle-side while cases (C7-core, piece 0)
+
+The induction inside `whileLoop_correct` splits on the oracle's fuel and on
+the condition/body outcomes. These helpers prove those splits against the
+oracle alone, so the main proof cites them instead of redoing the unfolding:
+at fuel 0 the loop is stuck (both conclusions vacuous); at `fh + 1` a false
+condition exits with unit, a `broke` body exits with unit,
+`continued`/value bodies recurse, and `returned`/`stuck` bodies, a failed
+condition, and a non-boolean condition all propagate as stuck. -/
+theorem runHIRWhile_zero_eq (henv : HEnv) (c : HIR.Expr)
+    (body : List HIR.Stmt) :
+    runHIRWhile 0 henv c body = (.stuck, henv) := rfl
+
+/-- At fuel 0 the loop is stuck, so both of `whileLoop_correct`'s conclusions
+hold vacuously for any `P`/`Q`. -/
+theorem whileLoop_zero_vac {P : Prop} {Q : HIR.Expr → Prop}
+    {henv : HEnv} {c : HIR.Expr} {body : List HIR.Stmt}
+    {res : HFlow} {env' : HEnv}
+    (hrun : runHIRWhile 0 henv c body = (res, env')) :
+    ((res = .value (.lit .unit)) → P) ∧ (∀ e, res = .returned e → Q e) := by
+  rw [runHIRWhile_zero_eq] at hrun
+  cases hrun
+  exact ⟨fun h => False.elim (HFlow.noConfusion h),
+    fun e h => False.elim (HFlow.noConfusion h)⟩
+
+/-- One oracle step with a false condition exits immediately with unit. -/
+theorem runHIRWhile_succ_false {fh : Nat} {henv : HEnv} {c : HIR.Expr}
+    {body : List HIR.Stmt}
+    (hcond : evalHIR 256 henv c = some (.lit (.bool false))) :
+    runHIRWhile (fh + 1) henv c body = (.value (.lit .unit), henv) := by
+  simp only [runHIRWhile, hcond]
+
+/-- Zero-trip pin (Loop 183 probe, HIR side): a loop whose condition is false
+on entry exits with unit and the environment untouched, so the pre-loop
+binding (`x = 5` in `x = 5; while (x < 2) { x = x + 1 }; x`) survives zero
+trips on the oracle side. The MIR side — `rest` lowered under the body-entry
+env `ρb` — is what `whileLoop_correct` must now match. -/
+example (henv : HEnv) (body : List HIR.Stmt) (fh : Nat) :
+    runHIRWhile (fh + 1) henv (.lit (.bool false)) body =
+      (.value (.lit .unit), henv) :=
+  runHIRWhile_succ_false rfl
+
+/-- One oracle step with a true condition and a `broke` body exits with unit. -/
+theorem runHIRWhile_succ_true_broke {fh : Nat} {henv : HEnv} {c : HIR.Expr}
+    {body : List HIR.Stmt} {envB : HEnv}
+    (hcond : evalHIR 256 henv c = some (.lit (.bool true)))
+    (hbody : runHIRStmts fh henv body (.value (.lit .unit)) = (.broke, envB)) :
+    runHIRWhile (fh + 1) henv c body = (.value (.lit .unit), envB) := by
+  simp only [runHIRWhile, hcond, hbody]
+
+/-- `continued` bodies recurse into the next iteration. -/
+theorem runHIRWhile_succ_true_cont {fh : Nat} {henv : HEnv} {c : HIR.Expr}
+    {body : List HIR.Stmt} {envB : HEnv}
+    (hcond : evalHIR 256 henv c = some (.lit (.bool true)))
+    (hbody : runHIRStmts fh henv body (.value (.lit .unit)) =
+      (.continued, envB)) :
+    runHIRWhile (fh + 1) henv c body = runHIRWhile fh envB c body := by
+  simp only [runHIRWhile, hcond, hbody]
+
+/-- Value bodies (e.g. an empty body, or `continue`-free fall-through) recurse
+into the next iteration with the body's final environment. -/
+theorem runHIRWhile_succ_true_value {fh : Nat} {henv : HEnv} {c : HIR.Expr}
+    {body : List HIR.Stmt} {u : HIR.Expr} {envB : HEnv}
+    (hcond : evalHIR 256 henv c = some (.lit (.bool true)))
+    (hbody : runHIRStmts fh henv body (.value (.lit .unit)) = (.value u, envB)) :
+    runHIRWhile (fh + 1) henv c body = runHIRWhile fh envB c body := by
+  simp only [runHIRWhile, hcond, hbody]
+
+/-- `returned` bodies propagate out of the loop. -/
+theorem runHIRWhile_succ_true_ret {fh : Nat} {henv : HEnv} {c : HIR.Expr}
+    {body : List HIR.Stmt} {e : HIR.Expr} {envB : HEnv}
+    (hcond : evalHIR 256 henv c = some (.lit (.bool true)))
+    (hbody : runHIRStmts fh henv body (.value (.lit .unit)) =
+      (.returned e, envB)) :
+    runHIRWhile (fh + 1) henv c body = (.returned e, envB) := by
+  simp only [runHIRWhile, hcond, hbody]
+
+/-- `stuck` bodies propagate out of the loop. -/
+theorem runHIRWhile_succ_true_stuck {fh : Nat} {henv : HEnv} {c : HIR.Expr}
+    {body : List HIR.Stmt} {envB : HEnv}
+    (hcond : evalHIR 256 henv c = some (.lit (.bool true)))
+    (hbody : runHIRStmts fh henv body (.value (.lit .unit)) = (.stuck, envB)) :
+    runHIRWhile (fh + 1) henv c body = (.stuck, envB) := by
+  simp only [runHIRWhile, hcond, hbody]
+
+/-- A failed condition evaluation stalls the loop. -/
+theorem runHIRWhile_succ_cond_none {fh : Nat} {henv : HEnv} {c : HIR.Expr}
+    {body : List HIR.Stmt}
+    (hcond : evalHIR 256 henv c = none) :
+    runHIRWhile (fh + 1) henv c body = (.stuck, henv) := by
+  simp only [runHIRWhile, hcond]
+
+/-! ## Loop-carried membership helpers (C7 spine pieces)
+
+The re-entry argument classifies body-exit lookups: an id assigned in the
+body resolves through its carried pair, otherwise its register is untouched.
+These close over `mkCarried` and `dedupIds` alone. -/
+
+/-- Derived `BEq` on `HIR.Id` is lawful (fields are `Nat`/`String`, both
+lawful), so `List.contains` reflects membership. Needed for `dedupIds_mem`
+below; `HIREval` notes the instance was missing, and the fact itself is what
+`LawfulBEq` means, so providing it is sound. -/
+instance : LawfulBEq HIR.Id where
+  eq_of_beq := by
+    intro a b h
+    obtain ⟨i1, n1⟩ := a
+    obtain ⟨i2, n2⟩ := b
+    simp only [BEq.beq] at h
+    obtain ⟨h1, h2⟩ := Bool.and_eq_true_iff.mp h
+    have e1 : i1 = i2 := LawfulBEq.eq_of_beq h1
+    have e2 : n1 = n2 := LawfulBEq.eq_of_beq h2
+    simp [e1, e2]
+  rfl := by
+    intro a
+    obtain ⟨i, n⟩ := a
+    show ((i == i) && (n == n)) = true
+    simp
+
+/-- `dedupIds` keeps every member (first occurrence survives the fold). -/
+theorem dedupIds_mem {ids : List HIR.Id} {id : HIR.Id}
+    (hmem : id ∈ ids) : id ∈ dedupIds ids := by
+  have aux : ∀ (l acc : List HIR.Id) (x : HIR.Id),
+      x ∈ acc ∨ x ∈ l →
+        x ∈ l.foldl (fun acc j => if acc.contains j then acc else acc ++ [j]) acc := by
+    intro l acc x hx
+    induction l generalizing acc with
+    | nil =>
+        simp only [List.foldl_nil]
+        rcases hx with hx | hx
+        · exact hx
+        · simp at hx
+    | cons hd tl ih =>
+        simp only [List.foldl_cons]
+        by_cases hc : (acc.contains hd) = true
+        · have hstep : x ∈ acc ∨ x ∈ tl := by
+            rcases hx with hx | hx
+            · exact Or.inl hx
+            · simp only [List.mem_cons] at hx
+              rcases hx with rfl | hx
+              · exact Or.inl (List.contains_iff_mem.mp hc)
+              · exact Or.inr hx
+          rw [if_pos hc]
+          exact ih _ hstep
+        · have hstep : x ∈ (acc ++ [hd]) ∨ x ∈ tl := by
+            rcases hx with hx | hx
+            · exact Or.inl (List.mem_append_left _ hx)
+            · simp only [List.mem_cons] at hx
+              rcases hx with rfl | hx
+              · exact Or.inl (List.mem_append_right _ (List.mem_cons_self ..))
+              · exact Or.inr hx
+          rw [if_neg hc]
+          rcases hstep with hstep | hstep
+          · exact ih _ (Or.inl hstep)
+          · exact ih _ (Or.inr hstep)
+  exact aux ids [] id (Or.inr hmem)
+
+/-- Updates for other ids preserve lookups through `mkCarried`. -/
+theorem mkCarried_lookup_ne {ρ : List (HIR.Id × ValId)} {s : Nat}
+    {ids : List HIR.Id} {cs : List (HIR.Id × ValId)} {s' : Nat}
+    {ρ' : List (HIR.Id × ValId)} {id : HIR.Id}
+    (hne : id ∉ ids)
+    (h : mkCarried ρ s ids = some (cs, s', ρ')) :
+    rhoLookup ρ' id = rhoLookup ρ id := by
+  induction ids generalizing ρ s cs s' ρ' with
+  | nil =>
+      simp only [mkCarried] at h
+      obtain ⟨rfl, rfl, rfl⟩ := h
+      rfl
+  | cons hd tl ih =>
+      simp only [mkCarried] at h
+      cases hρ : rhoLookup ρ hd with
+      | none => rw [hρ] at h; simp at h
+      | some _ =>
+          rw [hρ] at h
+          cases hrec : mkCarried (updAssoc ρ hd s) (s + 1) tl with
+          | none => rw [hrec] at h; simp at h
+          | some q =>
+              obtain ⟨cs', s'', ρ''⟩ := q
+              rw [hrec] at h
+              obtain ⟨rfl, rfl, rfl⟩ := h
+              have hne_hd : ¬ hd = id :=
+                fun heq => hne (heq ▸ List.mem_cons_self ..)
+              have hne_tl : id ∉ tl := fun hm => hne (List.mem_cons_of_mem _ hm)
+              have hstep : rhoLookup (updAssoc ρ hd s) id = rhoLookup ρ id :=
+                rhoLookup_updAssoc_ne hne_hd ρ
+              exact (ih hne_tl hrec).trans hstep
+
+/-- Every id fed to `mkCarried` resolves through its carried pair: the
+allocation for its (last) update is the final lookup, and the pair is in
+the carried list. No deduplication hypothesis is needed — later updates
+simply shadow earlier ones and the induction follows the last one. -/
+theorem mkCarried_mem_lookup {ρ : List (HIR.Id × ValId)} {s : Nat}
+    {ids : List HIR.Id} {cs : List (HIR.Id × ValId)} {s' : Nat}
+    {ρ' : List (HIR.Id × ValId)} {id : HIR.Id}
+    (hmem : id ∈ ids)
+    (h : mkCarried ρ s ids = some (cs, s', ρ')) :
+    ∃ r, rhoLookup ρ' id = some r ∧ (id, r) ∈ cs := by
+  induction ids generalizing ρ s cs s' ρ' with
+  | nil => simp at hmem
+  | cons hd tl ih =>
+      simp only [mkCarried] at h
+      cases hρ : rhoLookup ρ hd with
+      | none => rw [hρ] at h; simp at h
+      | some v =>
+          rw [hρ] at h
+          cases hrec : mkCarried (updAssoc ρ hd s) (s + 1) tl with
+          | none => rw [hrec] at h; simp at h
+          | some q =>
+              obtain ⟨cs', s'', ρ''⟩ := q
+              rw [hrec] at h
+              simp only [] at h
+              have eL : ((hd, s) :: cs', s'', ρ'') = (cs, s', ρ') :=
+                Option.some.inj h
+              have e1 : (hd, s) :: cs' = cs := congrArg Prod.fst eL
+              have e3 : ρ'' = ρ' := congrArg (Prod.snd ∘ Prod.snd) eL
+              simp only [List.mem_cons] at hmem
+              rcases hmem with rfl | hmem
+              · by_cases htl : id ∈ tl
+                · obtain ⟨r, hrlook, hrmem⟩ := ih htl hrec
+                  have h2 := List.mem_cons_of_mem (id, s) hrmem
+                  rw [e1] at h2
+                  rw [e3] at hrlook
+                  exact ⟨r, hrlook, h2⟩
+                · refine ⟨s, ?_, ?_⟩
+                  · rw [← e3]
+                    have hpres : rhoLookup ρ'' id =
+                        rhoLookup (updAssoc ρ id s) id :=
+                      mkCarried_lookup_ne htl hrec
+                    simp only [hpres, rhoLookup_updAssoc_id, hρ, Option.map_some]
+                  · rw [← e1]
+                    exact List.mem_cons_self ..
+              · obtain ⟨r, hrlook, hrmem⟩ := ih hmem hrec
+                have h2 := List.mem_cons_of_mem (hd, s) hrmem
+                rw [e1] at h2
+                rw [e3] at hrlook
+                exact ⟨r, hrlook, h2⟩
+
+-- Per-constructor cases of `runHIRStmts_loopBody_lookup` (spine L2).
+--
+-- `LoopStmts` lives in the file's `mutual` block, which the `induction`
+-- tactic does not support (see `LoopStmts_to_BranchStmts`), so the L2
+-- preservation proof is factored: one flat helper per constructor proved
+-- below, plus a dispatcher (induction on the statement list, `cases` on the
+-- derivation) after the last helper. Each helper takes the tail induction
+-- hypothesis `ih` explicitly where its constructor has a `LoopStmts` tail.
+/-- Arms never rebind: `ArmStmts` has no `assign`/`varDecl`, and expression
+statements, conditions and returns only evaluate. The loop-body HIR
+preservation cites this for both arms of every `if`. -/
+theorem runHIRStmts_arm_lookup (budget : Nat) {ss : List HIR.Stmt}
+    (hss : ArmStmts budget ss) :
+    ∀ (fuel : Nat) (henv henv' : HEnv) (acc out : HFlow) (id : HIR.Id),
+      runHIRStmts fuel henv ss acc = (out, henv') →
+      lookupHEnv henv' id = lookupHEnv henv id := by
+  induction hss with
+  | nil =>
+      intro fuel henv henv' acc out id hrun
+      cases fuel with
+      | zero =>
+          have hz : runHIRStmts 0 henv ([] : List HIR.Stmt) acc =
+              (.stuck, henv) := rfl
+          rw [hz] at hrun
+          cases hrun
+          rfl
+      | succ fh =>
+          have hs : runHIRStmts (fh + 1) henv ([] : List HIR.Stmt) acc =
+              (acc, henv) := rfl
+          rw [hs] at hrun
+          cases hrun
+          rfl
+  | exprStmt e rest hstr _ hrs ih =>
+      intro fuel henv henv' acc out id hrun
+      cases fuel with
+      | zero =>
+          have hz : runHIRStmts 0 henv (.exprStmt e :: rest) acc =
+              (.stuck, henv) := rfl
+          rw [hz] at hrun
+          cases hrun
+          rfl
+      | succ fh =>
+          simp only [runHIRStmts] at hrun
+          cases hev : evalHIR 256 henv e with
+          | none =>
+              rw [hev] at hrun
+              simp only [] at hrun
+              cases hrun
+              rfl
+          | some v =>
+              rw [hev] at hrun
+              simp only [] at hrun
+              exact ih _ _ _ _ _ _ hrun
+  | nop rest hrs ih =>
+      intro fuel henv henv' acc out id hrun
+      cases fuel with
+      | zero =>
+          have hz : runHIRStmts 0 henv (.nop :: rest) acc =
+              (.stuck, henv) := rfl
+          rw [hz] at hrun
+          cases hrun
+          rfl
+      | succ fh =>
+          simp only [runHIRStmts] at hrun
+          exact ih _ _ _ _ _ _ hrun
+  | ifStmt c th el rest hstr _ hath hael hrs iht ihe ihr =>
+      intro fuel henv henv' acc out id hrun
+      cases fuel with
+      | zero =>
+          have hz : runHIRStmts 0 henv (.ifStmt c th el :: rest) acc =
+              (.stuck, henv) := rfl
+          rw [hz] at hrun
+          cases hrun
+          rfl
+      | succ fh =>
+          simp only [runHIRStmts] at hrun
+          cases hev : evalHIR 256 henv c with
+          | none =>
+              rw [hev] at hrun
+              simp only [] at hrun
+              cases hrun
+              rfl
+          | some v =>
+              rw [hev] at hrun
+              split at hrun
+              · rename_i heq
+                rw [Option.some.injEq] at heq
+                have heq2 : v = HIR.Expr.lit (.bool true) := by
+                  simpa using heq
+                subst heq2
+                cases har : runHIRStmts fh henv th
+                    (.value (.lit .unit)) with
+                | mk outA envA =>
+                    rw [har] at hrun
+                    cases outA with
+                    | value u =>
+                        simp only [] at hrun
+                        have h1 := iht _ _ _ _ _ id har
+                        have h2 := ihr _ _ _ _ _ id hrun
+                        rw [h2, h1]
+                    | broke =>
+                        simp only [] at hrun
+                        cases hrun
+                        exact iht _ _ _ _ _ id har
+                    | continued =>
+                        simp only [] at hrun
+                        cases hrun
+                        exact iht _ _ _ _ _ id har
+                    | returned e =>
+                        simp only [] at hrun
+                        cases hrun
+                        exact iht _ _ _ _ _ id har
+                    | stuck =>
+                        simp only [] at hrun
+                        cases hrun
+                        exact iht _ _ _ _ _ id har
+              · rename_i heq
+                rw [Option.some.injEq] at heq
+                have heq2 : v = HIR.Expr.lit (.bool false) := by
+                  simpa using heq
+                subst heq2
+                cases har : runHIRStmts fh henv el
+                    (.value (.lit .unit)) with
+                | mk outA envA =>
+                    rw [har] at hrun
+                    cases outA with
+                    | value u =>
+                        simp only [] at hrun
+                        have h1 := ihe _ _ _ _ _ id har
+                        have h2 := ihr _ _ _ _ _ id hrun
+                        rw [h2, h1]
+                    | broke =>
+                        simp only [] at hrun
+                        cases hrun
+                        exact ihe _ _ _ _ _ id har
+                    | continued =>
+                        simp only [] at hrun
+                        cases hrun
+                        exact ihe _ _ _ _ _ id har
+                    | returned e =>
+                        simp only [] at hrun
+                        cases hrun
+                        exact ihe _ _ _ _ _ id har
+                    | stuck =>
+                        simp only [] at hrun
+                        cases hrun
+                        exact ihe _ _ _ _ _ id har
+              · cases hrun
+                rfl
+  | returnStmt e rest hstr _ =>
+      intro fuel henv henv' acc out id hrun
+      cases fuel with
+      | zero =>
+          have hz : runHIRStmts 0 henv (.returnStmt e :: rest) acc =
+              (.stuck, henv) := rfl
+          rw [hz] at hrun
+          cases hrun
+          rfl
+      | succ fh =>
+          simp only [runHIRStmts] at hrun
+          cases hev : evalHIR 256 henv e with
+          | none =>
+              rw [hev] at hrun
+              simp only [] at hrun
+              cases hrun
+              rfl
+          | some v =>
+              rw [hev] at hrun
+              simp only [] at hrun
+              cases hrun
+              rfl
+  | breakStmt rest hrs ih =>
+      intro fuel henv henv' acc out id hrun
+      cases fuel with
+      | zero =>
+          have hz : runHIRStmts 0 henv (.break :: rest) acc =
+              (.stuck, henv) := rfl
+          rw [hz] at hrun
+          cases hrun
+          rfl
+      | succ fh =>
+          simp only [runHIRStmts] at hrun
+          cases hrun
+          rfl
+  | continueStmt rest hrs ih =>
+      intro fuel henv henv' acc out id hrun
+      cases fuel with
+      | zero =>
+          have hz : runHIRStmts 0 henv (.continue :: rest) acc =
+              (.stuck, henv) := rfl
+          rw [hz] at hrun
+          cases hrun
+          rfl
+      | succ fh =>
+          simp only [runHIRStmts] at hrun
+          cases hrun
+          rfl
+
+-- Closed straight expressions evaluate to literals, and so does every element
+-- of a successful closed-straight block evaluation. Mutual: the `block` case
+-- delegates to the list half, whose cons case delegates back.
+mutual
+/-- A closed straight expression evaluates to a literal. -/
+theorem evalHIR_straight_varfree_lit (e : HIR.Expr) :
+    VarFree e → IsStraight e →
+    ∀ (fuel : Nat) (henv : HEnv) (v : HIR.Expr),
+      evalHIR fuel henv e = some v → ∃ w, v = .lit w := by
+  intro hvf hstr fuel henv v h
+  cases fuel with
+  | zero => simp [evalHIR] at h
+  | succ fuel =>
+      cases e with
+      | var id => cases hvf
+      | lit val =>
+          simp [evalHIR] at h
+          exact ⟨_, h.symm⟩
+      | unop op e =>
+          cases hvf with
+          | unop _ _ hv =>
+          cases hstr with
+          | unop _ _ _ hs =>
+          simp only [evalHIR] at h
+          obtain ⟨v', heval, hmatch⟩ := bind_some_eq h
+          obtain ⟨w', heval'⟩ := evalHIR_straight_varfree_lit e hv hs fuel henv v' heval
+          subst heval'
+          simp only at hmatch
+          cases hr : Executable.evalUnop op (.lit w') with
+          | none => simp [hr] at hmatch
+          | some w'' =>
+              simp [hr] at hmatch
+              cases w'' with
+              | lit w =>
+                  obtain rfl := Option.some.inj hmatch
+                  exact ⟨w, rfl⟩
+              | _ => simp at hmatch
+      | binop op a b =>
+          cases hvf with
+          | binop _ _ _ hva hvb =>
+          cases hstr with
+          | binop _ _ _ _ ha hb =>
+          simp only [evalHIR] at h
+          obtain ⟨va, hevala, hrest⟩ := bind_some_eq h
+          obtain ⟨vb, hevalb, hmatch⟩ := bind_some_eq hrest
+          obtain ⟨wa, hevala'⟩ := evalHIR_straight_varfree_lit a hva ha fuel henv va hevala
+          obtain ⟨wb, hevalb'⟩ := evalHIR_straight_varfree_lit b hvb hb fuel henv vb hevalb
+          subst hevala'
+          subst hevalb'
+          simp only at hmatch
+          cases hr : Executable.evalBinop op (.lit wa) (.lit wb) with
+          | none => simp [hr] at hmatch
+          | some w'' =>
+              simp [hr] at hmatch
+              cases w'' with
+              | lit w =>
+                  obtain rfl := Option.some.inj hmatch
+                  exact ⟨w, rfl⟩
+              | _ => simp at hmatch
+      | app fid args => cases hstr
+      | lam params body => cases hstr
+      | «let» id init body =>
+          cases hvf with
+          | let_ _ _ _ hvInit hvBody =>
+          cases hstr with
+          | let_ _ _ _ hsInit hsBody =>
+          simp only [evalHIR] at h
+          obtain ⟨vi, hevali, hbody⟩ := bind_some_eq h
+          obtain ⟨wi, hevali'⟩ := evalHIR_straight_varfree_lit init hvInit hsInit fuel henv vi hevali
+          subst hevali'
+          exact evalHIR_straight_varfree_lit body hvBody hsBody fuel ((id, .lit wi) :: henv) v hbody
+      | ifThenElse c t f => cases hstr
+      | whileLoop c body => cases hstr
+      | «match» scrut arms => cases hstr
+      | block es =>
+          cases hvf with
+          | block _ hallv =>
+          cases hstr with
+          | block _ halls =>
+          simp only [evalHIR] at h
+          obtain ⟨vs, hmap, hmatch⟩ := bind_some_eq h
+          have hlit := evalHIR_list_lit es hallv halls fuel henv vs hmap
+          cases hvs : vs with
+          | nil =>
+              simp [hvs] at hmatch
+              subst hmatch
+              exact ⟨.unit, rfl⟩
+          | cons v0 vr =>
+              simp only [hvs] at hmatch
+              have hne : (v0 :: vr) ≠ [] := by simp
+              have hlast : (v0 :: vr).getLast? = some ((v0 :: vr).getLast hne) :=
+                List.getLast?_eq_some_getLast hne
+              have hgi : (v0 :: vr).getLast! = (v0 :: vr).getLast hne := by
+                simp only [List.getLast!_eq_getLast?_getD, hlast, Option.getD_some]
+              rw [hgi] at hmatch
+              obtain rfl := Option.some.inj hmatch
+              rw [hvs] at hlit
+              exact hlit _ (List.getLast_mem hne)
+      | infer => cases hstr
+
+/-- Every element of a successful closed-straight block evaluation is a literal. -/
+theorem evalHIR_list_lit (es : List HIR.Expr) :
+    (∀ x ∈ es, VarFree x) → (∀ x ∈ es, IsStraight x) →
+    ∀ (fuel : Nat) (henv : HEnv) (vs : List HIR.Expr),
+      es.mapM (evalHIR fuel henv) = some vs →
+      ∀ v ∈ vs, ∃ w, v = .lit w := by
+  intro hallv halls fuel henv vs h v hmem
+  cases es with
+  | nil =>
+      cases vs with
+      | nil => simp at hmem
+      | cons v0 vr => simp at h
+  | cons e0 er =>
+      have h0v : VarFree e0 := hallv _ (List.mem_cons_self ..)
+      have h0s : IsStraight e0 := halls _ (List.mem_cons_self ..)
+      have hrv : ∀ x ∈ er, VarFree x :=
+        fun x hx => hallv x (List.mem_cons_of_mem _ hx)
+      have hrs : ∀ x ∈ er, IsStraight x :=
+        fun x hx => halls x (List.mem_cons_of_mem _ hx)
+      obtain ⟨v0, vr, he0, htail, hvs⟩ := mapM_cons_destr h
+      subst hvs
+      simp only [List.mem_cons] at hmem
+      rcases hmem with rfl | hmem
+      · exact evalHIR_straight_varfree_lit e0 h0v h0s fuel henv v he0
+      · exact evalHIR_list_lit er hrv hrs fuel henv vr htail v hmem
+end
+
+section LoopBodyLookupAux
+
+set_option linter.unusedVariables false in
+theorem loopBody_lookup_nil (budget : Nat)
+    (bId : MIR.BlockId) (cont : Option MIR.BlockId)
+    (ρ : List (HIR.Id × ValId)) (supply nextB : Nat) (lastVal : ValId)
+    (hasVal : Bool) (loop : Option LoopInfo) (info : LoopInfo) (L : Lowered)
+    (hlo : loop = some info)
+    (h : lowerStmtsCFG bId cont false ρ supply nextB lastVal hasVal loop
+      [] = some L)
+    (fuel : Nat) (henv henv' : HEnv) (acc out : HFlow) (id : HIR.Id)
+    (hrun : runHIRStmts fuel henv [] acc = (out, henv'))
+    (hnid : id ∉ assignedIds []) :
+    lookupHEnv henv' id = lookupHEnv henv id := by
+      cases fuel with
+      | zero =>
+          have hz : runHIRStmts 0 henv ([] : List HIR.Stmt) acc =
+              (.stuck, henv) := rfl
+          rw [hz] at hrun
+          cases hrun
+          rfl
+      | succ fh =>
+          have hs : runHIRStmts (fh + 1) henv ([] : List HIR.Stmt) acc =
+              (acc, henv) := rfl
+          rw [hs] at hrun
+          cases hrun
+          rfl
+set_option linter.unusedVariables false in
+theorem loopBody_lookup_exprStmt (budget : Nat)
+    (e : HIR.Expr) (rest : List HIR.Stmt)
+    (hstr : IsStraight e) (hlt : SLWeight e < budget)
+    (hrs : LoopStmts budget rest)
+    (ih : ∀ (bId : MIR.BlockId) (cont : Option MIR.BlockId)
+      (ρ : List (HIR.Id × ValId)) (supply nextB : Nat) (lastVal : ValId)
+      (hasVal : Bool) (loop : Option LoopInfo) (info : LoopInfo) (L : Lowered),
+      loop = some info →
+      lowerStmtsCFG bId cont false ρ supply nextB lastVal hasVal loop rest =
+        some L →
+      ∀ (fuel : Nat) (henv henv' : HEnv) (acc out : HFlow) (id : HIR.Id),
+      runHIRStmts fuel henv rest acc = (out, henv') →
+      id ∉ assignedIds rest →
+      lookupHEnv henv' id = lookupHEnv henv id)
+    (bId : MIR.BlockId) (cont : Option MIR.BlockId)
+    (ρ : List (HIR.Id × ValId)) (supply nextB : Nat) (lastVal : ValId)
+    (hasVal : Bool) (loop : Option LoopInfo) (info : LoopInfo) (L : Lowered)
+    (hlo : loop = some info)
+    (h : lowerStmtsCFG bId cont false ρ supply nextB lastVal hasVal loop
+      (.exprStmt e :: rest) = some L)
+    (fuel : Nat) (henv henv' : HEnv) (acc out : HFlow) (id : HIR.Id)
+    (hrun : runHIRStmts fuel henv (.exprStmt e :: rest) acc = (out, henv'))
+    (hnid : id ∉ assignedIds (.exprStmt e :: rest)) :
+    lookupHEnv henv' id = lookupHEnv henv id := by
+      simp only [lowerStmtsCFG] at h
+      cases he : lowerExpr ρ supply e with
+      | none => rw [he] at h; simp at h
+      | some p =>
+          obtain ⟨v0, ie, s1⟩ := p
+          rw [he] at h
+          simp only [] at h
+          cases hr : lowerStmtsCFG bId cont false ρ s1 nextB v0 true loop
+              rest with
+          | none => rw [hr] at h; simp at h
+          | some Lr =>
+              rw [hr] at h
+              simp only [assignedIds] at hnid
+              cases fuel with
+              | zero =>
+                  have hz : runHIRStmts 0 henv (.exprStmt e :: rest) acc =
+                      (.stuck, henv) := rfl
+                  rw [hz] at hrun
+                  cases hrun
+                  rfl
+              | succ fh =>
+                  simp only [runHIRStmts] at hrun
+                  cases hev : evalHIR 256 henv e with
+                  | none =>
+                      rw [hev] at hrun
+                      simp only [] at hrun
+                      cases hrun
+                      rfl
+                  | some v =>
+                      rw [hev] at hrun
+                      simp only [] at hrun
+                      exact ih bId cont ρ s1 nextB v0 true loop info Lr hlo
+                        hr _ _ _ _ _ _ hrun hnid
+set_option linter.unusedVariables false in
+theorem loopBody_lookup_varDecl (budget : Nat)
+    (id' : HIR.Id) (τ : Typ) (init : HIR.Expr) (rest : List HIR.Stmt)
+    (hstr : IsStraight init) (hlt : SLWeight init < budget)
+    (hloop : LoopStmts budget rest) (hfree : VarFree init)
+    (bId : MIR.BlockId) (cont : Option MIR.BlockId)
+    (ρ : List (HIR.Id × ValId)) (supply nextB : Nat) (lastVal : ValId)
+    (hasVal : Bool) (loop : Option LoopInfo) (info : LoopInfo) (L : Lowered)
+    (hlo : loop = some info)
+    (h : lowerStmtsCFG bId cont false ρ supply nextB lastVal hasVal loop
+      (.varDecl id' τ init :: rest) = some L)
+    (fuel : Nat) (henv henv' : HEnv) (acc out : HFlow) (id : HIR.Id)
+    (hrun : runHIRStmts fuel henv (.varDecl id' τ init :: rest) acc = (out, henv'))
+    (hnid : id ∉ assignedIds (.varDecl id' τ init :: rest)) :
+    lookupHEnv henv' id = lookupHEnv henv id := by
+      subst hlo
+      simp only [lowerStmtsCFG] at h
+      simp at h
+set_option linter.unusedVariables false in
+theorem loopBody_lookup_assign (budget : Nat)
+    (id' : HIR.Id) (e : HIR.Expr) (rest : List HIR.Stmt)
+    (hstr : IsStraight e) (hlt : SLWeight e < budget)
+    (hrs : LoopStmts budget rest) (hfree : VarFree e)
+    (ih : ∀ (bId : MIR.BlockId) (cont : Option MIR.BlockId)
+      (ρ : List (HIR.Id × ValId)) (supply nextB : Nat) (lastVal : ValId)
+      (hasVal : Bool) (loop : Option LoopInfo) (info : LoopInfo) (L : Lowered),
+      loop = some info →
+      lowerStmtsCFG bId cont false ρ supply nextB lastVal hasVal loop rest =
+        some L →
+      ∀ (fuel : Nat) (henv henv' : HEnv) (acc out : HFlow) (id : HIR.Id),
+      runHIRStmts fuel henv rest acc = (out, henv') →
+      id ∉ assignedIds rest →
+      lookupHEnv henv' id = lookupHEnv henv id)
+    (bId : MIR.BlockId) (cont : Option MIR.BlockId)
+    (ρ : List (HIR.Id × ValId)) (supply nextB : Nat) (lastVal : ValId)
+    (hasVal : Bool) (loop : Option LoopInfo) (info : LoopInfo) (L : Lowered)
+    (hlo : loop = some info)
+    (h : lowerStmtsCFG bId cont false ρ supply nextB lastVal hasVal loop
+      (.assign id' e :: rest) = some L)
+    (fuel : Nat) (henv henv' : HEnv) (acc out : HFlow) (id : HIR.Id)
+    (hrun : runHIRStmts fuel henv (.assign id' e :: rest) acc = (out, henv'))
+    (hnid : id ∉ assignedIds (.assign id' e :: rest)) :
+    lookupHEnv henv' id = lookupHEnv henv id := by
+      simp only [lowerStmtsCFG] at h
+      cases he : lowerExpr ρ supply e with
+      | none => rw [he] at h; simp at h
+      | some p =>
+          obtain ⟨v0, ie, s1⟩ := p
+          rw [he] at h
+          simp only [] at h
+          cases hr : lowerStmtsCFG bId cont false (updAssoc ρ id' v0) s1
+              nextB lastVal true loop rest with
+          | none => rw [hr] at h; simp at h
+          | some Lr =>
+              rw [hr] at h
+              simp only [assignedIds, List.mem_cons, not_or] at hnid
+              obtain ⟨hne, hnid'⟩ := hnid
+              cases fuel with
+              | zero =>
+                  have hz : runHIRStmts 0 henv (.assign id' e :: rest) acc =
+                      (.stuck, henv) := rfl
+                  rw [hz] at hrun
+                  cases hrun
+                  rfl
+              | succ fh =>
+                  simp only [runHIRStmts] at hrun
+                  cases hev : evalHIR 256 henv e with
+                  | none =>
+                      rw [hev] at hrun
+                      simp only [] at hrun
+                      cases hrun
+                      rfl
+                  | some v =>
+                      rw [hev] at hrun
+                      simp only [] at hrun
+                      have htail := ih bId cont (updAssoc ρ id' v0) s1 nextB
+                        lastVal true loop info Lr hlo hr _ _ _ _ _ _ hrun hnid'
+                      rw [htail]
+                      exact lookupHEnv_updateHEnv_ne (fun hh => hne hh.symm)
+set_option linter.unusedVariables false in
+theorem loopBody_lookup_nop (budget : Nat)
+    (rest : List HIR.Stmt) (hrs : LoopStmts budget rest)
+    (ih : ∀ (bId : MIR.BlockId) (cont : Option MIR.BlockId)
+      (ρ : List (HIR.Id × ValId)) (supply nextB : Nat) (lastVal : ValId)
+      (hasVal : Bool) (loop : Option LoopInfo) (info : LoopInfo) (L : Lowered),
+      loop = some info →
+      lowerStmtsCFG bId cont false ρ supply nextB lastVal hasVal loop rest =
+        some L →
+      ∀ (fuel : Nat) (henv henv' : HEnv) (acc out : HFlow) (id : HIR.Id),
+      runHIRStmts fuel henv rest acc = (out, henv') →
+      id ∉ assignedIds rest →
+      lookupHEnv henv' id = lookupHEnv henv id)
+    (bId : MIR.BlockId) (cont : Option MIR.BlockId)
+    (ρ : List (HIR.Id × ValId)) (supply nextB : Nat) (lastVal : ValId)
+    (hasVal : Bool) (loop : Option LoopInfo) (info : LoopInfo) (L : Lowered)
+    (hlo : loop = some info)
+    (h : lowerStmtsCFG bId cont false ρ supply nextB lastVal hasVal loop
+      (.nop :: rest) = some L)
+    (fuel : Nat) (henv henv' : HEnv) (acc out : HFlow) (id : HIR.Id)
+    (hrun : runHIRStmts fuel henv (.nop :: rest) acc = (out, henv'))
+    (hnid : id ∉ assignedIds (.nop :: rest)) :
+    lookupHEnv henv' id = lookupHEnv henv id := by
+      simp only [lowerStmtsCFG] at h
+      simp only [assignedIds] at hnid
+      cases hr : lowerStmtsCFG bId cont false ρ supply nextB lastVal hasVal
+          loop rest with
+      | none => rw [hr] at h; simp at h
+      | some Lr =>
+          rw [hr] at h
+          cases fuel with
+          | zero =>
+              have hz : runHIRStmts 0 henv (.nop :: rest) acc =
+                  (.stuck, henv) := rfl
+              rw [hz] at hrun
+              cases hrun
+              rfl
+          | succ fh =>
+              simp only [runHIRStmts] at hrun
+              exact ih bId cont ρ supply nextB lastVal hasVal loop info Lr
+                hlo hr _ _ _ _ _ _ hrun hnid
+set_option linter.unusedVariables false in
+theorem loopBody_lookup_ifStmt (budget : Nat)
+    (c : HIR.Expr) (th el rest : List HIR.Stmt)
+    (hstr : IsStraight c) (hlt : SLWeight c < budget)
+    (hath : ArmStmts budget th) (hael : ArmStmts budget el)
+    (hrs : LoopStmts budget rest)
+    (hno1 : ArmNoBreak th) (hno2 : ArmNoBreak el)
+    (ih : ∀ (bId : MIR.BlockId) (cont : Option MIR.BlockId)
+      (ρ : List (HIR.Id × ValId)) (supply nextB : Nat) (lastVal : ValId)
+      (hasVal : Bool) (loop : Option LoopInfo) (info : LoopInfo) (L : Lowered),
+      loop = some info →
+      lowerStmtsCFG bId cont false ρ supply nextB lastVal hasVal loop rest =
+        some L →
+      ∀ (fuel : Nat) (henv henv' : HEnv) (acc out : HFlow) (id : HIR.Id),
+      runHIRStmts fuel henv rest acc = (out, henv') →
+      id ∉ assignedIds rest →
+      lookupHEnv henv' id = lookupHEnv henv id)
+    (bId : MIR.BlockId) (cont : Option MIR.BlockId)
+    (ρ : List (HIR.Id × ValId)) (supply nextB : Nat) (lastVal : ValId)
+    (hasVal : Bool) (loop : Option LoopInfo) (info : LoopInfo) (L : Lowered)
+    (hlo : loop = some info)
+    (h : lowerStmtsCFG bId cont false ρ supply nextB lastVal hasVal loop
+      (.ifStmt c th el :: rest) = some L)
+    (fuel : Nat) (henv henv' : HEnv) (acc out : HFlow) (id : HIR.Id)
+    (hrun : runHIRStmts fuel henv (.ifStmt c th el :: rest) acc = (out, henv'))
+    (hnid : id ∉ assignedIds (.ifStmt c th el :: rest)) :
+    lookupHEnv henv' id = lookupHEnv henv id := by
+      simp only [lowerStmtsCFG] at h
+      cases heC : lowerExpr ρ supply c with
+      | none => rw [heC] at h; simp at h
+      | some p =>
+          obtain ⟨vc, ic, s1⟩ := p
+          rw [heC] at h
+          simp only [] at h
+          cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
+              (nextB + 3) lastVal false loop th with
+          | none => rw [ht] at h; simp at h
+          | some lt =>
+              rw [ht] at h
+              simp only [] at h
+              cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ
+                  lt.supply lt.next lastVal false loop el with
+              | none => rw [he] at h; simp at h
+              | some le =>
+                  rw [he] at h
+                  simp only [] at h
+                  cases hr : lowerStmtsCFG (nextB + 2) cont false ρ
+                      (le.supply + 1) le.next le.supply true loop rest with
+                  | none => rw [hr] at h; simp at h
+                  | some lr =>
+                      rw [hr] at h
+                      simp only [assignedIds, List.mem_append,
+                        not_or] at hnid
+                      obtain ⟨⟨hnt, hnel⟩, hnrest⟩ := hnid
+                      cases fuel with
+                      | zero =>
+                          have hz : runHIRStmts 0 henv
+                              (.ifStmt c th el :: rest) acc =
+                              (.stuck, henv) := rfl
+                          rw [hz] at hrun
+                          cases hrun
+                          rfl
+                      | succ fh =>
+                          simp only [runHIRStmts] at hrun
+                          cases hev : evalHIR 256 henv c with
+                          | none =>
+                              rw [hev] at hrun
+                              simp only [] at hrun
+                              cases hrun
+                              rfl
+                          | some v =>
+                              rw [hev] at hrun
+                              split at hrun
+                              · rename_i heq
+                                rw [Option.some.injEq] at heq
+                                have heq2 : v = HIR.Expr.lit (.bool true) := by
+                                  simpa using heq
+                                subst heq2
+                                cases har : runHIRStmts fh henv th
+                                    (.value (.lit .unit)) with
+                                | mk outA envA =>
+                                    rw [har] at hrun
+                                    cases outA with
+                                    | value u =>
+                                        simp only [] at hrun
+                                        have h1 := runHIRStmts_arm_lookup
+                                          budget hath _ _ _ _ _ id har
+                                        have h2 := ih (nextB + 2) cont ρ
+                                          (le.supply + 1) le.next le.supply
+                                          true loop info lr hlo hr _ _ _ _ _ _
+                                          hrun hnrest
+                                        rw [h2, h1]
+                                    | broke =>
+                                        simp only [] at hrun
+                                        cases hrun
+                                        exact runHIRStmts_arm_lookup budget
+                                          hath _ _ _ _ _ _ har
+                                    | continued =>
+                                        simp only [] at hrun
+                                        cases hrun
+                                        exact runHIRStmts_arm_lookup budget
+                                          hath _ _ _ _ _ _ har
+                                    | returned e =>
+                                        simp only [] at hrun
+                                        cases hrun
+                                        exact runHIRStmts_arm_lookup budget
+                                          hath _ _ _ _ _ _ har
+                                    | stuck =>
+                                        simp only [] at hrun
+                                        cases hrun
+                                        exact runHIRStmts_arm_lookup budget
+                                          hath _ _ _ _ _ _ har
+                              · rename_i heq
+                                rw [Option.some.injEq] at heq
+                                have heq2 : v = HIR.Expr.lit (.bool false) := by
+                                  simpa using heq
+                                subst heq2
+                                cases har : runHIRStmts fh henv el
+                                    (.value (.lit .unit)) with
+                                | mk outA envA =>
+                                    rw [har] at hrun
+                                    cases outA with
+                                    | value u =>
+                                        simp only [] at hrun
+                                        have h1 := runHIRStmts_arm_lookup
+                                          budget hael _ _ _ _ _ id har
+                                        have h2 := ih (nextB + 2) cont ρ
+                                          (le.supply + 1) le.next le.supply
+                                          true loop info lr hlo hr _ _ _ _ _ _
+                                          hrun hnrest
+                                        rw [h2, h1]
+                                    | broke =>
+                                        simp only [] at hrun
+                                        cases hrun
+                                        exact runHIRStmts_arm_lookup budget
+                                          hael _ _ _ _ _ _ har
+                                    | continued =>
+                                        simp only [] at hrun
+                                        cases hrun
+                                        exact runHIRStmts_arm_lookup budget
+                                          hael _ _ _ _ _ _ har
+                                    | returned e =>
+                                        simp only [] at hrun
+                                        cases hrun
+                                        exact runHIRStmts_arm_lookup budget
+                                          hael _ _ _ _ _ _ har
+                                    | stuck =>
+                                        simp only [] at hrun
+                                        cases hrun
+                                        exact runHIRStmts_arm_lookup budget
+                                          hael _ _ _ _ _ _ har
+                              · cases hrun
+                                rfl
+set_option linter.unusedVariables false in
+theorem loopBody_lookup_ifStmtBreak (budget : Nat)
+    (c : HIR.Expr) (th el rest : List HIR.Stmt)
+    (hstr : IsStraight c) (hlt : SLWeight c < budget)
+    (hath : ArmStmts budget th) (hael : ArmStmts budget el)
+    (hrs : LoopStmts budget rest) (harm : ArmStmts budget rest)
+    (ih : ∀ (bId : MIR.BlockId) (cont : Option MIR.BlockId)
+      (ρ : List (HIR.Id × ValId)) (supply nextB : Nat) (lastVal : ValId)
+      (hasVal : Bool) (loop : Option LoopInfo) (info : LoopInfo) (L : Lowered),
+      loop = some info →
+      lowerStmtsCFG bId cont false ρ supply nextB lastVal hasVal loop rest =
+        some L →
+      ∀ (fuel : Nat) (henv henv' : HEnv) (acc out : HFlow) (id : HIR.Id),
+      runHIRStmts fuel henv rest acc = (out, henv') →
+      id ∉ assignedIds rest →
+      lookupHEnv henv' id = lookupHEnv henv id)
+    (bId : MIR.BlockId) (cont : Option MIR.BlockId)
+    (ρ : List (HIR.Id × ValId)) (supply nextB : Nat) (lastVal : ValId)
+    (hasVal : Bool) (loop : Option LoopInfo) (info : LoopInfo) (L : Lowered)
+    (hlo : loop = some info)
+    (h : lowerStmtsCFG bId cont false ρ supply nextB lastVal hasVal loop
+      (.ifStmt c th el :: rest) = some L)
+    (fuel : Nat) (henv henv' : HEnv) (acc out : HFlow) (id : HIR.Id)
+    (hrun : runHIRStmts fuel henv (.ifStmt c th el :: rest) acc = (out, henv'))
+    (hnid : id ∉ assignedIds (.ifStmt c th el :: rest)) :
+    lookupHEnv henv' id = lookupHEnv henv id := by
+      simp only [lowerStmtsCFG] at h
+      cases heC : lowerExpr ρ supply c with
+      | none => rw [heC] at h; simp at h
+      | some p =>
+          obtain ⟨vc, ic, s1⟩ := p
+          rw [heC] at h
+          simp only [] at h
+          cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
+              (nextB + 3) lastVal false loop th with
+          | none => rw [ht] at h; simp at h
+          | some lt =>
+              rw [ht] at h
+              simp only [] at h
+              cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ
+                  lt.supply lt.next lastVal false loop el with
+              | none => rw [he] at h; simp at h
+              | some le =>
+                  rw [he] at h
+                  simp only [] at h
+                  cases hr : lowerStmtsCFG (nextB + 2) cont false ρ
+                      (le.supply + 1) le.next le.supply true loop rest with
+                  | none => rw [hr] at h; simp at h
+                  | some lr =>
+                      rw [hr] at h
+                      simp only [assignedIds, List.mem_append,
+                        not_or] at hnid
+                      obtain ⟨⟨hnt, hnel⟩, hnrest⟩ := hnid
+                      cases fuel with
+                      | zero =>
+                          have hz : runHIRStmts 0 henv
+                              (.ifStmt c th el :: rest) acc =
+                              (.stuck, henv) := rfl
+                          rw [hz] at hrun
+                          cases hrun
+                          rfl
+                      | succ fh =>
+                          simp only [runHIRStmts] at hrun
+                          cases hev : evalHIR 256 henv c with
+                          | none =>
+                              rw [hev] at hrun
+                              simp only [] at hrun
+                              cases hrun
+                              rfl
+                          | some v =>
+                              rw [hev] at hrun
+                              split at hrun
+                              · rename_i heq
+                                rw [Option.some.injEq] at heq
+                                have heq2 : v = HIR.Expr.lit (.bool true) := by
+                                  simpa using heq
+                                subst heq2
+                                cases har : runHIRStmts fh henv th
+                                    (.value (.lit .unit)) with
+                                | mk outA envA =>
+                                    rw [har] at hrun
+                                    cases outA with
+                                    | value u =>
+                                        simp only [] at hrun
+                                        have h1 := runHIRStmts_arm_lookup
+                                          budget hath _ _ _ _ _ id har
+                                        have h2 := ih (nextB + 2) cont ρ
+                                          (le.supply + 1) le.next le.supply
+                                          true loop info lr hlo hr _ _ _ _ _ _
+                                          hrun hnrest
+                                        rw [h2, h1]
+                                    | broke =>
+                                        simp only [] at hrun
+                                        cases hrun
+                                        exact runHIRStmts_arm_lookup budget
+                                          hath _ _ _ _ _ _ har
+                                    | continued =>
+                                        simp only [] at hrun
+                                        cases hrun
+                                        exact runHIRStmts_arm_lookup budget
+                                          hath _ _ _ _ _ _ har
+                                    | returned e =>
+                                        simp only [] at hrun
+                                        cases hrun
+                                        exact runHIRStmts_arm_lookup budget
+                                          hath _ _ _ _ _ _ har
+                                    | stuck =>
+                                        simp only [] at hrun
+                                        cases hrun
+                                        exact runHIRStmts_arm_lookup budget
+                                          hath _ _ _ _ _ _ har
+                              · rename_i heq
+                                rw [Option.some.injEq] at heq
+                                have heq2 : v = HIR.Expr.lit (.bool false) := by
+                                  simpa using heq
+                                subst heq2
+                                cases har : runHIRStmts fh henv el
+                                    (.value (.lit .unit)) with
+                                | mk outA envA =>
+                                    rw [har] at hrun
+                                    cases outA with
+                                    | value u =>
+                                        simp only [] at hrun
+                                        have h1 := runHIRStmts_arm_lookup
+                                          budget hael _ _ _ _ _ id har
+                                        have h2 := ih (nextB + 2) cont ρ
+                                          (le.supply + 1) le.next le.supply
+                                          true loop info lr hlo hr _ _ _ _ _ _
+                                          hrun hnrest
+                                        rw [h2, h1]
+                                    | broke =>
+                                        simp only [] at hrun
+                                        cases hrun
+                                        exact runHIRStmts_arm_lookup budget
+                                          hael _ _ _ _ _ _ har
+                                    | continued =>
+                                        simp only [] at hrun
+                                        cases hrun
+                                        exact runHIRStmts_arm_lookup budget
+                                          hael _ _ _ _ _ _ har
+                                    | returned e =>
+                                        simp only [] at hrun
+                                        cases hrun
+                                        exact runHIRStmts_arm_lookup budget
+                                          hael _ _ _ _ _ _ har
+                                    | stuck =>
+                                        simp only [] at hrun
+                                        cases hrun
+                                        exact runHIRStmts_arm_lookup budget
+                                          hael _ _ _ _ _ _ har
+                              · cases hrun
+                                rfl
+set_option linter.unusedVariables false in
+theorem loopBody_lookup_returnStmt (budget : Nat)
+    (e : HIR.Expr) (rest : List HIR.Stmt)
+    (hstr : IsStraight e) (hlt : SLWeight e < budget)
+    (bId : MIR.BlockId) (cont : Option MIR.BlockId)
+    (ρ : List (HIR.Id × ValId)) (supply nextB : Nat) (lastVal : ValId)
+    (hasVal : Bool) (loop : Option LoopInfo) (info : LoopInfo) (L : Lowered)
+    (hlo : loop = some info)
+    (h : lowerStmtsCFG bId cont false ρ supply nextB lastVal hasVal loop
+      (.returnStmt e :: rest) = some L)
+    (fuel : Nat) (henv henv' : HEnv) (acc out : HFlow) (id : HIR.Id)
+    (hrun : runHIRStmts fuel henv (.returnStmt e :: rest) acc = (out, henv'))
+    (hnid : id ∉ assignedIds (.returnStmt e :: rest)) :
+    lookupHEnv henv' id = lookupHEnv henv id := by
+      simp only [lowerStmtsCFG] at h
+      cases he : lowerExpr ρ supply e with
+      | none => rw [he] at h; simp at h
+      | some p =>
+          obtain ⟨v, ie, s1⟩ := p
+          rw [he] at h
+          simp only [] at h
+          cases fuel with
+          | zero =>
+              have hz : runHIRStmts 0 henv (.returnStmt e :: rest) acc =
+                  (.stuck, henv) := rfl
+              rw [hz] at hrun
+              cases hrun
+              rfl
+          | succ fh =>
+              simp only [runHIRStmts] at hrun
+              cases hev : evalHIR 256 henv e with
+              | none =>
+                  rw [hev] at hrun
+                  simp only [] at hrun
+                  cases hrun
+                  rfl
+              | some w =>
+                  rw [hev] at hrun
+                  simp only [] at hrun
+                  cases hrun
+                  rfl
+set_option linter.unusedVariables false in
+theorem loopBody_lookup_breakStmt (budget : Nat)
+    (rest : List HIR.Stmt) (hrs : LoopStmts budget rest)
+    (bId : MIR.BlockId) (cont : Option MIR.BlockId)
+    (ρ : List (HIR.Id × ValId)) (supply nextB : Nat) (lastVal : ValId)
+    (hasVal : Bool) (loop : Option LoopInfo) (info : LoopInfo) (L : Lowered)
+    (hlo : loop = some info)
+    (h : lowerStmtsCFG bId cont false ρ supply nextB lastVal hasVal loop
+      (.break :: rest) = some L)
+    (fuel : Nat) (henv henv' : HEnv) (acc out : HFlow) (id : HIR.Id)
+    (hrun : runHIRStmts fuel henv (.break :: rest) acc = (out, henv'))
+    (hnid : id ∉ assignedIds (.break :: rest)) :
+    lookupHEnv henv' id = lookupHEnv henv id := by
+      cases fuel with
+      | zero =>
+          have hz : runHIRStmts 0 henv (.break :: rest) acc =
+              (.stuck, henv) := rfl
+          rw [hz] at hrun
+          cases hrun
+          rfl
+      | succ fh =>
+          simp only [runHIRStmts] at hrun
+          cases hrun
+          rfl
+set_option linter.unusedVariables false in
+theorem loopBody_lookup_continueStmt (budget : Nat)
+    (rest : List HIR.Stmt) (hrs : LoopStmts budget rest)
+    (bId : MIR.BlockId) (cont : Option MIR.BlockId)
+    (ρ : List (HIR.Id × ValId)) (supply nextB : Nat) (lastVal : ValId)
+    (hasVal : Bool) (loop : Option LoopInfo) (info : LoopInfo) (L : Lowered)
+    (hlo : loop = some info)
+    (h : lowerStmtsCFG bId cont false ρ supply nextB lastVal hasVal loop
+      (.continue :: rest) = some L)
+    (fuel : Nat) (henv henv' : HEnv) (acc out : HFlow) (id : HIR.Id)
+    (hrun : runHIRStmts fuel henv (.continue :: rest) acc = (out, henv'))
+    (hnid : id ∉ assignedIds (.continue :: rest)) :
+    lookupHEnv henv' id = lookupHEnv henv id := by
+      cases fuel with
+      | zero =>
+          have hz : runHIRStmts 0 henv (.continue :: rest) acc =
+              (.stuck, henv) := rfl
+          rw [hz] at hrun
+          cases hrun
+          rfl
+      | succ fh =>
+          simp only [runHIRStmts] at hrun
+          cases hrun
+          rfl
+
+end LoopBodyLookupAux
+
+/-- HIR preservation (spine L2): a loop-body run preserves every unassigned
+id's lookup. Straight-line steps only evaluate; arms are lookup-preserving
+(`runHIRStmts_arm_lookup`); `assign` touches only its own id
+(`lookupHEnv_updateHEnv_ne`); `varDecl` under `loop = some` contradicts the
+lowering hypothesis. The re-entry argument cites this for non-carried ids. -/
+theorem runHIRStmts_loopBody_lookup (budget : Nat) (ss : List HIR.Stmt) :
+    ∀ (_hss : LoopStmts budget ss) (bId : MIR.BlockId) (cont : Option MIR.BlockId)
+      (ρ : List (HIR.Id × ValId)) (supply nextB : Nat) (lastVal : ValId)
+      (hasVal : Bool) (loop : Option LoopInfo) (info : LoopInfo) (L : Lowered),
+      loop = some info →
+      lowerStmtsCFG bId cont false ρ supply nextB lastVal hasVal loop ss =
+        some L →
+      ∀ (fuel : Nat) (henv henv' : HEnv) (acc out : HFlow) (id : HIR.Id),
+      runHIRStmts fuel henv ss acc = (out, henv') →
+      id ∉ assignedIds ss →
+      lookupHEnv henv' id = lookupHEnv henv id := by
+  induction ss with
+  | nil =>
+      intro hss bId cont ρ supply nextB lastVal hasVal loop info L hlo h fuel
+        henv henv' acc out id hrun hnid
+      cases hss with
+      | nil =>
+          exact loopBody_lookup_nil budget bId cont ρ supply nextB lastVal
+            hasVal loop info L hlo h fuel henv henv' acc out id hrun hnid
+  | cons hd rest ih =>
+      intro hss bId cont ρ supply nextB lastVal hasVal loop info L hlo h fuel
+        henv henv' acc out id hrun hnid
+      cases hss with
+      | exprStmt e rest hstr hlt hrs =>
+          exact loopBody_lookup_exprStmt budget e rest hstr hlt hrs (ih hrs)
+            bId cont ρ supply nextB lastVal hasVal loop info L hlo h fuel henv
+            henv' acc out id hrun hnid
+      | varDecl id' τ init rest hstr hlt hloop hfree =>
+          exact loopBody_lookup_varDecl budget id' τ init rest hstr hlt hloop
+            hfree bId cont ρ supply nextB lastVal hasVal loop info L hlo h
+            fuel henv henv' acc out id hrun hnid
+      | assign id' e rest hstr hlt hrs hfree =>
+          exact loopBody_lookup_assign budget id' e rest hstr hlt hrs hfree
+            (ih hrs) bId cont ρ supply nextB lastVal hasVal loop info L hlo h
+            fuel henv henv' acc out id hrun hnid
+      | nop rest hrs =>
+          exact loopBody_lookup_nop budget rest hrs (ih hrs) bId cont ρ
+            supply nextB lastVal hasVal loop info L hlo h fuel henv henv' acc
+            out id hrun hnid
+      | ifStmt c th el rest hstr hlt hath hael hrs hno1 hno2 =>
+          exact loopBody_lookup_ifStmt budget c th el rest hstr hlt hath hael
+            hrs hno1 hno2 (ih hrs) bId cont ρ supply nextB lastVal hasVal loop
+            info L hlo h fuel henv henv' acc out id hrun hnid
+      | ifStmtBreak c th el rest hstr hlt hath hael hrs harm =>
+          exact loopBody_lookup_ifStmtBreak budget c th el rest hstr hlt hath
+            hael hrs harm (ih hrs) bId cont ρ supply nextB lastVal hasVal loop
+            info L hlo h fuel henv henv' acc out id hrun hnid
+      | returnStmt e rest hstr hlt =>
+          exact loopBody_lookup_returnStmt budget e rest hstr hlt bId cont ρ
+            supply nextB lastVal hasVal loop info L hlo h fuel henv henv' acc
+            out id hrun hnid
+      | breakStmt rest hrs =>
+          exact loopBody_lookup_breakStmt budget rest hrs bId cont ρ supply
+            nextB lastVal hasVal loop info L hlo h fuel henv henv' acc out id
+            hrun hnid
+      | continueStmt rest hrs =>
+          exact loopBody_lookup_continueStmt budget rest hrs bId cont ρ supply
+            nextB lastVal hasVal loop info L hlo h fuel henv henv' acc out id
+            hrun hnid
+
+/-- Loop-body classification (spine L1): an assigned id looked up in the
+body-entry env resolves through its carried pair. If the id is missing from
+the pre-loop env, `mkCarried_lookup` leaves only the carried case; if
+present, it is in the filter input (`dedupIds_mem` plus the filterMap
+witness), so `mkCarried_mem_lookup` applies and the two lookups agree
+because `rhoLookup` is a function. -/
+theorem loopBody_carried_of_assigned {ρ : List (HIR.Id × ValId)} {s : Nat}
+    {body : List HIR.Stmt} {carried : List (HIR.Id × ValId)} {sA : Nat}
+    {ρb : List (HIR.Id × ValId)}
+    (hmk : mkCarried ρ s ((dedupIds (assignedIds body)).filterMap
+      (fun j => (rhoLookup ρ j).map (fun _ => j))) = some (carried, sA, ρb))
+    {id : HIR.Id} {u : ValId}
+    (hlook : rhoLookup ρb id = some u)
+    (hmem : id ∈ assignedIds body) :
+    (id, u) ∈ carried := by
+  cases hρ : rhoLookup ρ id with
+  | none =>
+      rcases mkCarried_lookup hmk hlook with ⟨i, rr, hmemc, rfl, rfl⟩ | hbase
+      · exact hmemc
+      · rw [hbase] at hρ; simp at hρ
+  | some u₀ =>
+      have hmemf : id ∈ (dedupIds (assignedIds body)).filterMap
+          (fun j => (rhoLookup ρ j).map (fun _ => j)) := by
+        apply List.mem_filterMap.mpr
+        exact ⟨id, dedupIds_mem hmem, by rw [hρ]; rfl⟩
+      obtain ⟨r, hrlook, hrmem⟩ := mkCarried_mem_lookup hmemf hmk
+      have heq : r = u := Option.some.inj (hrlook.symm.trans hlook)
+      rw [heq] at hrmem
+      exact hrmem
+
+/-- A non-boolean condition value stalls the loop. -/
+theorem runHIRWhile_succ_cond_other {fh : Nat} {henv : HEnv} {c : HIR.Expr}
+    {body : List HIR.Stmt} {v : HIR.Expr}
+    (hcond : evalHIR 256 henv c = some v)
+    (hne : ∀ b : Bool, v ≠ .lit (.bool b)) :
+    runHIRWhile (fh + 1) henv c body = (.stuck, henv) := by
+  simp only [runHIRWhile, hcond]
+  split
+  · rename_i heq
+    rw [Option.some.injEq] at heq
+    exact absurd heq (hne true)
+  · rename_i heq
+    rw [Option.some.injEq] at heq
+    exact absurd heq (hne false)
+  · rfl
+
+/- Assigned bound ids are carried: `assignedIds` through `dedupIds`/`filterMap`
+survives into `mkCarried`'s input list, so `mkCarried_mem_lookup` gives a
+carried pair. Used to classify body-exit lookups (assigned ⇒ carried). -/
+theorem loopBody_assigned_carried {ρ : List (HIR.Id × ValId)} {supply : Nat}
+    {body : List HIR.Stmt} {carried : List (HIR.Id × ValId)} {sA : Nat}
+    {ρb : List (HIR.Id × ValId)} {id : HIR.Id} {u : ValId}
+    (hmk : mkCarried ρ supply
+        ((dedupIds (assignedIds body)).filterMap
+          (fun id => (rhoLookup ρ id).map (fun _ => id))) =
+        some (carried, sA, ρb))
+    (hass : id ∈ assignedIds body) (hlook : rhoLookup ρ id = some u) :
+    ∃ r, (id, r) ∈ carried := by
+  have hmemDedup : id ∈ dedupIds (assignedIds body) := dedupIds_mem hass
+  have hmemFilt : id ∈ (dedupIds (assignedIds body)).filterMap
+      (fun id => (rhoLookup ρ id).map (fun _ => id)) := by
+    rw [List.mem_filterMap]
+    exact ⟨id, hmemDedup, by simp [hlook]⟩
+  obtain ⟨r, _, hmemC⟩ := mkCarried_mem_lookup hmemFilt hmk
+  exact ⟨r, hmemC⟩
+
+ /- Exit env binds every entry-bound id: `assign` rebinds through
+`updAssoc` (still `some`), other constructors keep `ρ` or recurse with the
+same entry. Used to feed `RelEnv` arrivals for carried ids. -/
+theorem lowerStmtsCFG_loopBody_mem_preserv (budget : Nat) :
+    ∀ (bId : MIR.BlockId) (contB : MIR.BlockId) (ρ : List (HIR.Id × ValId))
+      (supply nextB : Nat) (lastVal : ValId) (loop : Option LoopInfo)
+      (info : LoopInfo)
+      (ss : List HIR.Stmt) (L : Lowered) (id : HIR.Id) (u : ValId),
+      loop = some info →
+      lowerStmtsCFG bId (some contB) false ρ supply nextB lastVal true loop ss =
+        some L →
+      LoopStmts budget ss →
+      rhoLookup ρ id = some u →
+      ∃ u', rhoLookup L.ρ id = some u' := by
+  intro bId contB ρ supply nextB lastVal loop info ss L id u hloop h hss hentry
+  induction ss generalizing bId contB ρ supply nextB lastVal loop info L id u with
+  | nil =>
+      cases hss with
+      | nil =>
+          simp only [lowerStmtsCFG.eq_def] at h
+          obtain rfl := Option.some.inj h
+          exact ⟨u, hentry⟩
+  | cons s rest ih =>
+      cases hss with
+      | exprStmt e rest hstr _ hrs =>
+          simp only [lowerStmtsCFG] at h
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he] at h; simp at h
+          | some p =>
+              obtain ⟨v0, ie, s1⟩ := p
+              rw [he] at h
+              simp only [] at h
+              cases hr : lowerStmtsCFG bId (some contB) false ρ s1 nextB v0 true loop rest with
+              | none => rw [hr] at h; simp at h
+              | some q =>
+                  rw [hr] at h
+                  simp only [] at h
+                  obtain rfl := Option.some.inj h
+                  show ∃ u', rhoLookup q.ρ id = some u'
+                  exact ih _ _ _ _ _ _ _ _ _ _ _ hloop hr hrs hentry
+      | varDecl vd τ init rest hstr _ hrs _ =>
+          cases hlo : loop with
+          | none => rw [hloop] at hlo; simp at hlo
+          | some inf =>
+              simp only [lowerStmtsCFG, hlo] at h
+              simp at h
+      | assign aid e rest hstr _ hrs _ =>
+          simp only [lowerStmtsCFG] at h
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he] at h; simp at h
+          | some p =>
+              obtain ⟨v, ie, s1⟩ := p
+              rw [he] at h
+              simp only [] at h
+              cases hr : lowerStmtsCFG bId (some contB) false (updAssoc ρ aid v) s1 nextB lastVal true loop rest with
+              | none => rw [hr] at h; simp at h
+              | some q =>
+                  rw [hr] at h
+                  simp only [] at h
+                  obtain rfl := Option.some.inj h
+                  show ∃ u', rhoLookup q.ρ id = some u'
+                  by_cases heq : id = aid
+                  · have hentry' : rhoLookup ρ aid = some u := by
+                      rw [← heq]
+                      exact hentry
+                    have hupd : rhoLookup (updAssoc ρ aid v) id = some v := by
+                      rw [heq, rhoLookup_updAssoc_id, hentry']
+                      rfl
+                    exact ih _ _ _ _ _ _ _ _ _ _ _ hloop hr hrs hupd
+                  · have hne : rhoLookup (updAssoc ρ aid v) id = some u := by
+                      rw [rhoLookup_updAssoc_ne (fun hh => heq hh.symm) ρ]
+                      exact hentry
+                    exact ih _ _ _ _ _ _ _ _ _ _ _ hloop hr hrs hne
+      | nop rest hrs =>
+          simp only [lowerStmtsCFG] at h
+          cases hr : lowerStmtsCFG bId (some contB) false ρ supply nextB lastVal true loop rest with
+          | none => rw [hr] at h; simp at h
+          | some q =>
+              rw [hr] at h
+              obtain rfl := Option.some.inj h
+              exact ih _ _ _ _ _ _ _ _ _ _ _ hloop hr hrs hentry
+      | ifStmt c th el rest hstr _ hath hael hrs _ _ =>
+          simp only [lowerStmtsCFG] at h
+          cases heC : lowerExpr ρ supply c with
+          | none => rw [heC] at h; simp at h
+          | some p =>
+              obtain ⟨vc, ic, s1⟩ := p
+              rw [heC] at h
+              simp only [] at h
+              cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1 (nextB + 3) lastVal false loop th with
+              | none => rw [ht] at h; simp at h
+              | some lt =>
+                  rw [ht] at h
+                  simp only [] at h
+                  cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ lt.supply lt.next lastVal false loop el with
+                  | none => rw [he] at h; simp at h
+                  | some le =>
+                      rw [he] at h
+                      simp only [] at h
+                      cases hr : lowerStmtsCFG (nextB + 2) (some contB) false ρ (le.supply + 1) le.next le.supply true loop rest with
+                      | none => rw [hr] at h; simp at h
+                      | some lr =>
+                          rw [hr] at h
+                          simp only [] at h
+                          obtain rfl := Option.some.inj h
+                          show ∃ u', rhoLookup lr.ρ id = some u'
+                          exact ih _ _ _ _ _ _ _ _ _ _ _ hloop hr hrs hentry
+      | ifStmtBreak c th el rest hstr _ hath hael hrs hrest =>
+          simp only [lowerStmtsCFG] at h
+          cases heC : lowerExpr ρ supply c with
+          | none => rw [heC] at h; simp at h
+          | some p =>
+              obtain ⟨vc, ic, s1⟩ := p
+              rw [heC] at h
+              simp only [] at h
+              cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1 (nextB + 3) lastVal false loop th with
+              | none => rw [ht] at h; simp at h
+              | some lt =>
+                  rw [ht] at h
+                  simp only [] at h
+                  cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ lt.supply lt.next lastVal false loop el with
+                  | none => rw [he] at h; simp at h
+                  | some le =>
+                      rw [he] at h
+                      simp only [] at h
+                      cases hr : lowerStmtsCFG (nextB + 2) (some contB) false ρ (le.supply + 1) le.next le.supply true loop rest with
+                      | none => rw [hr] at h; simp at h
+                      | some lr =>
+                          rw [hr] at h
+                          simp only [] at h
+                          obtain rfl := Option.some.inj h
+                          show ∃ u', rhoLookup lr.ρ id = some u'
+                          exact ih _ _ _ _ _ _ _ _ _ _ _ hloop hr hrs hentry
+      | returnStmt e rest hstr _ =>
+          simp only [lowerStmtsCFG] at h
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he] at h; simp at h
+          | some p =>
+              obtain ⟨v, ie, s1⟩ := p
+              rw [he] at h
+              simp only [] at h
+              obtain rfl := Option.some.inj h
+              exact ⟨u, hentry⟩
+      | breakStmt rest _ =>
+          cases hlo : loop with
+          | none => rw [hloop] at hlo; simp at hlo
+          | some inf =>
+              simp only [lowerStmtsCFG, hlo] at h
+              cases hc : carryCopies ρ inf.carried with
+              | none => rw [hc] at h; simp at h
+              | some copies =>
+                  rw [hc] at h
+                  obtain rfl := Option.some.inj h
+                  exact ⟨u, hentry⟩
+      | continueStmt rest _ =>
+          cases hlo : loop with
+          | none => rw [hloop] at hlo; simp at hlo
+          | some inf =>
+              simp only [lowerStmtsCFG, hlo] at h
+              cases hc : carryCopies ρ inf.carried with
+              | none => rw [hc] at h; simp at h
+              | some copies =>
+                  rw [hc] at h
+                  obtain rfl := Option.some.inj h
+                  exact ⟨u, hentry⟩
+
+ /- Carried pairs come from the input id list. -/
+theorem mkCarried_mem_ids (ids : List HIR.Id) :
+    ∀ (ρ : List (HIR.Id × ValId)) (s : Nat) (cs : List (HIR.Id × ValId))
+      (s' : Nat) (ρ' : List (HIR.Id × ValId)) (id : HIR.Id) (r : ValId),
+      mkCarried ρ s ids = some (cs, s', ρ') →
+      (id, r) ∈ cs → id ∈ ids := by
+  intro ρ s cs s' ρ' id r h hmem
+  induction ids generalizing ρ s cs s' ρ' with
+  | nil =>
+      simp only [mkCarried] at h
+      obtain ⟨rfl, rfl, rfl⟩ := h
+      simp at hmem
+  | cons hd tl ih =>
+      simp only [mkCarried] at h
+      cases hρ : rhoLookup ρ hd with
+      | none => rw [hρ] at h; simp at h
+      | some v =>
+          rw [hρ] at h
+          cases hrec : mkCarried (updAssoc ρ hd s) (s + 1) tl with
+          | none => rw [hrec] at h; simp at h
+          | some q =>
+              obtain ⟨cs', s'', ρ''⟩ := q
+              rw [hrec] at h
+              simp only [] at h
+              obtain ⟨rfl, rfl, rfl⟩ := Option.some.inj h
+              simp only [List.mem_cons] at hmem ⊢
+              rcases hmem with hmem | hmem
+              · obtain ⟨rfl, rfl⟩ := Prod.mk.inj hmem
+                exact Or.inl rfl
+              · exact Or.inr (ih _ _ _ _ _ hrec hmem)
+
+/-- Assign-chains from a base env: every entry is the base with some updates,
+each update at a register at or above `lo`. Body exits lower to such chains
+over `ρb` (`assign` steps extend, everything else preserves). -/
+inductive IsChain (base : List (HIR.Id × ValId)) (lo : Nat) :
+    List (HIR.Id × ValId) → Prop where
+  | base : IsChain base lo base
+  | step (E : List (HIR.Id × ValId)) (aid : HIR.Id) (v : ValId) :
+      IsChain base lo E → lo ≤ v → IsChain base lo (updAssoc E aid v)
+
+/-- Peeling an assign-chain below `lo` recovers the base lookup: updates all
+write at or above `lo`, so a small-reg hit must come from the base. -/
+theorem isChain_peel (base : List (HIR.Id × ValId)) (lo : Nat)
+    (E : List (HIR.Id × ValId)) (hc : IsChain base lo E) (id' : HIR.Id)
+    (r : ValId) (hlook : rhoLookup E id' = some r) (hlt : r < lo) :
+    rhoLookup base id' = some r := by
+  induction hc with
+  | base => exact hlook
+  | step E aid v _ hv ih =>
+      by_cases heq : id' = aid
+      · rw [heq] at hlook ⊢
+        rw [rhoLookup_updAssoc_id] at hlook
+        cases hρ : rhoLookup E aid with
+        | none => rw [hρ] at hlook; simp at hlook
+        | some u0 =>
+            rw [hρ] at hlook
+            simp only [Option.map_some] at hlook
+            have hrv : v = r := Option.some.inj hlook
+            have hle : lo ≤ r := by rw [←hrv]; exact hv
+            exact absurd (Nat.lt_of_le_of_lt hle hlt) (Nat.lt_irrefl _)
+      · rw [rhoLookup_updAssoc_ne (fun hh => heq hh.symm)] at hlook
+        exact ih hlook
+
+/-- Body exits are exclusive over the carried set: a carried register resolves
+only its own id. The exit env is an assign-chain over `ρb`; peeling below the
+body-entry supply recovers the `ρb` lookup, and `F2` plus register injectivity
+close it. -/
+theorem lowerStmtsCFG_loopBody_carriedExcl (budget : Nat) :
+    ∀ (bId : MIR.BlockId) (contB : MIR.BlockId) (ρ : List (HIR.Id × ValId))
+      (supply nextB : Nat) (lastVal : ValId) (loop : Option LoopInfo)
+      (info : LoopInfo)
+      (base : List (HIR.Id × ValId)) (lo spre : Nat)
+      (carried : List (HIR.Id × ValId)) (sA : Nat) (ρb : List (HIR.Id × ValId))
+      (preρ : List (HIR.Id × ValId)) (INPUT : List HIR.Id)
+      (ss : List HIR.Stmt) (L : Lowered)
+      (hc : IsChain base lo ρ)
+      (id : HIR.Id) (r : ValId) (id' : HIR.Id),
+      loop = some info →
+      lowerStmtsCFG bId (some contB) false ρ supply nextB lastVal true loop ss =
+        some L →
+      LoopStmts budget ss →
+      lo ≤ supply →
+      base = ρb →
+      (∀ q ∈ carried, q.2 < lo) →
+      mkCarried preρ spre INPUT = some (carried, sA, ρb) →
+      FreshAbove preρ spre →
+      (id, r) ∈ carried →
+      rhoLookup L.ρ id' = some r →
+      id' = id := by
+  intro bId contB ρ supply nextB lastVal loop info base lo spre carried sA ρb
+    preρ INPUT ss L hc id r id' hloop h hss hlo_le hbase hloCar hmk hfresh hmem hlook
+  induction ss generalizing bId contB ρ supply nextB lastVal loop info L hc id' with
+  | nil =>
+      cases hss with
+      | nil =>
+          simp only [lowerStmtsCFG.eq_def] at h
+          obtain rfl := Option.some.inj h
+          have hbase' : rhoLookup base id' = some r :=
+            isChain_peel base lo ρ hc id' r hlook (hloCar (id, r) hmem)
+          rw [hbase] at hbase'
+          have hmem' : (id', r) ∈ carried :=
+            mkCarried_lookup_high hfresh hmk hbase'
+              (mkCarried_mem_lo hmk hmem)
+          exact (mkCarried_reg_inj hmk hmem hmem').symm
+  | cons s rest ih =>
+      cases hss with
+      | exprStmt e rest hstr _ hrs =>
+          simp only [lowerStmtsCFG] at h
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he] at h; simp at h
+          | some p =>
+              obtain ⟨v0, ie, s1⟩ := p
+              rw [he] at h
+              simp only [] at h
+              cases hr : lowerStmtsCFG bId (some contB) false ρ s1 nextB v0 true loop rest with
+              | none => rw [hr] at h; simp at h
+              | some q =>
+                  rw [hr] at h
+                  simp only [] at h
+                  obtain rfl := Option.some.inj h
+                  have hlookQ : rhoLookup q.ρ id' = some r := hlook
+                  have hlo_le' : lo ≤ s1 :=
+                    Nat.le_trans hlo_le (lower_mono.1 _ _ _ _ _ _ he)
+                  exact ih _ _ _ _ _ _ _ _ _ hc _ hloop hr hrs hlo_le' hlookQ
+      | varDecl vd τ init rest hstr _ hrs _ =>
+          cases hlo : loop with
+          | none => rw [hloop] at hlo; simp at hlo
+          | some inf =>
+              simp only [lowerStmtsCFG, hlo] at h
+              simp at h
+      | assign aid e rest hstr _ hrs hfree =>
+          simp only [lowerStmtsCFG] at h
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he] at h; simp at h
+          | some p =>
+              obtain ⟨v, ie, s1⟩ := p
+              rw [he] at h
+              simp only [] at h
+              cases hr : lowerStmtsCFG bId (some contB) false (updAssoc ρ aid v) s1 nextB lastVal true loop rest with
+              | none => rw [hr] at h; simp at h
+              | some q =>
+                  rw [hr] at h
+                  simp only [] at h
+                  obtain rfl := Option.some.inj h
+                  have hlookQ : rhoLookup q.ρ id' = some r := hlook
+                  have hv : lo ≤ v :=
+                    Nat.le_trans hlo_le
+                      (lowerExpr_result_ge ρ supply e v ie s1 hstr hfree he)
+                  have hc' : IsChain base lo (updAssoc ρ aid v) :=
+                    IsChain.step ρ aid v hc hv
+                  have hlo_le' : lo ≤ s1 :=
+                    Nat.le_trans hlo_le (lower_mono.1 _ _ _ _ _ _ he)
+                  exact ih _ _ _ _ _ _ _ _ _ hc' _ hloop hr hrs hlo_le' hlookQ
+      | nop rest hrs =>
+          simp only [lowerStmtsCFG] at h
+          cases hr : lowerStmtsCFG bId (some contB) false ρ supply nextB lastVal true loop rest with
+          | none => rw [hr] at h; simp at h
+          | some q =>
+              rw [hr] at h
+              obtain rfl := Option.some.inj h
+              have hlookQ : rhoLookup q.ρ id' = some r := hlook
+              exact ih _ _ _ _ _ _ _ _ _ hc _ hloop hr hrs hlo_le hlookQ
+      | ifStmt c th el rest hstr _ hath hael hrs _ _ =>
+          simp only [lowerStmtsCFG] at h
+          cases heC : lowerExpr ρ supply c with
+          | none => rw [heC] at h; simp at h
+          | some p =>
+              obtain ⟨vc, ic, s1⟩ := p
+              rw [heC] at h
+              simp only [] at h
+              cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1 (nextB + 3) lastVal false loop th with
+              | none => rw [ht] at h; simp at h
+              | some lt =>
+                  rw [ht] at h
+                  simp only [] at h
+                  cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ lt.supply lt.next lastVal false loop el with
+                  | none => rw [he] at h; simp at h
+                  | some le =>
+                      rw [he] at h
+                      simp only [] at h
+                      cases hr : lowerStmtsCFG (nextB + 2) (some contB) false ρ (le.supply + 1) le.next le.supply true loop rest with
+                      | none => rw [hr] at h; simp at h
+                      | some lr =>
+                          rw [hr] at h
+                          simp only [] at h
+                          obtain rfl := Option.some.inj h
+                          have hlookQ : rhoLookup lr.ρ id' = some r := hlook
+                          have hle1 : s1 ≤ lt.supply :=
+                            (lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _ ht hath).2.1
+                          have hle2 : lt.supply ≤ le.supply :=
+                            (lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _ he hael).2.1
+                          have hlo_le' : lo ≤ le.supply + 1 := by
+                            have h1 : lo ≤ supply := hlo_le
+                            have h2 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ heC
+                            omega
+                          exact ih _ _ _ _ _ _ _ _ _ hc _ hloop hr hrs hlo_le' hlookQ
+      | ifStmtBreak c th el rest hstr _ hath hael hrs hrest =>
+          simp only [lowerStmtsCFG] at h
+          cases heC : lowerExpr ρ supply c with
+          | none => rw [heC] at h; simp at h
+          | some p =>
+              obtain ⟨vc, ic, s1⟩ := p
+              rw [heC] at h
+              simp only [] at h
+              cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1 (nextB + 3) lastVal false loop th with
+              | none => rw [ht] at h; simp at h
+              | some lt =>
+                  rw [ht] at h
+                  simp only [] at h
+                  cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ lt.supply lt.next lastVal false loop el with
+                  | none => rw [he] at h; simp at h
+                  | some le =>
+                      rw [he] at h
+                      simp only [] at h
+                      cases hr : lowerStmtsCFG (nextB + 2) (some contB) false ρ (le.supply + 1) le.next le.supply true loop rest with
+                      | none => rw [hr] at h; simp at h
+                      | some lr =>
+                          rw [hr] at h
+                          simp only [] at h
+                          obtain rfl := Option.some.inj h
+                          have hlookQ : rhoLookup lr.ρ id' = some r := hlook
+                          have hle1 : s1 ≤ lt.supply :=
+                            (lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _ ht hath).2.1
+                          have hle2 : lt.supply ≤ le.supply :=
+                            (lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _ he hael).2.1
+                          have hlo_le' : lo ≤ le.supply + 1 := by
+                            have h1 : lo ≤ supply := hlo_le
+                            have h2 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ heC
+                            omega
+                          exact ih _ _ _ _ _ _ _ _ _ hc _ hloop hr hrs hlo_le' hlookQ
+      | returnStmt e rest hstr _ =>
+          simp only [lowerStmtsCFG] at h
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he] at h; simp at h
+          | some p =>
+              obtain ⟨v, ie, s1⟩ := p
+              rw [he] at h
+              simp only [] at h
+              obtain rfl := Option.some.inj h
+              have hbase' : rhoLookup base id' = some r :=
+                isChain_peel base lo ρ hc id' r hlook (hloCar (id, r) hmem)
+              rw [hbase] at hbase'
+              have hmem' : (id', r) ∈ carried :=
+                mkCarried_lookup_high hfresh hmk hbase'
+                  (mkCarried_mem_lo hmk hmem)
+              exact (mkCarried_reg_inj hmk hmem hmem').symm
+      | breakStmt rest _ =>
+          cases hlo : loop with
+          | none => rw [hloop] at hlo; simp at hlo
+          | some inf =>
+              simp only [lowerStmtsCFG, hlo] at h
+              cases hcry : carryCopies ρ inf.carried with
+              | none => rw [hcry] at h; simp at h
+              | some copies =>
+                  rw [hcry] at h
+                  obtain rfl := Option.some.inj h
+                  have hbase' : rhoLookup base id' = some r :=
+                    isChain_peel base lo ρ hc id' r hlook (hloCar (id, r) hmem)
+                  rw [hbase] at hbase'
+                  have hmem' : (id', r) ∈ carried :=
+                    mkCarried_lookup_high hfresh hmk hbase'
+                      (mkCarried_mem_lo hmk hmem)
+                  exact (mkCarried_reg_inj hmk hmem hmem').symm
+      | continueStmt rest _ =>
+          cases hlo : loop with
+          | none => rw [hloop] at hlo; simp at hlo
+          | some inf =>
+              simp only [lowerStmtsCFG, hlo] at h
+              cases hcry : carryCopies ρ inf.carried with
+              | none => rw [hcry] at h; simp at h
+              | some copies =>
+                  rw [hcry] at h
+                  obtain rfl := Option.some.inj h
+                  have hbase' : rhoLookup base id' = some r :=
+                    isChain_peel base lo ρ hc id' r hlook (hloCar (id, r) hmem)
+                  rw [hbase] at hbase'
+                  have hmem' : (id', r) ∈ carried :=
+                    mkCarried_lookup_high hfresh hmk hbase'
+                      (mkCarried_mem_lo hmk hmem)
+                  exact (mkCarried_reg_inj hmk hmem hmem').symm
+
+/- Body preserves lookups for unassigned ids: `assign` only updates its own
+id (via `updAssoc`), `exprStmt`/`nop`/`if`/`break`/`continue`/`return` leave
+`ρ` unchanged (arms preserve, `varDecl` refused under `loop = some`). By
+induction on `LoopStmts`, generalizing the envs. -/
+theorem lowerStmtsCFG_loopBody_rho_preserv (budget : Nat) :
+    ∀ (bId : MIR.BlockId) (contB : MIR.BlockId) (ρ : List (HIR.Id × ValId))
+      (supply nextB : Nat) (lastVal : ValId) (loop : Option LoopInfo)
+      (info : LoopInfo)
+      (ss : List HIR.Stmt) (L : Lowered) (id : HIR.Id),
+      loop = some info →
+      lowerStmtsCFG bId (some contB) false ρ supply nextB lastVal true loop ss =
+        some L →
+      LoopStmts budget ss →
+      id ∉ assignedIds ss →
+      rhoLookup L.ρ id = rhoLookup ρ id := by
+  intro bId contB ρ supply nextB lastVal loop info ss L id hloop h hss hid
+  induction ss generalizing bId contB ρ supply nextB lastVal loop info L id with
+  | nil =>
+      cases hss with
+      | nil =>
+          simp only [lowerStmtsCFG.eq_def] at h
+          obtain rfl := Option.some.inj h
+          rfl
+  | cons s rest ih =>
+      cases hss with
+      | exprStmt e rest hstr _ hrs =>
+          simp only [lowerStmtsCFG] at h
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he] at h; simp at h
+          | some p =>
+              obtain ⟨v0, ie, s1⟩ := p
+              rw [he] at h
+              simp only [] at h
+              cases hr : lowerStmtsCFG bId (some contB) false ρ s1 nextB v0 true loop rest with
+              | none => rw [hr] at h; simp at h
+              | some q =>
+                  rw [hr] at h
+                  simp only [] at h
+                  obtain rfl := Option.some.inj h
+                  show rhoLookup q.ρ id = rhoLookup ρ id
+                  have hidR : id ∉ assignedIds rest := by
+                    simp only [assignedIds] at hid
+                    exact hid
+                  exact ih _ _ _ _ _ _ _ _ _ _ hloop hr hrs hidR
+      | varDecl vd τ init rest hstr _ hrs _ =>
+          cases hlo : loop with
+          | none => rw [hloop] at hlo; simp at hlo
+          | some inf =>
+              simp only [lowerStmtsCFG, hlo] at h
+              simp at h
+      | assign aid e rest hstr _ hrs _ =>
+          simp only [lowerStmtsCFG] at h
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he] at h; simp at h
+          | some p =>
+              obtain ⟨v, ie, s1⟩ := p
+              rw [he] at h
+              simp only [] at h
+              cases hr : lowerStmtsCFG bId (some contB) false (updAssoc ρ aid v) s1 nextB lastVal true loop rest with
+              | none => rw [hr] at h; simp at h
+              | some q =>
+                  rw [hr] at h
+                  simp only [] at h
+                  obtain rfl := Option.some.inj h
+                  show rhoLookup q.ρ id = rhoLookup ρ id
+                  have hidR : id ∉ assignedIds rest := by
+                    simp only [assignedIds] at hid
+                    exact fun hm => hid (List.mem_cons_of_mem _ hm)
+                  have hne : id ≠ aid := by
+                    intro heq
+                    apply hid
+                    simp only [assignedIds]
+                    exact List.mem_cons.mpr (Or.inl heq)
+                  have hmid := ih _ _ _ _ _ _ _ _ _ _ hloop hr hrs hidR
+                  rw [hmid]
+                  exact rhoLookup_updAssoc_ne (fun hh => hne hh.symm) ρ
+      | nop rest hrs =>
+          simp only [lowerStmtsCFG] at h
+          cases hr : lowerStmtsCFG bId (some contB) false ρ supply nextB lastVal true loop rest with
+          | none => rw [hr] at h; simp at h
+          | some q =>
+              rw [hr] at h
+              obtain rfl := Option.some.inj h
+              show rhoLookup q.ρ id = rhoLookup ρ id
+              have hidR : id ∉ assignedIds rest := by
+                simp only [assignedIds] at hid
+                exact hid
+              exact ih _ _ _ _ _ _ _ _ _ _ hloop hr hrs hidR
+      | ifStmt c th el rest hstr _ hath hael hrs _ _ =>
+          simp only [lowerStmtsCFG] at h
+          cases heC : lowerExpr ρ supply c with
+          | none => rw [heC] at h; simp at h
+          | some p =>
+              obtain ⟨vc, ic, s1⟩ := p
+              rw [heC] at h
+              simp only [] at h
+              cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1 (nextB + 3) lastVal false loop th with
+              | none => rw [ht] at h; simp at h
+              | some lt =>
+                  rw [ht] at h
+                  simp only [] at h
+                  cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ lt.supply lt.next lastVal false loop el with
+                  | none => rw [he] at h; simp at h
+                  | some le =>
+                      rw [he] at h
+                      simp only [] at h
+                      cases hr : lowerStmtsCFG (nextB + 2) (some contB) false ρ (le.supply + 1) le.next le.supply true loop rest with
+                      | none => rw [hr] at h; simp at h
+                      | some lr =>
+                          rw [hr] at h
+                          simp only [] at h
+                          obtain rfl := Option.some.inj h
+                          show rhoLookup lr.ρ id = rhoLookup ρ id
+                          have hidR : id ∉ assignedIds rest := by
+                            intro hm
+                            apply hid
+                            simp only [assignedIds]
+                            exact List.mem_append_right
+                              (assignedIds th ++ assignedIds el) hm
+                          exact ih _ _ _ _ _ _ _ _ _ _ hloop hr hrs hidR
+      | ifStmtBreak c th el rest hstr _ hath hael hrs hrest =>
+          simp only [lowerStmtsCFG] at h
+          cases heC : lowerExpr ρ supply c with
+          | none => rw [heC] at h; simp at h
+          | some p =>
+              obtain ⟨vc, ic, s1⟩ := p
+              rw [heC] at h
+              simp only [] at h
+              cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1 (nextB + 3) lastVal false loop th with
+              | none => rw [ht] at h; simp at h
+              | some lt =>
+                  rw [ht] at h
+                  simp only [] at h
+                  cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ lt.supply lt.next lastVal false loop el with
+                  | none => rw [he] at h; simp at h
+                  | some le =>
+                      rw [he] at h
+                      simp only [] at h
+                      cases hr : lowerStmtsCFG (nextB + 2) (some contB) false ρ (le.supply + 1) le.next le.supply true loop rest with
+                      | none => rw [hr] at h; simp at h
+                      | some lr =>
+                          rw [hr] at h
+                          simp only [] at h
+                          obtain rfl := Option.some.inj h
+                          show rhoLookup lr.ρ id = rhoLookup ρ id
+                          have hidR : id ∉ assignedIds rest := by
+                            intro hm
+                            apply hid
+                            simp only [assignedIds]
+                            exact List.mem_append_right
+                              (assignedIds th ++ assignedIds el) hm
+                          exact ih _ _ _ _ _ _ _ _ _ _ hloop hr hrs hidR
+      | returnStmt e rest hstr _ =>
+          simp only [lowerStmtsCFG] at h
+          cases he : lowerExpr ρ supply e with
+          | none => rw [he] at h; simp at h
+          | some p =>
+              obtain ⟨v, ie, s1⟩ := p
+              rw [he] at h
+              simp only [] at h
+              obtain rfl := Option.some.inj h
+              rfl
+      | breakStmt rest _ =>
+          cases hlo : loop with
+          | none => rw [hloop] at hlo; simp at hlo
+          | some inf =>
+              simp only [lowerStmtsCFG, hlo] at h
+              cases hc : carryCopies ρ inf.carried with
+              | none => rw [hc] at h; simp at h
+              | some copies =>
+                  rw [hc] at h
+                  obtain rfl := Option.some.inj h
+                  rfl
+      | continueStmt rest _ =>
+          cases hlo : loop with
+          | none => rw [hloop] at hlo; simp at hlo
+          | some inf =>
+              simp only [lowerStmtsCFG, hlo] at h
+              cases hc : carryCopies ρ inf.carried with
+              | none => rw [hc] at h; simp at h
+              | some copies =>
+                  rw [hc] at h
+                  obtain rfl := Option.some.inj h
+                  rfl
+
+/-- Spine lit-preservation (pure HIR, fuel induction): if every carried id
+binds a literal in the pre-body env, it still does after running a `LoopStmts`
+body (to any outcome). Assigns store closed-straight eval results (literals
+by `evalHIR_straight_varfree_lit`); `varDecl` pushes the same; arms bind
+nothing (`runHIRStmts_arm_lookup`); everything else leaves the env alone.
+`cases hss` is safe here (fuel, not `ss`, is the induction target). -/
+theorem spine_P (budget : Nat) (carried : List (HIR.Id × ValId)) :
+    ∀ (fuel : Nat) (henv henv' : HEnv) (ss : List HIR.Stmt)
+      (hss : LoopStmts budget ss) (acc out : HFlow),
+      runHIRStmts fuel henv ss acc = (out, henv') →
+      (∀ id r, (id, r) ∈ carried → ∃ w, lookupHEnv henv id = some (.lit w)) →
+      (∀ id r, (id, r) ∈ carried → ∃ w, lookupHEnv henv' id = some (.lit w)) := by
+  intro fuel
+  induction fuel with
+  | zero =>
+      intro henv henv' ss hss acc out hrun hP id r hmem
+      have hz : runHIRStmts 0 henv ss acc = (.stuck, henv) := rfl
+      rw [hz] at hrun
+      obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+      subst henvEq
+      exact hP id r hmem
+  | succ fh ih =>
+      intro henv henv' ss hss acc out hrun hP
+      cases hss with
+      | nil =>
+          simp only [runHIRStmts] at hrun
+          obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+          subst henvEq
+          exact hP
+      | exprStmt e rest hstr _ hrest =>
+          simp only [runHIRStmts] at hrun
+          cases hev : evalHIR 256 henv e with
+          | none =>
+              rw [hev] at hrun
+              simp only [] at hrun
+              obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+              subst henvEq
+              exact hP
+          | some v =>
+              rw [hev] at hrun
+              simp only [] at hrun
+              exact ih henv henv' rest hrest _ _ hrun hP
+      | varDecl id τ init rest hstr _ hrest hvf =>
+          simp only [runHIRStmts] at hrun
+          cases hev : evalHIR 256 henv init with
+          | none =>
+              rw [hev] at hrun
+              simp only [] at hrun
+              obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+              subst henvEq
+              exact hP
+          | some v =>
+              rw [hev] at hrun
+              simp only [] at hrun
+              obtain ⟨w, hv⟩ := evalHIR_straight_varfree_lit init hvf hstr 256 henv v hev
+              subst hv
+              have hP' : ∀ idr rr, (idr, rr) ∈ carried →
+                  ∃ w0, lookupHEnv ((id, .lit w) :: henv) idr = some (.lit w0) := by
+                intro idr rr hmem
+                by_cases heq : idr = id
+                · subst heq
+                  exact ⟨w, lookupHEnv_cons_head _ _ _⟩
+                · have hne : id ≠ idr := fun h => heq h.symm
+                  obtain ⟨w0, h0⟩ := hP idr rr hmem
+                  exact ⟨w0, by rw [lookupHEnv_cons_ne hne]; exact h0⟩
+              exact ih _ _ _ hrest _ _ hrun hP'
+      | assign id e rest hstr _ hrest hvf =>
+          simp only [runHIRStmts] at hrun
+          cases hev : evalHIR 256 henv e with
+          | none =>
+              rw [hev] at hrun
+              simp only [] at hrun
+              obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+              subst henvEq
+              exact hP
+          | some v =>
+              rw [hev] at hrun
+              simp only [] at hrun
+              obtain ⟨w, hv⟩ := evalHIR_straight_varfree_lit e hvf hstr 256 henv v hev
+              subst hv
+              have hP' : ∀ idr rr, (idr, rr) ∈ carried →
+                  ∃ w0, lookupHEnv (updateHEnv henv id (.lit w)) idr = some (.lit w0) := by
+                intro idr rr hmem
+                by_cases heq : idr = id
+                · subst idr
+                  obtain ⟨w0, h0⟩ := hP id rr hmem
+                  have hbd : lookupHEnv henv id ≠ none := by
+                    rw [h0]; simp
+                  exact ⟨w, lookupHEnv_updateHEnv_id hbd⟩
+                · have hne : id ≠ idr := fun h => heq h.symm
+                  obtain ⟨w0, h0⟩ := hP idr rr hmem
+                  exact ⟨w0, by rw [lookupHEnv_updateHEnv_ne hne]; exact h0⟩
+              exact ih _ _ _ hrest _ _ hrun hP'
+      | nop rest hrest =>
+          simp only [runHIRStmts] at hrun
+          exact ih _ _ _ hrest _ _ hrun hP
+      | ifStmt c th el rest hstr _ hath hael hrest _ _ =>
+          simp only [runHIRStmts] at hrun
+          cases hev : evalHIR 256 henv c with
+          | none =>
+              rw [hev] at hrun
+              simp only [] at hrun
+              obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+              subst henvEq
+              exact hP
+          | some v =>
+              rw [hev] at hrun
+              split at hrun
+              · rename_i heq
+                rw [Option.some.injEq] at heq
+                have heq2 : v = HIR.Expr.lit (.bool true) := by simpa using heq
+                subst heq2
+                cases har : runHIRStmts fh henv th (.value (.lit .unit)) with
+                | mk outA envA =>
+                    rw [har] at hrun
+                    cases outA with
+                    | value u =>
+                        simp only [] at hrun
+                        have hPa : ∀ id r, (id, r) ∈ carried →
+                            ∃ w, lookupHEnv envA id = some (.lit w) := by
+                          intro idr rr hmem
+                          obtain ⟨w0, h0⟩ := hP idr rr hmem
+                          have hlook : lookupHEnv envA idr = lookupHEnv henv idr :=
+                            runHIRStmts_arm_lookup budget hath fh henv envA _ _ idr har
+                          rw [hlook]
+                          exact ⟨w0, h0⟩
+                        exact ih _ _ _ hrest _ _ hrun hPa
+                    | broke =>
+                        simp only [] at hrun
+                        obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+                        subst henvEq
+                        intro idr rr hmem
+                        obtain ⟨w0, h0⟩ := hP idr rr hmem
+                        have hlook : lookupHEnv envA idr = lookupHEnv henv idr :=
+                          runHIRStmts_arm_lookup budget hath fh henv envA _ _ idr har
+                        rw [hlook]
+                        exact ⟨w0, h0⟩
+                    | continued =>
+                        simp only [] at hrun
+                        obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+                        subst henvEq
+                        intro idr rr hmem
+                        obtain ⟨w0, h0⟩ := hP idr rr hmem
+                        have hlook : lookupHEnv envA idr = lookupHEnv henv idr :=
+                          runHIRStmts_arm_lookup budget hath fh henv envA _ _ idr har
+                        rw [hlook]
+                        exact ⟨w0, h0⟩
+                    | returned e =>
+                        simp only [] at hrun
+                        obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+                        subst henvEq
+                        intro idr rr hmem
+                        obtain ⟨w0, h0⟩ := hP idr rr hmem
+                        have hlook : lookupHEnv envA idr = lookupHEnv henv idr :=
+                          runHIRStmts_arm_lookup budget hath fh henv envA _ _ idr har
+                        rw [hlook]
+                        exact ⟨w0, h0⟩
+                    | stuck =>
+                        simp only [] at hrun
+                        obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+                        subst henvEq
+                        intro idr rr hmem
+                        obtain ⟨w0, h0⟩ := hP idr rr hmem
+                        have hlook : lookupHEnv envA idr = lookupHEnv henv idr :=
+                          runHIRStmts_arm_lookup budget hath fh henv envA _ _ idr har
+                        rw [hlook]
+                        exact ⟨w0, h0⟩
+              · rename_i heq
+                rw [Option.some.injEq] at heq
+                have heq2 : v = HIR.Expr.lit (.bool false) := by simpa using heq
+                subst heq2
+                cases har : runHIRStmts fh henv el (.value (.lit .unit)) with
+                | mk outA envA =>
+                    rw [har] at hrun
+                    cases outA with
+                    | value u =>
+                        simp only [] at hrun
+                        have hPa : ∀ id r, (id, r) ∈ carried →
+                            ∃ w, lookupHEnv envA id = some (.lit w) := by
+                          intro idr rr hmem
+                          obtain ⟨w0, h0⟩ := hP idr rr hmem
+                          have hlook : lookupHEnv envA idr = lookupHEnv henv idr :=
+                            runHIRStmts_arm_lookup budget hael fh henv envA _ _ idr har
+                          rw [hlook]
+                          exact ⟨w0, h0⟩
+                        exact ih _ _ _ hrest _ _ hrun hPa
+                    | broke =>
+                        simp only [] at hrun
+                        obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+                        subst henvEq
+                        intro idr rr hmem
+                        obtain ⟨w0, h0⟩ := hP idr rr hmem
+                        have hlook : lookupHEnv envA idr = lookupHEnv henv idr :=
+                          runHIRStmts_arm_lookup budget hael fh henv envA _ _ idr har
+                        rw [hlook]
+                        exact ⟨w0, h0⟩
+                    | continued =>
+                        simp only [] at hrun
+                        obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+                        subst henvEq
+                        intro idr rr hmem
+                        obtain ⟨w0, h0⟩ := hP idr rr hmem
+                        have hlook : lookupHEnv envA idr = lookupHEnv henv idr :=
+                          runHIRStmts_arm_lookup budget hael fh henv envA _ _ idr har
+                        rw [hlook]
+                        exact ⟨w0, h0⟩
+                    | returned e =>
+                        simp only [] at hrun
+                        obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+                        subst henvEq
+                        intro idr rr hmem
+                        obtain ⟨w0, h0⟩ := hP idr rr hmem
+                        have hlook : lookupHEnv envA idr = lookupHEnv henv idr :=
+                          runHIRStmts_arm_lookup budget hael fh henv envA _ _ idr har
+                        rw [hlook]
+                        exact ⟨w0, h0⟩
+                    | stuck =>
+                        simp only [] at hrun
+                        obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+                        subst henvEq
+                        intro idr rr hmem
+                        obtain ⟨w0, h0⟩ := hP idr rr hmem
+                        have hlook : lookupHEnv envA idr = lookupHEnv henv idr :=
+                          runHIRStmts_arm_lookup budget hael fh henv envA _ _ idr har
+                        rw [hlook]
+                        exact ⟨w0, h0⟩
+              · obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+                subst henvEq
+                exact hP
+      | ifStmtBreak c th el rest hstr _ hath hael hrest _ =>
+          simp only [runHIRStmts] at hrun
+          cases hev : evalHIR 256 henv c with
+          | none =>
+              rw [hev] at hrun
+              simp only [] at hrun
+              obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+              subst henvEq
+              exact hP
+          | some v =>
+              rw [hev] at hrun
+              split at hrun
+              · rename_i heq
+                rw [Option.some.injEq] at heq
+                have heq2 : v = HIR.Expr.lit (.bool true) := by simpa using heq
+                subst heq2
+                cases har : runHIRStmts fh henv th (.value (.lit .unit)) with
+                | mk outA envA =>
+                    rw [har] at hrun
+                    cases outA with
+                    | value u =>
+                        simp only [] at hrun
+                        have hPa : ∀ id r, (id, r) ∈ carried →
+                            ∃ w, lookupHEnv envA id = some (.lit w) := by
+                          intro idr rr hmem
+                          obtain ⟨w0, h0⟩ := hP idr rr hmem
+                          have hlook : lookupHEnv envA idr = lookupHEnv henv idr :=
+                            runHIRStmts_arm_lookup budget hath fh henv envA _ _ idr har
+                          rw [hlook]
+                          exact ⟨w0, h0⟩
+                        have hPr : ∀ id r, (id, r) ∈ carried →
+                            ∃ w, lookupHEnv henv id = some (.lit w) := hP
+                        exact ih _ _ _ hrest _ _ hrun hPa
+                    | broke =>
+                        simp only [] at hrun
+                        obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+                        subst henvEq
+                        intro idr rr hmem
+                        obtain ⟨w0, h0⟩ := hP idr rr hmem
+                        have hlook : lookupHEnv envA idr = lookupHEnv henv idr :=
+                          runHIRStmts_arm_lookup budget hath fh henv envA _ _ idr har
+                        rw [hlook]
+                        exact ⟨w0, h0⟩
+                    | continued =>
+                        simp only [] at hrun
+                        obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+                        subst henvEq
+                        intro idr rr hmem
+                        obtain ⟨w0, h0⟩ := hP idr rr hmem
+                        have hlook : lookupHEnv envA idr = lookupHEnv henv idr :=
+                          runHIRStmts_arm_lookup budget hath fh henv envA _ _ idr har
+                        rw [hlook]
+                        exact ⟨w0, h0⟩
+                    | returned e =>
+                        simp only [] at hrun
+                        obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+                        subst henvEq
+                        intro idr rr hmem
+                        obtain ⟨w0, h0⟩ := hP idr rr hmem
+                        have hlook : lookupHEnv envA idr = lookupHEnv henv idr :=
+                          runHIRStmts_arm_lookup budget hath fh henv envA _ _ idr har
+                        rw [hlook]
+                        exact ⟨w0, h0⟩
+                    | stuck =>
+                        simp only [] at hrun
+                        obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+                        subst henvEq
+                        intro idr rr hmem
+                        obtain ⟨w0, h0⟩ := hP idr rr hmem
+                        have hlook : lookupHEnv envA idr = lookupHEnv henv idr :=
+                          runHIRStmts_arm_lookup budget hath fh henv envA _ _ idr har
+                        rw [hlook]
+                        exact ⟨w0, h0⟩
+              · rename_i heq
+                rw [Option.some.injEq] at heq
+                have heq2 : v = HIR.Expr.lit (.bool false) := by simpa using heq
+                subst heq2
+                cases har : runHIRStmts fh henv el (.value (.lit .unit)) with
+                | mk outA envA =>
+                    rw [har] at hrun
+                    cases outA with
+                    | value u =>
+                        simp only [] at hrun
+                        have hPa : ∀ id r, (id, r) ∈ carried →
+                            ∃ w, lookupHEnv envA id = some (.lit w) := by
+                          intro idr rr hmem
+                          obtain ⟨w0, h0⟩ := hP idr rr hmem
+                          have hlook : lookupHEnv envA idr = lookupHEnv henv idr :=
+                            runHIRStmts_arm_lookup budget hael fh henv envA _ _ idr har
+                          rw [hlook]
+                          exact ⟨w0, h0⟩
+                        exact ih _ _ _ hrest _ _ hrun hPa
+                    | broke =>
+                        simp only [] at hrun
+                        obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+                        subst henvEq
+                        intro idr rr hmem
+                        obtain ⟨w0, h0⟩ := hP idr rr hmem
+                        have hlook : lookupHEnv envA idr = lookupHEnv henv idr :=
+                          runHIRStmts_arm_lookup budget hael fh henv envA _ _ idr har
+                        rw [hlook]
+                        exact ⟨w0, h0⟩
+                    | continued =>
+                        simp only [] at hrun
+                        obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+                        subst henvEq
+                        intro idr rr hmem
+                        obtain ⟨w0, h0⟩ := hP idr rr hmem
+                        have hlook : lookupHEnv envA idr = lookupHEnv henv idr :=
+                          runHIRStmts_arm_lookup budget hael fh henv envA _ _ idr har
+                        rw [hlook]
+                        exact ⟨w0, h0⟩
+                    | returned e =>
+                        simp only [] at hrun
+                        obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+                        subst henvEq
+                        intro idr rr hmem
+                        obtain ⟨w0, h0⟩ := hP idr rr hmem
+                        have hlook : lookupHEnv envA idr = lookupHEnv henv idr :=
+                          runHIRStmts_arm_lookup budget hael fh henv envA _ _ idr har
+                        rw [hlook]
+                        exact ⟨w0, h0⟩
+                    | stuck =>
+                        simp only [] at hrun
+                        obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+                        subst henvEq
+                        intro idr rr hmem
+                        obtain ⟨w0, h0⟩ := hP idr rr hmem
+                        have hlook : lookupHEnv envA idr = lookupHEnv henv idr :=
+                          runHIRStmts_arm_lookup budget hael fh henv envA _ _ idr har
+                        rw [hlook]
+                        exact ⟨w0, h0⟩
+              · obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+                subst henvEq
+                exact hP
+      | returnStmt e rest hstr _ =>
+          simp only [runHIRStmts] at hrun
+          cases hev : evalHIR 256 henv e with
+          | none =>
+              rw [hev] at hrun
+              simp only [] at hrun
+              obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+              subst henvEq
+              exact hP
+          | some v =>
+              rw [hev] at hrun
+              simp only [] at hrun
+              obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+              subst henvEq
+              exact hP
+      | breakStmt rest hrest =>
+          simp only [runHIRStmts] at hrun
+          obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+          subst henvEq
+          exact hP
+      | continueStmt rest hrest =>
+          simp only [runHIRStmts] at hrun
+          obtain ⟨_, henvEq⟩ := Prod.mk.inj hrun
+          subst henvEq
+          exact hP
+
+/-- Trampoline post-phi relation (direct back-edge alternative for `continue`):
+executing the header's trampoline phis (prev `t`) leaves the env unchanged
+(self-copies + misses, via `headerGroup_exec_tramp`), and the pre-phi env is
+already `RelEnv`-related under `ρb`. Carried ids use the HIR-lit fact plus the
+worker's carried-bind; assigned-but-not-carried resolve through `carried`;
+unassigned ids use HIR lookup preservation plus the pre-body `RelEnv` and the
+worker's below-supply frame. No `RelEnv` under `lb.ρ` is needed. -/
+theorem tramp_post_RelEnv (budget : Nat)
+    (nextB : MIR.BlockId) (ρ : List (HIR.Id × ValId)) (supply : Nat)
+    (body : List HIR.Stmt) (carried : List (HIR.Id × ValId)) (sA : Nat)
+    (ρb : List (HIR.Id × ValId)) (s1 : Nat) (lb : Lowered)
+    (hmk : mkCarried ρ supply
+      ((dedupIds (assignedIds body)).filterMap
+        (fun id => (rhoLookup ρ id).map (fun _ => id))) =
+      some (carried, sA, ρb))
+    (hbody : lowerStmtsCFG (nextB + 2) (some nextB) false ρb (s1 + 1)
+      (nextB + 3) s1 true (some ⟨nextB, nextB + 1, carried⟩) body = some lb)
+    (hloop : LoopStmts budget body)
+    (hfresh : FreshAbove ρ supply)
+    (bId fallEnd : MIR.BlockId) (tramps : List MIR.BlockId)
+    (phif : HIR.Id × ValId → List MIR.Instr)
+    (hphif : ∀ q ∈ carried, ∃ entrySrc backSrc,
+      rhoLookup ρ q.1 = some entrySrc ∧
+      phif q = ([MIR.Instr.phi q.2 bId entrySrc,
+        MIR.Instr.phi q.2 fallEnd backSrc] ++
+        tramps.map (MIR.Instr.phi q.2 · q.2)))
+    (hfallNe : fallEnd ≠ bId)
+    (htrNe : ∀ t ∈ tramps, t ≠ bId)
+    (hdistC : ∀ id₁ r₁ id₂ r₂, (id₁, r₁) ∈ carried → (id₂, r₂) ∈ carried →
+      r₁ = r₂ → id₁ = id₂)
+    (envB : HEnv) (henv : HEnv) (fenv fenvArr : FullEnv)
+    (hrelB0 : RelEnv henv ρb fenv.env)
+    (hBIND : ∀ id r w, (id, r) ∈ carried →
+      lookupHEnv envB id = some (.lit w) → fenvArr.env r = some w)
+    (hP : ∀ id r, (id, r) ∈ carried → ∃ w, lookupHEnv envB id = some (.lit w))
+    (hpres : ∀ r, r < supply → (∀ idx, (idx, r) ∉ carried) →
+      fenvArr.env r = fenv.env r)
+    (hlookB : ∀ id, id ∉ assignedIds body →
+      lookupHEnv envB id = lookupHEnv henv id)
+    (t : MIR.BlockId) (htmem : t ∈ tramps) (hfallt : fallEnd ≠ t)
+    (hbIdt : bId ≠ t) (prog : Program) :
+    ∃ fenv', execInstrsFullFromIn prog (some t) fenvArr
+        ((carried.map phif).flatten) = some fenv' ∧
+      RelEnv envB ρb fenv'.env ∧
+      (∀ id r w, (id, r) ∈ carried →
+        lookupHEnv envB id = some (.lit w) → fenv'.env r = some w) ∧
+      (∀ r', (∀ idx, (idx, r') ∉ carried) → fenv'.env r' = fenvArr.env r') := by
+  -- Per-carried HIR-lit plus worker bind: every carried reg is bound.
+  have hval : ∀ id r, (id, r) ∈ carried → ∃ w,
+      lookupHEnv envB id = some (.lit w) ∧ fenvArr.env r = some w := by
+    intro idr rr hmem
+    obtain ⟨w, hlookH⟩ := hP idr rr hmem
+    exact ⟨w, hlookH, hBIND idr rr w hmem hlookH⟩
+  -- (i) Executing all tramp groups leaves the env unchanged.
+  have hexec : execInstrsFullFromIn prog (some t) fenvArr
+      ((carried.map phif).flatten) = some fenvArr := by
+    have genFrom : ∀ (cs : List (HIR.Id × ValId)),
+        (∀ q ∈ cs, ∃ entrySrc backSrc, rhoLookup ρ q.1 = some entrySrc ∧
+          phif q = ([MIR.Instr.phi q.2 bId entrySrc,
+            MIR.Instr.phi q.2 fallEnd backSrc] ++
+            tramps.map (MIR.Instr.phi q.2 · q.2))) →
+        (∀ id₁ r₁ id₂ r₂, (id₁, r₁) ∈ cs → (id₂, r₂) ∈ cs →
+          r₁ = r₂ → id₁ = id₂) →
+        (∀ id r, (id, r) ∈ cs → ∃ w,
+          lookupHEnv envB id = some (.lit w) ∧ fenvArr.env r = some w) →
+        execInstrsFullFrom (some t) fenvArr
+          ((cs.map phif).flatten) = some fenvArr := by
+      intro cs hphif_cs hdist_cs hval_cs
+      induction cs with
+      | nil =>
+          simp
+      | cons p rest ih =>
+          obtain ⟨id₀, r₀⟩ := p
+          have hfhead : ∃ entrySrc backSrc, rhoLookup ρ id₀ = some entrySrc ∧
+              phif (id₀, r₀) = ([MIR.Instr.phi r₀ bId entrySrc,
+                MIR.Instr.phi r₀ fallEnd backSrc] ++
+                tramps.map (MIR.Instr.phi r₀ · r₀)) := by
+            have h := hphif_cs (id₀, r₀) (List.mem_cons_self ..)
+            obtain ⟨esrc, bsrc, he1, he2⟩ := h
+            exact ⟨esrc, bsrc, he1, he2⟩
+          obtain ⟨entrySrc, backSrc, he1, hfp⟩ := hfhead
+          have hval_rest : ∀ id r, (id, r) ∈ rest → ∃ w,
+              lookupHEnv envB id = some (.lit w) ∧ fenvArr.env r = some w := by
+            intro idr rr hmem
+            exact hval_cs idr rr (List.mem_cons_of_mem _ hmem)
+          have hphif_rest : ∀ q ∈ rest, ∃ entrySrc backSrc,
+              rhoLookup ρ q.1 = some entrySrc ∧
+              phif q = ([MIR.Instr.phi q.2 bId entrySrc,
+                MIR.Instr.phi q.2 fallEnd backSrc] ++
+                tramps.map (MIR.Instr.phi q.2 · q.2)) := by
+            intro q hq
+            exact hphif_cs q (List.mem_cons_of_mem _ hq)
+          have hdist_rest : ∀ id₁ r₁ id₂ r₂, (id₁, r₁) ∈ rest → (id₂, r₂) ∈ rest →
+              r₁ = r₂ → id₁ = id₂ := by
+            intro a b c d h1 h2 heq
+            exact hdist_cs a b c d (List.mem_cons_of_mem _ h1)
+              (List.mem_cons_of_mem _ h2) heq
+          obtain ⟨w₀, hlookH, hreg0⟩ := hval_cs id₀ r₀ (List.mem_cons_self ..)
+          have hexec1 : execInstrsFullFrom (some t) fenvArr (phif (id₀, r₀)) =
+              some fenvArr := by
+            rw [hfp]
+            exact headerGroup_exec_tramp t bId fallEnd tramps r₀ entrySrc
+              backSrc fenvArr w₀ hbIdt hfallt hreg0
+          have hrest := ih hphif_rest hdist_rest hval_rest
+          have happ : execInstrsFullFrom (some t) fenvArr
+              (phif (id₀, r₀) ++ (rest.map phif).flatten) = some fenvArr := by
+            rw [execInstrsFullFrom_append, hexec1]
+            exact hrest
+          simpa using happ
+    rw [execInstrsFullFromIn_eq]
+    exact genFrom carried hphif hdistC hval
+  refine ⟨fenvArr, hexec, ?_, ?_, ?_⟩
+  · -- (ii) RelEnv under ρb.
+    intro id u hlook
+    rcases mkCarried_lookup hmk hlook with ⟨i, rr, hmem, hid, hu⟩ | hbase
+    · subst hid
+      subst hu
+      obtain ⟨w, hlookH, hreg⟩ := hval id u hmem
+      exact ⟨w, hlookH, hreg⟩
+    · by_cases hass : id ∈ assignedIds body
+      · have hmemIds : id ∈ (dedupIds (assignedIds body)).filterMap
+          (fun id => (rhoLookup ρ id).map (fun _ => id)) := by
+          rw [List.mem_filterMap]
+          exact ⟨id, dedupIds_mem hass, by simp [hbase]⟩
+        obtain ⟨r, hlookB', hmemC⟩ := mkCarried_mem_lookup hmemIds hmk
+        have hur : r = u := Option.some.inj (hlookB'.symm.trans hlook)
+        subst hur
+        obtain ⟨w, hlookH, hreg⟩ := hval id r hmemC
+        exact ⟨w, hlookH, hreg⟩
+      · have hEq : lookupHEnv envB id = lookupHEnv henv id := hlookB id hass
+        obtain ⟨w, hlookH0, hreg0⟩ := hrelB0 id u hlook
+        refine ⟨w, ?_, ?_⟩
+        · rw [hEq]; exact hlookH0
+        · have hnotin : ∀ idx, (idx, u) ∉ carried := by
+            intro idx hcon
+            have hle := mkCarried_mem_lo hmk hcon
+            have hlt : u < supply := hfresh id u (rhoLookup_some_mem _ _ _ hbase)
+            exact absurd hle (Nat.not_le_of_gt hlt)
+          rw [hpres u (hfresh id u (rhoLookup_some_mem _ _ _ hbase)) hnotin]
+          exact hreg0
+  · intro id r w hmem hlookH
+    obtain ⟨w', hlookH', hreg⟩ := hval id r hmem
+    have h1 : HIR.Expr.lit w' = HIR.Expr.lit w := Option.some.inj (by
+        have h := hlookH
+        rw [hlookH'] at h
+        exact h)
+    have hw : w = w' := (HIR.Expr.lit.inj h1).symm
+    subst hw
+    exact hreg
+  · intro r' hnotin
+    rfl
+
+/-- Post-phi conversion (back-edge): a post-header-phi `RelEnv` under the
+body-exit env `lb.ρ` plus the phi's carried-bind agreement restores `RelEnv`
+under the body-entry env `ρb`. Carried ids go through the exit env
+(`mem_preserv`) and the phi agreement; assigned-but-not-carried ids resolve
+via `mkCarried_mem_lookup`; unassigned ids keep their entry reg
+(`rho_preserv`) and the phi frame carries the match over. This generalizes
+`whileLoop_correct`'s broke-path `hrelRb` to an arbitrary post-phi pair. -/
+theorem conv_backRelEnv (budget : Nat)
+    (nextB : MIR.BlockId) (ρ : List (HIR.Id × ValId)) (supply : Nat)
+    (body : List HIR.Stmt) (carried : List (HIR.Id × ValId)) (sA : Nat)
+    (ρb : List (HIR.Id × ValId)) (s1 : Nat) (lb : Lowered)
+    (hmk : mkCarried ρ supply
+      ((dedupIds (assignedIds body)).filterMap
+        (fun id => (rhoLookup ρ id).map (fun _ => id))) =
+      some (carried, sA, ρb))
+    (hbody : lowerStmtsCFG (nextB + 2) (some nextB) false ρb (s1 + 1)
+      (nextB + 3) s1 true (some ⟨nextB, nextB + 1, carried⟩) body = some lb)
+    (hloop : LoopStmts budget body)
+    (hfresh : FreshAbove ρ supply)
+    (envB : HEnv) (fenvL fenvP : FullEnv)
+    (hrelL : RelEnv envB lb.ρ fenvL.env)
+    (hbindP : ∀ id r w, (id, r) ∈ carried →
+      lookupHEnv envB id = some (.lit w) → fenvP.env r = some w)
+    (hframeP : ∀ r', (∀ idx, (idx, r') ∉ carried) → fenvP.env r' = fenvL.env r') :
+    RelEnv envB ρb fenvP.env := by
+  intro id u hlook
+  rcases mkCarried_lookup hmk hlook with ⟨i, rr, hmem, hid, hu⟩ | hbase
+  · subst hid
+    subst hu
+    obtain ⟨u', hLb⟩ := lowerStmtsCFG_loopBody_mem_preserv budget (nextB + 2)
+      nextB ρb (s1 + 1) (nextB + 3) s1 _ _ body lb id u rfl hbody hloop hlook
+    obtain ⟨w, hlookH, hreg⟩ := hrelL id u' hLb
+    exact ⟨w, hlookH, hbindP id u w hmem hlookH⟩
+  · by_cases hass : id ∈ assignedIds body
+    · have hmemIds : id ∈ (dedupIds (assignedIds body)).filterMap
+        (fun id => (rhoLookup ρ id).map (fun _ => id)) := by
+        rw [List.mem_filterMap]
+        exact ⟨id, dedupIds_mem hass, by simp [hbase]⟩
+      obtain ⟨r, hlookB, hmemC⟩ := mkCarried_mem_lookup hmemIds hmk
+      have hur : r = u := Option.some.inj (hlookB.symm.trans hlook)
+      subst hur
+      obtain ⟨u', hLb⟩ := lowerStmtsCFG_loopBody_mem_preserv budget (nextB + 2)
+        nextB ρb (s1 + 1) (nextB + 3) s1 _ _ body lb id r rfl hbody hloop hlook
+      obtain ⟨w, hlookH, hreg⟩ := hrelL id u' hLb
+      exact ⟨w, hlookH, hbindP id r w hmemC hlookH⟩
+    · have hLb : rhoLookup lb.ρ id = some u := by
+        have hEq := lowerStmtsCFG_loopBody_rho_preserv budget (nextB + 2) nextB
+          ρb (s1 + 1) (nextB + 3) s1 _ _ body lb id rfl hbody hloop hass
+        rw [hEq]
+        exact hlook
+      obtain ⟨w, hlookH, hreg⟩ := hrelL id u hLb
+      refine ⟨w, hlookH, ?_⟩
+      have hnotin : ∀ idx, (idx, u) ∉ carried := by
+        intro idx hcon
+        have hle := mkCarried_mem_lo hmk hcon
+        have hlt : u < supply := hfresh id u (rhoLookup_some_mem _ _ _ hbase)
+        exact absurd hle (Nat.not_le_of_gt hlt)
+      rw [hframeP u hnotin]
+      exact hreg
+
+/-- Header lemma (loop recursion core): from a body-entry state (post-cond,
+post-`const s1`, `RelEnv`-related under `ρb`) plus a completed body run at
+fuel `fh`, run the worker to the header arrival, execute the back/trampoline
+phis, and complete the remaining `fh`-fuel iterations to the exit/rest.
+`value` exits use the direct back-edge (`conv_backRelEnv`); `continue` exits
+use the trampoline (`tramp_post_RelEnv`); `broke` exits directly. The
+remaining run uses the same `fh` (matching `runHIRWhile`'s fuel threading);
+recursion lands on the predecessor, so structural induction suffices.
+`whileLoop_correct`'s four recursion leaves apply it. -/
+theorem header_loop_correct (budget : Nat) :
+    ∀ (bId nextB : MIR.BlockId) (ρ : List (HIR.Id × ValId)) (supply : Nat)
+      (c : HIR.Expr) (body rest : List HIR.Stmt)
+      (carried : List (HIR.Id × ValId)) (sA : Nat) (ρb : List (HIR.Id × ValId))
+      (vc : ValId) (ic : List MIR.Instr) (s1 : Nat)
+      (lb lr : Lowered) (phis : List MIR.Instr),
+      mkCarried ρ supply
+          ((dedupIds (assignedIds body)).filterMap
+            (fun id => (rhoLookup ρ id).map (fun _ => id))) =
+          some (carried, sA, ρb) →
+      lowerExpr ρb sA c = some (vc, ic, s1) →
+      lowerStmtsCFG (nextB + 2) (some nextB) false ρb (s1 + 1) (nextB + 3) s1
+          true (some ⟨nextB, nextB + 1, carried⟩) body = some lb →
+      lowerStmtsCFG (nextB + 1) none false ρb (lb.supply + 1) lb.next
+          lb.supply true none rest = some lr →
+      mkHeaderPhis ρ bId carried
+          ((lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2)) lb.ρ
+          (lb.blocks.filterMap (fun b =>
+            match b.terminator with
+            | .goto t =>
+                if t == nextB &&
+                    b.id != (lb.blocks.getLast?.map fun b => b.id).getD
+                      (nextB + 2) then
+                  some b.id
+                else none
+            | _ => none)) = some phis →
+      LoopStmts budget body →
+      BranchStmts budget rest →
+      IsStraight c → SLWeight c < budget →
+      FreshAbove ρ supply → bId < nextB →
+      ∀ (fh : Nat) (envH : HEnv) (fenvB0 : FullEnv) (outB : HFlow) (envB : HEnv),
+      RelEnv envH ρb fenvB0.env →
+      fenvB0.env s1 = some .unit →
+      runHIRStmts fh envH body (.value (.lit .unit)) = (outB, envB) →
+      ∀ (res : HFlow) (env' : HEnv),
+      ((∃ u, outB = .value u) ∨ outB = .continued) →
+      (outB = .stuck → (res, env') = (.stuck, envB)) →
+      (outB = .continued → runHIRWhile fh envB c body = (res, env')) →
+      (∀ (u : HIR.Expr), outB = .value u →
+        runHIRWhile fh envB c body = (res, env')) →
+      ∀ (prog : Program) (f : Func) (F : Nat),
+      (∀ b ∈ lb.blocks, b ∈ f.blocks) →
+      (∀ b ∈ [⟨nextB + 2, .const s1 .unit :: lb.instrs, lb.term⟩] ++
+          [⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩] ++
+          [⟨nextB + 1, .const lb.supply .unit :: lr.instrs, lr.term⟩] ++
+          lr.blocks,
+        b ∈ f.blocks) →
+      (f.blocks.map Block.id).Nodup →
+      ∀ (fuelB C : Nat), F ≥ (2 + armBlockBound fuelB body) * (fh + 1) + C →
+      ((res = .value (.lit .unit)) →
+        ∃ F' fenvX, F' ≤ F ∧
+          execBlockFromIn prog F f (some nextB)
+              ⟨nextB + 2, lb.instrs, lb.term⟩ fenvB0 =
+            execBlockFromIn prog F' f (some (nextB + 1))
+              ⟨nextB + 1, lr.instrs, lr.term⟩ fenvX ∧
+          RelEnv env' ρb fenvX.env ∧ fenvX.env lb.supply = some .unit) ∧
+      ((∀ (e : HIR.Expr), res = .returned e →
+        ∃ w_e, e = .lit w_e ∧
+          execBlockFromIn prog F f (some nextB)
+              ⟨nextB + 2, lb.instrs, lb.term⟩ fenvB0 = some w_e)) := by
+  intro bId nextB ρ supply c body rest carried sA ρb vc ic s1 lb lr phis hmk
+    hcond hbody hrest hphis hloop hrestP hstr hlt hfresh hltB fh
+  induction fh with
+  | zero =>
+      intro envH fenvB0 outB envB hrelB0 haccB0 hbrun res env' hout hstuck hcont hval
+        prog f F hmemLb hsub hnodf fuelB C hF
+      have hz : runHIRStmts 0 envH body (.value (.lit .unit)) = (.stuck, envH) := rfl
+      rw [hz] at hbrun
+      obtain ⟨houtEq, henvEq⟩ := Prod.mk.inj hbrun
+      subst henvEq
+      have hresStuck : (res, env') = (.stuck, envH) := hstuck houtEq.symm
+      have hresEq : res = .stuck := congrArg Prod.fst hresStuck
+      refine ⟨?_, ?_⟩
+      · intro hres
+        rw [hresEq] at hres
+        exact absurd hres (by simp)
+      · intro e hres
+        rw [hresEq] at hres
+        exact absurd hres (by simp)
+  | succ fh ih =>
+      intro envH fenvB0 outB envB hrelB0 haccB0 hbrun res env' hout hstuck hcont hval
+        prog f F hmemLb hsub hnodf fuelB C hF
+      cases houtB : outB with
+      | stuck =>
+          have hresStuck : (res, env') = (.stuck, envB) := hstuck houtB
+          have hresEq : res = .stuck := congrArg Prod.fst hresStuck
+          refine ⟨?_, ?_⟩
+          · intro hres
+            rw [hresEq] at hres
+            exact absurd hres (by simp)
+          · intro e hres
+            rw [hresEq] at hres
+            exact absurd hres (by simp)
+      | broke =>
+          rcases hout with ⟨u, h⟩ | h
+          · rw [houtB] at h; exact absurd h (by simp)
+          · rw [houtB] at h; exact absurd h (by simp)
+      | returned e =>
+          rcases hout with ⟨u, h⟩ | h
+          · rw [houtB] at h; exact absurd h (by simp)
+          · rw [houtB] at h; exact absurd h (by simp)
+      | value u =>
+          sorry
+      | continued =>
+          sorry
+
+/-- NOTE (Stage C hard gate C7-loop, refined). The while-loop execution
+core: the MIR
+entry block (`goto` header) runs the header phis, the re-evaluated
+condition, and the body assembly for exactly the oracle's iterations, reaching the exit block with a related environment (value case)
+or returning the body's value (returned case). The proof decomposes into
+three additive pieces: (1) a LoopStmts body-spine worker that threads the
+header-phis through one body iteration (closed bodies bind, so the existing
+arm workers do not chain iterations); (2) an arm-continued (header-reaching)
+lemma lifting each if-arm inside the body to the back-edge; (3) header-phi
+chaining tying carried registers to the HIR env across iterations. Note
+`arm_total`/`arm_broke` are both loop-parametric (they already cover if-arms
+inside loop bodies), so the gap is strictly the spine worker plus (2)-(3).
+The fuel inequality `fh ≤ fuelB` (loop fuel adequacy, cf. the worker's new
+hypothesis) funds `(fh + 1)` iterations. Deferred; the `whileStmt` case of
+`lowerStmtsCFG_total` cites exactly this interface.
+
+WARNING (former soundness obstruction, now fixed at the fragment level): the
+statement used to be FALSE as written — a body declaring a fresh variable
+(`while false { varDecl x … }`) lowered fine with zero oracle iterations,
+but `lb.ρ ∋ (x, _)` while `x` was unbound in `henv`, so `RelEnv env' lb.ρ _`
+failed (see `RelEnv_of_lookup_none` and the refusal pin above). The
+`loop = some` refusal plus the `ρb`-restoring and break-snapshot changes
+remove both known counterexamples; what remains is proving the spine.
+
+Loop 183 probing (operational miscompilation, same root cause):
+`x = 5; while (x < 2) { x = x + 1 }; x` runs zero trips, so HIR yields
+`value (lit (int 5))`, but `lowerProgramCFG` + `execFuncFrom 19` yields `none`
+— the post-loop `rest` reads the body's exit register, which was never
+assigned on the zero-trip path (repro in /tmp/probe_zero.lean). So even
+`assign`-only bodies miscompile on zero trips: any body binding breaks the
+zero-trip path, not just `varDecl`. The `ifStmtBreak` predicate already
+handles the symmetric break-skips-tail hazard (binding tails after
+breakable `if`s are refused), but nothing guards zero trips.
+Fix implemented in the lowering: `rest` is lowered under the body-entry env
+`ρb` (carried ids already read the phi registers there, and non-carried ids
+are untouched by bodies in-fragment), `varDecl` under `loop = some` is
+refused in `lowerStmtsCFG` (declarations push and escape; even shadowed ones
+break zero trips — pinned by the `= none` example above), and `break`
+snapshots carried regs (like `continue`) so the phi reads break-time values.
+The loop-exit block seeds `lb.supply` (rest's entry accumulator) with unit,
+not `lr.supply` (rest's exit reg, which rest never reads before writing): with
+the wrong seed nothing in the loop's blocks ever wrote `lb.supply`, so the
+spine's `fenvX.env lb.supply = unit` conjunct was unprovable. This keeps
+`whileCountProg` (counter via `assign`, pinned passing) while making zero
+trips sound. Exit-copy remediation was considered and rejected:
+replaying carried regs into body-exit regs clobbers under register aliasing
+(`x = y` aliases `v_y`), which `VarFree` excludes in-fragment but the
+lowering still accepts out-of-fragment. The `break` snapshot is wired
+through `CarriedExcl` hypotheses in `lowerStmtsCFG_arm_broke` (proved via
+`carryCopies_exec`, with `mkCarried_excl` deriving exclusivity and
+`mkCarried_reg_inj` giving distinctness from `hmk`).
+Remaining hard gate (deferred, `sorry` below): the `whileLoop_correct` spine
+induction is missing five pieces. (1) Edge distinctness: first-entry needs
+`fallEnd ≠ bId ∧ bId ∉ tramps` so only entry phis fire; provable from a
+`bId < nextB` freshness invariant that must be threaded through every worker
+(`loopBody_inv`, `branch_inv`, `arm_inv`, `total`, `arm_total`, `arm_broke`,
+...). (2) A `ρb`-high-members-are-carried lemma: `(id, r) ∈ ρb ∧ supply ≤ r
+→ (id, r) ∈ carried`, for the back-edge clobber argument. (3) Header-phi
+chaining (old piece 4): sequential entry/back phi execution re-establishes
+`RelEnv` under `ρb`, mirroring `carryCopies_exec`'s induction. (4) A
+continued-body worker (`arm_continued` analogue of `arm_broke`): neither
+`arm_total` (value/returned only) nor `arm_broke` (broke only) covers
+`out = .continued` reaching the header. (5) The fuel induction itself,
+chaining cond/body/header with the `(2 + armBlockBound) * (fh+1)` budget.
+Do not attempt the proof until (1)-(4) exist. -/
+theorem whileLoop_correct (budget : Nat) :
+    ∀ (bId nextB : MIR.BlockId) (ρ : List (HIR.Id × ValId)) (supply : Nat)
+      (c : HIR.Expr) (body rest : List HIR.Stmt)
+      (carried : List (HIR.Id × ValId)) (sA : Nat) (ρb : List (HIR.Id × ValId))
+      (vc : ValId) (ic : List MIR.Instr) (s1 : Nat)
+      (lb lr : Lowered) (phis : List MIR.Instr),
+      mkCarried ρ supply
+          ((dedupIds (assignedIds body)).filterMap
+            (fun id => (rhoLookup ρ id).map (fun _ => id))) =
+          some (carried, sA, ρb) →
+      lowerExpr ρb sA c = some (vc, ic, s1) →
+      lowerStmtsCFG (nextB + 2) (some nextB) false ρb (s1 + 1) (nextB + 3) s1
+          true (some ⟨nextB, nextB + 1, carried⟩) body = some lb →
+      lowerStmtsCFG (nextB + 1) none false ρb (lb.supply + 1) lb.next
+          lb.supply true none rest = some lr →
+      mkHeaderPhis ρ bId carried
+          ((lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2)) lb.ρ
+          (lb.blocks.filterMap (fun b =>
+            match b.terminator with
+            | .goto t =>
+                if t == nextB &&
+                    b.id != (lb.blocks.getLast?.map fun b => b.id).getD
+                      (nextB + 2) then
+                  some b.id
+                else none
+            | _ => none)) = some phis →
+      LoopStmts budget body →
+      BranchStmts budget rest →
+      IsStraight c → SLWeight c < budget →
+      FreshAbove ρ supply → bId < nextB →
+      ∀ (fh : Nat) (henv : HEnv) (fenv : FullEnv),
+      RelEnv henv ρ fenv.env →
+      ∀ (res : HFlow) (env' : HEnv),
+      runHIRWhile fh henv c body = (res, env') →
+      ∀ (prog : Program) (f : Func) (prev : Option MIR.BlockId) (F : Nat),
+      (∀ b ∈ lb.blocks ++ [⟨nextB + 2, .const s1 .unit :: lb.instrs,
+          lb.term⟩] ++
+          [⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩] ++
+          [⟨nextB + 1, .const lb.supply .unit :: lr.instrs, lr.term⟩] ++
+          lr.blocks,
+        b ∈ f.blocks) →
+      (f.blocks.map Block.id).Nodup →
+      ∀ (fuelB : Nat),
+      F ≥ 1 + ((2 + armBlockBound fuelB body) * (fh + 1) +
+        armBlockBound fuelB rest) →
+      FreshAbove ρb (lb.supply + 1) ∧
+      ((res = .value (.lit .unit)) →
+        ∃ F' fenvX, F' ≤ F ∧ F' ≥ 1 + armBlockBound fuelB rest ∧
+          execBlockFromIn prog F f prev ⟨bId, [], .goto nextB⟩ fenv =
+            execBlockFromIn prog F' f (some (nextB + 1))
+              ⟨nextB + 1, lr.instrs, lr.term⟩ fenvX ∧
+          RelEnv env' ρb fenvX.env ∧ fenvX.env lb.supply = some .unit) ∧
+      ((∀ (e : HIR.Expr), res = .returned e →
+        ∃ w_e, e = .lit w_e ∧
+          execBlockFromIn prog F f prev ⟨bId, [], .goto nextB⟩ fenv =
+            some w_e)) := by
+  intro bId nextB ρ supply c body rest carried sA ρb vc ic s1 lb lr phis hmk
+    hcond hbody hrest hphis hloop hrestP hstr hlt hfresh hltB fh
+  have hfrX : FreshAbove ρb (lb.supply + 1) :=
+    whileLoop_correct_fresh budget bId nextB ρ supply c body rest carried sA ρb
+      vc ic s1 lb lr phis hmk hcond hbody hrest hphis hloop hrestP hstr hlt
+      hfresh
+  induction fh with
+  | zero =>
+      intro henv fenv hrel res env' hrun prog f prev F hsub hnodf fuelB hF
+      refine ⟨hfrX, ?_, ?_⟩
+      · intro hres
+        rw [runHIRWhile_zero_eq] at hrun
+        have hst : res = .stuck := (congrArg Prod.fst hrun).symm
+        rw [hst] at hres
+        exact absurd hres (by simp)
+      · intro e he
+        rw [runHIRWhile_zero_eq] at hrun
+        have hst : res = .stuck := (congrArg Prod.fst hrun).symm
+        rw [hst] at he
+        exact absurd he (by simp)
+  | succ fh ih =>
+      intro henv fenv hrel res env' hrun prog f prev F hsub hnodf fuelB hF
+      refine ⟨hfrX, ?_, ?_⟩
+      · intro hres
+        simp only [runHIRWhile] at hrun
+        cases heval : evalHIR 256 henv c with
+        | none =>
+            rw [heval] at hrun
+            have hst : res = .stuck := (congrArg Prod.fst hrun).symm
+            rw [hst] at hres
+            exact absurd hres (by simp)
+        | some r =>
+            rw [heval] at hrun
+            cases r with
+            | lit w =>
+                cases w with
+                | bool b =>
+                    cases b with
+                    | false =>
+                        simp only [] at hrun
+                        have hpair : (res, env') = ((.value (.lit .unit)), henv) := by
+                          rw [hrun]
+                        have henvEq : env' = henv := congrArg Prod.snd hpair
+                        have hresEq : res = .value (.lit .unit) := hres
+                        subst env'
+                        -- exit path: header entry phis + cond-false + exit const
+                        have hmemH : (⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩ : Block) ∈
+                            lb.blocks ++ [⟨nextB + 2, .const s1 .unit :: lb.instrs, lb.term⟩] ++
+                            [⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩] ++
+                            [⟨nextB + 1, .const lb.supply .unit :: lr.instrs, lr.term⟩] ++ lr.blocks := by
+                          simp
+                        have hmemE : (⟨nextB + 1, .const lb.supply .unit :: lr.instrs, lr.term⟩ : Block) ∈
+                            lb.blocks ++ [⟨nextB + 2, .const s1 .unit :: lb.instrs, lb.term⟩] ++
+                            [⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩] ++
+                            [⟨nextB + 1, .const lb.supply .unit :: lr.instrs, lr.term⟩] ++ lr.blocks := by
+                          simp
+                        have hfindH : findBlock f nextB =
+                            some ⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩ :=
+                          findBlock_of_nodup_mem hnodf (hsub _ hmemH)
+                        have hfindE : findBlock f (nextB + 1) =
+                            some ⟨nextB + 1, .const lb.supply .unit :: lr.instrs, lr.term⟩ :=
+                          findBlock_of_nodup_mem hnodf (hsub _ hmemE)
+                        have hfold : carried.foldl (fun (a : Option (List Instr)) (p : HIR.Id × ValId) =>
+                            match a with
+                            | none => none
+                            | some ps =>
+                                match rhoLookup ρ p.1, rhoLookup lb.ρ p.1 with
+                                | some entrySrc, some backSrc =>
+                                    some (ps ++ [.phi p.2 bId entrySrc, .phi p.2 ((lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2)) backSrc] ++
+                                      (lb.blocks.filterMap (fun b => match b.terminator with | .goto t => if t == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2) then some b.id else none | _ => none)).map (.phi p.2 · p.2))
+                                | _, _ => none) (some []) = some phis := by
+                          simpa [mkHeaderPhis] using hphis
+                        obtain ⟨phif, hphif, hflat⟩ := mkHeaderPhis_flatMap ρ bId
+                          ((lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2)) lb.ρ
+                          (lb.blocks.filterMap (fun b => match b.terminator with | .goto t => if t == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2) then some b.id else none | _ => none))
+                          carried [] phis hfold
+                        have hfallNe : ((lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2)) ≠ bId := by
+                          have hinv := lowerStmtsCFG_loopBody_inv budget (nextB + 2) (some nextB) ρb (s1 + 1) (nextB + 3) s1 true (some ⟨nextB, nextB + 1, carried⟩) body lb hbody hloop
+                          have hbnd := hinv.2.2.1
+                          cases hgl : lb.blocks.getLast? with
+                          | none =>
+                              simp only [hgl, Option.map_none, Option.getD_none]
+                              exact Nat.ne_of_gt (Nat.lt_of_lt_of_le hltB (Nat.le_add_right _ _))
+                          | some bb =>
+                              have hm : bb ∈ lb.blocks := getLast?_mem hgl
+                              have hb := hbnd bb hm
+                              simp only [hgl, Option.map_some, Option.getD_some]
+                              have hle : nextB ≤ bb.id := Nat.le_trans (Nat.le_add_right _ _) hb.1
+                              exact Nat.ne_of_gt (Nat.lt_of_lt_of_le hltB hle)
+                        have htrNe : ∀ t ∈ (lb.blocks.filterMap (fun b => match b.terminator with | .goto tt => if tt == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2) then some b.id else none | _ => none)), t ≠ bId := by
+                          intro t ht
+                          have hinv := lowerStmtsCFG_loopBody_inv budget (nextB + 2) (some nextB) ρb (s1 + 1) (nextB + 3) s1 true (some ⟨nextB, nextB + 1, carried⟩) body lb hbody hloop
+                          have hbnd := hinv.2.2.1
+                          have hmemF : ∃ b ∈ lb.blocks, t = b.id := by
+                            rw [List.mem_filterMap] at ht
+                            obtain ⟨b, hb, hfb⟩ := ht
+                            cases htb : b.terminator with
+                            | goto tt =>
+                                simp only [htb] at hfb
+                                by_cases hC : (tt == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2)) = true
+                                · simp only [hC, if_true] at hfb
+                                  exact ⟨b, hb, (Option.some.inj hfb).symm⟩
+                                · simp only [hC, if_false] at hfb
+                                  exact absurd hfb (by simp)
+                            | _ =>
+                                simp only [htb] at hfb
+                                exact absurd hfb (by simp)
+                          obtain ⟨b, hb, rfl⟩ := hmemF
+                          have hb2 := hbnd b hb
+                          have hle : nextB ≤ b.id := Nat.le_trans (Nat.le_add_right _ _) hb2.1
+                          exact Nat.ne_of_gt (Nat.lt_of_lt_of_le hltB hle)
+                        have hfrb : FreshAbove ρb sA := (mkCarried_growth_fresh hfresh hmk).2
+                        have hsA : sA ≤ s1 := lower_mono.1 _ _ _ _ _ _ hcond
+                        have hleCar : ∀ q ∈ carried, supply ≤ q.2 := fun q hq => mkCarried_mem_lo hmk hq
+                        have hdistC : ∀ id₁ r₁ id₂ r₂, (id₁, r₁) ∈ carried → (id₂, r₂) ∈ carried → r₁ = r₂ → id₁ = id₂ := by
+                          intro a b c d h1 h2 he
+                          subst he
+                          exact mkCarried_reg_inj hmk h1 h2
+                        have hphiEq : phis = (carried.map phif).flatten := by rw [hflat]; simp
+                        obtain ⟨fenvP, hexP, hrelP, hvalP, hframeP⟩ :=
+                          headerPhis_exec_entry ρ bId ((lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2)) lb.ρ
+                            (lb.blocks.filterMap (fun b => match b.terminator with | .goto t => if t == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2) then some b.id else none | _ => none))
+                            carried phif hphif hfallNe htrNe supply hfresh hleCar hdistC prog fenv henv hrel
+                        rw [←hphiEq] at hexP
+                        have hrelPb : RelEnv henv ρb fenvP.env := by
+                          intro id u hlook
+                          rcases mkCarried_lookup hmk hlook with ⟨i, rr, hmem, hid, hu⟩ | hbase
+                          · subst hid
+                            subst hu
+                            obtain ⟨esrc, backSrc, he1, he2, hfp⟩ := hphif (id, u) hmem
+                            obtain ⟨w, hlookH, hreg⟩ := hrel id esrc he1
+                            refine ⟨w, hlookH, ?_⟩
+                            exact hvalP id u w hmem hlookH
+                          · obtain ⟨w, hlookH, hreg⟩ := hrel id u hbase
+                            refine ⟨w, hlookH, ?_⟩
+                            have hlt : u < supply := hfresh id u (rhoLookup_some_mem _ _ _ hbase)
+                            have hnotin : ∀ idx, (idx, u) ∉ carried := by
+                              intro idx hcon
+                              have hle := mkCarried_mem_lo hmk hcon
+                              exact absurd hle (Nat.not_le_of_gt hlt)
+                            rw [hframeP u hnotin]
+                            exact hreg
+                        have hfrP : FreshAbove ρb sA := FreshAbove.mono ρb sA sA (Nat.le_refl _) ((mkCarried_growth_fresh hfresh hmk).2)
+                        obtain ⟨wc, hrc, fenvC, hexC, hstoreC, hregC⟩ :=
+                          lowerCond_exec_agree budget ρb sA c vc ic s1 hcond hstr hlt hfrP henv fenvP hrelPb prog (some bId) _ heval
+                        have hrw : (HIR.Expr.lit (.bool false)) = HIR.Expr.lit wc := hrc
+                        have hwc : wc = .bool false := (HIR.Expr.lit.inj hrw).symm
+                        subst hwc
+                        have hbool : fenvC.boolOf vc = some false := boolOf_of_lit fenvC vc false hregC
+                        have hexPhiIc : execInstrsFullFromIn prog (some bId) fenv (phis ++ ic) = some fenvC := by
+                          rw [execInstrsFullFromIn_append prog (some bId) fenv phis ic, hexP]
+                          simp only [Option.some.injEq] at hexC ⊢
+                          rw [execInstrsFullFromIn_of_noPhi] at hexC ⊢
+                          · exact hexC
+                          · intro d p src hm
+                            exact IsPure_not_phi (lower_isPure.1 _ _ _ _ _ _ hcond _ hm) d p src rfl
+                          · intro d p src hm
+                            exact IsPure_not_phi (lower_isPure.1 _ _ _ _ _ _ hcond _ hm) d p src rfl
+                        have h1le : 2 ≤ (2 + armBlockBound fuelB body) := by omega
+                        have h2le : 1 ≤ (fh + 1 + 1) := by omega
+                        have hmul : 2 * 1 ≤ (2 + armBlockBound fuelB body) * (fh + 1 + 1) := Nat.mul_le_mul h1le h2le
+                        have hF3 : F ≥ 3 := by omega
+                        obtain ⟨Fmid, rfl⟩ : ∃ n, F = n + 3 := ⟨F - 3, by omega⟩
+                        have hF'ge : Fmid + 1 ≥ 1 + armBlockBound fuelB rest := by omega
+                        have hF'le : Fmid + 1 ≤ Fmid + 3 := by omega
+                        refine ⟨Fmid + 1, ⟨fenvC.env.update lb.supply Value.unit, fenvC.store⟩, hF'le, hF'ge, ?_, ?_, ?_⟩
+                        · have hexec0 : execInstrsFullFromIn prog prev fenv ([] : List MIR.Instr) = some fenv := by
+                            simp [execInstrsFullFromIn_eq]
+                          have hgoto : execBlockFromIn prog (Fmid + 3) f prev ⟨bId, [], .goto nextB⟩ fenv =
+                              execBlockFromIn prog (Fmid + 2) f (some bId) ⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩ fenv :=
+                            execBlockFromIn_goto prog (Fmid + 2) f prev bId [] nextB fenv fenv ⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩ hexec0 hfindH
+                          have hbranch : execBlockFromIn prog (Fmid + 2) f (some bId) ⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩ fenv =
+                              execBlockFromIn prog (Fmid + 1) f (some nextB) ⟨nextB + 1, .const lb.supply .unit :: lr.instrs, lr.term⟩ fenvC :=
+                            execBlockFromIn_branch_false prog (Fmid + 1) f (some bId) nextB (phis ++ ic) vc (nextB + 2) (nextB + 1) fenv fenvC ⟨nextB + 1, .const lb.supply .unit :: lr.instrs, lr.term⟩ hexPhiIc hbool hfindE
+                          have hnp_lr : ∀ dst pred src, MIR.Instr.phi dst pred src ∉ lr.instrs := by
+                            intro d p src hm
+                            have hpure := lowerStmtsCFG_instrs_pure (nextB + 1) none false ρb (lb.supply + 1) lb.next lb.supply true rest lr hrest _ hm
+                            exact IsPure_not_phi hpure d p src rfl
+                          have hconst : execInstrsFullFromIn prog (some nextB) fenvC [MIR.Instr.const lb.supply Value.unit] =
+                              some ⟨fenvC.env.update lb.supply Value.unit, fenvC.store⟩ := by
+                            simp [execInstrsFullFromIn_eq, execInstrsFullFrom, evalInstrFull]
+                          have hexit : execBlockFromIn prog (Fmid + 1) f (some nextB) ⟨nextB + 1, .const lb.supply .unit :: lr.instrs, lr.term⟩ fenvC =
+                              execBlockFromIn prog (Fmid + 1) f (some (nextB + 1)) ⟨nextB + 1, lr.instrs, lr.term⟩ ⟨fenvC.env.update lb.supply Value.unit, fenvC.store⟩ := by
+                            cases hFmid : Fmid with
+                            | zero =>
+                                simp only [execBlockFromIn, hconst]
+                                have happ : execInstrsFullFromIn prog (some nextB) fenvC (MIR.Instr.const lb.supply Value.unit :: lr.instrs) =
+                                    execInstrsFullFromIn prog (some nextB) ⟨fenvC.env.update lb.supply Value.unit, fenvC.store⟩ lr.instrs := by
+                                  have happ0 := execInstrsFullFromIn_append prog (some nextB) fenvC [MIR.Instr.const lb.supply Value.unit] lr.instrs
+                                  simp only at happ0
+                                  rw [hconst] at happ0
+                                  simpa using happ0
+                                rw [happ]
+                                have heq1 : execInstrsFullFromIn prog (some nextB) ⟨fenvC.env.update lb.supply Value.unit, fenvC.store⟩ lr.instrs =
+                                    execInstrsFullFromIn prog (some (nextB + 1)) ⟨fenvC.env.update lb.supply Value.unit, fenvC.store⟩ lr.instrs := by
+                                  rw [execInstrsFullFromIn_of_noPhi prog (some nextB) _ lr.instrs hnp_lr, execInstrsFullFromIn_of_noPhi prog (some (nextB + 1)) _ lr.instrs hnp_lr]
+                                rw [heq1]
+                            | succ n =>
+                                simp only [execBlockFromIn]
+                                have happ : execInstrsFullFromIn prog (some nextB) fenvC (MIR.Instr.const lb.supply Value.unit :: lr.instrs) =
+                                    execInstrsFullFromIn prog (some nextB) ⟨fenvC.env.update lb.supply Value.unit, fenvC.store⟩ lr.instrs := by
+                                  have happ0 := execInstrsFullFromIn_append prog (some nextB) fenvC [MIR.Instr.const lb.supply Value.unit] lr.instrs
+                                  simp only at happ0
+                                  rw [hconst] at happ0
+                                  simpa using happ0
+                                rw [happ]
+                                have heq1 : execInstrsFullFromIn prog (some nextB) ⟨fenvC.env.update lb.supply Value.unit, fenvC.store⟩ lr.instrs =
+                                    execInstrsFullFromIn prog (some (nextB + 1)) ⟨fenvC.env.update lb.supply Value.unit, fenvC.store⟩ lr.instrs := by
+                                  rw [execInstrsFullFromIn_of_noPhi prog (some nextB) _ lr.instrs hnp_lr, execInstrsFullFromIn_of_noPhi prog (some (nextB + 1)) _ lr.instrs hnp_lr]
+                                rw [heq1]
+                          exact hgoto.trans (hbranch.trans hexit)
+                        · have hrelC : RelEnv henv ρb fenvC.env := by
+                            have hexPure : execInstrsFull fenvP ic = some fenvC := by
+                              have hnp : ∀ dst pred src, MIR.Instr.phi dst pred src ∉ ic := by
+                                intro d p src hm
+                                exact IsPure_not_phi (lower_isPure.1 _ _ _ _ _ _ hcond _ hm) d p src rfl
+                              have h1 : execInstrsFullFromIn prog (some bId) fenvP ic = execInstrsFull fenvP ic := execInstrsFullFromIn_of_noPhi prog (some bId) fenvP ic hnp
+                              rw [h1] at hexC
+                              exact hexC
+                            exact RelEnv_exec henv ρb sA c vc ic s1 hcond fenvP fenvC hrelPb hfrP hexPure
+                          have hlb : s1 + 1 ≤ lb.supply :=
+                            (lowerStmtsCFG_loopBody_inv budget (nextB + 2) (some nextB) ρb (s1 + 1) (nextB + 3) s1 true (some ⟨nextB, nextB + 1, carried⟩) body lb hbody hloop).2.1
+                          intro id u hlook
+                          obtain ⟨w, hlookH, hreg⟩ := hrelC id u hlook
+                          refine ⟨w, hlookH, ?_⟩
+                          by_cases heq : u = lb.supply
+                          · have hlt : u < sA := hfrP id u (rhoLookup_some_mem _ _ _ hlook)
+                            have h1 : lb.supply < sA := heq ▸ hlt
+                            have hlt2 : sA < lb.supply := Nat.lt_of_le_of_lt hsA (Nat.lt_of_lt_of_le (Nat.lt_succ_self _) hlb)
+                            have hcontra : lb.supply < lb.supply := Nat.lt_trans h1 hlt2
+                            exact absurd hcontra (Nat.lt_irrefl _)
+                          · have hbeq : ¬ (u == lb.supply) := by simpa using heq
+                            simp only [Env.update, hbeq]
+                            exact hreg
+                        · simp [Env.update]
+                    | true =>
+                        simp only [] at hrun
+                        cases hbrun : runHIRStmts fh henv body (.value (.lit .unit)) with
+                        | mk out envB =>
+                            rw [hbrun] at hrun
+                            cases out with
+                            | value u =>
+                                simp only [] at hrun
+                                sorry
+                            | returned er =>
+                                simp only [] at hrun
+                                have hst : res = .returned er := (congrArg Prod.fst hrun).symm
+                                rw [hst] at hres
+                                exact absurd hres (by simp)
+                            | broke =>
+                                simp only [] at hrun
+                                have hpairB : (res, env') = ((.value (.lit .unit)), envB) := by rw [hrun]
+                                have henvBEq : env' = envB := congrArg Prod.snd hpairB
+                                subst env'
+                                have hmemH : (⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩ : Block) ∈
+                                    lb.blocks ++ [⟨nextB + 2, .const s1 .unit :: lb.instrs, lb.term⟩] ++
+                                    [⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩] ++
+                                    [⟨nextB + 1, .const lb.supply .unit :: lr.instrs, lr.term⟩] ++ lr.blocks := by simp
+                                have hmemB : (⟨nextB + 2, .const s1 .unit :: lb.instrs, lb.term⟩ : Block) ∈
+                                    lb.blocks ++ [⟨nextB + 2, .const s1 .unit :: lb.instrs, lb.term⟩] ++
+                                    [⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩] ++
+                                    [⟨nextB + 1, .const lb.supply .unit :: lr.instrs, lr.term⟩] ++ lr.blocks := by simp
+                                have hmemE : (⟨nextB + 1, .const lb.supply .unit :: lr.instrs, lr.term⟩ : Block) ∈
+                                    lb.blocks ++ [⟨nextB + 2, .const s1 .unit :: lb.instrs, lb.term⟩] ++
+                                    [⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩] ++
+                                    [⟨nextB + 1, .const lb.supply .unit :: lr.instrs, lr.term⟩] ++ lr.blocks := by simp
+                                have hfindH : findBlock f nextB =
+                                    some ⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩ :=
+                                  findBlock_of_nodup_mem hnodf (hsub _ hmemH)
+                                have hfindB : findBlock f (nextB + 2) =
+                                    some ⟨nextB + 2, .const s1 .unit :: lb.instrs, lb.term⟩ :=
+                                  findBlock_of_nodup_mem hnodf (hsub _ hmemB)
+                                have hfindE : findBlock f (nextB + 1) =
+                                    some ⟨nextB + 1, .const lb.supply .unit :: lr.instrs, lr.term⟩ :=
+                                  findBlock_of_nodup_mem hnodf (hsub _ hmemE)
+                                have hfold : carried.foldl (fun (a : Option (List Instr)) (p : HIR.Id × ValId) =>
+                                    match a with
+                                    | none => none
+                                    | some ps =>
+                                        match rhoLookup ρ p.1, rhoLookup lb.ρ p.1 with
+                                        | some entrySrc, some backSrc =>
+                                            some (ps ++ [.phi p.2 bId entrySrc, .phi p.2 ((lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2)) backSrc] ++
+                                              (lb.blocks.filterMap (fun b => match b.terminator with | .goto t => if t == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2) then some b.id else none | _ => none)).map (.phi p.2 · p.2))
+                                        | _, _ => none) (some []) = some phis := by
+                                  simpa [mkHeaderPhis] using hphis
+                                obtain ⟨phif, hphif, hflat⟩ := mkHeaderPhis_flatMap ρ bId
+                                  ((lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2)) lb.ρ
+                                  (lb.blocks.filterMap (fun b => match b.terminator with | .goto t => if t == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2) then some b.id else none | _ => none))
+                                  carried [] phis hfold
+                                have hfallNe : ((lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2)) ≠ bId := by
+                                  have hinv := lowerStmtsCFG_loopBody_inv budget (nextB + 2) (some nextB) ρb (s1 + 1) (nextB + 3) s1 true (some ⟨nextB, nextB + 1, carried⟩) body lb hbody hloop
+                                  have hbnd := hinv.2.2.1
+                                  cases hgl : lb.blocks.getLast? with
+                                  | none =>
+                                      simp only [Option.map_none, Option.getD_none]
+                                      exact Nat.ne_of_gt (Nat.lt_of_lt_of_le hltB (Nat.le_add_right _ _))
+                                  | some bb =>
+                                      have hm : bb ∈ lb.blocks := getLast?_mem hgl
+                                      have hb := hbnd bb hm
+                                      simp only [hgl, Option.map_some, Option.getD_some]
+                                      have hle : nextB ≤ bb.id := Nat.le_trans (Nat.le_add_right _ _) hb.1
+                                      exact Nat.ne_of_gt (Nat.lt_of_lt_of_le hltB hle)
+                                have htrNe : ∀ t ∈ (lb.blocks.filterMap (fun b => match b.terminator with | .goto tt => if tt == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2) then some b.id else none | _ => none)), t ≠ bId := by
+                                  intro t ht
+                                  have hinv := lowerStmtsCFG_loopBody_inv budget (nextB + 2) (some nextB) ρb (s1 + 1) (nextB + 3) s1 true (some ⟨nextB, nextB + 1, carried⟩) body lb hbody hloop
+                                  have hbnd := hinv.2.2.1
+                                  have hmemF : ∃ b ∈ lb.blocks, t = b.id := by
+                                    rw [List.mem_filterMap] at ht
+                                    obtain ⟨b, hb, hfb⟩ := ht
+                                    cases htb : b.terminator with
+                                    | goto tt =>
+                                        simp only [htb] at hfb
+                                        by_cases hC : (tt == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2)) = true
+                                        · simp only [hC, if_true] at hfb
+                                          exact ⟨b, hb, (Option.some.inj hfb).symm⟩
+                                        · simp only [hC] at hfb
+                                          exact absurd hfb (by simp)
+                                    | _ =>
+                                        simp only [htb] at hfb
+                                        exact absurd hfb (by simp)
+                                  obtain ⟨b, hb, rfl⟩ := hmemF
+                                  have hb2 := hbnd b hb
+                                  have hle : nextB ≤ b.id := Nat.le_trans (Nat.le_add_right _ _) hb2.1
+                                  exact Nat.ne_of_gt (Nat.lt_of_lt_of_le hltB hle)
+                                have hfrb : FreshAbove ρb sA := (mkCarried_growth_fresh hfresh hmk).2
+                                have hsA : sA ≤ s1 := lower_mono.1 _ _ _ _ _ _ hcond
+                                have hleCar : ∀ q ∈ carried, supply ≤ q.2 := fun q hq => mkCarried_mem_lo hmk hq
+                                have hdistC : ∀ id₁ r₁ id₂ r₂, (id₁, r₁) ∈ carried → (id₂, r₂) ∈ carried → r₁ = r₂ → id₁ = id₂ := by
+                                  intro a b c d h1 h2 he
+                                  subst he
+                                  exact mkCarried_reg_inj hmk h1 h2
+                                have hphiEq : phis = (carried.map phif).flatten := by rw [hflat]; simp
+                                obtain ⟨fenvP, hexP, hrelP, hvalP, hframeP⟩ :=
+                                  headerPhis_exec_entry ρ bId ((lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2)) lb.ρ
+                                    (lb.blocks.filterMap (fun b => match b.terminator with | .goto t => if t == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2) then some b.id else none | _ => none))
+                                    carried phif hphif hfallNe htrNe supply hfresh hleCar hdistC prog fenv henv hrel
+                                rw [←hphiEq] at hexP
+                                have hrelPb : RelEnv henv ρb fenvP.env := by
+                                  intro id u hlook
+                                  rcases mkCarried_lookup hmk hlook with ⟨i, rr, hmem, hid, hu⟩ | hbase
+                                  · subst hid
+                                    subst hu
+                                    obtain ⟨esrc, backSrc, he1, he2, hfp⟩ := hphif (id, u) hmem
+                                    obtain ⟨w, hlookH, hreg⟩ := hrel id esrc he1
+                                    refine ⟨w, hlookH, ?_⟩
+                                    exact hvalP id u w hmem hlookH
+                                  · obtain ⟨w, hlookH, hreg⟩ := hrel id u hbase
+                                    refine ⟨w, hlookH, ?_⟩
+                                    have hlt : u < supply := hfresh id u (rhoLookup_some_mem _ _ _ hbase)
+                                    have hnotin : ∀ idx, (idx, u) ∉ carried := by
+                                      intro idx hcon
+                                      have hle := mkCarried_mem_lo hmk hcon
+                                      exact absurd hle (Nat.not_le_of_gt hlt)
+                                    rw [hframeP u hnotin]
+                                    exact hreg
+                                have hfrP : FreshAbove ρb sA := FreshAbove.mono ρb sA sA (Nat.le_refl _) ((mkCarried_growth_fresh hfresh hmk).2)
+                                obtain ⟨wc, hrc, fenvC, hexC, hstoreC, hregC⟩ :=
+                                  lowerCond_exec_agree budget ρb sA c vc ic s1 hcond hstr hlt hfrP henv fenvP hrelPb prog (some bId) _ heval
+                                have hrw : (HIR.Expr.lit (.bool true)) = HIR.Expr.lit wc := hrc
+                                have hwc : wc = .bool true := (HIR.Expr.lit.inj hrw).symm
+                                subst hwc
+                                have hbool : fenvC.boolOf vc = some true := boolOf_of_lit fenvC vc true hregC
+                                have hexPhiIc : execInstrsFullFromIn prog (some bId) fenv (phis ++ ic) = some fenvC := by
+                                  have happ := execInstrsFullFromIn_append prog (some bId) fenv phis ic
+                                  simp only [happ, hexP, hexC]
+                                have hrelC : RelEnv henv ρb fenvC.env := by
+                                  have hexPure : execInstrsFull fenvP ic = some fenvC := by
+                                    have hnp : ∀ dst pred src, MIR.Instr.phi dst pred src ∉ ic := by
+                                      intro d p src hm
+                                      exact IsPure_not_phi (lower_isPure.1 _ _ _ _ _ _ hcond _ hm) d p src rfl
+                                    have h1 : execInstrsFullFromIn prog (some bId) fenvP ic = execInstrsFull fenvP ic := execInstrsFullFromIn_of_noPhi prog (some bId) fenvP ic hnp
+                                    rw [h1] at hexC
+                                    exact hexC
+                                  exact RelEnv_exec henv ρb sA c vc ic s1 hcond fenvP fenvC hrelPb hfrP hexPure
+                                have h1le : 2 ≤ (2 + armBlockBound fuelB body) := by omega
+                                have h2le : 2 ≤ (fh + 1 + 1) := by omega
+                                have hmul : 2 * 2 ≤ (2 + armBlockBound fuelB body) * (fh + 1 + 1) := Nat.mul_le_mul h1le h2le
+                                have hmul2 : 2 + armBlockBound fuelB body ≤ (2 + armBlockBound fuelB body) * (fh + 1 + 1) := Nat.le_mul_of_pos_right _ (by omega)
+                                have he4 : 4 ≤ (2 + armBlockBound fuelB body) * (fh + 1 + 1) := hmul
+                                have h5le : 5 ≤ 1 + ((2 + armBlockBound fuelB body) * (fh + 1 + 1) + armBlockBound fuelB rest) := by
+                                  have hj : 0 ≤ armBlockBound fuelB rest := Nat.zero_le _
+                                  have h1 : 4 + armBlockBound fuelB rest ≤ (2 + armBlockBound fuelB body) * (fh + 1 + 1) + armBlockBound fuelB rest :=
+                                    Nat.add_le_add_right he4 _
+                                  omega
+                                have hF5 : F ≥ 5 := Nat.le_trans h5le hF
+                                obtain ⟨Fmid, rfl⟩ : ∃ n, F = n + 5 := ⟨F - 5, by omega⟩
+                                have hmul3 : (2 + armBlockBound fuelB body) * 2 ≤ (2 + armBlockBound fuelB body) * (fh + 1 + 1) :=
+                                  Nat.mul_le_mul_left _ h2le
+                                have h4B : 4 + armBlockBound fuelB body ≤ (2 + armBlockBound fuelB body) * (fh + 1 + 1) := by
+                                  have hexpand : (2 + armBlockBound fuelB body) * 2 = 4 + armBlockBound fuelB body + armBlockBound fuelB body := by
+                                    omega
+                                  omega
+                                have hFbody : Fmid + 3 ≥ blockBound fuelB body + (2 + armBlockBound fuelB rest) := by
+                                  simp only [blockBound]
+                                  have hFmid : Fmid + 5 ≥ 1 + ((2 + armBlockBound fuelB body) * (fh + 1 + 1) + armBlockBound fuelB rest) := hF
+                                  omega
+                                have hexcl : CarriedExcl ρb carried := mkCarried_excl hfresh hmk
+                                have hsup : ∀ id r, (id, r) ∈ carried → r < s1 + 1 := by
+                                  intro id r hmem
+                                  have hlt : r < sA := mkCarried_mem_hi hmk hmem
+                                  exact Nat.lt_of_lt_of_le hlt (Nat.le_trans hsA (Nat.le_succ _))
+                                have hmemLb : ∀ b ∈ lb.blocks, b ∈ (lb.blocks ++ [⟨nextB + 2, .const s1 .unit :: lb.instrs, lb.term⟩] ++ [⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩] ++ [⟨nextB + 1, .const lb.supply .unit :: lr.instrs, lr.term⟩] ++ lr.blocks) := by
+                                  intro b hb
+                                  simp [hb]
+                                have hsubLb : ∀ b ∈ lb.blocks, b ∈ f.blocks := fun b hb => hsub _ (hmemLb b hb)
+                                have hconstB : execInstrsFullFromIn prog (some nextB) fenvC [MIR.Instr.const s1 Value.unit] =
+                                    some ⟨fenvC.env.update s1 Value.unit, fenvC.store⟩ := by
+                                  simp [execInstrsFullFromIn_eq, execInstrsFullFrom, evalInstrFull]
+                                have hfreshB : FreshAbove ρb (s1 + 1) := FreshAbove.mono ρb sA (s1 + 1) (Nat.le_trans hsA (Nat.le_succ _)) hfrb
+                                have hrelB0 : RelEnv henv ρb (fenvC.env.update s1 Value.unit) := by
+                                  intro id u hlook
+                                  obtain ⟨w, hlookH, hreg⟩ := hrelC id u hlook
+                                  refine ⟨w, hlookH, ?_⟩
+                                  by_cases heq : u = s1
+                                  · have hlt : u < sA := hfrP id u (rhoLookup_some_mem _ _ _ hlook)
+                                    have hcontra : s1 < sA := heq ▸ hlt
+                                    omega
+                                  · have hbeq : ¬ (u == s1) := by simpa using heq
+                                    simp only [Env.update, hbeq]
+                                    exact hreg
+                                have haccB0 : (fenvC.env.update s1 Value.unit) s1 = some Value.unit := by simp [Env.update]
+                                obtain ⟨Fb, fenvArr, blkPrev, hFb_le, hFb_ge, hexecB, hrelArr, hvalArr⟩ :=
+                                  ((lowerStmtsCFG_loopBody_run budget (nextB + 2) ρb (s1 + 1) (nextB + 3) nextB s1 (some ⟨nextB, nextB + 1, carried⟩) ⟨nextB, nextB + 1, carried⟩ body lb rfl hbody hloop hfreshB (Nat.lt_succ_self _) 0 (Nat.zero_lt_succ _) (Nat.zero_lt_succ _) Value.unit henv ⟨fenvC.env.update s1 Value.unit, fenvC.store⟩ hrelB0 haccB0 fh envB .broke hbrun prog f (some nextB) (Fmid + 3) hsubLb hnodf fuelB (2 + armBlockBound fuelB rest) hFbody hexcl hsup hdistC ⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩ ⟨nextB + 1, .const lb.supply Value.unit :: lr.instrs, lr.term⟩ ⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩ hfindH hfindE hfindH).2.1 rfl)
+                                have hlb : s1 + 1 ≤ lb.supply :=
+                                  (lowerStmtsCFG_loopBody_inv budget (nextB + 2) (some nextB) ρb (s1 + 1) (nextB + 3) s1 true (some ⟨nextB, nextB + 1, carried⟩) body lb hbody hloop).2.1
+                                have hnp_lr : ∀ dst pred src, MIR.Instr.phi dst pred src ∉ lr.instrs := by
+                                  intro d p src hm
+                                  have hpure := lowerStmtsCFG_instrs_pure (nextB + 1) none false ρb (lb.supply + 1) lb.next lb.supply true rest lr hrest _ hm
+                                  exact IsPure_not_phi hpure d p src rfl
+                                have hrelRb : RelEnv envB ρb fenvArr.env := by
+                                  intro id u hlook
+                                  rcases mkCarried_lookup hmk hlook with ⟨i, rr, hmem, hid, hu⟩ | hbase
+                                  · subst hid
+                                    subst hu
+                                    obtain ⟨u', hLb⟩ := lowerStmtsCFG_loopBody_mem_preserv budget (nextB + 2) nextB ρb (s1 + 1) (nextB + 3) s1 _ _ body lb id u rfl hbody hloop hlook
+                                    obtain ⟨w, hlookH, hreg⟩ := hrelArr id u' hLb
+                                    exact ⟨w, hlookH, hvalArr id u w hmem hlookH⟩
+                                  · by_cases hass : id ∈ assignedIds body
+                                    · have hmemIds : id ∈ (dedupIds (assignedIds body)).filterMap (fun id => (rhoLookup ρ id).map (fun _ => id)) := by
+                                        rw [List.mem_filterMap]
+                                        exact ⟨id, dedupIds_mem hass, by simp [hbase]⟩
+                                      obtain ⟨r, hlookB, hmemC⟩ := mkCarried_mem_lookup hmemIds hmk
+                                      have hur : r = u := Option.some.inj (hlookB.symm.trans hlook)
+                                      subst hur
+                                      obtain ⟨u', hLb⟩ := lowerStmtsCFG_loopBody_mem_preserv budget (nextB + 2) nextB ρb (s1 + 1) (nextB + 3) s1 _ _ body lb id r rfl hbody hloop hlook
+                                      obtain ⟨w, hlookH, hreg⟩ := hrelArr id u' hLb
+                                      exact ⟨w, hlookH, hvalArr id r w hmemC hlookH⟩
+                                    · have hLb : rhoLookup lb.ρ id = some u := by
+                                        have hEq := lowerStmtsCFG_loopBody_rho_preserv budget (nextB + 2) nextB ρb (s1 + 1) (nextB + 3) s1 _ _ body lb id rfl hbody hloop hass
+                                        rw [hEq]
+                                        exact hlook
+                                      obtain ⟨w, hlookH, hreg⟩ := hrelArr id u hLb
+                                      exact ⟨w, hlookH, hreg⟩
+                                have hexec0 : execInstrsFullFromIn prog prev fenv ([] : List MIR.Instr) = some fenv := by
+                                  simp [execInstrsFullFromIn_eq]
+                                have hgoto : execBlockFromIn prog (Fmid + 5) f prev ⟨bId, [], .goto nextB⟩ fenv =
+                                    execBlockFromIn prog (Fmid + 4) f (some bId) ⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩ fenv := by
+                                  have hF5 : Fmid + 5 = (Fmid + 4) + 1 := by omega
+                                  rw [hF5]
+                                  exact execBlockFromIn_goto prog (Fmid + 4) f prev bId [] nextB fenv fenv _ hexec0 hfindH
+                                have hbranchT : execBlockFromIn prog (Fmid + 4) f (some bId) ⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩ fenv =
+                                    execBlockFromIn prog (Fmid + 3) f (some nextB) ⟨nextB + 2, .const s1 .unit :: lb.instrs, lb.term⟩ fenvC := by
+                                  have hF4 : Fmid + 4 = (Fmid + 3) + 1 := by omega
+                                  rw [hF4]
+                                  exact execBlockFromIn_branch_true prog (Fmid + 3) f (some bId) nextB (phis ++ ic) vc (nextB + 2) (nextB + 1) fenv fenvC _ hexPhiIc hbool hfindB
+                                have happB : execInstrsFullFromIn prog (some nextB) fenvC ([MIR.Instr.const s1 Value.unit] ++ lb.instrs) =
+                                    execInstrsFullFromIn prog (some nextB) ⟨fenvC.env.update s1 Value.unit, fenvC.store⟩ lb.instrs := by
+                                  have happ0 := execInstrsFullFromIn_append prog (some nextB) fenvC [MIR.Instr.const s1 Value.unit] lb.instrs
+                                  simp only at happ0
+                                  rw [hconstB] at happ0
+                                  simpa using happ0
+                                have hbodyConst : execBlockFromIn prog (Fmid + 3) f (some nextB) ⟨nextB + 2, .const s1 .unit :: lb.instrs, lb.term⟩ fenvC =
+                                    execBlockFromIn prog (Fmid + 3) f (some nextB) ⟨nextB + 2, lb.instrs, lb.term⟩ ⟨fenvC.env.update s1 Value.unit, fenvC.store⟩ := by
+                                  have hF3 : Fmid + 3 = (Fmid + 2) + 1 := by omega
+                                  rw [hF3]
+                                  exact execBlockFromIn_instrs_prefix prog (Fmid + 2) f (some nextB) (nextB + 2) [MIR.Instr.const s1 Value.unit] lb.instrs lb.term fenvC ⟨fenvC.env.update s1 Value.unit, fenvC.store⟩ happB
+                                obtain ⟨Fbp, rfl⟩ : ∃ n, Fb = n + 1 := ⟨Fb - 1, by omega⟩
+                                have hconstE : execInstrsFullFromIn prog (some blkPrev) fenvArr [MIR.Instr.const lb.supply Value.unit] =
+                                    some ⟨fenvArr.env.update lb.supply Value.unit, fenvArr.store⟩ := by
+                                  simp [execInstrsFullFromIn_eq, execInstrsFullFrom, evalInstrFull]
+                                have hexitB : execBlockFromIn prog (Fbp + 1) f (some blkPrev) ⟨nextB + 1, .const lb.supply .unit :: lr.instrs, lr.term⟩ fenvArr =
+                                    execBlockFromIn prog (Fbp + 1) f (some (nextB + 1)) ⟨nextB + 1, lr.instrs, lr.term⟩ ⟨fenvArr.env.update lb.supply Value.unit, fenvArr.store⟩ := by
+                                  cases hFbp : Fbp with
+                                  | zero =>
+                                      simp only [execBlockFromIn, hconstE]
+                                      have happ : execInstrsFullFromIn prog (some blkPrev) fenvArr (MIR.Instr.const lb.supply Value.unit :: lr.instrs) =
+                                          execInstrsFullFromIn prog (some blkPrev) ⟨fenvArr.env.update lb.supply Value.unit, fenvArr.store⟩ lr.instrs := by
+                                        have happ0 := execInstrsFullFromIn_append prog (some blkPrev) fenvArr [MIR.Instr.const lb.supply Value.unit] lr.instrs
+                                        simp only at happ0
+                                        rw [hconstE] at happ0
+                                        simpa using happ0
+                                      rw [happ]
+                                      have heq1 : execInstrsFullFromIn prog (some blkPrev) ⟨fenvArr.env.update lb.supply Value.unit, fenvArr.store⟩ lr.instrs =
+                                          execInstrsFullFromIn prog (some (nextB + 1)) ⟨fenvArr.env.update lb.supply Value.unit, fenvArr.store⟩ lr.instrs := by
+                                        rw [execInstrsFullFromIn_of_noPhi prog (some blkPrev) _ lr.instrs hnp_lr, execInstrsFullFromIn_of_noPhi prog (some (nextB + 1)) _ lr.instrs hnp_lr]
+                                      rw [heq1]
+                                  | succ n =>
+                                      simp only [execBlockFromIn]
+                                      have happ : execInstrsFullFromIn prog (some blkPrev) fenvArr (MIR.Instr.const lb.supply Value.unit :: lr.instrs) =
+                                          execInstrsFullFromIn prog (some blkPrev) ⟨fenvArr.env.update lb.supply Value.unit, fenvArr.store⟩ lr.instrs := by
+                                        have happ0 := execInstrsFullFromIn_append prog (some blkPrev) fenvArr [MIR.Instr.const lb.supply Value.unit] lr.instrs
+                                        simp only at happ0
+                                        rw [hconstE] at happ0
+                                        simpa using happ0
+                                      rw [happ]
+                                      have heq1 : execInstrsFullFromIn prog (some blkPrev) ⟨fenvArr.env.update lb.supply Value.unit, fenvArr.store⟩ lr.instrs =
+                                          execInstrsFullFromIn prog (some (nextB + 1)) ⟨fenvArr.env.update lb.supply Value.unit, fenvArr.store⟩ lr.instrs := by
+                                        rw [execInstrsFullFromIn_of_noPhi prog (some blkPrev) _ lr.instrs hnp_lr, execInstrsFullFromIn_of_noPhi prog (some (nextB + 1)) _ lr.instrs hnp_lr]
+                                      rw [heq1]
+                                refine ⟨Fbp + 1, ⟨fenvArr.env.update lb.supply Value.unit, fenvArr.store⟩, by omega, by omega, ?_, ?_, ?_⟩
+                                · exact hgoto.trans (hbranchT.trans (hbodyConst.trans (hexecB.trans hexitB)))
+                                · intro id u hlook
+                                  obtain ⟨w, hlookH, hreg⟩ := hrelRb id u hlook
+                                  refine ⟨w, hlookH, ?_⟩
+                                  by_cases heq : u = lb.supply
+                                  · have hlt : u < sA := hfrb id u (rhoLookup_some_mem _ _ _ hlook)
+                                    have h1 : lb.supply < sA := heq ▸ hlt
+                                    have hlt2 : sA < lb.supply := Nat.lt_of_le_of_lt hsA (Nat.lt_of_lt_of_le (Nat.lt_succ_self _) hlb)
+                                    have hcontra : lb.supply < lb.supply := Nat.lt_trans h1 hlt2
+                                    exact absurd hcontra (Nat.lt_irrefl _)
+                                  · have hbeq : ¬ (u == lb.supply) := by simpa using heq
+                                    simp only [Env.update, hbeq]
+                                    exact hreg
+                                · simp [Env.update]
+                            | continued =>
+                                simp only [] at hrun
+                                sorry
+                            | stuck =>
+                                simp only [] at hrun
+                                have hst : res = .stuck := (congrArg Prod.fst hrun).symm
+                                rw [hst] at hres
+                                exact absurd hres (by simp)
+                | _ =>
+                    simp only [] at hrun
+                    have hst : res = .stuck := (congrArg Prod.fst hrun).symm
+                    rw [hst] at hres
+                    exact absurd hres (by simp)
+            | _ =>
+                simp only [] at hrun
+                have hst : res = .stuck := (congrArg Prod.fst hrun).symm
+                rw [hst] at hres
+                exact absurd hres (by simp)
+      · intro e he
+        simp only [runHIRWhile] at hrun
+        cases heval : evalHIR 256 henv c with
+        | none =>
+            rw [heval] at hrun
+            have hst : res = .stuck := (congrArg Prod.fst hrun).symm
+            rw [hst] at he
+            exact absurd he (by simp)
+        | some r =>
+            rw [heval] at hrun
+            cases r with
+            | lit w =>
+                cases w with
+                | bool b =>
+                    cases b with
+                    | false =>
+                        simp only [] at hrun
+                        have hpair : (res, env') = ((.value (.lit .unit)), henv) := by
+                          rw [hrun]
+                        have hst : res = .value (.lit .unit) := congrArg Prod.fst hpair
+                        rw [hst] at he
+                        exact absurd he (by simp)
+                    | true =>
+                        simp only [] at hrun
+                        cases hbrun : runHIRStmts fh henv body (.value (.lit .unit)) with
+                        | mk out envB =>
+                            rw [hbrun] at hrun
+                            cases out with
+                            | value u =>
+                                simp only [] at hrun
+                                sorry
+                            | returned er =>
+                                simp only [] at hrun
+                                have hmemH : (⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩ : Block) ∈
+                                    lb.blocks ++ [⟨nextB + 2, .const s1 .unit :: lb.instrs, lb.term⟩] ++
+                                    [⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩] ++
+                                    [⟨nextB + 1, .const lb.supply .unit :: lr.instrs, lr.term⟩] ++ lr.blocks := by simp
+                                have hmemB : (⟨nextB + 2, .const s1 .unit :: lb.instrs, lb.term⟩ : Block) ∈
+                                    lb.blocks ++ [⟨nextB + 2, .const s1 .unit :: lb.instrs, lb.term⟩] ++
+                                    [⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩] ++
+                                    [⟨nextB + 1, .const lb.supply .unit :: lr.instrs, lr.term⟩] ++ lr.blocks := by simp
+                                have hmemE : (⟨nextB + 1, .const lb.supply .unit :: lr.instrs, lr.term⟩ : Block) ∈
+                                    lb.blocks ++ [⟨nextB + 2, .const s1 .unit :: lb.instrs, lb.term⟩] ++
+                                    [⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩] ++
+                                    [⟨nextB + 1, .const lb.supply .unit :: lr.instrs, lr.term⟩] ++ lr.blocks := by simp
+                                have hfindH : findBlock f nextB =
+                                    some ⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩ :=
+                                  findBlock_of_nodup_mem hnodf (hsub _ hmemH)
+                                have hfindB : findBlock f (nextB + 2) =
+                                    some ⟨nextB + 2, .const s1 .unit :: lb.instrs, lb.term⟩ :=
+                                  findBlock_of_nodup_mem hnodf (hsub _ hmemB)
+                                have hfindE : findBlock f (nextB + 1) =
+                                    some ⟨nextB + 1, .const lb.supply .unit :: lr.instrs, lr.term⟩ :=
+                                  findBlock_of_nodup_mem hnodf (hsub _ hmemE)
+                                have hfold : carried.foldl (fun (a : Option (List Instr)) (p : HIR.Id × ValId) =>
+                                    match a with
+                                    | none => none
+                                    | some ps =>
+                                        match rhoLookup ρ p.1, rhoLookup lb.ρ p.1 with
+                                        | some entrySrc, some backSrc =>
+                                            some (ps ++ [.phi p.2 bId entrySrc, .phi p.2 ((lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2)) backSrc] ++
+                                              (lb.blocks.filterMap (fun b => match b.terminator with | .goto t => if t == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2) then some b.id else none | _ => none)).map (.phi p.2 · p.2))
+                                        | _, _ => none) (some []) = some phis := by
+                                  simpa [mkHeaderPhis] using hphis
+                                obtain ⟨phif, hphif, hflat⟩ := mkHeaderPhis_flatMap ρ bId
+                                  ((lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2)) lb.ρ
+                                  (lb.blocks.filterMap (fun b => match b.terminator with | .goto t => if t == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2) then some b.id else none | _ => none))
+                                  carried [] phis hfold
+                                have hfallNe : ((lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2)) ≠ bId := by
+                                  have hinv := lowerStmtsCFG_loopBody_inv budget (nextB + 2) (some nextB) ρb (s1 + 1) (nextB + 3) s1 true (some ⟨nextB, nextB + 1, carried⟩) body lb hbody hloop
+                                  have hbnd := hinv.2.2.1
+                                  cases hgl : lb.blocks.getLast? with
+                                  | none =>
+                                      simp only [Option.map_none, Option.getD_none]
+                                      exact Nat.ne_of_gt (Nat.lt_of_lt_of_le hltB (Nat.le_add_right _ _))
+                                  | some bb =>
+                                      have hm : bb ∈ lb.blocks := getLast?_mem hgl
+                                      have hb := hbnd bb hm
+                                      simp only [hgl, Option.map_some, Option.getD_some]
+                                      have hle : nextB ≤ bb.id := Nat.le_trans (Nat.le_add_right _ _) hb.1
+                                      exact Nat.ne_of_gt (Nat.lt_of_lt_of_le hltB hle)
+                                have htrNe : ∀ t ∈ (lb.blocks.filterMap (fun b => match b.terminator with | .goto tt => if tt == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2) then some b.id else none | _ => none)), t ≠ bId := by
+                                  intro t ht
+                                  have hinv := lowerStmtsCFG_loopBody_inv budget (nextB + 2) (some nextB) ρb (s1 + 1) (nextB + 3) s1 true (some ⟨nextB, nextB + 1, carried⟩) body lb hbody hloop
+                                  have hbnd := hinv.2.2.1
+                                  have hmemF : ∃ b ∈ lb.blocks, t = b.id := by
+                                    rw [List.mem_filterMap] at ht
+                                    obtain ⟨b, hb, hfb⟩ := ht
+                                    cases htb : b.terminator with
+                                    | goto tt =>
+                                        simp only [htb] at hfb
+                                        by_cases hC : (tt == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2)) = true
+                                        · simp only [hC, if_true] at hfb
+                                          exact ⟨b, hb, (Option.some.inj hfb).symm⟩
+                                        · simp only [hC] at hfb
+                                          exact absurd hfb (by simp)
+                                    | _ =>
+                                        simp only [htb] at hfb
+                                        exact absurd hfb (by simp)
+                                  obtain ⟨b, hb, rfl⟩ := hmemF
+                                  have hb2 := hbnd b hb
+                                  have hle : nextB ≤ b.id := Nat.le_trans (Nat.le_add_right _ _) hb2.1
+                                  exact Nat.ne_of_gt (Nat.lt_of_lt_of_le hltB hle)
+                                have hfrb : FreshAbove ρb sA := (mkCarried_growth_fresh hfresh hmk).2
+                                have hsA : sA ≤ s1 := lower_mono.1 _ _ _ _ _ _ hcond
+                                have hleCar : ∀ q ∈ carried, supply ≤ q.2 := fun q hq => mkCarried_mem_lo hmk hq
+                                have hdistC : ∀ id₁ r₁ id₂ r₂, (id₁, r₁) ∈ carried → (id₂, r₂) ∈ carried → r₁ = r₂ → id₁ = id₂ := by
+                                  intro a b c d h1 h2 he
+                                  subst he
+                                  exact mkCarried_reg_inj hmk h1 h2
+                                have hphiEq : phis = (carried.map phif).flatten := by rw [hflat]; simp
+                                obtain ⟨fenvP, hexP, hrelP, hvalP, hframeP⟩ :=
+                                  headerPhis_exec_entry ρ bId ((lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2)) lb.ρ
+                                    (lb.blocks.filterMap (fun b => match b.terminator with | .goto t => if t == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2) then some b.id else none | _ => none))
+                                    carried phif hphif hfallNe htrNe supply hfresh hleCar hdistC prog fenv henv hrel
+                                rw [←hphiEq] at hexP
+                                have hrelPb : RelEnv henv ρb fenvP.env := by
+                                  intro id u hlook
+                                  rcases mkCarried_lookup hmk hlook with ⟨i, rr, hmem, hid, hu⟩ | hbase
+                                  · subst hid
+                                    subst hu
+                                    obtain ⟨esrc, backSrc, he1, he2, hfp⟩ := hphif (id, u) hmem
+                                    obtain ⟨w, hlookH, hreg⟩ := hrel id esrc he1
+                                    refine ⟨w, hlookH, ?_⟩
+                                    exact hvalP id u w hmem hlookH
+                                  · obtain ⟨w, hlookH, hreg⟩ := hrel id u hbase
+                                    refine ⟨w, hlookH, ?_⟩
+                                    have hlt : u < supply := hfresh id u (rhoLookup_some_mem _ _ _ hbase)
+                                    have hnotin : ∀ idx, (idx, u) ∉ carried := by
+                                      intro idx hcon
+                                      have hle := mkCarried_mem_lo hmk hcon
+                                      exact absurd hle (Nat.not_le_of_gt hlt)
+                                    rw [hframeP u hnotin]
+                                    exact hreg
+                                have hfrP : FreshAbove ρb sA := FreshAbove.mono ρb sA sA (Nat.le_refl _) ((mkCarried_growth_fresh hfresh hmk).2)
+                                obtain ⟨wc, hrc, fenvC, hexC, hstoreC, hregC⟩ :=
+                                  lowerCond_exec_agree budget ρb sA c vc ic s1 hcond hstr hlt hfrP henv fenvP hrelPb prog (some bId) _ heval
+                                have hrw : (HIR.Expr.lit (.bool true)) = HIR.Expr.lit wc := hrc
+                                have hwc : wc = .bool true := (HIR.Expr.lit.inj hrw).symm
+                                subst hwc
+                                have hbool : fenvC.boolOf vc = some true := boolOf_of_lit fenvC vc true hregC
+                                have hexPhiIc : execInstrsFullFromIn prog (some bId) fenv (phis ++ ic) = some fenvC := by
+                                  have happ := execInstrsFullFromIn_append prog (some bId) fenv phis ic
+                                  simp only [happ, hexP, hexC]
+                                have hrelC : RelEnv henv ρb fenvC.env := by
+                                  have hexPure : execInstrsFull fenvP ic = some fenvC := by
+                                    have hnp : ∀ dst pred src, MIR.Instr.phi dst pred src ∉ ic := by
+                                      intro d p src hm
+                                      exact IsPure_not_phi (lower_isPure.1 _ _ _ _ _ _ hcond _ hm) d p src rfl
+                                    have h1 : execInstrsFullFromIn prog (some bId) fenvP ic = execInstrsFull fenvP ic := execInstrsFullFromIn_of_noPhi prog (some bId) fenvP ic hnp
+                                    rw [h1] at hexC
+                                    exact hexC
+                                  exact RelEnv_exec henv ρb sA c vc ic s1 hcond fenvP fenvC hrelPb hfrP hexPure
+                                have h1le : 2 ≤ (2 + armBlockBound fuelB body) := by omega
+                                have h2le : 2 ≤ (fh + 1 + 1) := by omega
+                                have hmul : 2 * 2 ≤ (2 + armBlockBound fuelB body) * (fh + 1 + 1) := Nat.mul_le_mul h1le h2le
+                                have hmul2 : 2 + armBlockBound fuelB body ≤ (2 + armBlockBound fuelB body) * (fh + 1 + 1) := Nat.le_mul_of_pos_right _ (by omega)
+                                have he4 : 4 ≤ (2 + armBlockBound fuelB body) * (fh + 1 + 1) := hmul
+                                have h5le : 5 ≤ 1 + ((2 + armBlockBound fuelB body) * (fh + 1 + 1) + armBlockBound fuelB rest) := by
+                                  have hj : 0 ≤ armBlockBound fuelB rest := Nat.zero_le _
+                                  have h1 : 4 + armBlockBound fuelB rest ≤ (2 + armBlockBound fuelB body) * (fh + 1 + 1) + armBlockBound fuelB rest :=
+                                    Nat.add_le_add_right he4 _
+                                  omega
+                                have hF5 : F ≥ 5 := Nat.le_trans h5le hF
+                                obtain ⟨Fmid, rfl⟩ : ∃ n, F = n + 5 := ⟨F - 5, by omega⟩
+                                have hmul3 : (2 + armBlockBound fuelB body) * 2 ≤ (2 + armBlockBound fuelB body) * (fh + 1 + 1) :=
+                                  Nat.mul_le_mul_left _ h2le
+                                have h4B : 4 + armBlockBound fuelB body ≤ (2 + armBlockBound fuelB body) * (fh + 1 + 1) := by
+                                  have hexpand : (2 + armBlockBound fuelB body) * 2 = 4 + armBlockBound fuelB body + armBlockBound fuelB body := by
+                                    omega
+                                  omega
+                                have hFbody : Fmid + 3 ≥ blockBound fuelB body + (2 + armBlockBound fuelB rest) := by
+                                  simp only [blockBound]
+                                  have hFmid : Fmid + 5 ≥ 1 + ((2 + armBlockBound fuelB body) * (fh + 1 + 1) + armBlockBound fuelB rest) := hF
+                                  omega
+                                have hexcl : CarriedExcl ρb carried := mkCarried_excl hfresh hmk
+                                have hsup : ∀ id r, (id, r) ∈ carried → r < s1 + 1 := by
+                                  intro id r hmem
+                                  have hlt : r < sA := mkCarried_mem_hi hmk hmem
+                                  exact Nat.lt_of_lt_of_le hlt (Nat.le_trans hsA (Nat.le_succ _))
+                                have hmemLb : ∀ b ∈ lb.blocks, b ∈ (lb.blocks ++ [⟨nextB + 2, .const s1 .unit :: lb.instrs, lb.term⟩] ++ [⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩] ++ [⟨nextB + 1, .const lb.supply .unit :: lr.instrs, lr.term⟩] ++ lr.blocks) := by
+                                  intro b hb
+                                  simp [hb]
+                                have hsubLb : ∀ b ∈ lb.blocks, b ∈ f.blocks := fun b hb => hsub _ (hmemLb b hb)
+                                have hconstB : execInstrsFullFromIn prog (some nextB) fenvC [MIR.Instr.const s1 Value.unit] =
+                                    some ⟨fenvC.env.update s1 Value.unit, fenvC.store⟩ := by
+                                  simp [execInstrsFullFromIn_eq, execInstrsFullFrom, evalInstrFull]
+                                have hfreshB : FreshAbove ρb (s1 + 1) := FreshAbove.mono ρb sA (s1 + 1) (Nat.le_trans hsA (Nat.le_succ _)) hfrb
+                                have hrelB0 : RelEnv henv ρb (fenvC.env.update s1 Value.unit) := by
+                                  intro id u hlook
+                                  obtain ⟨w, hlookH, hreg⟩ := hrelC id u hlook
+                                  refine ⟨w, hlookH, ?_⟩
+                                  by_cases heq : u = s1
+                                  · have hlt : u < sA := hfrP id u (rhoLookup_some_mem _ _ _ hlook)
+                                    have hcontra : s1 < sA := heq ▸ hlt
+                                    omega
+                                  · have hbeq : ¬ (u == s1) := by simpa using heq
+                                    simp only [Env.update, hbeq]
+                                    exact hreg
+                                have haccB0 : (fenvC.env.update s1 Value.unit) s1 = some Value.unit := by simp [Env.update]
+                                have hexec0 : execInstrsFullFromIn prog prev fenv ([] : List MIR.Instr) = some fenv := by
+                                  simp [execInstrsFullFromIn_eq]
+                                have hgoto : execBlockFromIn prog (Fmid + 5) f prev ⟨bId, [], .goto nextB⟩ fenv =
+                                    execBlockFromIn prog (Fmid + 4) f (some bId) ⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩ fenv := by
+                                  have hF5 : Fmid + 5 = (Fmid + 4) + 1 := by omega
+                                  rw [hF5]
+                                  exact execBlockFromIn_goto prog (Fmid + 4) f prev bId [] nextB fenv fenv _ hexec0 hfindH
+                                have hbranchT : execBlockFromIn prog (Fmid + 4) f (some bId) ⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩ fenv =
+                                    execBlockFromIn prog (Fmid + 3) f (some nextB) ⟨nextB + 2, .const s1 .unit :: lb.instrs, lb.term⟩ fenvC := by
+                                  have hF4 : Fmid + 4 = (Fmid + 3) + 1 := by omega
+                                  rw [hF4]
+                                  exact execBlockFromIn_branch_true prog (Fmid + 3) f (some bId) nextB (phis ++ ic) vc (nextB + 2) (nextB + 1) fenv fenvC _ hexPhiIc hbool hfindB
+                                have happB : execInstrsFullFromIn prog (some nextB) fenvC ([MIR.Instr.const s1 Value.unit] ++ lb.instrs) =
+                                    execInstrsFullFromIn prog (some nextB) ⟨fenvC.env.update s1 Value.unit, fenvC.store⟩ lb.instrs := by
+                                  have happ0 := execInstrsFullFromIn_append prog (some nextB) fenvC [MIR.Instr.const s1 Value.unit] lb.instrs
+                                  simp only at happ0
+                                  rw [hconstB] at happ0
+                                  simpa using happ0
+                                have hbodyConst : execBlockFromIn prog (Fmid + 3) f (some nextB) ⟨nextB + 2, .const s1 .unit :: lb.instrs, lb.term⟩ fenvC =
+                                    execBlockFromIn prog (Fmid + 3) f (some nextB) ⟨nextB + 2, lb.instrs, lb.term⟩ ⟨fenvC.env.update s1 Value.unit, fenvC.store⟩ := by
+                                  have hF3 : Fmid + 3 = (Fmid + 2) + 1 := by omega
+                                  rw [hF3]
+                                  exact execBlockFromIn_instrs_prefix prog (Fmid + 2) f (some nextB) (nextB + 2) [MIR.Instr.const s1 Value.unit] lb.instrs lb.term fenvC ⟨fenvC.env.update s1 Value.unit, fenvC.store⟩ happB
+                                have hpairR : (res, env') = ((.returned er), envB) := by rw [hrun]
+                                have heer : er = e := by
+                                  have h1 : res = .returned er := congrArg Prod.fst hpairR
+                                  rw [h1] at he
+                                  cases he
+                                  rfl
+                                obtain ⟨w_e, hlite, hexecRet⟩ := (((lowerStmtsCFG_loopBody_run budget (nextB + 2) ρb (s1 + 1) (nextB + 3) nextB s1 (some ⟨nextB, nextB + 1, carried⟩) ⟨nextB, nextB + 1, carried⟩ body lb rfl hbody hloop hfreshB (Nat.lt_succ_self _) 0 (Nat.zero_lt_succ _) (Nat.zero_lt_succ _) Value.unit henv ⟨fenvC.env.update s1 Value.unit, fenvC.store⟩ hrelB0 haccB0 fh envB (.returned er) hbrun prog f (some nextB) (Fmid + 3) hsubLb hnodf fuelB (2 + armBlockBound fuelB rest) hFbody hexcl hsup hdistC ⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩ ⟨nextB + 1, .const lb.supply Value.unit :: lr.instrs, lr.term⟩ ⟨nextB, phis ++ ic, .branch vc (nextB + 2) (nextB + 1)⟩ hfindH hfindE hfindH).2.2.2) er rfl)
+                                refine ⟨w_e, ?_, ?_⟩
+                                · rw [←heer]
+                                  exact hlite
+                                · exact hgoto.trans (hbranchT.trans (hbodyConst.trans hexecRet))
+                            | broke =>
+                                simp only [] at hrun
+                                have hst : res = .value (.lit .unit) := (congrArg Prod.fst hrun).symm
+                                rw [hst] at he
+                                exact absurd he (by simp)
+                            | continued =>
+                                simp only [] at hrun
+                                sorry
+                            | stuck =>
+                                simp only [] at hrun
+                                have hst : res = .stuck := (congrArg Prod.fst hrun).symm
+                                rw [hst] at he
+                                exact absurd he (by simp)
+                | _ =>
+                    simp only [] at hrun
+                    have hst : res = .stuck := (congrArg Prod.fst hrun).symm
+                    rw [hst] at he
+                    exact absurd he (by simp)
+            | _ =>
+                simp only [] at hrun
+                have hst : res = .stuck := (congrArg Prod.fst hrun).symm
+                rw [hst] at he
+                exact absurd he (by simp)
 
 
 /-! ## The body worker: closed bodies run to the oracle's value
@@ -3590,7 +17351,7 @@ theorem lowerStmtsCFG_total (budget : Nat) :
       (ss : List HIR.Stmt) (L : Lowered),
       lowerStmtsCFG bId none false ρ supply nextB lastVal hasVal none ss = some L →
       BranchStmts budget ss →
-      FreshAbove ρ supply → lastVal < supply →
+      FreshAbove ρ supply → lastVal < supply → bId < nextB →
       ∀ (accH : Value) (henv : HEnv) (fenv : FullEnv),
       RelEnv henv ρ fenv.env →
       fenv.env lastVal = some accH →
@@ -3600,7 +17361,7 @@ theorem lowerStmtsCFG_total (budget : Nat) :
         (F : Nat),
       (∀ b ∈ L.blocks, b ∈ f.blocks) →
       (f.blocks.map Block.id).Nodup →
-      ∀ (fuelB : Nat), F ≥ blockBound fuelB ss →
+      ∀ (fuelB : Nat), F ≥ blockBound fuelB ss → fuelH ≤ fuelB →
       ∀ (u : HIR.Expr),
       (out = .value u →
         ∃ w_u, u = .lit w_u ∧
@@ -3613,11 +17374,11 @@ theorem lowerStmtsCFG_total (budget : Nat) :
   intro bId ρ supply nextB lastVal hasVal ss
   induction ss generalizing bId ρ supply nextB lastVal hasVal with
   | nil =>
-      intro L h hss hfresh hlast
+      intro L h hss hfresh hlast _hltB
       cases hss with
       | nil =>
           intro accH henv fenv hrel hacc fuelH henv' out hrun prog f prev F
-            hsub hnodf fuelB hg
+            hsub hnodf fuelB hg hfb
           simp only [lowerStmtsCFG] at h
           obtain rfl := Option.some.inj h
           intro u
@@ -3670,7 +17431,7 @@ theorem lowerStmtsCFG_total (budget : Nat) :
                 rw [← h1] at hout2
                 exact absurd hout2 (by simp)
   | cons s rest ih =>
-      intro L h hss hfresh hlast
+      intro L h hss hfresh hlast hltB
       cases hss with
       | cons hs hrs =>
           cases hs with
@@ -3690,7 +17451,7 @@ theorem lowerStmtsCFG_total (budget : Nat) :
                       simp only [] at h
                       obtain rfl := Option.some.inj h
                       intro accH henv fenv hrel hacc fuelH henv' out hrun
-                        prog f prev F hsub hnodf fuelB hg
+                        prog f prev F hsub hnodf fuelB hg hfb
                       have hs1 : supply ≤ s1 :=
                         lower_mono.1 _ _ _ _ _ _ he
                       have hlast1 : lastVal < s1 :=
@@ -3786,10 +17547,11 @@ theorem lowerStmtsCFG_total (budget : Nat) :
                                   have hww : wE = wE2 :=
                                     HIR.Expr.lit.inj (hrE.symm.trans hrE2)
                                   intro u
+                                  have hfb' : fh ≤ fuelB := by omega
                                   have hihr := ih bId ρ s1 nextB v true q hr
-                                    hrs hf1 hva wE henv fenv1 hrel1
+                                    hrs hf1 hva hltB wE henv fenv1 hrel1
                                     (hww ▸ hregE) fh henv' out hrun prog f
-                                    prev (F' + 1) hsub hnodf fuelB hg' u
+                                    prev (F' + 1) hsub hnodf fuelB hg' hfb' u
                                   refine ⟨?_, ?_⟩
                                   · intro hout
                                     obtain ⟨w_u, hu, heq_rest⟩ := hihr.1 hout
@@ -3814,7 +17576,7 @@ theorem lowerStmtsCFG_total (budget : Nat) :
                       simp only [] at h
                       obtain rfl := Option.some.inj h
                       intro accH henv fenv hrel hacc fuelH henv' out hrun
-                        prog f prev F hsub hnodf fuelB hg
+                        prog f prev F hsub hnodf fuelB hg hfb
                       have hs1 : supply ≤ s1 :=
                         lower_mono.1 _ _ _ _ _ _ he
                       have hlast1 : lastVal < s1 :=
@@ -3948,11 +17710,12 @@ theorem lowerStmtsCFG_total (budget : Nat) :
                                       prev bId ib q.instrs q.term fenv fenv1
                                       happ
                                   intro u
+                                  have hfb' : fh ≤ fuelB := by omega
                                   have hihr := ih bId ((id, vb) :: ρ) s1
-                                    nextB lastVal true q hr hrs hf1 hlast1
+                                    nextB lastVal true q hr hrs hf1 hlast1 hltB
                                     accH ((id, .lit wE) :: henv) fenv1 hrel2
                                     hacc1 fh henv' out hrun prog f prev
-                                    (F' + 1) hsub hnodf fuelB hg' u
+                                    (F' + 1) hsub hnodf fuelB hg' hfb' u
                                   refine ⟨?_, ?_⟩
                                   · intro hout
                                     obtain ⟨w_u, hu, heq_rest⟩ := hihr.1 hout
@@ -3977,7 +17740,7 @@ theorem lowerStmtsCFG_total (budget : Nat) :
                       simp only [] at h
                       obtain rfl := Option.some.inj h
                       intro accH henv fenv hrel hacc fuelH henv' out hrun
-                        prog f prev F hsub hnodf fuelB hg
+                        prog f prev F hsub hnodf fuelB hg hfb
                       have hs1 : supply ≤ s1 :=
                         lower_mono.1 _ _ _ _ _ _ he
                       have hlast1 : lastVal < s1 :=
@@ -4089,11 +17852,12 @@ theorem lowerStmtsCFG_total (budget : Nat) :
                                       prev bId ie q.instrs q.term fenv fenv1
                                       happ
                                   intro u
+                                  have hfb' : fh ≤ fuelB := by omega
                                   have hihr := ih bId (updAssoc ρ id v0) s1
-                                    nextB lastVal true q hr hrs hf1 hlast1
+                                    nextB lastVal true q hr hrs hf1 hlast1 hltB
                                     accH (updateHEnv henv id (.lit wE))
                                     fenv1 hrel2 hacc1 fh henv' out hrun prog
-                                    f prev (F' + 1) hsub hnodf fuelB hg' u
+                                    f prev (F' + 1) hsub hnodf fuelB hg' hfb' u
                                   refine ⟨?_, ?_⟩
                                   · intro hout
                                     obtain ⟨w_u, hu, heq_rest⟩ := hihr.1 hout
@@ -4105,7 +17869,7 @@ theorem lowerStmtsCFG_total (budget : Nat) :
           | nop =>
               simp only [lowerStmtsCFG] at h
               intro accH henv fenv hrel hacc fuelH henv' out hrun prog f
-                prev F hsub hnodf fuelB hg
+                prev F hsub hnodf fuelB hg hfb
               have hbb : blockBound fuelB (Morph.HIR.Stmt.nop :: rest)
                   = blockBound fuelB rest := by
                 rw [blockBound, blockBound,
@@ -4135,9 +17899,10 @@ theorem lowerStmtsCFG_total (budget : Nat) :
                       runHIRStmts fh henv rest (.value (.lit accH)) := rfl
                   rw [hstep] at hrun
                   intro u
+                  have hfb' : fh ≤ fuelB := by omega
                   exact ih bId ρ supply nextB lastVal hasVal L h hrs hfresh
-                    hlast accH henv fenv hrel hacc fh henv' out hrun prog f
-                    prev F hsub hnodf fuelB hg' u
+                    hlast hltB accH henv fenv hrel hacc fh henv' out hrun prog f
+                    prev F hsub hnodf fuelB hg' hfb' u
           | ifStmt c th el hstr _ hath hael =>
               simp only [lowerStmtsCFG] at h
               cases heC : lowerExpr ρ supply c with
@@ -4166,7 +17931,7 @@ theorem lowerStmtsCFG_total (budget : Nat) :
                               simp only [] at h
                               obtain rfl := Option.some.inj h
                               intro accH henv fenv hrel hacc fuelH henv' out
-                                hrun prog f prev F hsub hnodf fuelB hg
+                                hrun prog f prev F hsub hnodf fuelB hg hfb
                               dsimp only at hsub ⊢
                               generalize hTdef : ((lt.blocks.getLast?.map
                                 (fun b => b.id)).getD nextB) = exitT
@@ -4180,20 +17945,20 @@ theorem lowerStmtsCFG_total (budget : Nat) :
                               have hlast1 : lastVal < s1 :=
                                 Nat.lt_of_lt_of_le hlast hs1
                               obtain ⟨hmnt, hmst, hbndt, hnodt⟩ :=
-                                lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _
+                                lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _
                                   ht hath
                               obtain ⟨hmne, hmse, hbnde, hnode⟩ :=
-                                lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _
+                                lowerStmtsCFG_arm_inv budget _ _ _ _ _ _ _ _ _ _
                                   he hael
                               obtain ⟨hmnr, hmsr, hbndr, hnodr⟩ :=
                                 lowerStmtsCFG_branch_inv budget _ _ _ _ _ _ _
-                                  _ _ hr hrs
+                                  _ _ _ hr hrs
                               have hrho_t : lt.ρ = ρ :=
                                 lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _
-                                  ht hath
+                                  _ ht hath
                               have hrho_e : le.ρ = ρ :=
                                 lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _
-                                  he hael
+                                  _ he hael
                               have hbb_if : blockBound fuelB
                                   (.ifStmt c th el :: rest) =
                                   1 + (3 + max (armBlockBound fuelB th)
@@ -4439,12 +18204,12 @@ theorem lowerStmtsCFG_total (budget : Nat) :
                                                               F', fenv_arr, hle,
                                                               hge, heq_arm,
                                                               hrel_arm,
-                                                              hreg_arr⟩ :=
+                                                              hreg_arr, _⟩ :=
                                                             ((lowerStmtsCFG_arm_total
                                                               budget nextB
                                                               (nextB + 2) ρ s1
                                                               (nextB + 3)
-                                                              lastVal false th
+                                                              lastVal false none th
                                                               lt ht hath hf1
                                                               hlast1 .unit henv
                                                               fenvC hrelC
@@ -4640,13 +18405,18 @@ theorem lowerStmtsCFG_total (budget : Nat) :
                                                                 Nat.le_trans hCtge
                                                                   hge
                                                               intro u
+                                                              have hfb' : fh ≤ fuelB := by omega
+                                                              have hltB' : nextB + 2 < le.next := by
+                                                                have h1 : nextB + 3 ≤ lt.next := hmnt
+                                                                have h2 : lt.next ≤ le.next := hmne
+                                                                omega
                                                               have hihr := ih
                                                                 (nextB + 2) ρ
                                                                 (le.supply + 1)
                                                                 le.next
                                                                 le.supply true
                                                                 lr hr hrs hf_r
-                                                                hlast_r w_arm
+                                                                hlast_r hltB' w_arm
                                                                 env_arm
                                                                 ⟨fenv_arr.env.update
                                                                 le.supply w_arm,
@@ -4656,7 +18426,7 @@ theorem lowerStmtsCFG_total (budget : Nat) :
                                                                 prog f
                                                                 (some exitT)
                                                                 (F1 + 1) hsub_r
-                                                                hnodf fuelB hg_r
+                                                                hnodf fuelB hg_r hfb'
                                                                 u
                                                               refine ⟨?_, ?_⟩
                                                               · intro hout
@@ -4787,7 +18557,7 @@ theorem lowerStmtsCFG_total (budget : Nat) :
                                                                 budget nextB
                                                                 (nextB + 2) ρ s1
                                                                 (nextB + 3)
-                                                                lastVal false th
+                                                                lastVal false none th
                                                                 lt ht hath hf1
                                                                 hlast1 .unit henv
                                                                 fenvC hrelC
@@ -4945,12 +18715,12 @@ theorem lowerStmtsCFG_total (budget : Nat) :
                                                               F', fenv_arr, hle,
                                                               hge, heq_arm,
                                                               hrel_arm,
-                                                              hreg_arr⟩ :=
+                                                              hreg_arr, _⟩ :=
                                                             ((lowerStmtsCFG_arm_total
                                                               budget (nextB + 1)
                                                               (nextB + 2) ρ
                                                               lt.supply lt.next
-                                                              lastVal false el
+                                                              lastVal false none el
                                                               le he hael hf_e
                                                               hlast_e .unit henv
                                                               fenvC hrelC
@@ -5149,13 +18919,18 @@ theorem lowerStmtsCFG_total (budget : Nat) :
                                                                 Nat.le_trans hCege
                                                                   hge
                                                               intro u
+                                                              have hfb' : fh ≤ fuelB := by omega
+                                                              have hltB' : nextB + 2 < le.next := by
+                                                                have h1 : nextB + 3 ≤ lt.next := hmnt
+                                                                have h2 : lt.next ≤ le.next := hmne
+                                                                omega
                                                               have hihr := ih
                                                                 (nextB + 2) ρ
                                                                 (le.supply + 1)
                                                                 le.next
                                                                 le.supply true
                                                                 lr hr hrs hf_r
-                                                                hlast_r w_arm
+                                                                hlast_r hltB' w_arm
                                                                 env_arm
                                                                 ⟨fenv_arr.env.update
                                                                 le.supply w_arm,
@@ -5165,7 +18940,7 @@ theorem lowerStmtsCFG_total (budget : Nat) :
                                                                 prog f
                                                                 (some exitE)
                                                                 (F1 + 1) hsub_r
-                                                                hnodf fuelB hg_r
+                                                                hnodf fuelB hg_r hfb'
                                                                 u
                                                               refine ⟨?_, ?_⟩
                                                               · intro hout
@@ -5297,7 +19072,7 @@ theorem lowerStmtsCFG_total (budget : Nat) :
                                                                 budget (nextB + 1)
                                                                 (nextB + 2) ρ
                                                                 lt.supply lt.next
-                                                                lastVal false el
+                                                                lastVal false none el
                                                                 le he hael hf_e
                                                                 hlast_e .unit
                                                                 henv fenvC hrelC
@@ -5507,9 +19282,370 @@ theorem lowerStmtsCFG_total (budget : Nat) :
                                                 simp [hst] at hout
                                               · intro e hout
                                                 simp [hst] at hout
+          | breakStmt =>
+              simp only [lowerStmtsCFG] at h
+              intro accH henv fenv hrel hacc fuelH henv' out hrun prog f
+                prev F hsub hnodf fuelB hg hfb u
+              refine ⟨?_, ?_⟩
+              · intro hout
+                simp at h
+              · intro e_ret hout2
+                simp at h
+          | continueStmt =>
+              simp only [lowerStmtsCFG] at h
+              intro accH henv fenv hrel hacc fuelH henv' out hrun prog f
+                prev F hsub hnodf fuelB hg hfb u
+              refine ⟨?_, ?_⟩
+              · intro hout
+                simp at h
+              · intro e_ret hout2
+                simp at h
+          | whileStmt c body hstr hlt hbody =>
+              simp only [lowerStmtsCFG] at h
+              cases hm : mkCarried ρ supply
+                  ((dedupIds (assignedIds body)).filterMap
+                    (fun id => (rhoLookup ρ id).map (fun _ => id))) with
+              | none => rw [hm] at h; simp at h
+              | some p =>
+                  obtain ⟨carried, sA, ρb⟩ := p
+                  rw [hm] at h
+                  simp only [] at h
+                  cases hc : lowerExpr ρb sA c with
+                  | none => rw [hc] at h; simp at h
+                  | some q =>
+                      obtain ⟨vc, ic, s1⟩ := q
+                      rw [hc] at h
+                      simp only [] at h
+                      cases hb : lowerStmtsCFG (nextB + 2) (some nextB) false
+                          ρb (s1 + 1) (nextB + 3) s1 true
+                          (loop := some ⟨nextB, nextB + 1, carried⟩)
+                          body with
+                      | none => rw [hb] at h; simp at h
+                      | some lb =>
+                          rw [hb] at h
+                          simp only [] at h
+                          cases hr : lowerStmtsCFG (nextB + 1) none false
+                              ρb (lb.supply + 1) lb.next lb.supply true none
+                              rest with
+                          | none => rw [hr] at h; simp at h
+                          | some lr =>
+                              rw [hr] at h
+                              simp only [] at h
+                              cases hp : mkHeaderPhis ρ bId carried
+                                  ((lb.blocks.getLast?.map fun b => b.id).getD
+                                    (nextB + 2))
+                                  lb.ρ
+                                  (lb.blocks.filterMap (fun b =>
+                                    match b.terminator with
+                                    | .goto t =>
+                                        if t == nextB &&
+                                            b.id != (lb.blocks.getLast?.map
+                                              fun b => b.id).getD
+                                              (nextB + 2) then
+                                          some b.id
+                                        else none
+                                    | _ => none)) with
+                              | none => rw [hp] at h; simp at h
+                              | some phis =>
+                                  rw [hp] at h
+                                  simp only [] at h
+                                  obtain rfl := Option.some.inj h
+                                  intro accH henv fenv hrel hacc fuelH henv'
+                                    out hrun prog f prev F hsub hnodf fuelB
+                                    hg hfb u
+                                  have hbb : blockBound fuelB
+                                      (.whileLoop c body :: rest) =
+                                      1 + ((2 + armBlockBound fuelB body) *
+                                        (fuelB + 1) +
+                                        armBlockBound fuelB rest) := by
+                                    rw [blockBound, armBlockBound_while]
+                                  refine ⟨?_, ?_⟩
+                                  · intro hout
+                                    cases fuelH with
+                                    | zero =>
+                                        have hz : runHIRStmts 0 henv
+                                            (.whileLoop c body :: rest)
+                                            (.value (.lit accH)) =
+                                            (.stuck, henv) := rfl
+                                        rw [hz] at hrun
+                                        have hst : out = .stuck :=
+                                          (congrArg Prod.fst hrun).symm
+                                        rw [hst] at hout
+                                        exact absurd hout (by simp)
+                                    | succ fh =>
+                                        have hstep : runHIRStmts (fh + 1)
+                                            henv
+                                            (.whileLoop c body :: rest)
+                                            (.value (.lit accH)) =
+                                            (match runHIRWhile fh henv c body with
+                                             | (HFlow.value uu, env'') =>
+                                                 runHIRStmts fh env'' rest
+                                                   (HFlow.replace
+                                                     (HFlow.value
+                                                     (.lit accH)) uu)
+                                             | (ff, env'') =>
+                                                 (ff, env'')) := rfl
+                                        rw [hstep] at hrun
+                                        cases hw : runHIRWhile fh henv c
+                                            body with
+                                        | mk res envL =>
+                                            rw [hw] at hrun
+                                            cases res with
+                                            | value v =>
+                                                simp only [] at hrun
+                                                have hv : v = .lit .unit :=
+                                                  runHIRWhile_value_unit fh
+                                                    henv c body v envL hw
+                                                rw [hv] at hrun hw
+                                                simp only
+                                                  [HFlow.replace] at hrun
+                                                have hfle : fh ≤ fuelB := by
+                                                  omega
+                                                have hF : F ≥ 1 +
+                                                    ((2 + armBlockBound
+                                                      fuelB body) *
+                                                      (fh + 1) +
+                                                      armBlockBound fuelB
+                                                      rest) := by
+                                                  have h1 : fh + 1 ≤
+                                                      fuelB + 1 := by omega
+                                                  have h2 : (2 +
+                                                      armBlockBound fuelB
+                                                      body) * (fh + 1) ≤
+                                                      (2 + armBlockBound
+                                                      fuelB body) *
+                                                      (fuelB + 1) :=
+                                                    Nat.mul_le_mul_left
+                                                      _ h1
+                                                  omega
+                                                obtain ⟨hfrX, hloopV,
+                                                    hloopR⟩ :=
+                                                  whileLoop_correct budget
+                                                    bId nextB ρ supply c body
+                                                    rest carried sA ρb vc ic
+                                                    s1 lb lr phis hm hc hb hr
+                                                    hp hbody hrs hstr hlt hfresh hltB fh henv fenv hrel
+                                                    (HFlow.value (.lit .unit)) envL hw prog f prev F
+                                                    hsub hnodf fuelB hF
+                                                obtain ⟨F', fenvX, hleF, hgeF,
+                                                    hexit, hrelX, haccX⟩ :=
+                                                  hloopV rfl
+                                                have hfb'' : fh ≤ fuelB := by
+                                                  omega
+                                                have hsub_r : ∀ b ∈ lr.blocks,
+                                                    b ∈ f.blocks :=
+                                                  fun b hb => hsub _
+                                                    (List.mem_append_right _
+                                                      hb)
+                                                have hg'_r : F' ≥ blockBound
+                                                    fuelB rest := by
+                                                  have hbr : blockBound fuelB
+                                                      rest =
+                                                      1 + armBlockBound
+                                                      fuelB rest := by
+                                                    rw [blockBound]
+                                                  omega
+                                                have hmnb : nextB + 3 ≤ lb.next :=
+                                                  (lowerStmtsCFG_loopBody_inv budget _ _ _ _ _ _ _ _ _ _ hb hbody).1
+                                                have hltB' : nextB + 1 < lb.next := by omega
+                                                obtain ⟨w_u, hu, heq_rest⟩ :=
+                                                  (ih (nextB + 1) ρb
+                                                    (lb.supply + 1) lb.next
+                                                    lb.supply true lr hr hrs
+                                                    hfrX
+                                                    (Nat.lt_succ_self _)
+                                                    hltB'
+                                                    .unit envL fenvX hrelX haccX fh
+                                                    henv' out hrun prog f
+                                                    (some (nextB + 1)) F'
+                                                    hsub_r hnodf fuelB hg'_r
+                                                    hfb'' u).1 hout
+                                                refine ⟨w_u, hu, ?_⟩
+                                                exact hexit.trans heq_rest
+                                            | returned e =>
+                                                simp only [] at hrun
+                                                have hret : out =
+                                                    .returned e :=
+                                                  (congrArg Prod.fst
+                                                    hrun).symm
+                                                rw [hret] at hout
+                                                exact absurd hout (by simp)
+                                            | broke =>
+                                                exact ((runHIRWhile_outcome fh
+                                                  henv c body (.broke) envL
+                                                  hw).1 rfl).elim
+                                            | continued =>
+                                                exact ((runHIRWhile_outcome fh
+                                                  henv c body (.continued) envL
+                                                  hw).2 rfl).elim
+                                            | stuck =>
+                                                simp only [] at hrun
+                                                have hst : out = .stuck :=
+                                                  (congrArg Prod.fst
+                                                    hrun).symm
+                                                rw [hst] at hout
+                                                exact absurd hout (by simp)
+                                  · intro e_ret hout2
+                                    cases fuelH with
+                                    | zero =>
+                                        have hz : runHIRStmts 0 henv
+                                            (.whileLoop c body :: rest)
+                                            (.value (.lit accH)) =
+                                            (.stuck, henv) := rfl
+                                        rw [hz] at hrun
+                                        have hst : out = .stuck :=
+                                          (congrArg Prod.fst hrun).symm
+                                        rw [hst] at hout2
+                                        exact absurd hout2 (by simp)
+                                    | succ fh =>
+                                        have hstep : runHIRStmts (fh + 1)
+                                            henv
+                                            (.whileLoop c body :: rest)
+                                            (.value (.lit accH)) =
+                                            (match runHIRWhile fh henv c body with
+                                             | (HFlow.value uu, env'') =>
+                                                 runHIRStmts fh env'' rest
+                                                   (HFlow.replace
+                                                     (HFlow.value
+                                                     (.lit accH)) uu)
+                                             | (ff, env'') =>
+                                                 (ff, env'')) := rfl
+                                        rw [hstep] at hrun
+                                        cases hw : runHIRWhile fh henv c
+                                            body with
+                                        | mk res envL =>
+                                            rw [hw] at hrun
+                                            cases res with
+                                            | value v =>
+                                                simp only [] at hrun
+                                                have hv : v = .lit .unit :=
+                                                  runHIRWhile_value_unit fh
+                                                    henv c body v envL hw
+                                                rw [hv] at hrun hw
+                                                simp only
+                                                  [HFlow.replace] at hrun
+                                                have hfle : fh ≤ fuelB := by
+                                                  omega
+                                                have hF : F ≥ 1 +
+                                                    ((2 + armBlockBound
+                                                      fuelB body) *
+                                                      (fh + 1) +
+                                                      armBlockBound fuelB
+                                                      rest) := by
+                                                  have h1 : fh + 1 ≤
+                                                      fuelB + 1 := by omega
+                                                  have h2 : (2 +
+                                                      armBlockBound fuelB
+                                                      body) * (fh + 1) ≤
+                                                      (2 + armBlockBound
+                                                      fuelB body) *
+                                                      (fuelB + 1) :=
+                                                    Nat.mul_le_mul_left
+                                                      _ h1
+                                                  omega
+                                                obtain ⟨hfrX, hloopV,
+                                                    hloopR⟩ :=
+                                                  whileLoop_correct budget
+                                                    bId nextB ρ supply c body
+                                                    rest carried sA ρb vc ic
+                                                    s1 lb lr phis hm hc hb hr
+                                                    hp hbody hrs hstr hlt hfresh hltB fh henv fenv hrel
+                                                    (HFlow.value (.lit .unit)) envL hw prog f prev F
+                                                    hsub hnodf fuelB hF
+                                                obtain ⟨F', fenvX, hleF, hgeF,
+                                                    hexit, hrelX, haccX⟩ :=
+                                                  hloopV rfl
+                                                have hfb'' : fh ≤ fuelB := by
+                                                  omega
+                                                have hsub_r : ∀ b ∈ lr.blocks,
+                                                    b ∈ f.blocks :=
+                                                  fun b hb => hsub _
+                                                    (List.mem_append_right _
+                                                      hb)
+                                                have hg'_r : F' ≥ blockBound
+                                                    fuelB rest := by
+                                                  have hbr : blockBound fuelB
+                                                      rest =
+                                                      1 + armBlockBound
+                                                      fuelB rest := by
+                                                    rw [blockBound]
+                                                  omega
+                                                have hmnb : nextB + 3 ≤ lb.next :=
+                                                  (lowerStmtsCFG_loopBody_inv budget _ _ _ _ _ _ _ _ _ _ hb hbody).1
+                                                have hltB' : nextB + 1 < lb.next := by omega
+                                                obtain ⟨w_e, heq, heq_rest⟩ :=
+                                                  (ih (nextB + 1) ρb
+                                                    (lb.supply + 1) lb.next
+                                                    lb.supply true lr hr hrs
+                                                    hfrX
+                                                    (Nat.lt_succ_self _)
+                                                    hltB'
+                                                    .unit envL fenvX hrelX haccX fh
+                                                    henv' out hrun prog f
+                                                    (some (nextB + 1)) F'
+                                                    hsub_r hnodf fuelB hg'_r
+                                                    hfb'' u).2 e_ret hout2
+                                                refine ⟨w_e, heq, ?_⟩
+                                                exact hexit.trans heq_rest
+                                            | returned e =>
+                                                simp only [] at hrun
+                                                have hret : out =
+                                                    .returned e :=
+                                                  (congrArg Prod.fst
+                                                    hrun).symm
+                                                rw [hret] at hout2
+                                                have hee : e = e_ret :=
+                                                  HFlow.returned.inj hout2
+                                                have hfle_r : fh ≤ fuelB := by
+                                                  omega
+                                                have hF_r : F ≥ 1 +
+                                                    ((2 + armBlockBound
+                                                      fuelB body) *
+                                                      (fh + 1) +
+                                                      armBlockBound fuelB
+                                                      rest) := by
+                                                  have h1 : fh + 1 ≤
+                                                      fuelB + 1 := by omega
+                                                  have h2 : (2 +
+                                                      armBlockBound fuelB
+                                                      body) * (fh + 1) ≤
+                                                      (2 + armBlockBound
+                                                      fuelB body) *
+                                                      (fuelB + 1) :=
+                                                    Nat.mul_le_mul_left
+                                                      _ h1
+                                                  omega
+                                                obtain ⟨hfrX, hloopV,
+                                                    hloopR⟩ :=
+                                                  whileLoop_correct budget
+                                                    bId nextB ρ supply c body
+                                                    rest carried sA ρb vc ic
+                                                    s1 lb lr phis hm hc hb hr
+                                                    hp hbody hrs hstr hlt hfresh hltB fh henv fenv hrel
+                                                    (HFlow.returned e) envL hw prog f prev F
+                                                    hsub hnodf fuelB hF_r
+                                                obtain ⟨w_e, heq, hexec⟩ :=
+                                                  hloopR e rfl
+                                                rw [hee] at heq
+                                                exact ⟨w_e, heq, hexec⟩
+                                            | broke =>
+                                                exact ((runHIRWhile_outcome fh
+                                                  henv c body (.broke) envL
+                                                  hw).1 rfl).elim
+                                            | continued =>
+                                                exact ((runHIRWhile_outcome fh
+                                                  henv c body (.continued) envL
+                                                  hw).2 rfl).elim
+                                            | stuck =>
+                                                simp only [] at hrun
+                                                have hst : out = .stuck :=
+                                                  (congrArg Prod.fst
+                                                    hrun).symm
+                                                rw [hst] at hout2
+                                                exact absurd hout2 (by simp)
       | returnStmt e rest hstr _ =>
           intro accH henv fenv hrel hacc fuelH henv' out hrun prog f prev F
-            hsub hnodf fuelB hg
+            hsub hnodf fuelB hg hfb
           simp only [lowerStmtsCFG] at h
           cases he : lowerExpr ρ supply e with
           | none => rw [he] at h; simp at h
@@ -5631,7 +19767,7 @@ theorem lowerStmtsCFG_total_bound (budget : Nat) :
       (ss : List HIR.Stmt) (L : Lowered),
       lowerStmtsCFG bId none false ρ supply nextB lastVal hasVal none ss = some L →
       BranchStmts budget ss →
-      FreshAbove ρ supply → lastVal < supply →
+      FreshAbove ρ supply → lastVal < supply → bId < nextB →
       ∀ (accH : Value) (henv : HEnv) (fenv : FullEnv),
       RelEnv henv ρ fenv.env →
       fenv.env lastVal = some accH →
@@ -5649,12 +19785,12 @@ theorem lowerStmtsCFG_total_bound (budget : Nat) :
         ∃ w_e, e = .lit w_e ∧
           execBlockFromIn prog (blockBound fuelH ss) f prev
             ⟨bId, L.instrs, L.term⟩ fenv = some w_e) := by
-  intro bId ρ supply nextB lastVal hasVal ss L h hss hfresh hlast
+  intro bId ρ supply nextB lastVal hasVal ss L h hss hfresh hlast hltB
     accH henv fenv hrel hacc fuelH henv' out hrun prog f prev hsub hnodf u
   exact lowerStmtsCFG_total budget bId ρ supply nextB lastVal hasVal ss L
-    h hss hfresh hlast accH henv fenv hrel hacc fuelH henv' out hrun prog f
+    h hss hfresh hlast hltB accH henv fenv hrel hacc fuelH henv' out hrun prog f
     prev (blockBound fuelH ss) hsub hnodf fuelH
-    (Nat.le_refl (blockBound fuelH ss)) u
+    (Nat.le_refl (blockBound fuelH ss)) (Nat.le_refl fuelH) u
 
 /-- Top corollary (C3 exit): a closed lowered program runs the oracle's value.
 C7 cites this: HIR success (`runHIRProgram = value`) is MIR success
@@ -5676,8 +19812,8 @@ theorem lowerProgramCFG_correct (budget : Nat) (prog : HIR.Program)
       simp [hc] at hlower
       obtain rfl := hlower
       obtain ⟨hmn, hms, hbnd, hnodr⟩ :=
-        lowerStmtsCFG_branch_inv budget 0 none [] 1 1 0 false prog.stmts L
-          hc hss
+        lowerStmtsCFG_branch_inv budget 0 none [] 1 1 0 false none prog.stmts
+          L hc hss
       have hsub : ∀ b ∈ L.blocks, b ∈ (⟨"main", [],
           (⟨0, .const 0 .unit :: L.instrs, L.term⟩ : Block) ::
             L.blocks.reverse, 0, .unitType⟩ : Func).blocks := by
@@ -5794,7 +19930,7 @@ theorem lowerProgramCFG_correct (budget : Nat) (prog : HIR.Program)
                   ← execBlockFromIn_eq]
               obtain ⟨w_u, hu, heq⟩ :=
                 (lowerStmtsCFG_total_bound budget 0 [] 1 1 0 false prog.stmts
-                  L hc hss hfresh (by decide) .unit []
+                  L hc hss hfresh (by decide) (by decide) .unit []
                   (⟨Env.update (fun _ => none : Morph.MIR.Env) 0 .unit,
                     Store.empty⟩ : FullEnv) hrel hacc 1024 henv'
                   out hp progM _ none hsub hnodf (.lit w)).1 hout
