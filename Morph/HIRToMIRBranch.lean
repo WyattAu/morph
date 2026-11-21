@@ -16240,6 +16240,279 @@ theorem tramp_post_RelEnv (budget : Nat)
   · intro r' hnotin
     rfl
 
+/-- `mkCarried` never drops a binding: an id bound in the entry env stays
+bound (at some register) in the exit env. `updAssoc` only conses, and a
+`none` allocation aborts the whole fold, so the induction just transports
+the lookup across each update. Feeds `mkCarried_mem_domain`. -/
+theorem mkCarried_domain_mono {ρ : List (HIR.Id × ValId)} {s : Nat}
+    {ids : List HIR.Id} {cs : List (HIR.Id × ValId)} {s' : Nat}
+    {ρ' : List (HIR.Id × ValId)} {id : HIR.Id} {u : ValId}
+    (h : mkCarried ρ s ids = some (cs, s', ρ'))
+    (hlook : rhoLookup ρ id = some u) :
+    ∃ u', rhoLookup ρ' id = some u' := by
+  induction ids generalizing ρ s cs s' ρ' u with
+  | nil =>
+      simp only [mkCarried] at h
+      obtain ⟨rfl, rfl, rfl⟩ := Option.some.inj h
+      exact ⟨u, hlook⟩
+  | cons hd tl ih =>
+      simp only [mkCarried] at h
+      cases hρ : rhoLookup ρ hd with
+      | none => rw [hρ] at h; simp at h
+      | some _ =>
+          rw [hρ] at h
+          cases hrec : mkCarried (updAssoc ρ hd s) (s + 1) tl with
+          | none => rw [hrec] at h; simp at h
+          | some q =>
+              obtain ⟨cs', s'', ρ''⟩ := q
+              rw [hrec] at h
+              obtain ⟨rfl, rfl, rfl⟩ := Option.some.inj h
+              by_cases heq : id = hd
+              · have hUs : rhoLookup (updAssoc ρ hd s) hd = some s := by
+                  have e1 := rhoLookup_updAssoc_id ρ hd s
+                  rw [hρ] at e1
+                  exact e1
+                subst heq
+                obtain ⟨u', hu'⟩ := ih hrec hUs
+                exact ⟨u', hu'⟩
+              · have hlook' : rhoLookup (updAssoc ρ hd s) id =
+                    rhoLookup ρ id :=
+                  rhoLookup_updAssoc_ne (fun hh => heq hh.symm) ρ
+                have hlookU : rhoLookup (updAssoc ρ hd s) id = some u := by
+                  rw [hlook']
+                  exact hlook
+                exact ih hrec hlookU
+
+/-- Every carried pair's id resolves in the exit env (at some register).
+The nil case is vacuous; the cons head case allocates (then stays bound by
+`mkCarried_domain_mono`); the tail case is the induction hypothesis. Gives
+the pre-body HIR-lit fact for `cont_post_RelEnv` without any uniqueness
+hypothesis. -/
+theorem mkCarried_mem_domain {ρ : List (HIR.Id × ValId)} {s : Nat}
+    {ids : List HIR.Id} {cs : List (HIR.Id × ValId)} {s' : Nat}
+    {ρ' : List (HIR.Id × ValId)} {id : HIR.Id} {r : ValId}
+    (h : mkCarried ρ s ids = some (cs, s', ρ'))
+    (hmem : (id, r) ∈ cs) :
+    ∃ u, rhoLookup ρ' id = some u := by
+  induction ids generalizing ρ s cs s' ρ' with
+  | nil =>
+      simp only [mkCarried] at h
+      obtain ⟨rfl, rfl, rfl⟩ := Option.some.inj h
+      simp at hmem
+  | cons hd tl ih =>
+      simp only [mkCarried] at h
+      cases hρ : rhoLookup ρ hd with
+      | none => rw [hρ] at h; simp at h
+      | some _ =>
+          rw [hρ] at h
+          cases hrec : mkCarried (updAssoc ρ hd s) (s + 1) tl with
+          | none => rw [hrec] at h; simp at h
+          | some q =>
+              obtain ⟨cs', s'', ρ''⟩ := q
+              rw [hrec] at h
+              obtain ⟨rfl, rfl, rfl⟩ := Option.some.inj h
+              rcases List.mem_cons.mp hmem with hmem | hmem
+              · have hUs : rhoLookup (updAssoc ρ hd s) hd = some s := by
+                  have e1 := rhoLookup_updAssoc_id ρ hd s
+                  rw [hρ] at e1
+                  exact e1
+                obtain ⟨rfl, rfl⟩ := Prod.mk.inj hmem
+                exact mkCarried_domain_mono hrec hUs
+              · exact ih hrec hmem
+
+/-- Header phis on a trampoline edge are identity: the entry and back phis
+miss (predecessor is neither), and the hitting self-copy rewrites the
+register with its current value (`headerGroup_exec_tramp`). Needs only
+reg-boundness per carried pair — no `RelEnv`. -/
+theorem headerPhis_tramp_hit_exec (t bId fallEnd : MIR.BlockId)
+    (tramps : List MIR.BlockId) (l : List (HIR.Id × ValId))
+    (f : HIR.Id × ValId → List MIR.Instr)
+    (hf : ∀ q ∈ l, ∃ entrySrc backSrc,
+      f q = ([MIR.Instr.phi q.2 bId entrySrc,
+        MIR.Instr.phi q.2 fallEnd backSrc] ++
+        tramps.map (MIR.Instr.phi q.2 · q.2)))
+    (htmem : t ∈ tramps) (hnt : bId ≠ t) (hnf : fallEnd ≠ t)
+    (prog : Program) (fenv : FullEnv)
+    (hval : ∀ id r, (id, r) ∈ l → ∃ w, fenv.env r = some w) :
+    execInstrsFullFromIn prog (some t) fenv ((l.map f).flatten) =
+      some fenv := by
+  have gen : ∀ (cs : List (HIR.Id × ValId)),
+      (∀ q ∈ cs, ∃ entrySrc backSrc,
+        f q = ([MIR.Instr.phi q.2 bId entrySrc,
+          MIR.Instr.phi q.2 fallEnd backSrc] ++
+          tramps.map (MIR.Instr.phi q.2 · q.2))) →
+      (∀ id r, (id, r) ∈ cs → ∃ w, fenv.env r = some w) →
+      execInstrsFullFromIn prog (some t) fenv ((cs.map f).flatten) =
+        some fenv := by
+    intro cs hcs hval_cs
+    induction cs with
+    | nil => simp [List.map_nil, execInstrsFullFromIn_eq, execInstrsFullFrom]
+    | cons p rest ih =>
+        obtain ⟨id₀, r₀⟩ := p
+        have hfhead : ∃ entrySrc backSrc,
+            f (id₀, r₀) = ([MIR.Instr.phi r₀ bId entrySrc,
+              MIR.Instr.phi r₀ fallEnd backSrc] ++
+              tramps.map (MIR.Instr.phi r₀ · r₀)) :=
+          hcs _ (List.mem_cons_self ..)
+        obtain ⟨entrySrc, backSrc, hfp⟩ := hfhead
+        have hval_rest : ∀ id r, (id, r) ∈ rest → ∃ w,
+            fenv.env r = some w := by
+          intro idr rr hmem
+          exact hval_cs idr rr (List.mem_cons_of_mem _ hmem)
+        have hcs_rest : ∀ q ∈ rest, ∃ entrySrc backSrc,
+            f q = ([MIR.Instr.phi q.2 bId entrySrc,
+              MIR.Instr.phi q.2 fallEnd backSrc] ++
+              tramps.map (MIR.Instr.phi q.2 · q.2)) := by
+          intro q hq
+          exact hcs q (List.mem_cons_of_mem _ hq)
+        obtain ⟨w₀, hreg0⟩ := hval_cs id₀ r₀ (List.mem_cons_self ..)
+        have hexec1 : execInstrsFullFrom (some t) fenv (f (id₀, r₀)) =
+            some fenv := by
+          rw [hfp]
+          exact headerGroup_exec_tramp t bId fallEnd tramps r₀ entrySrc
+            backSrc fenv w₀ hnt hnf hreg0
+        have hrest := ih hcs_rest hval_rest
+        have happ : execInstrsFullFromIn prog (some t) fenv
+            (f (id₀, r₀) ++ (rest.map f).flatten) =
+            execInstrsFullFromIn prog (some t) fenv (rest.map f).flatten := by
+          rw [execInstrsFullFromIn_eq, execInstrsFullFromIn_eq,
+            execInstrsFullFrom_append, hexec1]
+        have hflat : (((id₀, r₀) :: rest).map f).flatten =
+            f (id₀, r₀) ++ (rest.map f).flatten := by simp
+        rw [hflat, happ]
+        exact hrest
+  exact gen l hf hval
+
+/-- One header group with a foreign predecessor is identity: the entry and
+back phis miss and every trampoline self-copy misses
+(`trampPhis_exec_miss`). -/
+theorem headerGroup_exec_miss (pred bId fallEnd : MIR.BlockId)
+    (tramps : List MIR.BlockId) (r entrySrc backSrc : ValId)
+    (fenv : FullEnv)
+    (hnb : bId ≠ pred) (hnf : fallEnd ≠ pred)
+    (hnm : ∀ t ∈ tramps, t ≠ pred) (prog : Program) :
+    execInstrsFullFromIn prog (some pred) fenv
+      ([MIR.Instr.phi r bId entrySrc, MIR.Instr.phi r fallEnd backSrc] ++
+        tramps.map (MIR.Instr.phi r · r)) = some fenv := by
+  rw [execInstrsFullFromIn_eq]
+  simp only [List.cons_append, List.nil_append,
+    execInstrsFullFrom_phi_miss _ _ _ _ _ _ hnb,
+    execInstrsFullFrom_phi_miss _ _ _ _ _ _ hnf]
+  rw [← execInstrsFullFromIn_eq]
+  exact trampPhis_exec_miss prog pred tramps r fenv hnm
+
+/-- Header phis with a foreign predecessor are identity: entry, back, and
+every trampoline self-copy miss. Needs only predecessor inequality facts —
+no values at all. -/
+theorem headerPhis_miss_exec (pred bId fallEnd : MIR.BlockId)
+    (tramps : List MIR.BlockId) (l : List (HIR.Id × ValId))
+    (f : HIR.Id × ValId → List MIR.Instr)
+    (hf : ∀ q ∈ l, ∃ entrySrc backSrc,
+      f q = ([MIR.Instr.phi q.2 bId entrySrc,
+        MIR.Instr.phi q.2 fallEnd backSrc] ++
+        tramps.map (MIR.Instr.phi q.2 · q.2)))
+    (hnb : bId ≠ pred) (hnf : fallEnd ≠ pred)
+    (hnm : ∀ t ∈ tramps, t ≠ pred)
+    (prog : Program) (fenv : FullEnv) :
+    execInstrsFullFromIn prog (some pred) fenv ((l.map f).flatten) =
+      some fenv := by
+  have gen : ∀ (cs : List (HIR.Id × ValId)),
+      (∀ q ∈ cs, ∃ entrySrc backSrc,
+        f q = ([MIR.Instr.phi q.2 bId entrySrc,
+          MIR.Instr.phi q.2 fallEnd backSrc] ++
+          tramps.map (MIR.Instr.phi q.2 · q.2))) →
+      execInstrsFullFromIn prog (some pred) fenv ((cs.map f).flatten) =
+        some fenv := by
+    intro cs hcs
+    induction cs with
+    | nil => simp [List.map_nil, execInstrsFullFromIn_eq, execInstrsFullFrom]
+    | cons p rest ih =>
+        obtain ⟨id₀, r₀⟩ := p
+        obtain ⟨entrySrc, backSrc, hfp⟩ := hcs _ (List.mem_cons_self ..)
+        have hcs_rest : ∀ q ∈ rest, ∃ entrySrc backSrc,
+            f q = ([MIR.Instr.phi q.2 bId entrySrc,
+              MIR.Instr.phi q.2 fallEnd backSrc] ++
+              tramps.map (MIR.Instr.phi q.2 · q.2)) := by
+          intro q hq
+          exact hcs q (List.mem_cons_of_mem _ hq)
+        have hexec1 : execInstrsFullFromIn prog (some pred) fenv
+            (f (id₀, r₀)) = some fenv := by
+          rw [hfp]
+          exact headerGroup_exec_miss pred bId fallEnd tramps r₀ entrySrc
+            backSrc fenv hnb hnf hnm prog
+        have hrest := ih hcs_rest
+        have happ : execInstrsFullFromIn prog (some pred) fenv
+            (f (id₀, r₀) ++ (rest.map f).flatten) =
+            execInstrsFullFromIn prog (some pred) fenv (rest.map f).flatten := by
+          simp only [execInstrsFullFromIn_append, hexec1]
+        have hflat : (((id₀, r₀) :: rest).map f).flatten =
+            f (id₀, r₀) ++ (rest.map f).flatten := by simp
+        rw [hflat, happ]
+        exact hrest
+  exact gen l hf
+
+/-- Post-body relation for `continue` arrivals (trampoline/miss alternative
+to `conv_backRelEnv`): the continued selector gives carried binds plus a
+below-supply frame but no `RelEnv` under `lb.ρ` — and none is needed.
+Carried ids use the post-body HIR-lit fact (`spine_P` from pre-body
+binding) plus the worker's bind; assigned-but-not-carried resolve through
+`carried`; unassigned ids use HIR lookup preservation plus the pre-body
+`RelEnv` and the frame. -/
+theorem cont_post_RelEnv (budget : Nat)
+    (ρ : List (HIR.Id × ValId)) (supply : Nat)
+    (body : List HIR.Stmt) (carried : List (HIR.Id × ValId)) (sA : Nat)
+    (ρb : List (HIR.Id × ValId))
+    (hmk : mkCarried ρ supply
+      ((dedupIds (assignedIds body)).filterMap
+        (fun id => (rhoLookup ρ id).map (fun _ => id))) =
+      some (carried, sA, ρb))
+    (hfresh : FreshAbove ρ supply)
+    (s1hi : Nat) (hle : supply ≤ s1hi)
+    (envB : HEnv) (henv : HEnv) (fenv fenvArr : FullEnv)
+    (hrelB0 : RelEnv henv ρb fenv.env)
+    (hBIND : ∀ id r w, (id, r) ∈ carried →
+      lookupHEnv envB id = some (.lit w) → fenvArr.env r = some w)
+    (hP : ∀ id r, (id, r) ∈ carried → ∃ w,
+      lookupHEnv envB id = some (.lit w))
+    (hframe : ∀ r, r < s1hi → (∀ idx, (idx, r) ∉ carried) →
+      fenvArr.env r = fenv.env r)
+    (hlookB : ∀ id, id ∉ assignedIds body →
+      lookupHEnv envB id = lookupHEnv henv id) :
+    RelEnv envB ρb fenvArr.env := by
+  have hval : ∀ id r, (id, r) ∈ carried → ∃ w,
+      lookupHEnv envB id = some (.lit w) ∧ fenvArr.env r = some w := by
+    intro idr rr hmem
+    obtain ⟨w, hlookH⟩ := hP idr rr hmem
+    exact ⟨w, hlookH, hBIND idr rr w hmem hlookH⟩
+  intro id u hlook
+  rcases mkCarried_lookup hmk hlook with ⟨i, rr, hmem, hid, hu⟩ | hbase
+  · subst hid
+    subst hu
+    obtain ⟨w, hlookH, hreg⟩ := hval id u hmem
+    exact ⟨w, hlookH, hreg⟩
+  · by_cases hass : id ∈ assignedIds body
+    · have hmemIds : id ∈ (dedupIds (assignedIds body)).filterMap
+        (fun id => (rhoLookup ρ id).map (fun _ => id)) := by
+        rw [List.mem_filterMap]
+        exact ⟨id, dedupIds_mem hass, by simp [hbase]⟩
+      obtain ⟨r, hlookC, hmemC⟩ := mkCarried_mem_lookup hmemIds hmk
+      have hur : r = u := Option.some.inj (hlookC.symm.trans hlook)
+      subst hur
+      obtain ⟨w, hlookH, hreg⟩ := hval id r hmemC
+      exact ⟨w, hlookH, hreg⟩
+    · have hEq : lookupHEnv envB id = lookupHEnv henv id := hlookB id hass
+      obtain ⟨w, hlookH0, hreg0⟩ := hrelB0 id u hlook
+      refine ⟨w, ?_, ?_⟩
+      · rw [hEq]; exact hlookH0
+      · have hlt : u < supply := hfresh id u (rhoLookup_some_mem _ _ _ hbase)
+        have hnotin : ∀ idx, (idx, u) ∉ carried := by
+          intro idx hcon
+          have hleU := mkCarried_mem_lo hmk hcon
+          exact absurd hleU (Nat.not_le_of_gt hlt)
+        have hltHi : u < s1hi := Nat.lt_of_lt_of_le hlt hle
+        rw [hframe u hltHi hnotin]
+        exact hreg0
+
 /-- Post-phi conversion (back-edge): a post-header-phi `RelEnv` under the
 body-exit env `lb.ρ` plus the phi's carried-bind agreement restores `RelEnv`
 under the body-entry env `ρb`. Carried ids go through the exit env
@@ -17281,10 +17554,20 @@ selector exist, and `conv_backRelEnv` re-establishes `RelEnv`. What remains
 is strictly `header_loop_correct`'s `continued` case: synthesizing
 `RelEnv envB lb.ρ` for the back-edge phis from the continued selector's
 carried-bindings + frame (the value selector's `RelEnv` is unavailable
-there). The natural fix is strengthening `lowerStmtsCFG_loopBody_run`'s
-continued conjunct with `arm_continued`'s `RelEnv`, then replaying the value
-branch's back-edge script; that reshapes the worker's tuple, so its
-`.2.1`/`.2.2.1` use-sites shift accordingly. -/
+there). The naive fix — strengthening `lowerStmtsCFG_loopBody_run`'s continued
+conjunct with `RelEnv henv' L.ρ` — is FALSE: a continued arm skips `rest`
+(`runHIRStmts` returns `(f, env')` directly for non-value arm outcomes), but
+`L.ρ` is `rest`'s exit env lowered under the pre-branch `ρ`, so its fresh
+regs are unwritten on that path (e.g. `if c then continue else skip; x = 1`).
+What the header needs instead is `RelEnv` under the body-ENTRY env `ρb`,
+dispatched on the arrival predecessor `blkPrev`: (a) `blkPrev ∈ tramps` —
+trampoline self-copies are identity (`headerPhis_tramp_hit_exec`) and
+`cont_post_RelEnv` restores `RelEnv envB ρb` from the selector's carried
+binds + frame via `spine_P` + `runHIRStmts_loopBody_lookup` (no `lb.ρ`
+needed); (b) `blkPrev ∉ tramps`, `≠ fallEnd` — every phi misses
+(`headerPhis_miss_exec`) + same `cont_post_RelEnv`; (c) `blkPrev = fallEnd`
+— the back phi fires and needs carried ids' EXIT-reg values, a new worker
+fact (only reachable via trailing-`continue` in `rest`). -/
 theorem whileLoop_correct (budget : Nat) :
     ∀ (bId nextB : MIR.BlockId) (ρ : List (HIR.Id × ValId)) (supply : Nat)
       (c : HIR.Expr) (body rest : List HIR.Stmt)
