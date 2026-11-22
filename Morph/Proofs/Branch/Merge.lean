@@ -200,6 +200,33 @@ theorem mkMergePhis_growth_fresh {ρ ltρ leρ : List (HIR.Id × ValId)} {s : Na
                   · exact hfr _ _ hmem
                   · exact Nat.lt_of_lt_of_le (Nat.lt_succ_self _) hle
 
+/-- The merge set is empty when neither arm exit rebinds: both `if`s in the
+step function then keep `acc`, so the fold is the identity. The C3 workers
+cite this (with `arm_rho`, which gives `lt.ρ = ρ` and `le.ρ = ρ` for
+binding-free arms) to discharge the merge decision on the old join path. -/
+theorem mergeIds_self (ρ : List (HIR.Id × ValId)) : mergeIds ρ ρ ρ = [] := by
+  unfold mergeIds
+  suffices h : ∀ (l : List HIR.Id) (acc : List HIR.Id),
+      l.foldl (fun acc j =>
+        if acc.contains j then acc
+        else if rhoLookup ρ j != rhoLookup ρ j ||
+                rhoLookup ρ j != rhoLookup ρ j then acc ++ [j]
+        else acc) acc = acc by
+    exact h _ _
+  intro l acc
+  induction l generalizing acc with
+  | nil => simp only [List.foldl_nil]
+  | cons hd tl ih =>
+      simp only [List.foldl_cons]
+      by_cases hc : acc.contains hd = true
+      · rw [if_pos hc]
+        exact ih _
+      · rw [if_neg hc]
+        have hn : ¬ (rhoLookup ρ hd != rhoLookup ρ hd ||
+            rhoLookup ρ hd != rhoLookup ρ hd) := by simp
+        rw [if_neg hn]
+        exact ih _
+
 /-- Ids an arm run may rebind: `assign` targets plus `varDecl` introductions,
 through nested arm `if`s. `assignedIds` misses `varDecl` (it falls in the
 catch-all), so arms need their own measure; loop bodies keep `assignedIds`

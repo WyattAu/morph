@@ -60,6 +60,8 @@ L0 module or any L1 module; no L1 module imports `HIRToMIRBranch`.
 ## Extraction order (smallest green cuts first)
 
 1. ✅ `Merge` — self-contained, list-based, zero worker deps (§741 + `boundIds`).
+   Phase B consumes it: the lowering's join keys on `mergeIds`, and every
+   C3 if-case discharges `[]` via `arm_rho` + `mergeIds_self`.
 2. ✅ `Fragments` — grammars + Phase A inclusion (gates every worker's hypotheses).
 3. ✅ `Fuel` — block budget, fully pure (0 lowering cites). `Fresh` stays in
    Branch: its theorems cite the lowering/execution (105 cites), so it is L1

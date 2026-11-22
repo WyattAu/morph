@@ -177,7 +177,19 @@ def lowerStmtsCFG (bId : MIR.BlockId) (cont : Option MIR.BlockId)
       | none => none
   | .varDecl id _τ init :: rest =>
       match arm with
-      | true => none
+      | true =>
+          -- Phase B (C2c): top-level arms (`loop = none`) may bind; the join
+          -- merges via `mergeIds`/`mkMergePhis`. Loop-body arms
+          -- (`loop = some _`) still refuse, guarding the loop workers.
+          match loop with
+          | some _ => none
+          | none =>
+          match lowerExpr ρ supply init with
+          | some (vb, ib, s1) =>
+              match lowerStmtsCFG bId cont arm ((id, vb) :: ρ) s1 nextB lastVal true loop rest with
+              | some L => some { L with instrs := ib ++ L.instrs }
+              | none => none
+          | none => none
       | false =>
           match loop with
           | some _ => none
@@ -190,7 +202,19 @@ def lowerStmtsCFG (bId : MIR.BlockId) (cont : Option MIR.BlockId)
           | none => none
   | .assign id e :: rest =>
       match arm with
-      | true => none
+      | true =>
+          -- Phase B (C2c): top-level arms (`loop = none`) may bind; the join
+          -- merges via `mergeIds`/`mkMergePhis`. Loop-body arms
+          -- (`loop = some _`) still refuse, guarding the loop workers.
+          match loop with
+          | some _ => none
+          | none =>
+          match lowerExpr ρ supply e with
+          | some (v, ie, s1) =>
+              match lowerStmtsCFG bId cont arm (updAssoc ρ id v) s1 nextB lastVal true loop rest with
+              | some L => some { L with instrs := ie ++ L.instrs }
+              | none => none
+          | none => none
       | false =>
           match lowerExpr ρ supply e with
           | some (v, ie, s1) =>
@@ -220,28 +244,59 @@ def lowerStmtsCFG (bId : MIR.BlockId) (cont : Option MIR.BlockId)
               match lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ lt.supply lt.next lastVal false loop el with
               | none => none
               | some le =>
-                  match lowerStmtsCFG (nextB + 2) cont arm ρ (le.supply + 1) le.next le.supply true loop rest with
-                  | none => none
-                  | some lr =>
-                      some { instrs := ic
-                             term := .branch vc nextB (nextB + 1)
-                             blocks := lt.blocks ++ [⟨nextB, lt.instrs, lt.term⟩]
-                                       ++ le.blocks ++ [⟨nextB + 1, le.instrs, le.term⟩]
-                                       ++ [⟨nextB + 2,
-                                           [.phi le.supply ((lt.blocks.getLast?.map (fun b => b.id)).getD nextB) lt.val,
-                                            .phi le.supply ((le.blocks.getLast?.map (fun b => b.id)).getD (nextB + 1)) le.val] ++ lr.instrs,
-                                           lr.term⟩] ++ lr.blocks
-                             val := lr.val
-                             ρ := lr.ρ
-                             supply := lr.supply
-                             -- `lr.next + 1`, not `lr.next`: the join block itself
-                             -- carries id `nextB + 2`, and `rest` may allocate
-                             -- nothing (so `lr.next` can equal `nextB + 2`). The
-                             -- invariant needs every produced id strictly below
-                             -- `L.next`, and nesting needs the outer ids to start
-                             -- strictly above the inner ones, so the high-water
-                             -- mark must clear the join id even when `rest` is empty.
-                             next := lr.next + 1 }
+                  -- Phase B (C2c): when either arm rebinds, the join merges
+                  -- every rebound id via `mergeIds`/`mkMergePhis` and lowers
+                  -- the tail under the merged env. Binding-free arms (every
+                  -- `ArmStmts` arm, including all loop-body arms) have an
+                  -- empty merge set, so they take the old join verbatim —
+                  -- the C3 workers discharge `mergeIds ρ lt.ρ le.ρ = []` via
+                  -- `arm_rho` and continue on the old path.
+                  match mergeIds ρ lt.ρ le.ρ with
+                  | [] =>
+                      match lowerStmtsCFG (nextB + 2) cont arm ρ (le.supply + 1) le.next le.supply true loop rest with
+                      | none => none
+                      | some lr =>
+                          some { instrs := ic
+                                 term := .branch vc nextB (nextB + 1)
+                                 blocks := lt.blocks ++ [⟨nextB, lt.instrs, lt.term⟩]
+                                           ++ le.blocks ++ [⟨nextB + 1, le.instrs, le.term⟩]
+                                           ++ [⟨nextB + 2,
+                                               [.phi le.supply ((lt.blocks.getLast?.map (fun b => b.id)).getD nextB) lt.val,
+                                                .phi le.supply ((le.blocks.getLast?.map (fun b => b.id)).getD (nextB + 1)) le.val] ++ lr.instrs,
+                                               lr.term⟩] ++ lr.blocks
+                                 val := lr.val
+                                 ρ := lr.ρ
+                                 supply := lr.supply
+                                 -- `lr.next + 1`, not `lr.next`: the join block itself
+                                 -- carries id `nextB + 2`, and `rest` may allocate
+                                 -- nothing (so `lr.next` can equal `nextB + 2`). The
+                                 -- invariant needs every produced id strictly below
+                                 -- `L.next`, and nesting needs the outer ids to start
+                                 -- strictly above the inner ones, so the high-water
+                                 -- mark must clear the join id even when `rest` is empty.
+                                 next := lr.next + 1 }
+                  | mids =>
+                          match mkMergePhis ρ lt.ρ le.ρ (le.supply + 1)
+                              ((lt.blocks.getLast?.map (fun b => b.id)).getD nextB)
+                              ((le.blocks.getLast?.map (fun b => b.id)).getD (nextB + 1))
+                              mids with
+                          | none => none
+                          | some (mphis, s2, ρm) =>
+                              match lowerStmtsCFG (nextB + 2) cont arm ρm s2 le.next le.supply true loop rest with
+                              | none => none
+                              | some lr =>
+                                  some { instrs := ic
+                                         term := .branch vc nextB (nextB + 1)
+                                         blocks := lt.blocks ++ [⟨nextB, lt.instrs, lt.term⟩]
+                                                   ++ le.blocks ++ [⟨nextB + 1, le.instrs, le.term⟩]
+                                                   ++ [⟨nextB + 2,
+                                                       [.phi le.supply ((lt.blocks.getLast?.map (fun b => b.id)).getD nextB) lt.val,
+                                                        .phi le.supply ((le.blocks.getLast?.map (fun b => b.id)).getD (nextB + 1)) le.val] ++ mphis ++ lr.instrs,
+                                                       lr.term⟩] ++ lr.blocks
+                                         val := lr.val
+                                         ρ := lr.ρ
+                                         supply := lr.supply
+                                         next := lr.next + 1 }
   -- `break`/`continue` need their loop's targets; outside a loop they refuse
   -- (the previous catch-all behavior). `continue` snapshots the carried
   -- registers first, so the header sees the current env under fixed names.
@@ -571,8 +626,128 @@ theorem while_assembly_nodup {nextB lbNext lrNext : Nat}
     · obtain ⟨hloC, -⟩ := hbC y hy
       exact ne_of_lt_nat' (Nat.lt_of_lt_of_le hhiA hloC))
 
-/-- Same invariant for arms: `arm` is fixed `true`, so the lowering never
-takes a binding branch and `ArmStmts` has no such constructor to match. -/
+/-- Arm lowering never rebinds: for `ArmStmts` (no `varDecl`/`assign`
+constructors) `ρ` flows through unchanged. Phase B accepts binds in
+top-level arms, but those programs have no `ArmStmts` derivation, so this
+still holds as stated — and the C3 workers cite it to discharge the merge
+(`mergeIds ρ lt.ρ le.ρ = []`) on the old join path. The worker needs it to
+transport the arm's `RelEnv` into the rest segment. -/
+theorem lowerStmtsCFG_arm_rho (budget : Nat) :
+    ∀ (bId : MIR.BlockId) (cont : Option MIR.BlockId) (ρ : List (HIR.Id × ValId))
+      (supply nextB : Nat) (lastVal : ValId) (hasVal : Bool)
+      (loop : Option LoopInfo)
+      (ss : List HIR.Stmt) (L : Lowered),
+      lowerStmtsCFG bId cont true ρ supply nextB lastVal hasVal loop ss = some L →
+      ArmStmts budget ss →
+      L.ρ = ρ := by
+  intro bId cont ρ supply nextB lastVal hasVal loop ss L h hss
+  induction hss generalizing bId cont ρ supply nextB lastVal hasVal loop L with
+  | nil =>
+      simp only [lowerStmtsCFG.eq_def] at h
+      cases hv : hasVal with
+      | true =>
+          simp only [hv] at h
+          obtain rfl := Option.some.inj h
+          rfl
+      | false =>
+          simp only [hv] at h
+          obtain rfl := Option.some.inj h
+          rfl
+  | exprStmt e rest hstr _ hrs ih =>
+      simp only [lowerStmtsCFG] at h
+      cases he : lowerExpr ρ supply e with
+      | none => rw [he] at h; simp at h
+      | some p =>
+          obtain ⟨v0, ie, s1⟩ := p
+          rw [he] at h
+          simp only [] at h
+          cases hr : lowerStmtsCFG bId cont true ρ s1 nextB v0 true loop rest with
+          | none => rw [hr] at h; simp at h
+          | some q =>
+              rw [hr] at h
+              simp only [] at h
+              obtain rfl := Option.some.inj h
+              show q.ρ = ρ
+              exact ih _ _ _ _ _ _ _ _ _ hr
+  | nop rest hrs ih =>
+      simp only [lowerStmtsCFG] at h
+      cases hr : lowerStmtsCFG bId cont true ρ supply nextB lastVal
+          hasVal loop rest with
+      | none => rw [hr] at h; simp at h
+      | some q =>
+          rw [hr] at h
+          obtain rfl := Option.some.inj h
+          show q.ρ = ρ
+          exact ih _ _ _ _ _ _ _ _ _ hr
+  | ifStmt c th el rest hstr _ hath hael hrs iht ihe ihr =>
+      simp only [lowerStmtsCFG] at h
+      cases heC : lowerExpr ρ supply c with
+      | none => rw [heC] at h; simp at h
+      | some p =>
+          obtain ⟨vc, ic, s1⟩ := p
+          rw [heC] at h
+          simp only [] at h
+          cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
+              (nextB + 3) lastVal false loop th with
+          | none => rw [ht] at h; simp at h
+          | some lt =>
+              rw [ht] at h
+              simp only [] at h
+              cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ
+                  lt.supply lt.next lastVal false loop el with
+              | none => rw [he] at h; simp at h
+              | some le =>
+                  rw [he] at h
+                  simp only [] at h
+                  -- Phase B: binding-free arms have an empty merge set.
+                  have hltρ : lt.ρ = ρ := iht _ _ _ _ _ _ _ _ _ ht
+                  have hleρ : le.ρ = ρ := ihe _ _ _ _ _ _ _ _ _ he
+                  have hm : mergeIds ρ lt.ρ le.ρ = [] := by
+                    rw [hltρ, hleρ]
+                    exact mergeIds_self ρ
+                  rw [hm] at h
+                  simp only [] at h
+                  cases hr : lowerStmtsCFG (nextB + 2) cont true ρ
+                      (le.supply + 1) le.next le.supply true loop rest with
+                  | none => rw [hr] at h; simp at h
+                  | some lr =>
+                      rw [hr] at h
+                      simp only [] at h
+                      obtain rfl := Option.some.inj h
+                      show lr.ρ = ρ
+                      exact ihr _ _ _ _ _ _ _ _ _ hr
+  | returnStmt e rest hstr _ =>
+      simp only [lowerStmtsCFG] at h
+      cases he : lowerExpr ρ supply e with
+      | none => rw [he] at h; simp at h
+      | some p =>
+          obtain ⟨v, ie, s1⟩ := p
+          rw [he] at h
+          simp only [] at h
+          obtain rfl := Option.some.inj h
+          rfl
+  | breakStmt rest _ =>
+      cases hlo : loop with
+      | none => simp [lowerStmtsCFG, hlo] at h
+      | some info =>
+          simp only [lowerStmtsCFG, hlo] at h
+          cases hc : carryCopies ρ info.carried with
+          | none => rw [hc] at h; simp at h
+          | some copies =>
+              rw [hc] at h
+              obtain rfl := Option.some.inj h
+              rfl
+  | continueStmt rest _ =>
+      cases hlo : loop with
+      | none => simp [lowerStmtsCFG, hlo] at h
+      | some info =>
+          simp only [lowerStmtsCFG, hlo] at h
+          cases hc : carryCopies ρ info.carried with
+          | none => rw [hc] at h; simp at h
+          | some copies =>
+              rw [hc] at h
+              obtain rfl := Option.some.inj h
+              rfl
 theorem lowerStmtsCFG_arm_inv (budget : Nat) :
     ∀ (bId : MIR.BlockId) (cont : Option MIR.BlockId) (ρ : List (HIR.Id × ValId))
       (supply nextB : Nat) (lastVal : ValId) (hasVal : Bool)
@@ -646,6 +821,16 @@ theorem lowerStmtsCFG_arm_inv (budget : Nat) :
               | none => rw [he] at h; simp at h
               | some le =>
                   rw [he] at h
+                  simp only [] at h
+                  -- Phase B: binding-free arms have an empty merge set.
+                  have hltρ : lt.ρ = ρ :=
+                    lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
+                  have hleρ : le.ρ = ρ :=
+                    lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
+                  have hm : mergeIds ρ lt.ρ le.ρ = [] := by
+                    rw [hltρ, hleρ]
+                    exact mergeIds_self ρ
+                  rw [hm] at h
                   simp only [] at h
                   cases hr : lowerStmtsCFG (nextB + 2) cont true ρ
                       (le.supply + 1) le.next le.supply true loop rest with
@@ -864,6 +1049,16 @@ theorem lowerStmtsCFG_loopBody_inv (budget : Nat) :
                   | some le =>
                       rw [he] at h
                       simp only [] at h
+                      -- Phase B: binding-free arms have an empty merge set.
+                      have hltρ : lt.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
+                      have hleρ : le.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
+                      have hm : mergeIds ρ lt.ρ le.ρ = [] := by
+                        rw [hltρ, hleρ]
+                        exact mergeIds_self ρ
+                      rw [hm] at h
+                      simp only [] at h
                       cases hr : lowerStmtsCFG (nextB + 2) cont false ρ
                           (le.supply + 1) le.next le.supply true loop rest with
                       | none => rw [hr] at h; simp at h
@@ -946,6 +1141,16 @@ theorem lowerStmtsCFG_loopBody_inv (budget : Nat) :
                   | none => rw [he] at h; simp at h
                   | some le =>
                       rw [he] at h
+                      simp only [] at h
+                      -- Phase B: binding-free arms have an empty merge set.
+                      have hltρ : lt.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
+                      have hleρ : le.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
+                      have hm : mergeIds ρ lt.ρ le.ρ = [] := by
+                        rw [hltρ, hleρ]
+                        exact mergeIds_self ρ
+                      rw [hm] at h
                       simp only [] at h
                       cases hr : lowerStmtsCFG (nextB + 2) cont false ρ
                           (le.supply + 1) le.next le.supply true loop rest with
@@ -1104,8 +1309,7 @@ theorem lowerStmtsCFG_arm_fresh (budget : Nat) :
               exact hq
   | nop rest hrs ih =>
       simp only [lowerStmtsCFG] at h
-      exact ih _ _ _ _ _ _ _ _ _ h hfresh hlast
-  | ifStmt c th el rest hstr _ hath hael hrs iht ihe ihr =>
+      exact ih _ _ _ _ _ _ _ _ _ h hfresh hlast  | ifStmt c th el rest hstr _ hath hael hrs iht ihe ihr =>
       simp only [lowerStmtsCFG] at h
       cases heC : lowerExpr ρ supply c with
       | none => rw [heC] at h; simp at h
@@ -1119,11 +1323,21 @@ theorem lowerStmtsCFG_arm_fresh (budget : Nat) :
           | some lt =>
               rw [ht] at h
               simp only [] at h
-              cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2))
-                  true ρ lt.supply lt.next lastVal false loop el with
+              cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ
+                  lt.supply lt.next lastVal false loop el with
               | none => rw [he] at h; simp at h
               | some le =>
                   rw [he] at h
+                  simp only [] at h
+                  -- Phase B: binding-free arms have an empty merge set.
+                  have hltρ : lt.ρ = ρ :=
+                    lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
+                  have hleρ : le.ρ = ρ :=
+                    lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
+                  have hm : mergeIds ρ lt.ρ le.ρ = [] := by
+                    rw [hltρ, hleρ]
+                    exact mergeIds_self ρ
+                  rw [hm] at h
                   simp only [] at h
                   cases hr : lowerStmtsCFG (nextB + 2) cont true ρ
                       (le.supply + 1) le.next le.supply true loop rest with
@@ -1299,6 +1513,16 @@ theorem lowerStmtsCFG_loopBody_fresh (budget : Nat) :
                   | some le =>
                       rw [he] at h
                       simp only [] at h
+                      -- Phase B: binding-free arms have an empty merge set.
+                      have hltρ : lt.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
+                      have hleρ : le.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
+                      have hm : mergeIds ρ lt.ρ le.ρ = [] := by
+                        rw [hltρ, hleρ]
+                        exact mergeIds_self ρ
+                      rw [hm] at h
+                      simp only [] at h
                       cases hr : lowerStmtsCFG (nextB + 2) cont false ρ
                           (le.supply + 1) le.next le.supply true loop rest with
                       | none => rw [hr] at h; simp at h
@@ -1338,6 +1562,16 @@ theorem lowerStmtsCFG_loopBody_fresh (budget : Nat) :
                   | none => rw [he] at h; simp at h
                   | some le =>
                       rw [he] at h
+                      simp only [] at h
+                      -- Phase B: binding-free arms have an empty merge set.
+                      have hltρ : lt.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
+                      have hleρ : le.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
+                      have hm : mergeIds ρ lt.ρ le.ρ = [] := by
+                        rw [hltρ, hleρ]
+                        exact mergeIds_self ρ
+                      rw [hm] at h
                       simp only [] at h
                       cases hr : lowerStmtsCFG (nextB + 2) cont false ρ
                           (le.supply + 1) le.next le.supply true loop rest with
@@ -1515,6 +1749,16 @@ theorem lowerStmtsCFG_branch_fresh (budget : Nat) :
                       | none => rw [he] at h; simp at h
                       | some le =>
                           rw [he] at h
+                          simp only [] at h
+                          -- Phase B: binding-free arms have an empty merge set.
+                          have hltρ : lt.ρ = ρ :=
+                            lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
+                          have hleρ : le.ρ = ρ :=
+                            lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
+                          have hm : mergeIds ρ lt.ρ le.ρ = [] := by
+                            rw [hltρ, hleρ]
+                            exact mergeIds_self ρ
+                          rw [hm] at h
                           simp only [] at h
                           cases hr : lowerStmtsCFG (nextB + 2) cont false ρ
                               (le.supply + 1) le.next le.supply true loop rest with
@@ -1759,6 +2003,16 @@ theorem lowerStmtsCFG_branch_inv (budget : Nat) :
                       | none => rw [he] at h; simp at h
                       | some le =>
                           rw [he] at h
+                          simp only [] at h
+                          -- Phase B: binding-free arms have an empty merge set.
+                          have hltρ : lt.ρ = ρ :=
+                            lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
+                          have hleρ : le.ρ = ρ :=
+                            lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
+                          have hm : mergeIds ρ lt.ρ le.ρ = [] := by
+                            rw [hltρ, hleρ]
+                            exact mergeIds_self ρ
+                          rw [hm] at h
                           simp only [] at h
                           cases hr : lowerStmtsCFG (nextB + 2) cont false ρ
                               (le.supply + 1) le.next le.supply true loop rest with
@@ -2390,8 +2644,26 @@ theorem lowerStmtsCFG_instrs_pure :
           intro L h i hi
           cases arm with
           | true =>
+              -- Phase B: top-level arms (`loop = none` here) may bind; the
+              -- emitted code is expression code either way.
               simp only [lowerStmtsCFG] at h
-              simp at h
+              cases he : lowerExpr ρ supply init with
+              | none => rw [he] at h; simp at h
+              | some p =>
+                  obtain ⟨vb, ib, s1⟩ := p
+                  rw [he] at h
+                  simp only [] at h
+                  cases hr : lowerStmtsCFG bId cont true ((id, vb) :: ρ) s1
+                      nextB lastVal true none rest with
+                  | none => rw [hr] at h; simp at h
+                  | some q =>
+                      rw [hr] at h
+                      simp only [] at h
+                      obtain rfl := Option.some.inj h
+                      simp only [List.mem_append] at hi
+                      rcases hi with hi | hi
+                      · exact lower_isPure.1 _ _ _ _ _ _ he _ hi
+                      · exact ih _ _ _ _ _ _ _ _ _ hr _ hi
           | false =>
               simp only [lowerStmtsCFG] at h
               cases he : lowerExpr ρ supply init with
@@ -2415,8 +2687,26 @@ theorem lowerStmtsCFG_instrs_pure :
           intro L h i hi
           cases arm with
           | true =>
+              -- Phase B: top-level arms (`loop = none` here) may bind; the
+              -- emitted code is expression code either way.
               simp only [lowerStmtsCFG] at h
-              simp at h
+              cases he : lowerExpr ρ supply e with
+              | none => rw [he] at h; simp at h
+              | some p =>
+                  obtain ⟨v, ie, s1⟩ := p
+                  rw [he] at h
+                  simp only [] at h
+                  cases hr : lowerStmtsCFG bId cont true (updAssoc ρ id v)
+                      s1 nextB lastVal true none rest with
+                  | none => rw [hr] at h; simp at h
+                  | some q =>
+                      rw [hr] at h
+                      simp only [] at h
+                      obtain rfl := Option.some.inj h
+                      simp only [List.mem_append] at hi
+                      rcases hi with hi | hi
+                      · exact lower_isPure.1 _ _ _ _ _ _ he _ hi
+                      · exact ih _ _ _ _ _ _ _ _ _ hr _ hi
           | false =>
               simp only [lowerStmtsCFG] at h
               cases he : lowerExpr ρ supply e with
@@ -2467,14 +2757,41 @@ theorem lowerStmtsCFG_instrs_pure :
                   | some le =>
                       rw [he] at h
                       simp only [] at h
-                      cases hr : lowerStmtsCFG (nextB + 2) cont arm ρ
-                          (le.supply + 1) le.next le.supply true none rest with
-                      | none => rw [hr] at h; simp at h
-                      | some lr =>
-                          rw [hr] at h
+                      -- Phase B: list induction covers binding arms too, so
+                      -- the merge set may be nonempty. Either way the entry
+                      -- block holds only the condition code `ic`.
+                      cases hm : mergeIds ρ lt.ρ le.ρ with
+                      | nil =>
+                          rw [hm] at h
                           simp only [] at h
-                          obtain rfl := Option.some.inj h
-                          exact lower_isPure.1 _ _ _ _ _ _ heC _ hi
+                          cases hr : lowerStmtsCFG (nextB + 2) cont arm ρ
+                              (le.supply + 1) le.next le.supply true none rest with
+                          | none => rw [hr] at h; simp at h
+                          | some lr =>
+                              rw [hr] at h
+                              simp only [] at h
+                              obtain rfl := Option.some.inj h
+                              exact lower_isPure.1 _ _ _ _ _ _ heC _ hi
+                      | cons hd tl =>
+                          rw [hm] at h
+                          simp only [] at h
+                          cases hmphi : mkMergePhis ρ lt.ρ le.ρ (le.supply + 1)
+                              ((lt.blocks.getLast?.map (fun b => b.id)).getD nextB)
+                              ((le.blocks.getLast?.map (fun b => b.id)).getD (nextB + 1))
+                              (hd :: tl) with
+                          | none => rw [hmphi] at h; simp at h
+                          | some q =>
+                              obtain ⟨mphis, s2, ρm⟩ := q
+                              rw [hmphi] at h
+                              simp only [] at h
+                              cases hr : lowerStmtsCFG (nextB + 2) cont arm ρm
+                                  s2 le.next le.supply true none rest with
+                              | none => rw [hr] at h; simp at h
+                              | some lr =>
+                                  rw [hr] at h
+                                  simp only [] at h
+                                  obtain rfl := Option.some.inj h
+                                  exact lower_isPure.1 _ _ _ _ _ _ heC _ hi
       | returnStmt e =>
           intro L h i hi
           simp only [lowerStmtsCFG] at h
@@ -2610,117 +2927,6 @@ theorem if_asm_mem_of_else' {lt le lr : List Block} {T E J : Block}
   · obtain ⟨b, hb, hid⟩ := List.mem_map.mp hm
     exact List.mem_map.mpr ⟨b, if_asm_mem_of_le hb, hid⟩
 
-/-- Arm lowering never rebinds: `ρ` flows through unchanged (there is no
-`updAssoc` in `arm` mode — `varDecl`/`assign` lower to `none`). The worker
-needs it to transport the arm's `RelEnv` into the rest segment. -/
-theorem lowerStmtsCFG_arm_rho (budget : Nat) :
-    ∀ (bId : MIR.BlockId) (cont : Option MIR.BlockId) (ρ : List (HIR.Id × ValId))
-      (supply nextB : Nat) (lastVal : ValId) (hasVal : Bool)
-      (loop : Option LoopInfo)
-      (ss : List HIR.Stmt) (L : Lowered),
-      lowerStmtsCFG bId cont true ρ supply nextB lastVal hasVal loop ss = some L →
-      ArmStmts budget ss →
-      L.ρ = ρ := by
-  intro bId cont ρ supply nextB lastVal hasVal loop ss L h hss
-  induction hss generalizing bId cont ρ supply nextB lastVal hasVal loop L with
-  | nil =>
-      simp only [lowerStmtsCFG.eq_def] at h
-      cases hv : hasVal with
-      | true =>
-          simp only [hv] at h
-          obtain rfl := Option.some.inj h
-          rfl
-      | false =>
-          simp only [hv] at h
-          obtain rfl := Option.some.inj h
-          rfl
-  | exprStmt e rest hstr _ hrs ih =>
-      simp only [lowerStmtsCFG] at h
-      cases he : lowerExpr ρ supply e with
-      | none => rw [he] at h; simp at h
-      | some p =>
-          obtain ⟨v0, ie, s1⟩ := p
-          rw [he] at h
-          simp only [] at h
-          cases hr : lowerStmtsCFG bId cont true ρ s1 nextB v0 true loop rest with
-          | none => rw [hr] at h; simp at h
-          | some q =>
-              rw [hr] at h
-              simp only [] at h
-              obtain rfl := Option.some.inj h
-              show q.ρ = ρ
-              exact ih _ _ _ _ _ _ _ _ _ hr
-  | nop rest hrs ih =>
-      simp only [lowerStmtsCFG] at h
-      cases hr : lowerStmtsCFG bId cont true ρ supply nextB lastVal
-          hasVal loop rest with
-      | none => rw [hr] at h; simp at h
-      | some q =>
-          rw [hr] at h
-          obtain rfl := Option.some.inj h
-          show q.ρ = ρ
-          exact ih _ _ _ _ _ _ _ _ _ hr
-  | ifStmt c th el rest hstr _ hath hael hrs iht ihe ihr =>
-      simp only [lowerStmtsCFG] at h
-      cases heC : lowerExpr ρ supply c with
-      | none => rw [heC] at h; simp at h
-      | some p =>
-          obtain ⟨vc, ic, s1⟩ := p
-          rw [heC] at h
-          simp only [] at h
-          cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
-              (nextB + 3) lastVal false loop th with
-          | none => rw [ht] at h; simp at h
-          | some lt =>
-              rw [ht] at h
-              simp only [] at h
-              cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ
-                  lt.supply lt.next lastVal false loop el with
-              | none => rw [he] at h; simp at h
-              | some le =>
-                  rw [he] at h
-                  simp only [] at h
-                  cases hr : lowerStmtsCFG (nextB + 2) cont true ρ
-                      (le.supply + 1) le.next le.supply true loop rest with
-                  | none => rw [hr] at h; simp at h
-                  | some lr =>
-                      rw [hr] at h
-                      simp only [] at h
-                      obtain rfl := Option.some.inj h
-                      show lr.ρ = ρ
-                      exact ihr _ _ _ _ _ _ _ _ _ hr
-  | returnStmt e rest hstr _ =>
-      simp only [lowerStmtsCFG] at h
-      cases he : lowerExpr ρ supply e with
-      | none => rw [he] at h; simp at h
-      | some p =>
-          obtain ⟨v, ie, s1⟩ := p
-          rw [he] at h
-          simp only [] at h
-          obtain rfl := Option.some.inj h
-          rfl
-  | breakStmt rest _ =>
-      cases hlo : loop with
-      | none => simp [lowerStmtsCFG, hlo] at h
-      | some info =>
-          simp only [lowerStmtsCFG, hlo] at h
-          cases hc : carryCopies ρ info.carried with
-          | none => rw [hc] at h; simp at h
-          | some copies =>
-              rw [hc] at h
-              obtain rfl := Option.some.inj h
-              rfl
-  | continueStmt rest _ =>
-      cases hlo : loop with
-      | none => simp [lowerStmtsCFG, hlo] at h
-      | some info =>
-          simp only [lowerStmtsCFG, hlo] at h
-          cases hc : carryCopies ρ info.carried with
-          | none => rw [hc] at h; simp at h
-          | some copies =>
-              rw [hc] at h
-              obtain rfl := Option.some.inj h
-              rfl
 
 /-- Branch-mode lowering over a binding-free list preserves `ρ`: an `if`'s
 arms preserve it (`arm_rho`) and the rest stays in the outer env, so with no
@@ -2786,6 +2992,16 @@ theorem lowerStmtsCFG_branchArm_rho (budget : Nat) :
               | none => rw [he] at h; simp at h
               | some le =>
                   rw [he] at h
+                  simp only [] at h
+                  -- Phase B: binding-free arms have an empty merge set.
+                  have hltρ : lt.ρ = ρ :=
+                    lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
+                  have hleρ : le.ρ = ρ :=
+                    lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
+                  have hm : mergeIds ρ lt.ρ le.ρ = [] := by
+                    rw [hltρ, hleρ]
+                    exact mergeIds_self ρ
+                  rw [hm] at h
                   simp only [] at h
                   cases hr : lowerStmtsCFG (nextB + 2) cont false ρ
                       (le.supply + 1) le.next le.supply true loop rest with
@@ -3436,6 +3652,16 @@ theorem lowerStmtsCFG_arm_total (budget : Nat) :
               | none => rw [he] at h; simp at h
               | some le =>
                   rw [he] at h
+                  simp only [] at h
+                  -- Phase B: binding-free arms have an empty merge set.
+                  have hltρ : lt.ρ = ρ :=
+                    lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
+                  have hleρ : le.ρ = ρ :=
+                    lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
+                  have hm : mergeIds ρ lt.ρ le.ρ = [] := by
+                    rw [hltρ, hleρ]
+                    exact mergeIds_self ρ
+                  rw [hm] at h
                   simp only [] at h
                   cases hr : lowerStmtsCFG (nextB + 2) (some j) true ρ
                       (le.supply + 1) le.next le.supply true loop rest with
@@ -5312,6 +5538,16 @@ theorem lowerStmtsCFG_loopBody_excl (budget : Nat) :
                   | some le =>
                       rw [he] at h
                       simp only [] at h
+                      -- Phase B: binding-free arms have an empty merge set.
+                      have hltρ : lt.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
+                      have hleρ : le.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
+                      have hm : mergeIds ρ lt.ρ le.ρ = [] := by
+                        rw [hltρ, hleρ]
+                        exact mergeIds_self ρ
+                      rw [hm] at h
+                      simp only [] at h
                       cases hr : lowerStmtsCFG (nextB + 2) cont false ρ
                           (le.supply + 1) le.next le.supply true loop rest with
                       | none => rw [hr] at h; simp at h
@@ -5356,6 +5592,16 @@ theorem lowerStmtsCFG_loopBody_excl (budget : Nat) :
                   | none => rw [he] at h; simp at h
                   | some le =>
                       rw [he] at h
+                      simp only [] at h
+                      -- Phase B: binding-free arms have an empty merge set.
+                      have hltρ : lt.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
+                      have hleρ : le.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
+                      have hm : mergeIds ρ lt.ρ le.ρ = [] := by
+                        rw [hltρ, hleρ]
+                        exact mergeIds_self ρ
+                      rw [hm] at h
                       simp only [] at h
                       cases hr : lowerStmtsCFG (nextB + 2) cont false ρ
                           (le.supply + 1) le.next le.supply true loop rest with
@@ -6427,6 +6673,16 @@ theorem lowerStmtsCFG_arm_broke (budget : Nat) :
               | none => rw [he] at h; simp at h
               | some le =>
                   rw [he] at h
+                  simp only [] at h
+                  -- Phase B: binding-free arms have an empty merge set.
+                  have hltρ : lt.ρ = ρ :=
+                    lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
+                  have hleρ : le.ρ = ρ :=
+                    lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
+                  have hm : mergeIds ρ lt.ρ le.ρ = [] := by
+                    rw [hltρ, hleρ]
+                    exact mergeIds_self ρ
+                  rw [hm] at h
                   simp only [] at h
                   cases hr : lowerStmtsCFG (nextB + 2) (some j) true ρ
                       (le.supply + 1) le.next le.supply true loop rest with
@@ -7666,6 +7922,16 @@ theorem lowerStmtsCFG_arm_continued (budget : Nat) :
               | none => rw [he] at h; simp at h
               | some le =>
                   rw [he] at h
+                  simp only [] at h
+                  -- Phase B: binding-free arms have an empty merge set.
+                  have hltρ : lt.ρ = ρ :=
+                    lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
+                  have hleρ : le.ρ = ρ :=
+                    lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
+                  have hm : mergeIds ρ lt.ρ le.ρ = [] := by
+                    rw [hltρ, hleρ]
+                    exact mergeIds_self ρ
+                  rw [hm] at h
                   simp only [] at h
                   cases hr : lowerStmtsCFG (nextB + 2) (some j) true ρ
                       (le.supply + 1) le.next le.supply true loop rest with
@@ -9202,6 +9468,16 @@ theorem lowerStmtsCFG_loopBody_run (budget : Nat) :
                   | none => rw [he] at h; simp at h
                   | some le =>
                       rw [he] at h
+                      simp only [] at h
+                      -- Phase B: binding-free arms have an empty merge set.
+                      have hltρ : lt.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
+                      have hleρ : le.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
+                      have hm : mergeIds ρ lt.ρ le.ρ = [] := by
+                        rw [hltρ, hleρ]
+                        exact mergeIds_self ρ
+                      rw [hm] at h
                       simp only [] at h
                       cases hr : lowerStmtsCFG (nextB + 2) (some contB) false
                           ρ (le.supply + 1) le.next le.supply true loop
@@ -10911,6 +11187,16 @@ theorem lowerStmtsCFG_loopBody_run (budget : Nat) :
                   | none => rw [he] at h; simp at h
                   | some le =>
                       rw [he] at h
+                      simp only [] at h
+                      -- Phase B: binding-free arms have an empty merge set.
+                      have hltρ : lt.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
+                      have hleρ : le.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
+                      have hm : mergeIds ρ lt.ρ le.ρ = [] := by
+                        rw [hltρ, hleρ]
+                        exact mergeIds_self ρ
+                      rw [hm] at h
                       simp only [] at h
                       cases hr : lowerStmtsCFG (nextB + 2) (some contB) false
                           ρ (le.supply + 1) le.next le.supply true loop
@@ -14123,6 +14409,16 @@ theorem loopBody_lookup_ifStmt (budget : Nat)
               | some le =>
                   rw [he] at h
                   simp only [] at h
+                  -- Phase B: binding-free arms have an empty merge set.
+                  have hltρ : lt.ρ = ρ :=
+                    lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
+                  have hleρ : le.ρ = ρ :=
+                    lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
+                  have hm : mergeIds ρ lt.ρ le.ρ = [] := by
+                    rw [hltρ, hleρ]
+                    exact mergeIds_self ρ
+                  rw [hm] at h
+                  simp only [] at h
                   cases hr : lowerStmtsCFG (nextB + 2) cont false ρ
                       (le.supply + 1) le.next le.supply true loop rest with
                   | none => rw [hr] at h; simp at h
@@ -14274,6 +14570,16 @@ theorem loopBody_lookup_ifStmtBreak (budget : Nat)
               | none => rw [he] at h; simp at h
               | some le =>
                   rw [he] at h
+                  simp only [] at h
+                  -- Phase B: binding-free arms have an empty merge set.
+                  have hltρ : lt.ρ = ρ :=
+                    lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
+                  have hleρ : le.ρ = ρ :=
+                    lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
+                  have hm : mergeIds ρ lt.ρ le.ρ = [] := by
+                    rw [hltρ, hleρ]
+                    exact mergeIds_self ρ
+                  rw [hm] at h
                   simp only [] at h
                   cases hr : lowerStmtsCFG (nextB + 2) cont false ρ
                       (le.supply + 1) le.next le.supply true loop rest with
@@ -14704,6 +15010,16 @@ theorem lowerStmtsCFG_loopBody_mem_preserv (budget : Nat) :
                   | some le =>
                       rw [he] at h
                       simp only [] at h
+                      -- Phase B: binding-free arms have an empty merge set.
+                      have hltρ : lt.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
+                      have hleρ : le.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
+                      have hm : mergeIds ρ lt.ρ le.ρ = [] := by
+                        rw [hltρ, hleρ]
+                        exact mergeIds_self ρ
+                      rw [hm] at h
+                      simp only [] at h
                       cases hr : lowerStmtsCFG (nextB + 2) (some contB) false ρ (le.supply + 1) le.next le.supply true loop rest with
                       | none => rw [hr] at h; simp at h
                       | some lr =>
@@ -14729,6 +15045,16 @@ theorem lowerStmtsCFG_loopBody_mem_preserv (budget : Nat) :
                   | none => rw [he] at h; simp at h
                   | some le =>
                       rw [he] at h
+                      simp only [] at h
+                      -- Phase B: binding-free arms have an empty merge set.
+                      have hltρ : lt.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
+                      have hleρ : le.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
+                      have hm : mergeIds ρ lt.ρ le.ρ = [] := by
+                        rw [hltρ, hleρ]
+                        exact mergeIds_self ρ
+                      rw [hm] at h
                       simp only [] at h
                       cases hr : lowerStmtsCFG (nextB + 2) (some contB) false ρ (le.supply + 1) le.next le.supply true loop rest with
                       | none => rw [hr] at h; simp at h
@@ -14951,6 +15277,16 @@ theorem lowerStmtsCFG_loopBody_carriedExcl (budget : Nat) :
                   | some le =>
                       rw [he] at h
                       simp only [] at h
+                      -- Phase B: binding-free arms have an empty merge set.
+                      have hltρ : lt.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
+                      have hleρ : le.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
+                      have hm : mergeIds ρ lt.ρ le.ρ = [] := by
+                        rw [hltρ, hleρ]
+                        exact mergeIds_self ρ
+                      rw [hm] at h
+                      simp only [] at h
                       cases hr : lowerStmtsCFG (nextB + 2) (some contB) false ρ (le.supply + 1) le.next le.supply true loop rest with
                       | none => rw [hr] at h; simp at h
                       | some lr =>
@@ -14984,6 +15320,16 @@ theorem lowerStmtsCFG_loopBody_carriedExcl (budget : Nat) :
                   | none => rw [he] at h; simp at h
                   | some le =>
                       rw [he] at h
+                      simp only [] at h
+                      -- Phase B: binding-free arms have an empty merge set.
+                      have hltρ : lt.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
+                      have hleρ : le.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
+                      have hm : mergeIds ρ lt.ρ le.ρ = [] := by
+                        rw [hltρ, hleρ]
+                        exact mergeIds_self ρ
+                      rw [hm] at h
                       simp only [] at h
                       cases hr : lowerStmtsCFG (nextB + 2) (some contB) false ρ (le.supply + 1) le.next le.supply true loop rest with
                       | none => rw [hr] at h; simp at h
@@ -15158,6 +15504,16 @@ theorem lowerStmtsCFG_loopBody_rho_preserv (budget : Nat) :
                   | some le =>
                       rw [he] at h
                       simp only [] at h
+                      -- Phase B: binding-free arms have an empty merge set.
+                      have hltρ : lt.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
+                      have hleρ : le.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
+                      have hm : mergeIds ρ lt.ρ le.ρ = [] := by
+                        rw [hltρ, hleρ]
+                        exact mergeIds_self ρ
+                      rw [hm] at h
+                      simp only [] at h
                       cases hr : lowerStmtsCFG (nextB + 2) (some contB) false ρ (le.supply + 1) le.next le.supply true loop rest with
                       | none => rw [hr] at h; simp at h
                       | some lr =>
@@ -15189,6 +15545,16 @@ theorem lowerStmtsCFG_loopBody_rho_preserv (budget : Nat) :
                   | none => rw [he] at h; simp at h
                   | some le =>
                       rw [he] at h
+                      simp only [] at h
+                      -- Phase B: binding-free arms have an empty merge set.
+                      have hltρ : lt.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
+                      have hleρ : le.ρ = ρ :=
+                        lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
+                      have hm : mergeIds ρ lt.ρ le.ρ = [] := by
+                        rw [hltρ, hleρ]
+                        exact mergeIds_self ρ
+                      rw [hm] at h
                       simp only [] at h
                       cases hr : lowerStmtsCFG (nextB + 2) (some contB) false ρ (le.supply + 1) le.next le.supply true loop rest with
                       | none => rw [hr] at h; simp at h
@@ -20052,6 +20418,16 @@ theorem lowerStmtsCFG_total (budget : Nat) :
                       | none => rw [he] at h; simp at h
                       | some le =>
                           rw [he] at h
+                          simp only [] at h
+                          -- Phase B: binding-free arms have an empty merge set.
+                          have hltρ : lt.ρ = ρ :=
+                            lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ ht hath
+                          have hleρ : le.ρ = ρ :=
+                            lowerStmtsCFG_arm_rho budget _ _ _ _ _ _ _ _ _ _ he hael
+                          have hm : mergeIds ρ lt.ρ le.ρ = [] := by
+                            rw [hltρ, hleρ]
+                            exact mergeIds_self ρ
+                          rw [hm] at h
                           simp only [] at h
                           cases hr : lowerStmtsCFG (nextB + 2) none false ρ
                               (le.supply + 1) le.next le.supply true none rest with
