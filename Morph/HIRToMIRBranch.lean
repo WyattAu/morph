@@ -14596,6 +14596,576 @@ theorem lowerStmtsCFG_bindArm_rho_agree (budget : Nat) :
       simp only [lowerStmtsCFG] at h
       simp at h
 
+/-- Static invariant for binding arms (C2c arm-exit infrastructure): the
+`arm_inv` conclusion under a `BindArmStmts` hypothesis at top level
+(`arm = true`, `loop = none`). The `if` case splits on the merge decision:
+the empty-merge path mirrors `arm_inv` (tail under the pre-branch env);
+the merge path threads the supply through `mkMergePhis` (`mkMergePhis_le`)
+and lowers the tail under the merged env. Block ids are unaffected by the
+extra merge phis, so the bounds/nodup assembly is identical on both paths.
+The future top-level binding-arm C3 case cites this for the block bounds
+and the supply chains its freshness and frame facts need. -/
+theorem lowerStmtsCFG_bindArm_inv (budget : Nat) :
+    ∀ (bId : MIR.BlockId) (cont : Option MIR.BlockId)
+      (ρ : List (HIR.Id × ValId)) (supply nextB : Nat) (lastVal : ValId)
+      (hasVal : Bool) (ss : List HIR.Stmt) (L : Lowered),
+      lowerStmtsCFG bId cont true ρ supply nextB lastVal hasVal none ss =
+        some L →
+      BindArmStmts budget ss →
+      nextB ≤ L.next ∧ supply ≤ L.supply ∧
+        (∀ b ∈ L.blocks, nextB ≤ b.id ∧ b.id < L.next) ∧
+        (L.blocks.map Block.id).Nodup := by
+  intro bId cont ρ supply nextB lastVal hasVal ss L h hss
+  induction hss generalizing bId cont ρ supply nextB lastVal hasVal L with
+  | nil =>
+      simp only [lowerStmtsCFG.eq_def] at h
+      cases hv : hasVal with
+      | true =>
+          simp only [hv] at h
+          simp at h
+          subst h
+          exact ⟨Nat.le_refl _, Nat.le_refl _, fun b hb => by simp at hb,
+            List.nodup_nil⟩
+      | false =>
+          simp only [hv] at h
+          simp at h
+          subst h
+          exact ⟨Nat.le_refl _, Nat.le_succ _, fun b hb => by simp at hb,
+            List.nodup_nil⟩
+  | exprStmt e rest hstr _ hrs ih =>
+      simp only [lowerStmtsCFG] at h
+      cases he : lowerExpr ρ supply e with
+      | none => rw [he] at h; simp at h
+      | some p =>
+          obtain ⟨v0, ie, s1⟩ := p
+          rw [he] at h
+          simp only [] at h
+          cases hr : lowerStmtsCFG bId cont true ρ s1 nextB v0 true none
+              rest with
+          | none => rw [hr] at h; simp at h
+          | some q =>
+              rw [hr] at h
+              simp only [] at h
+              obtain rfl := Option.some.inj h
+              show nextB ≤ q.next ∧ supply ≤ q.supply ∧
+                (∀ b ∈ q.blocks, nextB ≤ b.id ∧ b.id < q.next) ∧
+                (q.blocks.map Block.id).Nodup
+              have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+              obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ _ hr
+              exact ⟨hmn, Nat.le_trans hs1 hms, hbnd, hnod⟩
+  | varDecl id τ init rest hstr _ hrs hfree ih =>
+      simp only [lowerStmtsCFG] at h
+      cases he : lowerExpr ρ supply init with
+      | none => rw [he] at h; simp at h
+      | some p =>
+          obtain ⟨vb, ib, s1⟩ := p
+          rw [he] at h
+          simp only [] at h
+          cases hr : lowerStmtsCFG bId cont true ((id, vb) :: ρ) s1 nextB
+              lastVal true none rest with
+          | none => rw [hr] at h; simp at h
+          | some q =>
+              rw [hr] at h
+              simp only [] at h
+              obtain rfl := Option.some.inj h
+              show nextB ≤ q.next ∧ supply ≤ q.supply ∧
+                (∀ b ∈ q.blocks, nextB ≤ b.id ∧ b.id < q.next) ∧
+                (q.blocks.map Block.id).Nodup
+              have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+              obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ _ hr
+              exact ⟨hmn, Nat.le_trans hs1 hms, hbnd, hnod⟩
+  | assign id e rest hstr _ hrs hfree ih =>
+      simp only [lowerStmtsCFG] at h
+      cases he : lowerExpr ρ supply e with
+      | none => rw [he] at h; simp at h
+      | some p =>
+          obtain ⟨v, ie, s1⟩ := p
+          rw [he] at h
+          simp only [] at h
+          cases hr : lowerStmtsCFG bId cont true (updAssoc ρ id v) s1 nextB
+              lastVal true none rest with
+          | none => rw [hr] at h; simp at h
+          | some q =>
+              rw [hr] at h
+              simp only [] at h
+              obtain rfl := Option.some.inj h
+              show nextB ≤ q.next ∧ supply ≤ q.supply ∧
+                (∀ b ∈ q.blocks, nextB ≤ b.id ∧ b.id < q.next) ∧
+                (q.blocks.map Block.id).Nodup
+              have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+              obtain ⟨hmn, hms, hbnd, hnod⟩ := ih _ _ _ _ _ _ _ _ hr
+              exact ⟨hmn, Nat.le_trans hs1 hms, hbnd, hnod⟩
+  | nop rest hrs ih =>
+      simp only [lowerStmtsCFG] at h
+      cases hr : lowerStmtsCFG bId cont true ρ supply nextB lastVal
+          hasVal none rest with
+      | none => rw [hr] at h; simp at h
+      | some q =>
+          rw [hr] at h
+          obtain rfl := Option.some.inj h
+          exact ih _ _ _ _ _ _ _ _ hr
+  | ifStmt c th el rest hstr _ hath hael hrs iht ihe ihr =>
+      simp only [lowerStmtsCFG] at h
+      cases heC : lowerExpr ρ supply c with
+      | none => rw [heC] at h; simp at h
+      | some p =>
+          obtain ⟨vc, ic, s1⟩ := p
+          rw [heC] at h
+          simp only [] at h
+          cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
+              (nextB + 3) lastVal false none th with
+          | none => rw [ht] at h; simp at h
+          | some lt =>
+              rw [ht] at h
+              simp only [] at h
+              cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ
+                  lt.supply lt.next lastVal false none el with
+              | none => rw [he] at h; simp at h
+              | some le =>
+                  rw [he] at h
+                  simp only [] at h
+                  cases hm : mergeIds ρ lt.ρ le.ρ with
+                  | nil =>
+                      rw [hm] at h
+                      simp only [] at h
+                      cases hr : lowerStmtsCFG (nextB + 2) cont true ρ
+                          (le.supply + 1) le.next le.supply true none rest with
+                      | none => rw [hr] at h; simp at h
+                      | some lr =>
+                          rw [hr] at h
+                          simp only [] at h
+                          obtain rfl := Option.some.inj h
+                          dsimp only at ⊢
+                          have hs1 : supply ≤ s1 :=
+                            lower_mono.1 _ _ _ _ _ _ heC
+                          obtain ⟨hmnt, hmst, hbndt, hnodt⟩ :=
+                            iht _ _ _ _ _ _ _ _ ht
+                          obtain ⟨hmne, hmse, hbnde, hnode⟩ :=
+                            ihe _ _ _ _ _ _ _ _ he
+                          obtain ⟨hmnr, hmsr, hbndr, hnodr⟩ :=
+                            ihr _ _ _ _ _ _ _ _ hr
+                          refine ⟨by omega, by omega, ?_, ?_⟩
+                          · intro b hb
+                            simp only [List.mem_append, List.mem_singleton] at hb
+                            rcases hb with (((((hb | rfl) | hb) | rfl) | rfl) | hb)
+                            · obtain ⟨hlo, hhi⟩ := hbndt b hb
+                              exact ⟨Nat.le_trans (Nat.le_add_right _ _) hlo,
+                                Nat.lt_of_lt_of_le hhi (Nat.le_trans hmne
+                                  (Nat.le_trans hmnr (Nat.le_succ _)))⟩
+                            · exact ⟨Nat.le_refl _,
+                                Nat.lt_of_le_of_lt (Nat.le_trans
+                                  (Nat.le_trans (Nat.le_trans
+                                    (Nat.le_add_right _ _) hmnt) hmne) hmnr)
+                                  (Nat.lt_succ_self _)⟩
+                            · obtain ⟨hlo, hhi⟩ := hbnde b hb
+                              exact ⟨Nat.le_trans (Nat.le_trans
+                                  (Nat.le_add_right _ _) hmnt) hlo,
+                                Nat.lt_of_lt_of_le hhi (Nat.le_trans hmnr
+                                  (Nat.le_succ _))⟩
+                            · exact ⟨Nat.le_succ _,
+                                Nat.lt_of_le_of_lt (Nat.le_trans
+                                  (Nat.le_trans (Nat.le_trans
+                                    (Nat.le_trans (Nat.le_succ _)
+                                      (Nat.le_succ _)) hmnt) hmne) hmnr)
+                                  (Nat.lt_succ_self _)⟩
+                            · exact ⟨Nat.le_add_right _ _,
+                                Nat.lt_of_le_of_lt (Nat.le_trans
+                                  (Nat.le_trans (Nat.le_trans
+                                    (Nat.le_succ _) hmnt) hmne) hmnr)
+                                  (Nat.lt_succ_self _)⟩
+                            · obtain ⟨hlo, hhi⟩ := hbndr b hb
+                              exact ⟨Nat.le_trans (Nat.le_trans
+                                  (Nat.le_trans (Nat.le_add_right _ _)
+                                    hmnt) hmne) hlo,
+                                Nat.lt_of_lt_of_le hhi (Nat.le_succ _)⟩
+                          · exact if_assembly_nodup (A := lt.blocks)
+                              (B := le.blocks) (C := lr.blocks)
+                              (thenB := ⟨nextB, lt.instrs, lt.term⟩)
+                              (elseB := ⟨nextB + 1, le.instrs, le.term⟩)
+                              (joinB := ⟨nextB + 2,
+                                [Instr.phi le.supply ((lt.blocks.getLast?.map
+                                  (fun b => b.id)).getD nextB) lt.val,
+                                 Instr.phi le.supply ((le.blocks.getLast?.map
+                                  (fun b => b.id)).getD (nextB + 1)) le.val] ++
+                                  lr.instrs,
+                                lr.term⟩)
+                              hmnt hmne hmnr hbndt hbnde hbndr
+                              rfl rfl rfl hnodt hnode hnodr
+                  | cons hd tl =>
+                      rw [hm] at h
+                      simp only [] at h
+                      cases hmk : mkMergePhis ρ lt.ρ le.ρ (le.supply + 1)
+                          ((lt.blocks.getLast?.map (fun b => b.id)).getD nextB)
+                          ((le.blocks.getLast?.map (fun b => b.id)).getD (nextB + 1))
+                          (hd :: tl) with
+                      | none => rw [hmk] at h; simp at h
+                      | some q =>
+                          obtain ⟨mphis, s2, ρm⟩ := q
+                          rw [hmk] at h
+                          simp only [] at h
+                          cases hr : lowerStmtsCFG (nextB + 2) cont true ρm
+                              s2 le.next le.supply true none rest with
+                          | none => rw [hr] at h; simp at h
+                          | some lr =>
+                              rw [hr] at h
+                              simp only [] at h
+                              obtain rfl := Option.some.inj h
+                              dsimp only at ⊢
+                              have hs1 : supply ≤ s1 :=
+                                lower_mono.1 _ _ _ _ _ _ heC
+                              have hle2 : le.supply + 1 ≤ s2 :=
+                                mkMergePhis_le hmk
+                              obtain ⟨hmnt, hmst, hbndt, hnodt⟩ :=
+                                iht _ _ _ _ _ _ _ _ ht
+                              obtain ⟨hmne, hmse, hbnde, hnode⟩ :=
+                                ihe _ _ _ _ _ _ _ _ he
+                              obtain ⟨hmnr, hmsr, hbndr, hnodr⟩ :=
+                                ihr _ _ _ _ _ _ _ _ hr
+                              refine ⟨by omega, by omega, ?_, ?_⟩
+                              · intro b hb
+                                simp only [List.mem_append, List.mem_singleton] at hb
+                                rcases hb with (((((hb | rfl) | hb) | rfl) | rfl) | hb)
+                                · obtain ⟨hlo, hhi⟩ := hbndt b hb
+                                  exact ⟨Nat.le_trans (Nat.le_add_right _ _) hlo,
+                                    Nat.lt_of_lt_of_le hhi (Nat.le_trans hmne
+                                      (Nat.le_trans hmnr (Nat.le_succ _)))⟩
+                                · exact ⟨Nat.le_refl _,
+                                    Nat.lt_of_le_of_lt (Nat.le_trans
+                                      (Nat.le_trans (Nat.le_trans
+                                        (Nat.le_add_right _ _) hmnt) hmne) hmnr)
+                                      (Nat.lt_succ_self _)⟩
+                                · obtain ⟨hlo, hhi⟩ := hbnde b hb
+                                  exact ⟨Nat.le_trans (Nat.le_trans
+                                      (Nat.le_add_right _ _) hmnt) hlo,
+                                    Nat.lt_of_lt_of_le hhi (Nat.le_trans hmnr
+                                      (Nat.le_succ _))⟩
+                                · exact ⟨Nat.le_succ _,
+                                    Nat.lt_of_le_of_lt (Nat.le_trans
+                                      (Nat.le_trans (Nat.le_trans
+                                        (Nat.le_trans (Nat.le_succ _)
+                                          (Nat.le_succ _)) hmnt) hmne) hmnr)
+                                      (Nat.lt_succ_self _)⟩
+                                · exact ⟨Nat.le_add_right _ _,
+                                    Nat.lt_of_le_of_lt (Nat.le_trans
+                                      (Nat.le_trans (Nat.le_trans
+                                        (Nat.le_succ _) hmnt) hmne) hmnr)
+                                      (Nat.lt_succ_self _)⟩
+                                · obtain ⟨hlo, hhi⟩ := hbndr b hb
+                                  exact ⟨Nat.le_trans (Nat.le_trans
+                                      (Nat.le_trans (Nat.le_add_right _ _)
+                                        hmnt) hmne) hlo,
+                                    Nat.lt_of_lt_of_le hhi (Nat.le_succ _)⟩
+                              · exact if_assembly_nodup (A := lt.blocks)
+                                  (B := le.blocks) (C := lr.blocks)
+                                  (thenB := ⟨nextB, lt.instrs, lt.term⟩)
+                                  (elseB := ⟨nextB + 1, le.instrs, le.term⟩)
+                                  (joinB := ⟨nextB + 2,
+                                    [Instr.phi le.supply ((lt.blocks.getLast?.map
+                                      (fun b => b.id)).getD nextB) lt.val,
+                                     Instr.phi le.supply ((le.blocks.getLast?.map
+                                      (fun b => b.id)).getD (nextB + 1)) le.val] ++
+                                      mphis ++ lr.instrs,
+                                    lr.term⟩)
+                                  hmnt hmne hmnr hbndt hbnde hbndr
+                                  rfl rfl rfl hnodt hnode hnodr
+  | returnStmt e rest hstr _ =>
+      simp at h
+      cases he : lowerExpr ρ supply e with
+      | none => rw [he] at h; simp at h
+      | some p =>
+          obtain ⟨v, ie, s1⟩ := p
+          rw [he] at h
+          simp at h
+          subst h
+          have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+          exact ⟨Nat.le_refl _, hs1, fun b hb => by simp at hb,
+            List.nodup_nil⟩
+  | breakStmt rest hrs ih =>
+      simp only [lowerStmtsCFG] at h
+      simp at h
+  | continueStmt rest hrs ih =>
+      simp only [lowerStmtsCFG] at h
+      simp at h
+
+/-- Freshness for binding arms (C2c arm-exit infrastructure): the
+`arm_fresh` conclusion under a `BindArmStmts` hypothesis at top level
+(`arm = true`, `loop = none`). `varDecl` conses the fresh head register,
+`assign` threads freshness through `updAssoc` (`updAssoc_mem`), and the
+`if` case crosses the merge via `mkMergePhis_growth_fresh` (supply and
+freshness through the allocation, then the tail induction). The future
+top-level binding-arm C3 case feeds `hfreshT`/`hne`/`hvm` to the join
+assembly from this plus supply monotonicity. -/
+theorem lowerStmtsCFG_bindArm_fresh (budget : Nat) :
+    ∀ (bId : MIR.BlockId) (cont : Option MIR.BlockId)
+      (ρ : List (HIR.Id × ValId)) (supply nextB : Nat) (lastVal : ValId)
+      (hasVal : Bool) (ss : List HIR.Stmt) (L : Lowered),
+      lowerStmtsCFG bId cont true ρ supply nextB lastVal hasVal none ss =
+        some L →
+      BindArmStmts budget ss →
+      FreshAbove ρ supply → lastVal < supply →
+      FreshAbove L.ρ L.supply := by
+  intro bId cont ρ supply nextB lastVal hasVal ss L h hss hfresh hlast
+  induction hss generalizing bId cont ρ supply nextB lastVal hasVal L with
+  | nil =>
+      simp only [lowerStmtsCFG.eq_def] at h
+      cases hv : hasVal with
+      | true =>
+          simp only [hv] at h
+          simp at h
+          subst h
+          exact hfresh
+      | false =>
+          simp only [hv] at h
+          simp at h
+          subst h
+          exact FreshAbove.mono ρ supply (supply + 1) (Nat.le_succ _) hfresh
+  | exprStmt e rest hstr _ hrs ih =>
+      simp only [lowerStmtsCFG] at h
+      cases he : lowerExpr ρ supply e with
+      | none => rw [he] at h; simp at h
+      | some p =>
+          obtain ⟨v, ie, s1⟩ := p
+          rw [he] at h
+          simp only [] at h
+          cases hr : lowerStmtsCFG bId cont true ρ s1 nextB v true none
+              rest with
+          | none => rw [hr] at h; simp at h
+          | some q =>
+              rw [hr] at h
+              simp only [] at h
+              have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+              have hv : v < s1 := lower_result_lt.1 _ _ _ _ _ _ he hfresh
+              have hq := ih _ _ _ _ _ _ _ _ hr
+                (FreshAbove.mono ρ supply s1 hs1 hfresh) hv
+              obtain rfl := Option.some.inj h
+              exact hq
+  | varDecl id τ init rest hstr _ hrs hfree ih =>
+      simp only [lowerStmtsCFG] at h
+      cases he : lowerExpr ρ supply init with
+      | none => rw [he] at h; simp at h
+      | some p =>
+          obtain ⟨vb, ib, s1⟩ := p
+          rw [he] at h
+          simp only [] at h
+          cases hr : lowerStmtsCFG bId cont true ((id, vb) :: ρ) s1 nextB
+              lastVal true none rest with
+          | none => rw [hr] at h; simp at h
+          | some q =>
+              rw [hr] at h
+              simp only [] at h
+              have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+              have hv : vb < s1 := lower_result_lt.1 _ _ _ _ _ _ he hfresh
+              have hfr : FreshAbove ((id, vb) :: ρ) s1 := by
+                intro j v hmem
+                rcases List.mem_cons.mp hmem with h | h
+                · obtain ⟨rfl, rfl⟩ := Prod.mk.inj h
+                  exact hv
+                · exact Nat.lt_of_lt_of_le (hfresh j v h) hs1
+              have hlast' : lastVal < s1 := Nat.lt_of_lt_of_le hlast hs1
+              have hq := ih _ _ _ _ _ _ _ _ hr hfr hlast'
+              obtain rfl := Option.some.inj h
+              exact hq
+  | assign id e rest hstr _ hrs hfree ih =>
+      simp only [lowerStmtsCFG] at h
+      cases he : lowerExpr ρ supply e with
+      | none => rw [he] at h; simp at h
+      | some p =>
+          obtain ⟨v, ie, s1⟩ := p
+          rw [he] at h
+          simp only [] at h
+          cases hr : lowerStmtsCFG bId cont true (updAssoc ρ id v) s1 nextB
+              lastVal true none rest with
+          | none => rw [hr] at h; simp at h
+          | some q =>
+              rw [hr] at h
+              simp only [] at h
+              have hs1 : supply ≤ s1 := lower_mono.1 _ _ _ _ _ _ he
+              have hv : v < s1 := lower_result_lt.1 _ _ _ _ _ _ he hfresh
+              have hfr : FreshAbove (updAssoc ρ id v) s1 := by
+                intro j w hmem
+                rcases updAssoc_mem ρ id v j w hmem with ⟨rfl, hwu⟩ | h
+                · rw [hwu]
+                  exact hv
+                · exact Nat.lt_of_lt_of_le (hfresh j w h) hs1
+              have hlast' : lastVal < s1 := Nat.lt_of_lt_of_le hlast hs1
+              have hq := ih _ _ _ _ _ _ _ _ hr hfr hlast'
+              obtain rfl := Option.some.inj h
+              exact hq
+  | nop rest hrs ih =>
+      simp only [lowerStmtsCFG] at h
+      exact ih _ _ _ _ _ _ _ _ h hfresh hlast
+  | ifStmt c th el rest hstr _ hath hael hrs iht ihe ihr =>
+      simp only [lowerStmtsCFG] at h
+      cases heC : lowerExpr ρ supply c with
+      | none => rw [heC] at h; simp at h
+      | some p =>
+          obtain ⟨vc, ic, s1⟩ := p
+          rw [heC] at h
+          simp only [] at h
+          cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
+              (nextB + 3) lastVal false none th with
+          | none => rw [ht] at h; simp at h
+          | some lt =>
+              rw [ht] at h
+              simp only [] at h
+              cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ
+                  lt.supply lt.next lastVal false none el with
+              | none => rw [he] at h; simp at h
+              | some le =>
+                  rw [he] at h
+                  simp only [] at h
+                  cases hm : mergeIds ρ lt.ρ le.ρ with
+                  | nil =>
+                      rw [hm] at h
+                      simp only [] at h
+                      cases hr : lowerStmtsCFG (nextB + 2) cont true ρ
+                          (le.supply + 1) le.next le.supply true none rest with
+                      | none => rw [hr] at h; simp at h
+                      | some lr =>
+                          rw [hr] at h
+                          simp only [] at h
+                          have hs1 : supply ≤ s1 :=
+                            lower_mono.1 _ _ _ _ _ _ heC
+                          have hst : s1 ≤ lt.supply :=
+                            (lowerStmtsCFG_bindArm_inv budget _ _ _ _ _ _ _ _ _
+                              ht hath).2.1
+                          have hse : lt.supply ≤ le.supply :=
+                            (lowerStmtsCFG_bindArm_inv budget _ _ _ _ _ _ _ _ _
+                              he hael).2.1
+                          have hq := ihr _ _ _ _ _ _ _ _ hr
+                            (FreshAbove.mono ρ supply (le.supply + 1)
+                              (by omega) hfresh)
+                            (Nat.lt_succ_self _)
+                          obtain rfl := Option.some.inj h
+                          dsimp only at ⊢
+                          exact hq
+                  | cons hd tl =>
+                      rw [hm] at h
+                      simp only [] at h
+                      cases hmk : mkMergePhis ρ lt.ρ le.ρ (le.supply + 1)
+                          ((lt.blocks.getLast?.map (fun b => b.id)).getD nextB)
+                          ((le.blocks.getLast?.map (fun b => b.id)).getD (nextB + 1))
+                          (hd :: tl) with
+                      | none => rw [hmk] at h; simp at h
+                      | some q =>
+                          obtain ⟨mphis, s2, ρm⟩ := q
+                          rw [hmk] at h
+                          simp only [] at h
+                          cases hr : lowerStmtsCFG (nextB + 2) cont true ρm
+                              s2 le.next le.supply true none rest with
+                          | none => rw [hr] at h; simp at h
+                          | some lr =>
+                              rw [hr] at h
+                              simp only [] at h
+                              have hs1 : supply ≤ s1 :=
+                                lower_mono.1 _ _ _ _ _ _ heC
+                              have hst : s1 ≤ lt.supply :=
+                                (lowerStmtsCFG_bindArm_inv budget _ _ _ _ _ _ _ _ _
+                                  ht hath).2.1
+                              have hse : lt.supply ≤ le.supply :=
+                                (lowerStmtsCFG_bindArm_inv budget _ _ _ _ _ _ _ _ _
+                                  he hael).2.1
+                              have hle2 : le.supply + 1 ≤ s2 :=
+                                mkMergePhis_le hmk
+                              have hfrρ : FreshAbove ρ (le.supply + 1) :=
+                                FreshAbove.mono ρ supply (le.supply + 1)
+                                  (by omega) hfresh
+                              obtain ⟨-, hfrm⟩ :=
+                                mkMergePhis_growth_fresh hfrρ hmk
+                              have hlast2 : le.supply < s2 :=
+                                Nat.lt_of_lt_of_le (Nat.lt_succ_self _) hle2
+                              have hq := ihr _ _ _ _ _ _ _ _ hr hfrm hlast2
+                              obtain rfl := Option.some.inj h
+                              dsimp only at ⊢
+                              exact hq
+  | returnStmt e rest hstr _ =>
+      simp at h
+      cases he : lowerExpr ρ supply e with
+      | none => rw [he] at h; simp at h
+      | some p =>
+          obtain ⟨v, ie, s1⟩ := p
+          rw [he] at h
+          simp at h
+          subst h
+          exact FreshAbove.mono ρ supply s1
+            (lower_mono.1 _ _ _ _ _ _ he) hfresh
+  | breakStmt rest hrs ih =>
+      simp only [lowerStmtsCFG] at h
+      simp at h
+  | continueStmt rest hrs ih =>
+      simp only [lowerStmtsCFG] at h
+      simp at h
+
+/-- Merge-join `RelEnv` assembly (C2c join core, taken-arm side): running the
+join prefix (value-phi pair plus merge phis) from the taken arm's exit env
+yields an env related over the merged env `ρm` to the taken arm's HIR exit
+env. Merged ids read the taken side's value through the phi conclusion
+(`hvals` comes from the arm-exit `RelEnv` plus `mkMergePhis_mem_lookup`);
+unmerged ids transport across `mkMergePhis_lookup_unmerged` — both arm
+exits agree with pre-branch there (`mergeIds_agree`), so the taken arm's
+exit `RelEnv` gives the literal and the value, and the join frame (plus
+pre-branch freshness below the value register) carries the register over.
+The future top-level binding-arm C3 case feeds `hrelT` from its arm worker
+and `hfreshT`/`hne`/`hvm`/`hfrρ` from binding-arm freshness plus supply
+monotonicity; the symmetric else-side case swaps the arm roles. -/
+theorem relEnv_bindArm_join (prog : Program)
+    {ρ ltρ leρ : List (HIR.Id × ValId)} {s : Nat}
+    {predT predE : MIR.BlockId} {p : MIR.BlockId}
+    {vm vT vE : ValId} {wv : Value}
+    {mphis : List Instr} {s2 : Nat} {ρm : List (HIR.Id × ValId)}
+    (hmk : mkMergePhis ρ ltρ leρ s predT predE (mergeIds ρ ltρ leρ) =
+      some (mphis, s2, ρm))
+    {henvT : HEnv} {fenvT : FullEnv}
+    (hT : predT = p) (hE : predE ≠ p)
+    (hrelT : RelEnv henvT ltρ fenvT.env)
+    (hvalT : fenvT.env vT = some wv)
+    (hfreshT : ∀ id srcT, id ∈ mergeIds ρ ltρ leρ →
+      rhoLookup ltρ id = some srcT → srcT < s)
+    (hne : ∀ id srcT, id ∈ mergeIds ρ ltρ leρ →
+      rhoLookup ltρ id = some srcT → srcT ≠ vm)
+    (hvm : vm < s)
+    (hfrρ : FreshAbove ρ vm) :
+    ∃ fenv' : FullEnv,
+      execInstrsFullFromIn prog (some p) fenvT
+        ([MIR.Instr.phi vm predT vT, MIR.Instr.phi vm predE vE] ++ mphis) =
+        some fenv' ∧
+      RelEnv henvT ρm fenv'.env := by
+  have hvals : ∀ id ∈ mergeIds ρ ltρ leρ, ∀ srcT : ValId,
+      rhoLookup ltρ id = some srcT → ∃ w, fenvT.env srcT = some w := by
+    intro id hmem srcT hlook
+    obtain ⟨w, _, hw⟩ := hrelT id srcT hlook
+    exact ⟨w, hw⟩
+  obtain ⟨fenv', hexec, _, hmerged, hframe⟩ :=
+    joinPrefix_exec prog hmk hT hE hvalT hvals hfreshT hne hvm
+  refine ⟨fenv', hexec, ?_⟩
+  intro id r hr
+  by_cases hmem : id ∈ mergeIds ρ ltρ leρ
+  · obtain ⟨r', hrr', _, _⟩ := mkMergePhis_lookup_mem hmk hmem
+    have hreq : r' = r := Option.some.inj (hrr'.symm.trans hr)
+    obtain ⟨srcT, hlookT⟩ := (mkMergePhis_mem_lookup hmk hmem).1
+    obtain ⟨w, hlit, hwT⟩ := hrelT id srcT hlookT
+    have hv : fenv'.env r = some w := by
+      have h2 := hmerged id r' hmem hrr' srcT w hlookT hwT
+      rwa [hreq] at h2
+    exact ⟨w, hlit, hv⟩
+  · have hρ : rhoLookup ρ id = some r := by
+      have hun := mkMergePhis_lookup_unmerged hmk hmem
+      rw [hr] at hun
+      exact hun.symm
+    have hmemfst : id ∈ ρ.map Prod.fst := by
+      have hpair : (id, r) ∈ ρ := rhoLookup_some_mem ρ id r hρ
+      exact List.mem_map.mpr ⟨(id, r), hpair, rfl⟩
+    have hag := mergeIds_agree hmemfst hmem
+    have hlt : rhoLookup ltρ id = some r := by
+      rw [hag.1]
+      exact hρ
+    obtain ⟨w, hlit, hwT⟩ := hrelT id r hlt
+    have hltvm : r < vm := hfrρ id r (rhoLookup_some_mem ρ id r hρ)
+    have hrvm : r ≠ vm := Nat.ne_of_lt hltvm
+    have hrs : r < s := Nat.lt_of_lt_of_le hltvm (Nat.le_of_lt hvm)
+    have hfr : fenv'.env r = fenvT.env r := hframe r (Or.inl hrs) hrvm
+    exact ⟨w, hlit, hfr.trans hwT⟩
+
 section LoopBodyLookupAux
 
 set_option linter.unusedVariables false in
