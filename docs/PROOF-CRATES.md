@@ -25,6 +25,8 @@ imports leaves only.
 | `Proofs.Branch.LoopAlloc` | §596 (C7a) + §917 | `assignedIds`, `dedupIds`, `LoopInfo`, `carryCopies`, `mkCarried` + growth proofs, `mkHeaderPhis` | loop lowering + workers |
 | `Proofs.Branch.Spine` | §§14127, 14219 | oracle while cases, loop-carried membership, spine-P, trampoline/header lemmas | loop workers |
 | `Proofs.Branch.BodyWorker` | §20310 | closed bodies run to the oracle's value | `whileLoop_correct` |
+| `Proofs.Branch.Assembly` | block-assembly section ✅ EXTRACTED | `nodup_concat`, `findBlock_of_nodup_mem`, `if`/`while` assembly nodup, nine `if_asm` arrival lifts | workers via `hsub`/`findBlock` |
+| `Proofs.Branch.Equations` | new (needed `HIRToMIRLower` move) ✅ EXTRACTED | one `@[simp]` equation per `lowerStmtsCFG`/`runHIRStmts` ctor (31 total) | lookup families, all future inductions |
 
 ## Composition (L1 — import leaves only, never Branch)
 
@@ -72,5 +74,13 @@ L0 module or any L1 module; no L1 module imports `HIRToMIRBranch`.
 5. ✅ `Assembly` — block-assembly nodup (`nodup_concat`, `if`/`while` +
    `findBlock_of_nodup_mem`) and arrival lifts (`if_asm_mem_*`): pure
    list reasoning, zero lowering cites.
-6. `Spine` → `BodyWorker` → `Workers` → `Loop` — the proof core, last (deep
+6. ✅ `Equations` + `HIRToMIRLower` move — the lowering
+   (`Lowered`/`lowerStmtsCFG`/`lowerProgramCFG`, byte-identical) moves to
+   `Morph/HIRToMIRLower` so the leaf can cite it without a cycle; the
+   leaf holds 31 `@[simp]` per-ctor equations. Loop-185 fallout fixed:
+   the back-edge `filterMap` lambda became the shared def
+   `backEdgePreds` (matchers intern per-module, so cross-module copies
+   silently break `rw`; one def cited everywhere). 28 `rfl`-pins and 47
+   redundant `simp` args migrated; `simp only [lowerStmtsCFG]` sites stay.
+7. `Spine` → `BodyWorker` → `Workers` → `Loop` — the proof core, last (deep
    lowering interdeps; extract only with the lowering).

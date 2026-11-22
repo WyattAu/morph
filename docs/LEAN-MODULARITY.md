@@ -36,25 +36,41 @@ leaves compose, never depend upward; the public surface is explicit.
    import back, build, commit. Remaining candidates: block-assembly
    lemmas (`if_asm_*`, `while_assembly_nodup` — pure list reasoning) and
    the C3 worker helpers.
-2. **Equation lemmas for the lowering (highest leverage).** The `Fuel`
-   leaf already establishes the discipline: `armBlockBound_nil/if/while`
-   simp equations, "never cite the definition name". Do the same for
-   `lowerStmtsCFG` (one `@[simp]` equation per statement ctor) and for
-   `runHIRStmts` (one per ctor). Then the 100 unfold-then-case scripts
-   collapse to single rewrites, and the next lowering change touches 8
-   equations instead of 100 scripts. Per-constructor equation first as
-   pure addition; migrate scripts opportunistically (each migration is a
-   small green commit, never a flag day).
-3. **Unify the lookup inductions.** With `runHIRStmts` equations in place,
-   each of the three lookup inductions becomes ~8 one-line cases. Then
-   factor the shared case scripts (or a single parametric lemma over a
-   "lookup-preserving step" relation). Do not unify the fragments
-   themselves: `ArmStmts`/`LoopStmts`/`BindArmStmts` differ load-bearingly
-   (the 2b unsoundness proved the gate cannot move).
-4. **Thin the facade.** `HIRToMIRBranch.lean` becomes imports + lowering +
-   top-level theorems, re-exporting leaves. Header documents the stable
-   API (`lowerProgramCFG`, `ifProg`, `*_correct`) — the estate "public
-   API surface" discipline. Consumers already use only these.
+2. ✅ **Equation lemmas for the lowering (highest leverage).** Done:
+   `Proofs.Branch.Equations` holds one `@[simp]` equation per
+   `lowerStmtsCFG`/`runHIRStmts` constructor (31 total), proved from each
+   definition's own `eq_def`/split lemmas. The lowering itself moved to
+   `Morph/HIRToMIRLower` (byte-identical, Branch imports it back) so the
+   leaf can cite the definitions without an import cycle. Migrated so
+   far: 28 `have … := rfl` pins in the lookup families → equation
+   rewrites, plus 47 `simp [lowerStmtsCFG, …]` sites whose explicit arg
+   the ledger made redundant (linter-certified). `simp only
+   [lowerStmtsCFG]` unfold sites stay: they use the auto lemmas and are
+   already body-edit-robust.
+3. **Unify the lookup inductions — verdict: shared vocabulary, not
+   shared induction.** The three inductions cannot collapse, and the
+   attempt proved it twice over: `arm_lookup` needs its own induction
+   because `returnStmt` is terminal with an unconstrained tail
+   (`boundIds` can be nonempty while every lookup is preserved —
+   terminality, not binding-freedom — so no derivation via the binding
+   lemma); the `loopBody` family needs its own because `varDecl` under
+   `loop = some` is vacuous only via the lowering-refusal hypothesis
+   threaded through each case. Same lesson as 2b: do not unify what the
+   gate distinguishes. What unified: the equation vocabulary (2) plus
+   the boilerplate shape; each family documents why it stands alone.
+   Loop 185's corollary: matcher sharing is module-local (see facades).
+4. **Thin the facade (started).** `Lowered`/`lowerStmtsCFG`/
+   `lowerProgramCFG` moved to `Morph/HIRToMIRLower` (−283 lines from
+   Branch); `backEdgePreds` (the back-edge filterMap lambda) was named
+   as a shared def in the same move. Lesson from loop 185: Lean shares
+   equation-compiler matchers only within a module, so an inlined
+   `match`-containing term elaborated in two modules produces two
+   matcher constants and `rw` silently stops matching. Rule: any
+   `match`-containing term cited by both a definition and a proof in
+   different modules must be a named def cited by both. Same-module
+   copies keep working via interning and are out of scope.
+   Remaining: Branch is still ~22k lines; continue per
+   `PROOF-CRATES.md` extraction order.
 5. **Gates (extend `PROOF-CRATES.md` checklist):** no raw
    `lowerStmtsCFG`/`runHIRStmts` unfolding outside the equation file;
    every new induction cites the equation set; leaf layer check stays
