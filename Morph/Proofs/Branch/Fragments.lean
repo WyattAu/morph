@@ -104,7 +104,7 @@ inductive BindArmStmts (budget : Nat) : List HIR.Stmt → Prop where
       BindArmStmts budget (.nop :: rest)
   | ifStmt (c : HIR.Expr) (th el : List HIR.Stmt) (rest : List HIR.Stmt) :
       IsStraight c → SLWeight c < budget →
-      BindArmStmts budget th → BindArmStmts budget el → BindArmStmts budget rest →
+      ArmStmts budget th → ArmStmts budget el → BindArmStmts budget rest →
       BindArmStmts budget (.ifStmt c th el :: rest)
   | returnStmt (e : HIR.Expr) (rest : List HIR.Stmt) :
       IsStraight e → SLWeight e < budget → BindArmStmts budget (.returnStmt e :: rest)
@@ -115,7 +115,9 @@ inductive BindArmStmts (budget : Nat) : List HIR.Stmt → Prop where
 
 /-- Every binding-free arm is a binding arm: constructor-for-constructor map.
 Loop-body call sites keep `ArmStmts` (the gate); only the top-level `if`
-will widen to `BindArmStmts` in Phase B. -/
+will widen to `BindArmStmts` in Phase B. Nested `if` arms stay `ArmStmts`:
+the lowering threads only one stale-`lastVal` fix per level, so an arm run
+can reset its accumulator to `.unit` but cannot fix a nested arm's entry. -/
 theorem ArmStmts_to_BindArmStmts {budget : Nat} :
     ∀ {ss : List HIR.Stmt}, ArmStmts budget ss → BindArmStmts budget ss
   | _, .nil => .nil
@@ -123,8 +125,7 @@ theorem ArmStmts_to_BindArmStmts {budget : Nat} :
       .exprStmt e rest h1 h2 (ArmStmts_to_BindArmStmts h3)
   | _, .nop rest h => .nop rest (ArmStmts_to_BindArmStmts h)
   | _, .ifStmt c th el rest h1 h2 hath hael h =>
-      .ifStmt c th el rest h1 h2 (ArmStmts_to_BindArmStmts hath)
-        (ArmStmts_to_BindArmStmts hael) (ArmStmts_to_BindArmStmts h)
+      .ifStmt c th el rest h1 h2 hath hael (ArmStmts_to_BindArmStmts h)
   | _, .returnStmt e rest h1 h2 => .returnStmt e rest h1 h2
   | _, .breakStmt rest h => .breakStmt rest (ArmStmts_to_BindArmStmts h)
   | _, .continueStmt rest h => .continueStmt rest (ArmStmts_to_BindArmStmts h)
