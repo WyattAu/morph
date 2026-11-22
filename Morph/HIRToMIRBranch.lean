@@ -3175,6 +3175,37 @@ theorem if_asm_mem_of_lr {lt le lr : List Block} {T E J : Block} {b : Block}
     (h : b ∈ lr) : b ∈ lt ++ [T] ++ le ++ [E] ++ [J] ++ lr :=
   List.mem_append_right _ h
 
+/-- Arrival-label lifts for the six-part `if` assembly: a predecessor that is
+the join id or lives in the rest maps into the whole assembly (and likewise
+for the then/else entries and arm sub-blocks). Used to transport the new
+arrival-membership disjunct through `arm_continued`'s `if` arm. -/
+theorem if_asm_mem_of_rest' {lt le lr : List Block} {T E J : Block}
+    {x : MIR.BlockId}
+    (h : x = J.id ∨ x ∈ lr.map Block.id) :
+    x ∈ (lt ++ [T] ++ le ++ [E] ++ [J] ++ lr).map Block.id := by
+  rcases h with heq | hm
+  · exact List.mem_map.mpr ⟨J, if_asm_mem_join, heq.symm⟩
+  · obtain ⟨b, hb, hid⟩ := List.mem_map.mp hm
+    exact List.mem_map.mpr ⟨b, if_asm_mem_of_lr hb, hid⟩
+
+theorem if_asm_mem_of_then' {lt le lr : List Block} {T E J : Block}
+    {x : MIR.BlockId}
+    (h : x = T.id ∨ x ∈ lt.map Block.id) :
+    x ∈ (lt ++ [T] ++ le ++ [E] ++ [J] ++ lr).map Block.id := by
+  rcases h with heq | hm
+  · exact List.mem_map.mpr ⟨T, if_asm_mem_then, heq.symm⟩
+  · obtain ⟨b, hb, hid⟩ := List.mem_map.mp hm
+    exact List.mem_map.mpr ⟨b, if_asm_mem_of_lt hb, hid⟩
+
+theorem if_asm_mem_of_else' {lt le lr : List Block} {T E J : Block}
+    {x : MIR.BlockId}
+    (h : x = E.id ∨ x ∈ le.map Block.id) :
+    x ∈ (lt ++ [T] ++ le ++ [E] ++ [J] ++ lr).map Block.id := by
+  rcases h with heq | hm
+  · exact List.mem_map.mpr ⟨E, if_asm_mem_else, heq.symm⟩
+  · obtain ⟨b, hb, hid⟩ := List.mem_map.mp hm
+    exact List.mem_map.mpr ⟨b, if_asm_mem_of_le hb, hid⟩
+
 /-- Arm lowering never rebinds: `ρ` flows through unchanged (there is no
 `updAssoc` in `arm` mode — `varDecl`/`assign` lower to `none`). The worker
 needs it to transport the arm's `RelEnv` into the rest segment. -/
@@ -3457,6 +3488,50 @@ theorem getLast?_mem {α : Type} :
       have ha : _ = (hd :: tl).getLast hne := (Option.some.inj h).symm
       rw [ha]
       exact List.getLast_mem hne
+
+/-- An arrival label from an arm entry or arm block can never equal the
+rest exit: entries sit strictly below the join id, arm blocks sit below
+the rest floor, and the rest exit is the join id or a rest block. Used
+to discharge the FALL-gated `RelEnv` implication at arm-abort sites. -/
+theorem arrNe_restExit {arr e armLo armHi restLo exitD : Nat}
+    {arm lr : List Block} (harr : arr = e ∨ arr ∈ arm.map Block.id)
+    (hrange_arm : ∀ b ∈ arm, armLo ≤ b.id ∧ b.id < armHi)
+    (hrange_rest : ∀ b ∈ lr, restLo ≤ b.id)
+    (hne_entry : e ≠ exitD) (hexit_lt : exitD < armLo)
+    (he2 : e + 1 + 1 ≤ restLo) (hchain : armHi ≤ restLo) :
+    arr ≠ ((lr.getLast?.map fun b => b.id)).getD exitD := by
+
+  intro hEq
+  cases harr with
+  | inl heq =>
+      subst heq
+      cases hlast : lr.getLast? with
+      | none =>
+          rw [hlast] at hEq
+          simp only [Option.map_none, Option.getD_none] at hEq
+          exact absurd hEq hne_entry
+      | some bb =>
+          have hbr := hrange_rest bb (getLast?_mem hlast)
+          rw [hlast] at hEq
+          simp only [Option.map_some, Option.getD_some] at hEq
+          omega
+  | inr hmem =>
+      obtain ⟨b, hb, hid⟩ := List.mem_map.mp hmem
+      have hid' : b.id = arr := hid
+      have hbnd := hrange_arm b hb
+      cases hlast : lr.getLast? with
+      | none =>
+          rw [hlast] at hEq
+          simp only [Option.map_none, Option.getD_none] at hEq
+          omega
+      | some bb =>
+          have hbr := hrange_rest bb (getLast?_mem hlast)
+          rw [hlast] at hEq
+          simp only [Option.map_some, Option.getD_some] at hEq
+          have hlt : b.id < bb.id :=
+            Nat.lt_of_lt_of_le hbnd.2 (Nat.le_trans hchain hbr)
+          rw [hid', hEq] at hlt
+          exact Nat.lt_irrefl _ hlt
 
 /-- Arm worker: executing an arm segment's entry block runs the HIR arm. On
 fallthrough the run arrives at the join block with the arm's value in its
@@ -7884,7 +7959,8 @@ theorem lowerStmtsCFG_arm_continued (budget : Nat) :
           lookupHEnv henv' id = some (.lit w) → fenv_arr.env r = some w) ∧
         (∀ r, r < supply → (∀ id, (id, r) ∉ info.carried) →
           fenv_arr.env r = fenv.env r) ∧
-        forbid < blkPrev := by
+        forbid < blkPrev ∧
+        (blkPrev = bId ∨ blkPrev ∈ L.blocks.map Block.id) := by
   intro bId j ρ supply nextB lastVal hasVal loop ss L h hss hfresh hlast
     forbid hfN hfB
   induction hss generalizing bId j ρ supply nextB lastVal hasVal loop L
@@ -8158,7 +8234,7 @@ theorem lowerStmtsCFG_arm_continued (budget : Nat) :
                       rw [blockBound]; omega
                     omega
                   refine ⟨F', fenv_arr, bId, Nat.le_succ _, hge, heq, ?_, ?_,
-                    ?_, hfB⟩
+                    ?_, hfB, Or.inl rfl⟩
                   · rw [← h2]
                     exact hrel_arr
                   · rw [← h2]
@@ -8595,7 +8671,7 @@ theorem lowerStmtsCFG_arm_continued (budget : Nat) :
                                                             (hJeq.trans
                                                             heq_rest)),
                                                           hrel_final,
-                                                          hval_final, ?_, hforbid2⟩
+                                                          hval_final, ?_, ⟨hforbid2.1, Or.inr (if_asm_mem_of_rest' hforbid2.2)⟩⟩
                                                       have hpc : ∀ r, r < supply →
                                                           fenvC.env r = fenv.env r :=
                                                         fun r hr =>
@@ -8699,7 +8775,7 @@ theorem lowerStmtsCFG_arm_continued (budget : Nat) :
                                                     hgeC,
                                                     hentry.trans heq_arm,
                                                     hrel_final,
-                                                    hval_final, ?_, hforbidT⟩
+                                                    hval_final, ?_, ⟨hforbidT.1, Or.inr (if_asm_mem_of_then' hforbidT.2)⟩⟩
                                                   have hpc : ∀ r, r < supply →
                                                       fenvC.env r = fenv.env r :=
                                                     fun r hr =>
@@ -8968,7 +9044,7 @@ theorem lowerStmtsCFG_arm_continued (budget : Nat) :
                                                           (hJeq.trans
                                                           heq_rest)),
                                                         hrel_final,
-                                                        hval_final, ?_, hforbid2⟩
+                                                        hval_final, ?_, ⟨hforbid2.1, Or.inr (if_asm_mem_of_rest' hforbid2.2)⟩⟩
                                                       have hpc : ∀ r, r < supply →
                                                           fenvC.env r = fenv.env r :=
                                                         fun r hr =>
@@ -9075,7 +9151,7 @@ theorem lowerStmtsCFG_arm_continued (budget : Nat) :
                                                     hgeC,
                                                     hentry.trans heq_arm,
                                                     hrel_final,
-                                                    hval_final, ?_, hforbidE⟩
+                                                    hval_final, ?_, ⟨hforbidE.1, Or.inr (if_asm_mem_of_else' hforbidE.2)⟩⟩
                                                   have hpc : ∀ r, r < supply →
                                                       fenvC.env r = fenv.env r :=
                                                     fun r hr =>
@@ -9233,7 +9309,9 @@ theorem lowerStmtsCFG_loopBody_run (budget : Nat) :
             lookupHEnv henv' id = some (.lit w) → fenv_arr.env r = some w) ∧
           (∀ r, r < supply → (∀ id, (id, r) ∉ info.carried) →
             fenv_arr.env r = fenv.env r) ∧
-          forbid < blkPrev) ∧
+          forbid < blkPrev ∧
+          (blkPrev = (L.blocks.getLast?.map fun b => b.id).getD bId →
+            RelEnv henv' L.ρ fenv_arr.env)) ∧
       (∀ (e : HIR.Expr), out = .returned e →
         ∃ w_e, e = .lit w_e ∧
           execBlockFromIn prog F f prev ⟨bId, L.instrs, L.term⟩ fenv =
@@ -10324,7 +10402,7 @@ theorem lowerStmtsCFG_loopBody_run (budget : Nat) :
                                                               (heq_arm.trans
                                                               (hJeq.trans
                                                               heq_rest)),
-                                                              hcarried, ?_, hforbid⟩
+                                                              hcarried, ?_, ⟨hforbid.1, fun hEq => hforbid.2 (hEq.trans (if_assembly_exit rfl))⟩⟩
                                                             intro r hr hnc
                                                             have hle_sup : supply ≤ le.supply :=
                                                               Nat.le_trans hs1
@@ -10432,7 +10510,8 @@ theorem lowerStmtsCFG_loopBody_run (budget : Nat) :
                                                           hgeC,
                                                           hentry.trans
                                                           heq_arm,
-                                                          hcarried, ?_, hforbid⟩
+                                                          hcarried, ?_,
+                                                          hforbid.1, ?_⟩
                                                         intro r hr hnc
                                                         have e1 : fenv_arr2.env r = fenvC.env r :=
                                                           hpreserv r
@@ -10441,6 +10520,14 @@ theorem lowerStmtsCFG_loopBody_run (budget : Nat) :
                                                           lower_preserv_regs ρ supply c vc ic s1 heC
                                                             fenv fenvC hexecC r hr
                                                         exact e1.trans e2
+                                                        have hne_entry : nextB ≠ nextB + 2 := by omega
+                                                        have hexit_lt : nextB + 2 < nextB + 3 := by omega
+                                                        have he2Rest : nextB + 1 + 1 ≤ le.next := by omega
+                                                        intro hEq
+                                                        exact absurd (hEq.trans (if_assembly_exit rfl))
+                                                          (arrNe_restExit hforbid.2 (fun b hb => hbndt b hb)
+                                                            (fun b hb => (hbndr b hb).1) hne_entry
+                                                            hexit_lt he2Rest hmne)
                                                       · intro e_ret hout
                                                         rw [hout_c] at hout
                                                         exact absurd hout
@@ -10951,7 +11038,7 @@ theorem lowerStmtsCFG_loopBody_run (budget : Nat) :
                                                               (heq_arm.trans
                                                               (hJeq.trans
                                                               heq_rest)),
-                                                              hcarried, ?_, hforbid⟩
+                                                              hcarried, ?_, ⟨hforbid.1, fun hEq => hforbid.2 (hEq.trans (if_assembly_exit rfl))⟩⟩
                                                             intro r hr hnc
                                                             have hle_sup : supply ≤ le.supply :=
                                                               Nat.le_trans hs1
@@ -11062,7 +11149,8 @@ theorem lowerStmtsCFG_loopBody_run (budget : Nat) :
                                                           hgeC,
                                                           hentry.trans
                                                           heq_arm,
-                                                          hcarried, ?_, hforbid⟩
+                                                          hcarried, ?_,
+                                                          hforbid.1, ?_⟩
                                                         intro r hr hnc
                                                         have e1 : fenv_arr2.env r = fenvC.env r :=
                                                           hpreserv r
@@ -11071,6 +11159,14 @@ theorem lowerStmtsCFG_loopBody_run (budget : Nat) :
                                                           lower_preserv_regs ρ supply c vc ic s1 heC
                                                             fenv fenvC hexecC r hr
                                                         exact e1.trans e2
+                                                        have hne_entry : nextB + 1 ≠ nextB + 2 := by omega
+                                                        have hexit_lt : nextB + 2 < lt.next := by omega
+                                                        have he2Rest : nextB + 1 + 1 + 1 ≤ le.next := by omega
+                                                        intro hEq
+                                                        exact absurd (hEq.trans (if_assembly_exit rfl))
+                                                          (arrNe_restExit hforbid.2 (fun b hb => hbnde b hb)
+                                                            (fun b hb => (hbndr b hb).1) hne_entry
+                                                            hexit_lt he2Rest (Nat.le_refl _))
                                                       · intro e_ret hout
                                                         rw [hout_c] at hout
                                                         exact absurd hout
@@ -12019,7 +12115,7 @@ theorem lowerStmtsCFG_loopBody_run (budget : Nat) :
                                                               (heq_arm.trans
                                                               (hJeq.trans
                                                               heq_rest)),
-                                                              hcarried, ?_, hforbid⟩
+                                                              hcarried, ?_, ⟨hforbid.1, fun hEq => hforbid.2 (hEq.trans (if_assembly_exit rfl))⟩⟩
                                                             intro r hr hnc
                                                             have hle_sup : supply ≤ le.supply :=
                                                               Nat.le_trans hs1
@@ -12194,7 +12290,8 @@ theorem lowerStmtsCFG_loopBody_run (budget : Nat) :
                                                           hgeC,
                                                           hentry.trans
                                                           heq_arm,
-                                                          hcarried, ?_, hforbid⟩
+                                                          hcarried, ?_,
+                                                          hforbid.1, ?_⟩
                                                         intro r hr hnc
                                                         have e1 : fenv_arr2.env r = fenvC.env r :=
                                                           hpreserv r
@@ -12203,6 +12300,14 @@ theorem lowerStmtsCFG_loopBody_run (budget : Nat) :
                                                           lower_preserv_regs ρ supply c vc ic s1 heC
                                                             fenv fenvC hexecC r hr
                                                         exact e1.trans e2
+                                                        have hne_entry : nextB ≠ nextB + 2 := by omega
+                                                        have hexit_lt : nextB + 2 < nextB + 3 := by omega
+                                                        have he2Rest : nextB + 1 + 1 ≤ le.next := by omega
+                                                        intro hEq
+                                                        exact absurd (hEq.trans (if_assembly_exit rfl))
+                                                          (arrNe_restExit hforbid.2 (fun b hb => hbndt b hb)
+                                                            (fun b hb => (hbndr b hb).1) hne_entry
+                                                            hexit_lt he2Rest hmne)
                                                       · intro e_ret hout
                                                         rw [hout_c] at hout
                                                         exact absurd hout
@@ -12713,7 +12818,7 @@ theorem lowerStmtsCFG_loopBody_run (budget : Nat) :
                                                               (heq_arm.trans
                                                               (hJeq.trans
                                                               heq_rest)),
-                                                              hcarried, ?_, hforbid⟩
+                                                              hcarried, ?_, ⟨hforbid.1, fun hEq => hforbid.2 (hEq.trans (if_assembly_exit rfl))⟩⟩
                                                             intro r hr hnc
                                                             have hle_sup : supply ≤ le.supply :=
                                                               Nat.le_trans hs1
@@ -12892,7 +12997,8 @@ theorem lowerStmtsCFG_loopBody_run (budget : Nat) :
                                                           hgeC,
                                                           hentry.trans
                                                           heq_arm,
-                                                          hcarried, ?_, hforbid⟩
+                                                          hcarried, ?_,
+                                                          hforbid.1, ?_⟩
                                                         intro r hr hnc
                                                         have e1 : fenv_arr2.env r = fenvC.env r :=
                                                           hpreserv r
@@ -12901,6 +13007,14 @@ theorem lowerStmtsCFG_loopBody_run (budget : Nat) :
                                                           lower_preserv_regs ρ supply c vc ic s1 heC
                                                             fenv fenvC hexecC r hr
                                                         exact e1.trans e2
+                                                        have hne_entry : nextB + 1 ≠ nextB + 2 := by omega
+                                                        have hexit_lt : nextB + 2 < lt.next := by omega
+                                                        have he2Rest : nextB + 1 + 1 + 1 ≤ le.next := by omega
+                                                        intro hEq
+                                                        exact absurd (hEq.trans (if_assembly_exit rfl))
+                                                          (arrNe_restExit hforbid.2 (fun b hb => hbnde b hb)
+                                                            (fun b hb => (hbndr b hb).1) hne_entry
+                                                            hexit_lt he2Rest (Nat.le_refl _))
                                                       · intro e_ret hout
                                                         rw [hout_c] at hout
                                                         exact absurd hout
@@ -13514,7 +13628,7 @@ theorem lowerStmtsCFG_loopBody_run (budget : Nat) :
                           rw [blockBound]; omega
                         omega
                     | succ F' =>
-                        obtain ⟨fenv_arr, hexec_copies, _, hval_arr,
+                        obtain ⟨fenv_arr, hexec_copies, hrel_arr, hval_arr,
                             hpres_copies⟩ :=
                           carryCopies_exec ρ info.carried copies hc prog prev
                             fenv henv hrel hexcl hdist
@@ -13530,11 +13644,16 @@ theorem lowerStmtsCFG_loopBody_run (budget : Nat) :
                               1 := by
                             rw [blockBound]; omega
                           omega
+                        have hfallRel : bId =
+                            ((([] : List Block).getLast?.map fun b => b.id)).getD bId →
+                            RelEnv henv ρ fenv_arr.env := by
+                          intro _
+                          exact hrel_arr
                         refine ⟨F', fenv_arr, bId, Nat.le_succ _, hge, heq,
                           ?_⟩
                         rw [← h2]
                         exact ⟨hval_arr,
-                          fun r _ hnc => hpres_copies r hnc, hfB⟩
+                          fun r _ hnc => hpres_copies r hnc, hfB, hfallRel⟩
                   · intro e_ret hout
                     rw [hout_c] at hout
                     exact absurd hout (by simp)
@@ -16451,6 +16570,117 @@ theorem headerPhis_miss_exec (pred bId fallEnd : MIR.BlockId)
         exact hrest
   exact gen l hf
 
+/-- One header group on the fall edge is identity when both sources agree:
+the entry phi misses, the fall phi rewrites the register with its current
+value (a no-op via `Env.update_eq_self`), and trampoline self-copies are
+no-ops (`trampSelf_exec`). -/
+theorem headerGroup_exec_fall (entryPred fallEnd : MIR.BlockId)
+    (tramps : List MIR.BlockId) (r entrySrc backSrc : ValId) (fenv : FullEnv)
+    (w : Value) (hentry : entryPred ≠ fallEnd)
+    (hreg : fenv.env r = some w) (hsrc : fenv.env backSrc = some w) :
+    execInstrsFullFrom (some fallEnd) fenv
+        ([.phi r entryPred entrySrc, .phi r fallEnd backSrc] ++
+          tramps.map (.phi r · r)) = some fenv := by
+  have h1 : execInstrsFullFrom (some fallEnd) fenv
+      ([.phi r entryPred entrySrc, .phi r fallEnd backSrc] ++
+        tramps.map (.phi r · r)) =
+      execInstrsFullFrom (some fallEnd) ⟨fenv.env.update r w, fenv.store⟩
+        (tramps.map (.phi r · r)) := by
+    simp only [List.cons_append, List.nil_append,
+      execInstrsFullFrom_phi_miss _ _ _ _ _ _ hentry,
+      execInstrsFullFrom_phi_hit _ _ _ _ _ _ rfl, hsrc]
+  rw [h1, Env.update_eq_self _ _ _ hreg]
+  exact trampSelf_exec fallEnd r tramps fenv w hreg
+
+/-- Header phis on the fall edge are identity when every carried register
+and its back-edge source already hold the same value: each entry phi
+misses, each fall phi is a no-op rewrite, and trampoline self-copies are
+no-ops. Needs value agreement, not just shape — the caller derives it from
+the fall-gated arrival relation. -/
+theorem headerPhis_exec_fall (fallEnd entryPred : MIR.BlockId)
+    (tramps : List MIR.BlockId) (l : List (HIR.Id × ValId))
+    (f : HIR.Id × ValId → List MIR.Instr)
+    (prog : Program) (fenv : FullEnv)
+    (hf : ∀ q ∈ l, ∃ entrySrc backSrc w, fenv.env q.2 = some w ∧
+      fenv.env backSrc = some w ∧
+      f q = ([MIR.Instr.phi q.2 entryPred entrySrc,
+        MIR.Instr.phi q.2 fallEnd backSrc] ++
+        tramps.map (MIR.Instr.phi q.2 · q.2)))
+    (hentry : entryPred ≠ fallEnd) :
+    execInstrsFullFromIn prog (some fallEnd) fenv ((l.map f).flatten) =
+      some fenv := by
+  have gen : ∀ (cs : List (HIR.Id × ValId)),
+      (∀ q ∈ cs, ∃ entrySrc backSrc w, fenv.env q.2 = some w ∧
+        fenv.env backSrc = some w ∧
+        f q = ([MIR.Instr.phi q.2 entryPred entrySrc,
+          MIR.Instr.phi q.2 fallEnd backSrc] ++
+          tramps.map (MIR.Instr.phi q.2 · q.2))) →
+      execInstrsFullFromIn prog (some fallEnd) fenv ((cs.map f).flatten) =
+        some fenv := by
+    intro cs hcs
+    induction cs with
+    | nil => simp [List.map_nil, execInstrsFullFromIn_eq, execInstrsFullFrom]
+    | cons p rest ih =>
+        obtain ⟨id₀, r₀⟩ := p
+        obtain ⟨entrySrc, backSrc, w, hreg, hsrc, hfp⟩ :=
+          hcs _ (List.mem_cons_self ..)
+        have hcs_rest : ∀ q ∈ rest, ∃ entrySrc backSrc w,
+            fenv.env q.2 = some w ∧ fenv.env backSrc = some w ∧
+            f q = ([MIR.Instr.phi q.2 entryPred entrySrc,
+              MIR.Instr.phi q.2 fallEnd backSrc] ++
+              tramps.map (MIR.Instr.phi q.2 · q.2)) := by
+          intro q hq
+          exact hcs q (List.mem_cons_of_mem _ hq)
+        have hexec1 : execInstrsFullFromIn prog (some fallEnd) fenv
+            (f (id₀, r₀)) = some fenv := by
+          rw [hfp, execInstrsFullFromIn_eq]
+          exact headerGroup_exec_fall entryPred fallEnd tramps r₀ entrySrc
+            backSrc fenv w hentry hreg hsrc
+        have hrest := ih hcs_rest
+        have happ : execInstrsFullFromIn prog (some fallEnd) fenv
+            (f (id₀, r₀) ++ (rest.map f).flatten) =
+            execInstrsFullFromIn prog (some fallEnd) fenv (rest.map f).flatten := by
+          simp only [execInstrsFullFromIn_append, hexec1]
+        have hflat : (((id₀, r₀) :: rest).map f).flatten =
+            f (id₀, r₀) ++ (rest.map f).flatten := by simp
+        rw [hflat, happ]
+        exact hrest
+  exact gen l hf
+
+/-- Header phis from any predecessor are identity: on the fall edge the
+back phis rewrite carried registers with their current values
+(`headerPhis_exec_fall`, with value agreement supplied only there); off
+the fall edge the arrival is a trampoline hit or a clean miss. The
+predecessor split lives inside this lemma, so callers stay split-free and
+their downstream proof needs no duplication. -/
+theorem headerPhis_all_identity (entryPred fallEnd : MIR.BlockId)
+    (tramps : List MIR.BlockId) (l : List (HIR.Id × ValId))
+    (f : HIR.Id × ValId → List MIR.Instr)
+    (pred : MIR.BlockId) (prog : Program) (fenv : FullEnv)
+    (hfval : (pred = fallEnd) → ∀ q ∈ l, ∃ entrySrc backSrc w,
+      fenv.env q.2 = some w ∧ fenv.env backSrc = some w ∧
+      f q = ([MIR.Instr.phi q.2 entryPred entrySrc,
+        MIR.Instr.phi q.2 fallEnd backSrc] ++
+        tramps.map (MIR.Instr.phi q.2 · q.2)))
+    (hshape : ∀ q ∈ l, ∃ entrySrc backSrc,
+      f q = ([MIR.Instr.phi q.2 entryPred entrySrc,
+        MIR.Instr.phi q.2 fallEnd backSrc] ++
+        tramps.map (MIR.Instr.phi q.2 · q.2)))
+    (hval : ∀ id r, (id, r) ∈ l → ∃ w, fenv.env r = some w)
+    (hneB : entryPred ≠ pred)
+    (hfallNe : fallEnd ≠ entryPred)
+    (_htrFall : ∀ t ∈ tramps, t ≠ fallEnd) :
+    execInstrsFullFromIn prog (some pred) fenv ((l.map f).flatten) = some fenv := by
+  by_cases hfall : pred = fallEnd
+  · rw [hfall]
+    exact headerPhis_exec_fall fallEnd entryPred tramps l f prog fenv
+      (hfval hfall) (Ne.symm hfallNe)
+  · by_cases hmem : pred ∈ tramps
+    · exact headerPhis_tramp_hit_exec pred entryPred fallEnd tramps l f hshape
+        hmem hneB (Ne.symm hfall) prog fenv hval
+    · exact headerPhis_miss_exec pred entryPred fallEnd tramps l f hshape hneB
+        (Ne.symm hfall) (fun t ht heq => hmem (heq ▸ ht)) prog fenv
+
 /-- Post-body relation for `continue` arrivals (trampoline/miss alternative
 to `conv_backRelEnv`): the continued selector gives carried binds plus a
 below-supply frame but no `RelEnv` under `lb.ρ` — and none is needed.
@@ -17544,7 +17774,7 @@ theorem header_loop_correct (budget : Nat) :
             findBlock_of_nodup_mem hnodf (hsub _ hmemExit)
           have hfreshB : FreshAbove ρb (s1 + 1) :=
             FreshAbove.mono ρb sA (s1 + 1) (Nat.le_trans hsA (Nat.le_succ _)) hfrb
-          obtain ⟨F', fenv_arr, blkPrev, hle, hge, heq_body, hcarried, hframe0, hforbid⟩ :=
+          obtain ⟨F', fenv_arr, blkPrev, hle, hge, heq_body, hcarried, hframe0, hforbid, hfallRel⟩ :=
             ((lowerStmtsCFG_loopBody_run budget (nextB + 2) ρb (s1 + 1)
               (nextB + 3) nextB s1 (some ⟨nextB, nextB + 1, carried⟩)
               ⟨nextB, nextB + 1, carried⟩ body lb rfl hbody hloop hfreshB
@@ -17644,31 +17874,40 @@ theorem header_loop_correct (budget : Nat) :
             intro id r hmem
             obtain ⟨w, hw⟩ := hP id r hmem
             exact ⟨w, hcarried id r w hmem hw⟩
-          by_cases hfallEq : blkPrev = ((lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2))
-          · sorry
-          · have hexecPhi : execInstrsFullFromIn prog (some blkPrev) fenv_arr
-                ((carried.map phif).flatten) = some fenv_arr :=
-              if hmemT : blkPrev ∈ (lb.blocks.filterMap (fun b => match b.terminator with | .goto tt => if tt == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2) then some b.id else none | _ => none)) then
-                headerPhis_tramp_hit_exec blkPrev bId
-                  ((lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2))
-                  (lb.blocks.filterMap (fun b => match b.terminator with | .goto tt => if tt == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2) then some b.id else none | _ => none))
-                  carried phif hshape hmemT hneB (Ne.symm (htrFall _ hmemT))
-                  prog fenv_arr hvalB1
-              else
-                headerPhis_miss_exec blkPrev bId
-                  ((lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2))
-                  (lb.blocks.filterMap (fun b => match b.terminator with | .goto tt => if tt == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2) then some b.id else none | _ => none))
-                  carried phif hshape hneB (Ne.symm hfallEq)
-                  (fun t ht heq => hmemT (heq ▸ ht)) prog fenv_arr
-            have hphiEq : phis = (carried.map phif).flatten := by
+          have hvalFall : (blkPrev = ((lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2))) →
+                ∀ q ∈ carried, ∃ entrySrc backSrc w, fenv_arr.env q.2 = some w ∧
+                fenv_arr.env backSrc = some w ∧
+                phif q = ([MIR.Instr.phi q.2 bId entrySrc,
+                  MIR.Instr.phi q.2 ((lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2)) backSrc] ++
+                  (lb.blocks.filterMap (fun b => match b.terminator with | .goto tt => if tt == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2) then some b.id else none | _ => none)).map
+                    (MIR.Instr.phi q.2 · q.2)) := by
+              intro hEq q hq
+              obtain ⟨id, r⟩ := q
+              obtain ⟨esrc, bsrc, _, hlook, hfp⟩ := hphif (id, r) hq
+              obtain ⟨w, hw⟩ := hP id r hq
+              have hcr : fenv_arr.env r = some w := hcarried id r w hq hw
+              have hrelLb : RelEnv envB lb.ρ fenv_arr.env := hfallRel hEq
+              obtain ⟨w', hlookH, hreg⟩ := hrelLb id bsrc hlook
+              have heqw : w' = w :=
+                HIR.Expr.lit.inj (Option.some.inj (hlookH.symm.trans hw))
+              subst w'
+              exact ⟨esrc, bsrc, w, hcr, hreg, hfp⟩
+          have hexecPhi : execInstrsFullFromIn prog (some blkPrev) fenv_arr
+                ((carried.map phif).flatten) = some fenv_arr := by
+            exact headerPhis_all_identity bId
+              ((lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2))
+              (lb.blocks.filterMap (fun b => match b.terminator with | .goto tt => if tt == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2) then some b.id else none | _ => none))
+              carried phif blkPrev prog fenv_arr hvalFall hshape hvalB1
+              hneB hfallNe htrFall
+          have hphiEq : phis = (carried.map phif).flatten := by
               rw [hflat]; simp
-            rw [← hphiEq] at hexecPhi
-            have hfrP : FreshAbove ρb sA :=
+          rw [← hphiEq] at hexecPhi
+          have hfrP : FreshAbove ρb sA :=
               FreshAbove.mono ρb sA sA (Nat.le_refl _) ((mkCarried_growth_fresh hfresh hmk).2)
-            have hremW : runHIRWhile (fh + 1) envB c body = (res, env') := hrem
-            simp only [runHIRWhile] at hrem
-            cases heval : evalHIR 256 envB c with
-            | none =>
+          have hremW : runHIRWhile (fh + 1) envB c body = (res, env') := hrem
+          simp only [runHIRWhile] at hrem
+          cases heval : evalHIR 256 envB c with
+          | none =>
                 rw [heval] at hrem
                 have hst : res = .stuck := (congrArg Prod.fst hrem).symm
                 refine ⟨?_, ?_⟩
@@ -17678,7 +17917,7 @@ theorem header_loop_correct (budget : Nat) :
                 · intro e hres
                   rw [hst] at hres
                   exact absurd hres (by simp)
-            | some r =>
+          | some r =>
                 rw [heval] at hrem
                 by_cases hbool : ∃ b : Bool, r = HIR.Expr.lit (.bool b)
                 · obtain ⟨b, rfl⟩ := hbool
@@ -18146,15 +18385,15 @@ lowering still accepts out-of-fragment. The `break` snapshot is wired
 through `CarriedExcl` hypotheses in `lowerStmtsCFG_arm_broke` (proved via
 `carryCopies_exec`, with `mkCarried_excl` deriving exclusivity and
 `mkCarried_reg_inj` giving distinctness from `hmk`).
-Remaining hard gate (deferred, one `sorry` below, in `header_loop_correct`'s
+Closed hard gate (the former gap in `header_loop_correct`'s
 `continued` branch): the four `whileLoop_correct` recursion leaves (value
 and continued bodies × value and returned conclusions) now cite
 `header_loop_correct`, which chains entry phis, cond, body, back-edge phis
 (`headerPhis_exec_back`), and the fuel IH. Pieces (1)-(4) from the old note
 all landed: edge distinctness is proved inline (`hfallNe`/`htrNe` from
 `loopBody_inv` bounds), `arm_continued` and the loopBody `continued`
-selector exist, and `conv_backRelEnv` re-establishes `RelEnv`. What remains
-is strictly `header_loop_correct`'s `continued` case: synthesizing
+selector exist, and `conv_backRelEnv` re-establishes `RelEnv`. What closed it
+is `header_loop_correct`'s `continued` case: synthesizing
 `RelEnv envB lb.ρ` for the back-edge phis from the continued selector's
 carried-bindings + frame (the value selector's `RelEnv` is unavailable
 there). The naive fix — strengthening `lowerStmtsCFG_loopBody_run`'s continued
