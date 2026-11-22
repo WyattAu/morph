@@ -14391,6 +14391,211 @@ theorem runHIRStmts_bindArm_binds_lit (budget : Nat) {ss : List HIR.Stmt}
           cases hrun
           exact Or.inr hlook
 
+/-- C2c lowering over binding arms only rebinds bound ids: an id outside
+`boundIds` looks up identically in the arm-exit env and the entry env.
+`varDecl` conses (shadowing needs the `≠`), `assign` goes through
+`updAssoc` (`rhoLookup_updAssoc_ne`), binding-free statements thread the
+env through, and the `if` case composes the two arm agreements with the
+rest agreement — across the merged env via `mergeIds_mem_diff` (both sides
+agree at an unbound id, so it is unmerged) plus
+`mkMergePhis_lookup_unmerged`. `break`/`continue` refuse under
+`loop = none`, making those cases vacuous. The future top-level
+binding-arm `RelEnv` assembly cites this to confine the merge set to
+arm-bound ids. -/
+theorem lowerStmtsCFG_bindArm_rho_agree (budget : Nat) :
+    ∀ (bId : MIR.BlockId) (cont : Option MIR.BlockId)
+      (ρ : List (HIR.Id × ValId)) (supply nextB : Nat) (lastVal : ValId)
+      (hasVal : Bool) (ss : List HIR.Stmt) (L : Lowered) (j : HIR.Id),
+      lowerStmtsCFG bId cont true ρ supply nextB lastVal hasVal none ss =
+        some L →
+      BindArmStmts budget ss →
+      j ∉ boundIds ss → rhoLookup L.ρ j = rhoLookup ρ j := by
+  intro bId cont ρ supply nextB lastVal hasVal ss L j h hss hj
+  induction hss generalizing bId cont ρ supply nextB lastVal hasVal L j with
+  | nil =>
+      simp only [lowerStmtsCFG.eq_def] at h
+      cases hv : hasVal with
+      | true =>
+          simp only [hv] at h
+          obtain rfl := Option.some.inj h
+          rfl
+      | false =>
+          simp only [hv] at h
+          obtain rfl := Option.some.inj h
+          rfl
+  | exprStmt e rest hstr _ hrs ih =>
+      simp only [boundIds] at hj
+      simp only [lowerStmtsCFG] at h
+      cases he : lowerExpr ρ supply e with
+      | none => rw [he] at h; simp at h
+      | some p =>
+          obtain ⟨v0, ie, s1⟩ := p
+          rw [he] at h
+          simp only [] at h
+          cases hr : lowerStmtsCFG bId cont true ρ s1 nextB v0 true none rest with
+          | none => rw [hr] at h; simp at h
+          | some q =>
+              rw [hr] at h
+              simp only [] at h
+              obtain rfl := Option.some.inj h
+              show rhoLookup q.ρ j = rhoLookup ρ j
+              exact ih _ _ _ _ _ _ _ _ _ hr hj
+  | varDecl id τ init rest hstr _ hrs hfree ih =>
+      simp only [boundIds, List.mem_cons, not_or] at hj
+      obtain ⟨hne_j, hjr⟩ := hj
+      have hne : ¬ id = j := fun he => hne_j he.symm
+      simp only [lowerStmtsCFG] at h
+      cases he : lowerExpr ρ supply init with
+      | none => rw [he] at h; simp at h
+      | some p =>
+          obtain ⟨vb, ib, s1⟩ := p
+          rw [he] at h
+          simp only [] at h
+          cases hr : lowerStmtsCFG bId cont true ((id, vb) :: ρ) s1 nextB
+              lastVal true none rest with
+          | none => rw [hr] at h; simp at h
+          | some q =>
+              rw [hr] at h
+              simp only [] at h
+              obtain rfl := Option.some.inj h
+              show rhoLookup q.ρ j = rhoLookup ρ j
+              have ihj := ih _ _ _ _ _ _ _ _ _ hr hjr
+              have hstep : rhoLookup ((id, vb) :: ρ) j = rhoLookup ρ j := by
+                simp [rhoLookup, hne]
+              rw [ihj]
+              exact hstep
+  | assign id e rest hstr _ hrs hfree ih =>
+      simp only [boundIds, List.mem_cons, not_or] at hj
+      obtain ⟨hne_j, hjr⟩ := hj
+      have hne : ¬ id = j := Ne.symm hne_j
+      simp only [lowerStmtsCFG] at h
+      cases he : lowerExpr ρ supply e with
+      | none => rw [he] at h; simp at h
+      | some p =>
+          obtain ⟨v, ie, s1⟩ := p
+          rw [he] at h
+          simp only [] at h
+          cases hr : lowerStmtsCFG bId cont true (updAssoc ρ id v) s1 nextB
+              lastVal true none rest with
+          | none => rw [hr] at h; simp at h
+          | some q =>
+              rw [hr] at h
+              simp only [] at h
+              obtain rfl := Option.some.inj h
+              show rhoLookup q.ρ j = rhoLookup ρ j
+              have ihj := ih _ _ _ _ _ _ _ _ _ hr hjr
+              have hstep : rhoLookup (updAssoc ρ id v) j = rhoLookup ρ j :=
+                rhoLookup_updAssoc_ne hne ρ
+              rw [ihj]
+              exact hstep
+  | nop rest hrs ih =>
+      simp only [boundIds] at hj
+      simp only [lowerStmtsCFG] at h
+      cases hr : lowerStmtsCFG bId cont true ρ supply nextB lastVal
+          hasVal none rest with
+      | none => rw [hr] at h; simp at h
+      | some q =>
+          rw [hr] at h
+          obtain rfl := Option.some.inj h
+          show rhoLookup q.ρ j = rhoLookup ρ j
+          exact ih _ _ _ _ _ _ _ _ _ hr hj
+  | ifStmt c th el rest hstr _ hath hael hrs iht ihe ihr =>
+      simp only [boundIds] at hj
+      have hjt : j ∉ boundIds th := by
+        intro hm
+        apply hj
+        simp [hm]
+      have hje : j ∉ boundIds el := by
+        intro hm
+        apply hj
+        simp [hm]
+      have hjr : j ∉ boundIds rest := by
+        intro hm
+        apply hj
+        simp [hm]
+      simp only [lowerStmtsCFG] at h
+      cases heC : lowerExpr ρ supply c with
+      | none => rw [heC] at h; simp at h
+      | some p =>
+          obtain ⟨vc, ic, s1⟩ := p
+          rw [heC] at h
+          simp only [] at h
+          cases ht : lowerStmtsCFG nextB (some (nextB + 2)) true ρ s1
+              (nextB + 3) lastVal false none th with
+          | none => rw [ht] at h; simp at h
+          | some lt =>
+              rw [ht] at h
+              simp only [] at h
+              cases he : lowerStmtsCFG (nextB + 1) (some (nextB + 2)) true ρ
+                  lt.supply lt.next lastVal false none el with
+              | none => rw [he] at h; simp at h
+              | some le =>
+                  rw [he] at h
+                  simp only [] at h
+                  have hlt : rhoLookup lt.ρ j = rhoLookup ρ j :=
+                    iht _ _ _ _ _ _ _ _ _ ht hjt
+                  have hle : rhoLookup le.ρ j = rhoLookup ρ j :=
+                    ihe _ _ _ _ _ _ _ _ _ he hje
+                  cases hm : mergeIds ρ lt.ρ le.ρ with
+                  | nil =>
+                      rw [hm] at h
+                      simp only [] at h
+                      cases hr : lowerStmtsCFG (nextB + 2) cont true ρ
+                          (le.supply + 1) le.next le.supply true none rest with
+                      | none => rw [hr] at h; simp at h
+                      | some lr =>
+                          rw [hr] at h
+                          simp only [] at h
+                          obtain rfl := Option.some.inj h
+                          show rhoLookup lr.ρ j = rhoLookup ρ j
+                          exact ihr _ _ _ _ _ _ _ _ _ hr hjr
+                  | cons hd tl =>
+                      rw [hm] at h
+                      simp only [] at h
+                      cases hmk : mkMergePhis ρ lt.ρ le.ρ (le.supply + 1)
+                          ((lt.blocks.getLast?.map (fun b => b.id)).getD nextB)
+                          ((le.blocks.getLast?.map (fun b => b.id)).getD (nextB + 1))
+                          (hd :: tl) with
+                      | none => rw [hmk] at h; simp at h
+                      | some q =>
+                          obtain ⟨mphis, s2, ρm⟩ := q
+                          rw [hmk] at h
+                          simp only [] at h
+                          cases hr : lowerStmtsCFG (nextB + 2) cont true ρm
+                              s2 le.next le.supply true none rest with
+                          | none => rw [hr] at h; simp at h
+                          | some lr =>
+                              rw [hr] at h
+                              simp only [] at h
+                              obtain rfl := Option.some.inj h
+                              show rhoLookup lr.ρ j = rhoLookup ρ j
+                              have hrj := ihr _ _ _ _ _ _ _ _ _ hr hjr
+                              have hnm : j ∉ hd :: tl := by
+                                rw [← hm]
+                                intro hmem
+                                rcases mergeIds_mem_diff hmem with hdif | hdif
+                                · exact hdif hlt
+                                · exact hdif hle
+                              have hmg := mkMergePhis_lookup_unmerged hmk hnm
+                              rw [hrj]
+                              exact hmg
+  | returnStmt e rest hstr _ =>
+      simp only [lowerStmtsCFG] at h
+      cases he : lowerExpr ρ supply e with
+      | none => rw [he] at h; simp at h
+      | some p =>
+          obtain ⟨v, ie, s1⟩ := p
+          rw [he] at h
+          simp only [] at h
+          obtain rfl := Option.some.inj h
+          rfl
+  | breakStmt rest hrs ih =>
+      simp only [lowerStmtsCFG] at h
+      simp at h
+  | continueStmt rest hrs ih =>
+      simp only [lowerStmtsCFG] at h
+      simp at h
+
 section LoopBodyLookupAux
 
 set_option linter.unusedVariables false in
