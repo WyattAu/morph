@@ -14628,6 +14628,32 @@ theorem evalHIR_list_lit (es : List HIR.Expr) :
       · exact evalHIR_list_lit er hrv hrs fuel henv vr htail v hmem
 end
 
+/-- Ids an arm run may rebind: `assign` targets plus `varDecl` introductions,
+through nested arm `if`s. `assignedIds` misses `varDecl` (it falls in the
+catch-all), so arms need their own measure; loop bodies keep `assignedIds`
+because `varDecl` under `loop = some` contradicts the lowering. -/
+def boundIds : List HIR.Stmt → List HIR.Id
+  | [] => []
+  | .varDecl id _ _ :: rest => id :: boundIds rest
+  | .assign id _ :: rest => id :: boundIds rest
+  | .ifStmt _ th el :: rest => boundIds th ++ boundIds el ++ boundIds rest
+  | .whileLoop _ body :: rest => boundIds body ++ boundIds rest
+  | _ :: rest => boundIds rest
+
+/-- C2c HIR fact: an arm run preserves every lookup outside its bound set.
+For today's binding-free arms this is `runHIRStmts_arm_lookup` with an
+unused side condition; when `ArmStmts` gains `varDecl`/`assign`, this
+statement stays and the proof becomes the per-constructor induction (the
+merge proof discharges the side condition per arm). -/
+theorem runHIRStmts_arm_lookup_diff (budget : Nat) {ss : List HIR.Stmt}
+    (hss : ArmStmts budget ss) :
+    ∀ (fuel : Nat) (henv henv' : HEnv) (acc out : HFlow) (id : HIR.Id),
+      runHIRStmts fuel henv ss acc = (out, henv') →
+      id ∉ boundIds ss →
+      lookupHEnv henv' id = lookupHEnv henv id := by
+  intro fuel henv henv' acc out id hrun _hnin
+  exact runHIRStmts_arm_lookup budget hss _ _ _ _ _ _ hrun
+
 section LoopBodyLookupAux
 
 set_option linter.unusedVariables false in
