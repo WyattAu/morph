@@ -15105,8 +15105,11 @@ unmerged ids transport across `mkMergePhis_lookup_unmerged` — both arm
 exits agree with pre-branch there (`mergeIds_agree`), so the taken arm's
 exit `RelEnv` gives the literal and the value, and the join frame (plus
 pre-branch freshness below the value register) carries the register over.
-The future top-level binding-arm C3 case feeds `hrelT` from its arm worker
-and `hfreshT`/`hne`/`hvm`/`hfrρ` from binding-arm freshness plus supply
+Besides the relation it returns the value-register fact, the merged-value
+transport, and the frame, so the tail worker gets everything
+`joinPrefix_exec` provides without re-running the prefix. The future
+top-level binding-arm C3 case feeds `hrelT` from its arm worker and
+`hfreshT`/`hne`/`hvm`/`hfrρ` from binding-arm freshness plus supply
 monotonicity; the symmetric else-side case swaps the arm roles. -/
 theorem relEnv_bindArm_join (prog : Program)
     {ρ ltρ leρ : List (HIR.Id × ValId)} {s : Nat}
@@ -15129,15 +15132,20 @@ theorem relEnv_bindArm_join (prog : Program)
       execInstrsFullFromIn prog (some p) fenvT
         ([MIR.Instr.phi vm predT vT, MIR.Instr.phi vm predE vE] ++ mphis) =
         some fenv' ∧
+      fenv'.env vm = some wv ∧
+      (∀ id r, id ∈ mergeIds ρ ltρ leρ → rhoLookup ρm id = some r →
+        ∀ srcT w, rhoLookup ltρ id = some srcT → fenvT.env srcT = some w →
+        fenv'.env r = some w) ∧
+      (∀ r', (r' < s ∨ s2 ≤ r') → r' ≠ vm → fenv'.env r' = fenvT.env r') ∧
       RelEnv henvT ρm fenv'.env := by
   have hvals : ∀ id ∈ mergeIds ρ ltρ leρ, ∀ srcT : ValId,
       rhoLookup ltρ id = some srcT → ∃ w, fenvT.env srcT = some w := by
     intro id hmem srcT hlook
     obtain ⟨w, _, hw⟩ := hrelT id srcT hlook
     exact ⟨w, hw⟩
-  obtain ⟨fenv', hexec, _, hmerged, hframe⟩ :=
+  obtain ⟨fenv', hexec, hvm', hmerged, hframe⟩ :=
     joinPrefix_exec prog hmk hT hE hvalT hvals hfreshT hne hvm
-  refine ⟨fenv', hexec, ?_⟩
+  refine ⟨fenv', hexec, hvm', hmerged, hframe, ?_⟩
   intro id r hr
   by_cases hmem : id ∈ mergeIds ρ ltρ leρ
   · obtain ⟨r', hrr', _, _⟩ := mkMergePhis_lookup_mem hmk hmem
@@ -15165,6 +15173,47 @@ theorem relEnv_bindArm_join (prog : Program)
     have hrs : r < s := Nat.lt_of_lt_of_le hltvm (Nat.le_of_lt hvm)
     have hfr : fenv'.env r = fenvT.env r := hframe r (Or.inl hrs) hrvm
     exact ⟨w, hlit, hfr.trans hwT⟩
+
+/-- Join execution composition (C2c join core, tail half): the join prefix
+followed by the tail `instrs` runs as the tail `instrs` from the post-join
+env (`execInstrsFullFromIn_append` plus the prefix execution). The tail
+worker feeds this equation to `execBlockFromIn_instrs_prefix`, peeling the
+merge phis off the join block and continuing with the tail entry from
+`fenv'` — where the relation, value, and frame facts above hold. -/
+theorem bindArm_join_exec (prog : Program)
+    {ρ ltρ leρ : List (HIR.Id × ValId)} {s : Nat}
+    {predT predE : MIR.BlockId} {p : MIR.BlockId}
+    {vm vT vE : ValId} {wv : Value}
+    {mphis : List Instr} {s2 : Nat} {ρm : List (HIR.Id × ValId)}
+    (hmk : mkMergePhis ρ ltρ leρ s predT predE (mergeIds ρ ltρ leρ) =
+      some (mphis, s2, ρm))
+    {henvT : HEnv} {fenvT : FullEnv}
+    (hT : predT = p) (hE : predE ≠ p)
+    (hrelT : RelEnv henvT ltρ fenvT.env)
+    (hvalT : fenvT.env vT = some wv)
+    (hfreshT : ∀ id srcT, id ∈ mergeIds ρ ltρ leρ →
+      rhoLookup ltρ id = some srcT → srcT < s)
+    (hne : ∀ id srcT, id ∈ mergeIds ρ ltρ leρ →
+      rhoLookup ltρ id = some srcT → srcT ≠ vm)
+    (hvm : vm < s)
+    (hfrρ : FreshAbove ρ vm)
+    {lr : Lowered} :
+    ∃ fenv' : FullEnv,
+      execInstrsFullFromIn prog (some p) fenvT
+        (([MIR.Instr.phi vm predT vT, MIR.Instr.phi vm predE vE] ++ mphis) ++
+          lr.instrs) =
+        execInstrsFullFromIn prog (some p) fenv' lr.instrs ∧
+      RelEnv henvT ρm fenv'.env ∧
+      fenv'.env vm = some wv ∧
+      (∀ r', (r' < s ∨ s2 ≤ r') → r' ≠ vm → fenv'.env r' = fenvT.env r') := by
+  obtain ⟨fenv', hexec, hvm', -, hframe, hrel⟩ :=
+    relEnv_bindArm_join prog hmk hT hE hrelT hvalT hfreshT hne hvm hfrρ
+  refine ⟨fenv', ?_, hrel, hvm', hframe⟩
+  have happ := execInstrsFullFromIn_append prog (some p) fenvT
+    ([MIR.Instr.phi vm predT vT, MIR.Instr.phi vm predE vE] ++ mphis)
+    lr.instrs
+  rw [hexec] at happ
+  simpa only [] using happ
 
 section LoopBodyLookupAux
 
