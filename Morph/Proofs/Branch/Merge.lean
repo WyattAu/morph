@@ -104,6 +104,53 @@ theorem mergeIds_mem_lookup {ρ ltρ leρ : List (HIR.Id × ValId)} {id : HIR.Id
   obtain ⟨⟨_, _⟩, hp, rfl⟩ := List.mem_map.mp hmemfst
   exact rhoLookup_some_of_mem hp
 
+/-- Merged ids rebind on at least one side: membership in the merge set
+implies the taken- or else-exit lookup differs from the pre-branch lookup
+(same foldl-invariant shape as `mergeIds_mem_lookup`). The future
+merge-join proof cites the contrapositive — both sides agree at an id, so
+the id is unmerged — together with `mkMergePhis_lookup_unmerged` to
+transport the unmerged part of `RelEnv`. -/
+theorem mergeIds_mem_diff {ρ ltρ leρ : List (HIR.Id × ValId)} {id : HIR.Id}
+    (hmem : id ∈ mergeIds ρ ltρ leρ) :
+    rhoLookup ltρ id ≠ rhoLookup ρ id ∨ rhoLookup leρ id ≠ rhoLookup ρ id := by
+  have inv : ∀ (l : List HIR.Id) (acc : List HIR.Id),
+      (∀ x ∈ acc, rhoLookup ltρ x ≠ rhoLookup ρ x ∨
+        rhoLookup leρ x ≠ rhoLookup ρ x) →
+      ∀ x ∈ l.foldl (fun acc j =>
+        if acc.contains j then acc
+        else if rhoLookup ltρ j != rhoLookup ρ j ||
+                rhoLookup leρ j != rhoLookup ρ j then acc ++ [j]
+        else acc) acc,
+        rhoLookup ltρ x ≠ rhoLookup ρ x ∨
+          rhoLookup leρ x ≠ rhoLookup ρ x := by
+    intro l acc hacc
+    induction l generalizing acc with
+    | nil =>
+        simp only [List.foldl_nil]
+        exact hacc
+    | cons hd tl ih =>
+        simp only [List.foldl_cons]
+        by_cases hc : acc.contains hd = true
+        · rw [if_pos hc]
+          exact ih _ hacc
+        · rw [if_neg hc]
+          by_cases hd2 : (rhoLookup ltρ hd != rhoLookup ρ hd ||
+              rhoLookup leρ hd != rhoLookup ρ hd) = true
+          · rw [if_pos hd2]
+            apply ih
+            intro x hx
+            rcases List.mem_append.mp hx with hx | hx
+            · exact hacc x hx
+            · rw [List.mem_singleton.mp hx]
+              have hPhd : rhoLookup ltρ hd ≠ rhoLookup ρ hd ∨
+                  rhoLookup leρ hd ≠ rhoLookup ρ hd := by
+                simpa using hd2
+              exact hPhd
+          · rw [if_neg hd2]
+            exact ih _ hacc
+  unfold mergeIds at hmem
+  exact inv _ _ (by intro x hx; simp at hx) _ hmem
+
 /-- Allocate one fresh merged register per id with merge phis from both arm
 exits. `none` when an arm exit lacks a merged id (impossible for
 lowering-produced envs, which only grow — the `none` branch keeps the
