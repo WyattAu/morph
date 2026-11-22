@@ -109,6 +109,64 @@ inductive ArmStmts (budget : Nat) : List HIR.Stmt → Prop where
   | continueStmt (rest : List HIR.Stmt) :
       ArmStmts budget rest → ArmStmts budget (.continue :: rest)
 
+/-- Binding arms (C2c Phase A): `ArmStmts` plus `varDecl`/`assign`, for
+TOP-LEVEL `if` arms only. `ArmStmts` itself stays binding-free on purpose:
+`LoopStmts.ifStmtBreak` tails and every loop-body arm rely on the
+binding-free gate (an arm `break` skips the tail while the static exit env
+still mentions its registers), so the gate cannot move. Top-level arms are
+different: there is no `break`/`continue` outside a loop (the lowering
+refuses them when `loop = none`), and a `return`-arm exits the function
+without claiming the tail env, while fall-through arms always run the tail
+(which then materializes every bound register). The join therefore merges
+the two arm-exit envs (`mergeIds`/`mkMergePhis`) and lowers the tail under
+the merged env (Phase B: loop-keyed lowering switch plus the top-level C3
+rework; this fragment is pure addition until then). Binders mirror
+`LoopStmts` (including the `VarFree` RHS side condition the spine-literal
+lemmas need). `break`/`continue` constructors are kept so the inclusion
+below is total; under `loop = none` the lowering refuses them, making those
+cases vacuous. -/
+inductive BindArmStmts (budget : Nat) : List HIR.Stmt → Prop where
+  | nil : BindArmStmts budget []
+  | exprStmt (e : HIR.Expr) (rest : List HIR.Stmt) :
+      IsStraight e → SLWeight e < budget → BindArmStmts budget rest →
+      BindArmStmts budget (.exprStmt e :: rest)
+  | varDecl (id : HIR.Id) (τ : Typ) (init : HIR.Expr) (rest : List HIR.Stmt) :
+      IsStraight init → SLWeight init < budget → BindArmStmts budget rest →
+      VarFree init →
+      BindArmStmts budget (.varDecl id τ init :: rest)
+  | assign (id : HIR.Id) (e : HIR.Expr) (rest : List HIR.Stmt) :
+      IsStraight e → SLWeight e < budget → BindArmStmts budget rest →
+      VarFree e →
+      BindArmStmts budget (.assign id e :: rest)
+  | nop (rest : List HIR.Stmt) : BindArmStmts budget rest →
+      BindArmStmts budget (.nop :: rest)
+  | ifStmt (c : HIR.Expr) (th el : List HIR.Stmt) (rest : List HIR.Stmt) :
+      IsStraight c → SLWeight c < budget →
+      BindArmStmts budget th → BindArmStmts budget el → BindArmStmts budget rest →
+      BindArmStmts budget (.ifStmt c th el :: rest)
+  | returnStmt (e : HIR.Expr) (rest : List HIR.Stmt) :
+      IsStraight e → SLWeight e < budget → BindArmStmts budget (.returnStmt e :: rest)
+  | breakStmt (rest : List HIR.Stmt) :
+      BindArmStmts budget rest → BindArmStmts budget (.break :: rest)
+  | continueStmt (rest : List HIR.Stmt) :
+      BindArmStmts budget rest → BindArmStmts budget (.continue :: rest)
+
+/-- Every binding-free arm is a binding arm: constructor-for-constructor map.
+Loop-body call sites keep `ArmStmts` (the gate); only the top-level `if`
+will widen to `BindArmStmts` in Phase B. -/
+theorem ArmStmts_to_BindArmStmts {budget : Nat} :
+    ∀ {ss : List HIR.Stmt}, ArmStmts budget ss → BindArmStmts budget ss
+  | _, .nil => .nil
+  | _, .exprStmt e rest h1 h2 h3 =>
+      .exprStmt e rest h1 h2 (ArmStmts_to_BindArmStmts h3)
+  | _, .nop rest h => .nop rest (ArmStmts_to_BindArmStmts h)
+  | _, .ifStmt c th el rest h1 h2 hath hael h =>
+      .ifStmt c th el rest h1 h2 (ArmStmts_to_BindArmStmts hath)
+        (ArmStmts_to_BindArmStmts hael) (ArmStmts_to_BindArmStmts h)
+  | _, .returnStmt e rest h1 h2 => .returnStmt e rest h1 h2
+  | _, .breakStmt rest h => .breakStmt rest (ArmStmts_to_BindArmStmts h)
+  | _, .continueStmt rest h => .continueStmt rest (ArmStmts_to_BindArmStmts h)
+
 /-- Break-free arms: no `.break` anywhere (deep through nested arm `if`s).
 `continue` is allowed (it recurses, so the exit env stays reachable) as are
 `return` (propagates) and straight-line steps. A loop-body `if` with
