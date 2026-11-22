@@ -59,8 +59,13 @@ L0 module or any L1 module; no L1 module imports `HIRToMIRBranch`.
 
 ## Extraction order (smallest green cuts first)
 
-1. ✅ `Merge` — self-contained, list-based, zero worker deps (this file's §741 + `boundIds`).
-2. `Fragments` — grammars + Phase A inclusion (gates every worker's hypotheses).
-3. `Fuel` + `Fresh` — pure infrastructure, many reusers, no statement risk.
-4. `LoopAlloc` — `mkCarried`/`mkHeaderPhis` move with their growth proofs; lowering call sites unchanged.
-5. `Spine` → `BodyWorker` → `Workers` → `Loop` — the proof core, last.
+1. ✅ `Merge` — self-contained, list-based, zero worker deps (§741 + `boundIds`).
+2. ✅ `Fragments` — grammars + Phase A inclusion (gates every worker's hypotheses).
+3. ✅ `Fuel` — block budget, fully pure (0 lowering cites). `Fresh` stays in
+   Branch: its theorems cite the lowering/execution (105 cites), so it is L1
+   material, not an L0 leaf — reclassify when the lowering itself moves.
+4. ✅ `LoopAlloc` — `mkCarried`/`mkHeaderPhis` moved with growth proofs (0
+   lowering cites); the `mkCarried_*` worker lemmas stay (they reason about
+   lowering call sites).
+5. `Spine` → `BodyWorker` → `Workers` → `Loop` — the proof core, last (deep
+   lowering interdeps; extract only with the lowering).
