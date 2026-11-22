@@ -14158,6 +14158,281 @@ theorem runHIRStmts_arm_lookup_diff (budget : Nat) {ss : List HIR.Stmt}
   intro fuel henv henv' acc out id hrun _hnin
   exact runHIRStmts_arm_lookup budget hss _ _ _ _ _ _ hrun
 
+/-- C2c HIR fact over binding arms: a `BindArmStmts` run preserves every
+lookup outside its bound set. This is the per-constructor induction the
+merge proof cites to discharge the side condition per arm: `varDecl`
+resp. `assign` touch only their own id (via `lookupHEnv_cons_ne` resp.
+`lookupHEnv_updateHEnv_ne`), and the `if` case splits the `boundIds`
+append across both arms and the rest. -/
+theorem runHIRStmts_bindArm_lookup_diff (budget : Nat) {ss : List HIR.Stmt}
+    (hss : BindArmStmts budget ss) :
+    ∀ (fuel : Nat) (henv henv' : HEnv) (acc out : HFlow) (id : HIR.Id),
+      runHIRStmts fuel henv ss acc = (out, henv') →
+      id ∉ boundIds ss →
+      lookupHEnv henv' id = lookupHEnv henv id := by
+  induction hss with
+  | nil =>
+      intro fuel henv henv' acc out id hrun _hnin
+      cases fuel with
+      | zero =>
+          have hz : runHIRStmts 0 henv ([] : List HIR.Stmt) acc =
+              (.stuck, henv) := rfl
+          rw [hz] at hrun
+          cases hrun
+          rfl
+      | succ fh =>
+          have hs : runHIRStmts (fh + 1) henv ([] : List HIR.Stmt) acc =
+              (acc, henv) := rfl
+          rw [hs] at hrun
+          cases hrun
+          rfl
+  | exprStmt e rest hstr _ hrs ih =>
+      intro fuel henv henv' acc out id hrun hnin
+      cases fuel with
+      | zero =>
+          have hz : runHIRStmts 0 henv (.exprStmt e :: rest) acc =
+              (.stuck, henv) := rfl
+          rw [hz] at hrun
+          cases hrun
+          rfl
+      | succ fh =>
+          simp only [runHIRStmts] at hrun
+          cases hev : evalHIR 256 henv e with
+          | none =>
+              rw [hev] at hrun
+              simp only [] at hrun
+              cases hrun
+              rfl
+          | some v =>
+              rw [hev] at hrun
+              simp only [] at hrun
+              have hnin_rest : id ∉ boundIds rest := by
+                intro hm
+                exact hnin (by simp [boundIds, hm])
+              exact ih _ _ _ _ _ _ hrun hnin_rest
+  | varDecl id' τ init rest hstr _ hrs _ ih =>
+      intro fuel henv henv' acc out id hrun hnin
+      cases fuel with
+      | zero =>
+          have hz : runHIRStmts 0 henv (.varDecl id' τ init :: rest) acc =
+              (.stuck, henv) := rfl
+          rw [hz] at hrun
+          cases hrun
+          rfl
+      | succ fh =>
+          have hstep : runHIRStmts (fh + 1) henv
+              (.varDecl id' τ init :: rest) acc =
+              (match evalHIR 256 henv init with
+                | none => (HFlow.stuck, henv)
+                | some v => runHIRStmts fh ((id', v) :: henv) rest acc) := rfl
+          rw [hstep] at hrun
+          cases hev : evalHIR 256 henv init with
+          | none =>
+              rw [hev] at hrun
+              simp only [] at hrun
+              cases hrun
+              rfl
+          | some v =>
+              rw [hev] at hrun
+              simp only [] at hrun
+              have hne : id ≠ id' := by
+                intro heq
+                subst heq
+                simp [boundIds] at hnin
+              have hnin_rest : id ∉ boundIds rest := by
+                intro hm
+                exact hnin (by simp [boundIds, hm])
+              have h1 := ih _ _ _ _ _ _ hrun hnin_rest
+              rw [h1]
+              exact lookupHEnv_cons_ne (Ne.symm hne)
+  | assign id' e rest hstr _ hrs _ ih =>
+      intro fuel henv henv' acc out id hrun hnin
+      cases fuel with
+      | zero =>
+          have hz : runHIRStmts 0 henv (.assign id' e :: rest) acc =
+              (.stuck, henv) := rfl
+          rw [hz] at hrun
+          cases hrun
+          rfl
+      | succ fh =>
+          have hstep : runHIRStmts (fh + 1) henv
+              (.assign id' e :: rest) acc =
+              (match evalHIR 256 henv e with
+                | none => (HFlow.stuck, henv)
+                | some v => runHIRStmts fh (updateHEnv henv id' v) rest acc) :=
+            rfl
+          rw [hstep] at hrun
+          cases hev : evalHIR 256 henv e with
+          | none =>
+              rw [hev] at hrun
+              simp only [] at hrun
+              cases hrun
+              rfl
+          | some v =>
+              rw [hev] at hrun
+              simp only [] at hrun
+              have hne : id ≠ id' := by
+                intro heq
+                subst heq
+                simp [boundIds] at hnin
+              have hnin_rest : id ∉ boundIds rest := by
+                intro hm
+                exact hnin (by simp [boundIds, hm])
+              have h1 := ih _ _ _ _ _ _ hrun hnin_rest
+              rw [h1]
+              exact lookupHEnv_updateHEnv_ne (Ne.symm hne)
+  | nop rest hrs ih =>
+      intro fuel henv henv' acc out id hrun hnin
+      cases fuel with
+      | zero =>
+          have hz : runHIRStmts 0 henv (.nop :: rest) acc =
+              (.stuck, henv) := rfl
+          rw [hz] at hrun
+          cases hrun
+          rfl
+      | succ fh =>
+          simp only [runHIRStmts] at hrun
+          have hnin_rest : id ∉ boundIds rest := by
+            intro hm
+            exact hnin (by simp [boundIds, hm])
+          exact ih _ _ _ _ _ _ hrun hnin_rest
+  | ifStmt c th el rest hstr _ hath hael hrs iht ihe ihr =>
+      intro fuel henv henv' acc out id hrun hnin
+      cases fuel with
+      | zero =>
+          have hz : runHIRStmts 0 henv (.ifStmt c th el :: rest) acc =
+              (.stuck, henv) := rfl
+          rw [hz] at hrun
+          cases hrun
+          rfl
+      | succ fh =>
+          simp only [runHIRStmts] at hrun
+          have hnin_all : id ∉ boundIds th ++ boundIds el ++ boundIds rest := by
+            simpa [boundIds] using hnin
+          simp only [List.mem_append, not_or] at hnin_all
+          obtain ⟨⟨hnin_th, hnin_el⟩, hnin_rest⟩ := hnin_all
+          cases hev : evalHIR 256 henv c with
+          | none =>
+              rw [hev] at hrun
+              simp only [] at hrun
+              cases hrun
+              rfl
+          | some v =>
+              rw [hev] at hrun
+              split at hrun
+              · rename_i heq
+                rw [Option.some.injEq] at heq
+                have heq2 : v = HIR.Expr.lit (.bool true) := by
+                  simpa using heq
+                subst heq2
+                cases har : runHIRStmts fh henv th
+                    (.value (.lit .unit)) with
+                | mk outA envA =>
+                    rw [har] at hrun
+                    cases outA with
+                    | value u =>
+                        simp only [] at hrun
+                        have h1 := iht _ _ _ _ _ _ har hnin_th
+                        have h2 := ihr _ _ _ _ _ _ hrun hnin_rest
+                        rw [h2, h1]
+                    | broke =>
+                        simp only [] at hrun
+                        cases hrun
+                        exact iht _ _ _ _ _ _ har hnin_th
+                    | continued =>
+                        simp only [] at hrun
+                        cases hrun
+                        exact iht _ _ _ _ _ _ har hnin_th
+                    | returned e =>
+                        simp only [] at hrun
+                        cases hrun
+                        exact iht _ _ _ _ _ _ har hnin_th
+                    | stuck =>
+                        simp only [] at hrun
+                        cases hrun
+                        exact iht _ _ _ _ _ _ har hnin_th
+              · rename_i heq
+                rw [Option.some.injEq] at heq
+                have heq2 : v = HIR.Expr.lit (.bool false) := by
+                  simpa using heq
+                subst heq2
+                cases har : runHIRStmts fh henv el
+                    (.value (.lit .unit)) with
+                | mk outA envA =>
+                    rw [har] at hrun
+                    cases outA with
+                    | value u =>
+                        simp only [] at hrun
+                        have h1 := ihe _ _ _ _ _ _ har hnin_el
+                        have h2 := ihr _ _ _ _ _ _ hrun hnin_rest
+                        rw [h2, h1]
+                    | broke =>
+                        simp only [] at hrun
+                        cases hrun
+                        exact ihe _ _ _ _ _ _ har hnin_el
+                    | continued =>
+                        simp only [] at hrun
+                        cases hrun
+                        exact ihe _ _ _ _ _ _ har hnin_el
+                    | returned e =>
+                        simp only [] at hrun
+                        cases hrun
+                        exact ihe _ _ _ _ _ _ har hnin_el
+                    | stuck =>
+                        simp only [] at hrun
+                        cases hrun
+                        exact ihe _ _ _ _ _ _ har hnin_el
+              · cases hrun
+                rfl
+  | returnStmt e rest hstr _ =>
+      intro fuel henv henv' acc out id hrun _hnin
+      cases fuel with
+      | zero =>
+          have hz : runHIRStmts 0 henv (.returnStmt e :: rest) acc =
+              (.stuck, henv) := rfl
+          rw [hz] at hrun
+          cases hrun
+          rfl
+      | succ fh =>
+          simp only [runHIRStmts] at hrun
+          cases hev : evalHIR 256 henv e with
+          | none =>
+              rw [hev] at hrun
+              simp only [] at hrun
+              cases hrun
+              rfl
+          | some v =>
+              rw [hev] at hrun
+              simp only [] at hrun
+              cases hrun
+              rfl
+  | breakStmt rest hrs ih =>
+      intro fuel henv henv' acc out id hrun _hnin
+      cases fuel with
+      | zero =>
+          have hz : runHIRStmts 0 henv (.break :: rest) acc =
+              (.stuck, henv) := rfl
+          rw [hz] at hrun
+          cases hrun
+          rfl
+      | succ fh =>
+          simp only [runHIRStmts] at hrun
+          cases hrun
+          rfl
+  | continueStmt rest hrs ih =>
+      intro fuel henv henv' acc out id hrun _hnin
+      cases fuel with
+      | zero =>
+          have hz : runHIRStmts 0 henv (.continue :: rest) acc =
+              (.stuck, henv) := rfl
+          rw [hz] at hrun
+          cases hrun
+          rfl
+      | succ fh =>
+          simp only [runHIRStmts] at hrun
+          cases hrun
+          rfl
+
 section LoopBodyLookupAux
 
 set_option linter.unusedVariables false in

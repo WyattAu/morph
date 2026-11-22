@@ -227,6 +227,97 @@ theorem mergeIds_self (ρ : List (HIR.Id × ValId)) : mergeIds ρ ρ ρ = [] := 
         rw [if_neg hn]
         exact ih _
 
+/-- Merge allocation shadows only the merged ids: an unmerged id looks up
+in the merged env exactly as in the pre-branch env (every consed pair has a
+merged head, which the first-match lookup skips). The future merge-join
+proof cites this for the unmerged part of `RelEnv` transport. -/
+theorem mkMergePhis_lookup_unmerged {ρ ltρ leρ : List (HIR.Id × ValId)}
+    {s : Nat} {predT predE : MIR.BlockId} {ids : List HIR.Id}
+    {phis : List Instr} {s' : Nat} {ρm : List (HIR.Id × ValId)} {id : HIR.Id}
+    (h : mkMergePhis ρ ltρ leρ s predT predE ids = some (phis, s', ρm))
+    (hnin : id ∉ ids) :
+    rhoLookup ρm id = rhoLookup ρ id := by
+  induction ids generalizing ρ s phis s' ρm with
+  | nil =>
+      simp only [mkMergePhis] at h
+      obtain ⟨rfl, rfl, rfl⟩ := Option.some.inj h
+      rfl
+  | cons mid mids ih =>
+      simp only [mkMergePhis] at h
+      cases hT : rhoLookup ltρ mid with
+      | none => rw [hT] at h; simp at h
+      | some _ =>
+          rw [hT] at h
+          cases hE : rhoLookup leρ mid with
+          | none => rw [hE] at h; simp at h
+          | some _ =>
+              rw [hE] at h
+              cases hrec : mkMergePhis ρ ltρ leρ (s + 1) predT predE mids with
+              | none => rw [hrec] at h; simp at h
+              | some q =>
+                  obtain ⟨phis', s'', ρ''⟩ := q
+                  rw [hrec] at h
+                  obtain ⟨rfl, rfl, rfl⟩ := Option.some.inj h
+                  have hne : ¬ mid = id := by
+                    intro heq
+                    subst heq
+                    simp at hnin
+                  have hnin_tail : id ∉ mids :=
+                    fun hm => hnin (List.mem_cons_of_mem _ hm)
+                  have hrec' := ih hrec hnin_tail
+                  have hstep : rhoLookup ((mid, s) :: ρ'') id =
+                      rhoLookup ρ'' id := by
+                    simp [rhoLookup, hne]
+                  rw [hstep, hrec']
+
+/-- Merged ids map to fresh registers inside the merge window: the head
+takes `s`, deeper ids take whatever the recursive call assigned (all at or
+above `s + 1`, all below `s'`). Together with `mkMergePhis_lookup_unmerged`
+and `mkMergePhis_growth_fresh` this fully characterizes the merged env for
+the future merge-join proof. -/
+theorem mkMergePhis_lookup_mem {ρ ltρ leρ : List (HIR.Id × ValId)}
+    {s : Nat} {predT predE : MIR.BlockId} {ids : List HIR.Id}
+    {phis : List Instr} {s' : Nat} {ρm : List (HIR.Id × ValId)} {id : HIR.Id}
+    (h : mkMergePhis ρ ltρ leρ s predT predE ids = some (phis, s', ρm))
+    (hmem : id ∈ ids) :
+    ∃ r, rhoLookup ρm id = some r ∧ s ≤ r ∧ r < s' := by
+  induction ids generalizing ρ s phis s' ρm with
+  | nil => simp at hmem
+  | cons mid mids ih =>
+      simp only [mkMergePhis] at h
+      cases hT : rhoLookup ltρ mid with
+      | none => rw [hT] at h; simp at h
+      | some _ =>
+          rw [hT] at h
+          cases hE : rhoLookup leρ mid with
+          | none => rw [hE] at h; simp at h
+          | some _ =>
+              rw [hE] at h
+              cases hrec : mkMergePhis ρ ltρ leρ (s + 1) predT predE mids with
+              | none => rw [hrec] at h; simp at h
+              | some q =>
+                  obtain ⟨phis', s'', ρ''⟩ := q
+                  rw [hrec] at h
+                  obtain ⟨rfl, rfl, rfl⟩ := Option.some.inj h
+                  -- NOTE: the `rfl` above substitutes the outer `s'` with the
+                  -- recursive supply, so `hle` and the goal speak of `s'`.
+                  have hle : s + 1 ≤ s' := mkMergePhis_le hrec
+                  by_cases heq : mid = id
+                  · subst heq
+                    exact ⟨s, by simp [rhoLookup], Nat.le_refl _,
+                      Nat.lt_of_lt_of_le (Nat.lt_succ_self _) hle⟩
+                  · have hmem_tail : id ∈ mids := by
+                      rcases List.mem_cons.mp hmem with h | h
+                      · exact absurd h (Ne.symm heq)
+                      · exact h
+                    obtain ⟨r, hr, hlo, hhi⟩ := ih hrec hmem_tail
+                    refine ⟨r, ?_, Nat.le_trans (Nat.le_succ _) hlo, hhi⟩
+                    have hstep : rhoLookup ((mid, s) :: ρ'') id =
+                        rhoLookup ρ'' id := by
+                      simp [rhoLookup, heq]
+                    rw [hstep]
+                    exact hr
+
 /-- Ids an arm run may rebind: `assign` targets plus `varDecl` introductions,
 through nested arm `if`s. `assignedIds` misses `varDecl` (it falls in the
 catch-all), so arms need their own measure; loop bodies keep `assignedIds`
