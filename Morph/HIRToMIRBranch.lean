@@ -2347,6 +2347,198 @@ theorem lowerStmtsCFG_instrs_pure :
           simp only [lowerStmtsCFG] at h
           simp at h
 
+/-- Merge-phi execution (C2c join core): running the merge phis from the
+taken arm's exit block writes each merged id's fresh register with the
+value that id holds in the arm-exit env, and leaves every other register
+untouched. The caller supplies the arm-exit values (`hvals`: every merged
+id's arm-exit register is bound in the arrival env) and arm-register
+freshness (`hfreshT`: arm-exit registers sit strictly below the merge
+window, so later pairs cannot clobber the sources earlier pairs read).
+The taken arm is `predT` here; the symmetric `predE` case is the same
+lemma with the arm sides swapped. The future top-level binding-arm join
+feeds this `hvals` from the arm-exit `RelEnv` plus a binds-literals fact,
+`hfreshT` from arm freshness, and assembles `RelEnv` over `ρm` from the
+two conclusions plus `mkMergePhis_lookup_unmerged`/`_mem`. -/
+theorem mkMergePhis_exec (prog : Program)
+    {ρ ltρ leρ : List (HIR.Id × ValId)} {s : Nat}
+    {predT predE : MIR.BlockId} {mids : List HIR.Id}
+    {mphis : List Instr} {s2 : Nat} {ρm : List (HIR.Id × ValId)}
+    (hmk : mkMergePhis ρ ltρ leρ s predT predE mids = some (mphis, s2, ρm))
+    {fenv : FullEnv} {p : MIR.BlockId}
+    (hT : predT = p) (hE : predE ≠ p)
+    (hvals : ∀ id ∈ mids, ∀ srcT : ValId, rhoLookup ltρ id = some srcT →
+      ∃ w, fenv.env srcT = some w)
+    (hfreshT : ∀ id srcT, id ∈ mids → rhoLookup ltρ id = some srcT →
+      srcT < s) :
+    ∃ fenv', execInstrsFullFromIn prog (some p) fenv mphis = some fenv' ∧
+      (∀ id r, id ∈ mids → rhoLookup ρm id = some r →
+        ∀ srcT w, rhoLookup ltρ id = some srcT → fenv.env srcT = some w →
+        fenv'.env r = some w) ∧
+      (∀ r', r' < s ∨ s2 ≤ r' → fenv'.env r' = fenv.env r') := by
+  revert hmk hvals hfreshT
+  induction mids generalizing ρ s fenv mphis s2 ρm with
+  | nil =>
+      intro hmk _ _
+      simp only [mkMergePhis] at hmk
+      obtain ⟨rfl, rfl, rfl⟩ := Option.some.inj hmk
+      refine ⟨fenv, by simp [execInstrsFullFromIn_eq], ?_, ?_⟩
+      · intro id r hmem
+        simp at hmem
+      · intro r' _
+        rfl
+  | cons mid mids ih =>
+      intro hmk hvals hfreshT
+      simp only [mkMergePhis] at hmk
+      cases hT0 : rhoLookup ltρ mid with
+      | none => rw [hT0] at hmk; simp at hmk
+      | some srcT =>
+          rw [hT0] at hmk
+          cases hE0 : rhoLookup leρ mid with
+          | none => rw [hE0] at hmk; simp at hmk
+          | some srcE =>
+              rw [hE0] at hmk
+              cases hrec : mkMergePhis ρ ltρ leρ (s + 1) predT predE mids with
+              | none => rw [hrec] at hmk; simp at hmk
+              | some q =>
+                  obtain ⟨phis', s'', ρ''⟩ := q
+                  rw [hrec] at hmk
+                  obtain ⟨rfl, rfl, rfl⟩ := Option.some.inj hmk
+                  obtain ⟨w, hw⟩ := hvals mid (List.mem_cons_self ..) srcT hT0
+                  have hvals_tail : ∀ id ∈ mids, ∀ srcT' : ValId,
+                      rhoLookup ltρ id = some srcT' →
+                      ∃ w', (fenv.env.update s w) srcT' = some w' := by
+                    intro id hmem srcT' hlook
+                    obtain ⟨w', hw'⟩ := hvals id
+                      (List.mem_cons_of_mem _ hmem) srcT' hlook
+                    have hlt : srcT' < s := hfreshT id srcT'
+                      (List.mem_cons_of_mem _ hmem) hlook
+                    have hne : srcT' ≠ s := Nat.ne_of_lt hlt
+                    exact ⟨w', by simp [Env.update, hne, hw']⟩
+                  have hfreshT_tail : ∀ id srcT', id ∈ mids →
+                      rhoLookup ltρ id = some srcT' → srcT' < s + 1 := by
+                    intro id srcT' hmem hlook
+                    have hlt : srcT' < s := hfreshT id srcT'
+                      (List.mem_cons_of_mem _ hmem) hlook
+                    exact Nat.lt_of_lt_of_le hlt (Nat.le_succ s)
+                  obtain ⟨fenv', hexec_tail, hvals_tail, hframe_tail⟩ :=
+                    ih (fenv := ⟨fenv.env.update s w, fenv.store⟩) hrec
+                      hvals_tail hfreshT_tail
+                  have hexec_head : execInstrsFullFromIn prog (some p) fenv
+                      ([MIR.Instr.phi s predT srcT,
+                        MIR.Instr.phi s predE srcE] ++ phis') =
+                      execInstrsFullFromIn prog (some p)
+                        ⟨fenv.env.update s w, fenv.store⟩ phis' :=
+                    execInstrsFullFromIn_phis_hit prog p fenv s predT predE
+                      srcT srcE phis' w hT hE hw
+                  refine ⟨fenv', by rw [hexec_head]; exact hexec_tail, ?_, ?_⟩
+                  · intro id r hmem hlook srcT' w' hlookT hw'
+                    by_cases heq : id = mid
+                    · subst heq
+                      rw [rhoLookup_cons_head] at hlook
+                      obtain rfl := Option.some.inj hlook
+                      have hsrc : srcT' = srcT := Option.some.inj
+                        (hlookT.symm.trans hT0)
+                      rw [hsrc] at hw'
+                      have hw'w : w = w' := Option.some.inj
+                        (hw.symm.trans hw')
+                      rw [← hw'w]
+                      have hframe_s : fenv'.env s =
+                          (fenv.env.update s w) s :=
+                        hframe_tail s (Or.inl (Nat.lt_succ_self s))
+                      rw [hframe_s]
+                      simp [Env.update]
+                    · have hmem_tail : id ∈ mids := by
+                        rcases List.mem_cons.mp hmem with h | h
+                        · exact absurd h heq
+                        · exact h
+                      rw [rhoLookup_cons_ne (Ne.symm heq)] at hlook
+                      have hw1 : (fenv.env.update s w) srcT' = some w' := by
+                        have hlt : srcT' < s := hfreshT id srcT'
+                          (List.mem_cons_of_mem _ hmem_tail) hlookT
+                        have hne : srcT' ≠ s := Nat.ne_of_lt hlt
+                        simp [Env.update, hne, hw']
+                      exact hvals_tail id r hmem_tail hlook srcT' w' hlookT hw1
+                  · intro r' hr'
+                    have h1 : fenv'.env r' = (fenv.env.update s w) r' := by
+                      apply hframe_tail
+                      rcases hr' with hlt | hge
+                      · exact Or.inl (Nat.lt_of_lt_of_le hlt (Nat.le_succ s))
+                      · exact Or.inr hge
+                    rw [h1]
+                    rcases hr' with hlt | hge
+                    · have hne : r' ≠ s := Nat.ne_of_lt hlt
+                      simp [Env.update, hne]
+                    · have hlt2 : s < s2 := by
+                        have hle := mkMergePhis_le hrec
+                        omega
+                      have hne : r' ≠ s := by omega
+                      simp [Env.update, hne]
+
+/-- The full join prefix (value-phi pair then merge phis) executes with
+per-merged values plus the value register: the value write lands below the
+merge window (`hvm`), so it never clobbers an arm register (`hne`), and the
+merge-phi frame composes with the value write for every register but `vm`.
+The future top-level binding-arm `RelEnv` assembly cites this for the MIR
+side; it supplies `hvals` from the arm-exit relation and `hfreshT`/`hne`/
+`hvm` from arm freshness plus supply monotonicity. -/
+theorem joinPrefix_exec (prog : Program)
+    {ρ ltρ leρ : List (HIR.Id × ValId)} {s : Nat}
+    {predT predE : MIR.BlockId} {p : MIR.BlockId}
+    {vm vT vE : ValId} {wv : Value}
+    {mphis : List Instr} {s2 : Nat} {ρm : List (HIR.Id × ValId)}
+    (hmk : mkMergePhis ρ ltρ leρ s predT predE (mergeIds ρ ltρ leρ) =
+      some (mphis, s2, ρm))
+    {fenvT : FullEnv}
+    (hT : predT = p) (hE : predE ≠ p)
+    (hvalT : fenvT.env vT = some wv)
+    (hvals : ∀ id ∈ mergeIds ρ ltρ leρ, ∀ srcT : ValId,
+      rhoLookup ltρ id = some srcT → ∃ w, fenvT.env srcT = some w)
+    (hfreshT : ∀ id srcT, id ∈ mergeIds ρ ltρ leρ →
+      rhoLookup ltρ id = some srcT → srcT < s)
+    (hne : ∀ id srcT, id ∈ mergeIds ρ ltρ leρ →
+      rhoLookup ltρ id = some srcT → srcT ≠ vm)
+    (hvm : vm < s) :
+    ∃ fenv' : FullEnv,
+      execInstrsFullFromIn prog (some p) fenvT
+        ([MIR.Instr.phi vm predT vT, MIR.Instr.phi vm predE vE] ++ mphis) =
+        some fenv' ∧
+      fenv'.env vm = some wv ∧
+      (∀ id r, id ∈ mergeIds ρ ltρ leρ → rhoLookup ρm id = some r →
+        ∀ srcT w, rhoLookup ltρ id = some srcT → fenvT.env srcT = some w →
+        fenv'.env r = some w) ∧
+      (∀ r', (r' < s ∨ s2 ≤ r') → r' ≠ vm →
+        fenv'.env r' = fenvT.env r') := by
+  have hexec_head : execInstrsFullFromIn prog (some p) fenvT
+      ([MIR.Instr.phi vm predT vT, MIR.Instr.phi vm predE vE] ++ mphis) =
+      execInstrsFullFromIn prog (some p)
+        ⟨fenvT.env.update vm wv, fenvT.store⟩ mphis :=
+    execInstrsFullFromIn_phis_hit prog p fenvT vm predT predE
+      vT vE mphis wv hT hE hvalT
+  have hvals1 : ∀ id ∈ mergeIds ρ ltρ leρ, ∀ srcT : ValId,
+      rhoLookup ltρ id = some srcT →
+      ∃ w, (fenvT.env.update vm wv) srcT = some w := by
+    intro id hmem srcT hlook
+    obtain ⟨w, hw⟩ := hvals id hmem srcT hlook
+    have hne' : srcT ≠ vm := hne id srcT hmem hlook
+    exact ⟨w, by simp [Env.update, hne', hw]⟩
+  obtain ⟨fenv', hexec_tail, hvals_tail, hframe_tail⟩ :=
+    mkMergePhis_exec prog (fenv := ⟨fenvT.env.update vm wv, fenvT.store⟩)
+      hmk (p := p) hT hE hvals1 hfreshT
+  refine ⟨fenv', by rw [hexec_head]; exact hexec_tail, ?_, ?_, ?_⟩
+  · have h1 : fenv'.env vm = (fenvT.env.update vm wv) vm :=
+      hframe_tail vm (Or.inl hvm)
+    simpa [Env.update] using h1
+  · intro id r hmem hlook srcT w hlookT hwT
+    have hne' : srcT ≠ vm := hne id srcT hmem hlookT
+    have hw1 : (fenvT.env.update vm wv) srcT = some w := by
+      simp [Env.update, hne', hwT]
+    exact hvals_tail id r hmem hlook srcT w hlookT hw1
+  · intro r' hr hne'
+    have h1 : fenv'.env r' = (fenvT.env.update vm wv) r' :=
+      hframe_tail r' hr
+    rw [h1]
+    simp [Env.update, hne']
+
 /- Assembly membership lifts (`if_asm_mem_*`: by-part membership plus the
 arrival-label lifts) live in `Morph.Proofs.Branch.Assembly`. Workers feed
 them to `hsub`/`findBlock_of_nodup_mem` without re-counting the append
@@ -13160,6 +13352,111 @@ theorem dedupIds_mem {ids : List HIR.Id} {id : HIR.Id}
           · exact ih _ (Or.inl hstep)
           · exact ih _ (Or.inr hstep)
   exact aux ids [] id (Or.inr hmem)
+
+/-- Unmerged ids look up identically on both sides: if `id` occurs in the
+pre-branch env but the merge set skips it, neither arm exit rebinds it.
+The fold adds exactly the differing ids it reaches with a clean
+accumulator (`List.contains` reflects membership via the `LawfulBEq`
+instance above); contraposing gives agreement. The future merge-join
+`RelEnv` assembly cites this for the unmerged part of `ρm` transport. -/
+theorem mergeIds_agree {ρ ltρ leρ : List (HIR.Id × ValId)} {id : HIR.Id}
+    (hmem : id ∈ ρ.map Prod.fst) (hnin : id ∉ mergeIds ρ ltρ leρ) :
+    rhoLookup ltρ id = rhoLookup ρ id ∧ rhoLookup leρ id = rhoLookup ρ id := by
+  have hmono : ∀ (l acc : List HIR.Id) (x : HIR.Id), x ∈ acc →
+      x ∈ l.foldl (fun acc j =>
+        if acc.contains j then acc
+        else if rhoLookup ltρ j != rhoLookup ρ j ||
+                rhoLookup leρ j != rhoLookup ρ j then acc ++ [j]
+        else acc) acc := by
+    intro l acc x hx
+    induction l generalizing acc with
+    | nil => simpa [List.foldl_nil]
+    | cons hd tl ih =>
+        simp only [List.foldl_cons]
+        by_cases hc : acc.contains hd = true
+        · rw [if_pos hc]
+          exact ih acc hx
+        · rw [if_neg hc]
+          by_cases hd2 : (rhoLookup ltρ hd != rhoLookup ρ hd ||
+              rhoLookup leρ hd != rhoLookup ρ hd) = true
+          · rw [if_pos hd2]
+            exact ih _ (List.mem_append_left _ hx)
+          · rw [if_neg hd2]
+            exact ih acc hx
+  have aux : ∀ (l acc : List HIR.Id),
+      (∀ x ∈ acc, rhoLookup ltρ x ≠ rhoLookup ρ x ∨
+        rhoLookup leρ x ≠ rhoLookup ρ x) →
+      (∀ x ∈ acc, x ≠ id) →
+      (rhoLookup ltρ id ≠ rhoLookup ρ id ∨
+        rhoLookup leρ id ≠ rhoLookup ρ id) →
+      id ∈ l →
+      id ∈ l.foldl (fun acc j =>
+        if acc.contains j then acc
+        else if rhoLookup ltρ j != rhoLookup ρ j ||
+                rhoLookup leρ j != rhoLookup ρ j then acc ++ [j]
+        else acc) acc := by
+    intro l acc hdiff hne hD hmeml
+    induction l generalizing acc with
+    | nil => simp at hmeml
+    | cons hd tl ih =>
+        simp only [List.foldl_cons]
+        by_cases hc : acc.contains hd = true
+        · rw [if_pos hc]
+          have hstep : id ∈ tl := by
+            rcases List.mem_cons.mp hmeml with h | h
+            · subst h
+              exact absurd rfl (hne id (List.contains_iff_mem.mp hc))
+            · exact h
+          exact ih acc hdiff hne hstep
+        · rw [if_neg hc]
+          by_cases hd2 : (rhoLookup ltρ hd != rhoLookup ρ hd ||
+              rhoLookup leρ hd != rhoLookup ρ hd) = true
+          · rw [if_pos hd2]
+            have hDhd : rhoLookup ltρ hd ≠ rhoLookup ρ hd ∨
+                rhoLookup leρ hd ≠ rhoLookup ρ hd := by
+              simpa using hd2
+            by_cases heq : hd = id
+            · have hid : id ∈ acc ++ [hd] := by
+                rw [heq]
+                exact List.mem_append_right _ (List.mem_cons_self ..)
+              exact hmono tl (acc ++ [hd]) id hid
+            · have hdiff' : ∀ x ∈ acc ++ [hd],
+                  rhoLookup ltρ x ≠ rhoLookup ρ x ∨
+                    rhoLookup leρ x ≠ rhoLookup ρ x := by
+                intro x hx
+                rcases List.mem_append.mp hx with hx | hx
+                · exact hdiff x hx
+                · rw [List.mem_singleton.mp hx]
+                  exact hDhd
+              have hne' : ∀ x ∈ acc ++ [hd], x ≠ id := by
+                intro x hx
+                rcases List.mem_append.mp hx with hx | hx
+                · exact hne x hx
+                · rw [List.mem_singleton.mp hx]
+                  exact heq
+              have hmemt : id ∈ tl := by
+                rcases List.mem_cons.mp hmeml with h | h
+                · exact absurd h.symm heq
+                · exact h
+              exact ih (acc ++ [hd]) hdiff' hne' hmemt
+          · rw [if_neg hd2]
+            have hstep : id ∈ tl := by
+              rcases List.mem_cons.mp hmeml with h | h
+              · subst h
+                have hcon : ¬ (rhoLookup ltρ id ≠ rhoLookup ρ id ∨
+                    rhoLookup leρ id ≠ rhoLookup ρ id) := by
+                  simpa using hd2
+                exact absurd hD hcon
+              · exact h
+            exact ih acc hdiff hne hstep
+  have hDIFF : ¬ (rhoLookup ltρ id ≠ rhoLookup ρ id ∨
+      rhoLookup leρ id ≠ rhoLookup ρ id) := by
+    intro hD
+    have hfin := aux (ρ.map Prod.fst) [] (by simp) (by simp) hD hmem
+    exact hnin hfin
+  rw [not_or] at hDIFF
+  obtain ⟨h1, h2⟩ := hDIFF
+  exact ⟨by simpa using h1, by simpa using h2⟩
 
 /-- Updates for other ids preserve lookups through `mkCarried`. -/
 theorem mkCarried_lookup_ne {ρ : List (HIR.Id × ValId)} {s : Nat}
