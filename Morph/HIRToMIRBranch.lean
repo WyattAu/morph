@@ -26663,6 +26663,7 @@ theorem lowerStmtsCFG_bindArm_if_total (budget : Nat) :
       ∀ (accH : Value) (henv : HEnv) (fenv : FullEnv),
       RelEnv henv ρ fenv.env →
       fenv.env lastVal = some accH →
+      accH = .unit →
       ∀ (fuelH : Nat) (henv' : HEnv) (out : HFlow),
       runHIRStmts fuelH henv (.ifStmt c th el :: rest) (.value (.lit accH)) =
         (out, henv') →
@@ -26683,6 +26684,8 @@ theorem lowerStmtsCFG_bindArm_if_total (budget : Nat) :
         F1 ≥ blockBound fuelB th + C →
         ∀ (fh : Nat) (henvArm : HEnv) (outArm : HFlow),
         runHIRStmts fh henv th (.value (.lit .unit)) = (outArm, henvArm) →
+        ∀ (_hs1 : supply ≤ s1) (_hsubT : ∀ b ∈ lt.blocks, b ∈ f.blocks)
+          (_hregT : fenvC.env lastVal = some .unit),
         (∀ (uArm : HIR.Expr), outArm = .value uArm →
           ∃ wArm fenvT F1', uArm = .lit wArm ∧ F1' ≤ F1 ∧ F1' ≥ C ∧
           execBlockFromIn prog F1 f (some bId) ⟨nextB, lt.instrs,
@@ -26708,6 +26711,9 @@ theorem lowerStmtsCFG_bindArm_if_total (budget : Nat) :
         F1 ≥ blockBound fuelB el + C →
         ∀ (fh : Nat) (henvArm : HEnv) (outArm : HFlow),
         runHIRStmts fh henv el (.value (.lit .unit)) = (outArm, henvArm) →
+        ∀ (_hsubE : ∀ b ∈ le.blocks, b ∈ f.blocks)
+          (_hfE : FreshAbove ρ s1e) (_hlE : lastVal < s1e)
+          (_hregE : fenvC.env lastVal = some .unit),
         (∀ (uArm : HIR.Expr), outArm = .value uArm →
           ∃ wArm fenvT F1', uArm = .lit wArm ∧ F1' ≤ F1 ∧ F1' ≥ C ∧
           execBlockFromIn prog F1 f (some bId) ⟨nextB + 1, le.instrs,
@@ -26729,7 +26735,7 @@ theorem lowerStmtsCFG_bindArm_if_total (budget : Nat) :
           execBlockFromIn prog F f prev ⟨bId, L.instrs, L.term⟩ fenv =
             some w_e) := by
   intro bId ρ supply nextB lastVal hasVal c th el rest L h hstr hlt hTh hEl
-    hrs hfresh hlast hltB accH henv fenv hrel hacc fuelH henv' out hrun
+    hrs hfresh hlast hltB accH henv fenv hrel hacc haccU fuelH henv' out hrun
     prog f prev F hsub hnodf fuelB hg hfb harmT harmE u
   simp only [lowerStmtsCFG] at h
   cases heC : lowerExpr ρ supply c with
@@ -26892,6 +26898,11 @@ theorem lowerStmtsCFG_bindArm_if_total (budget : Nat) :
                           have hrelC : RelEnv henv ρ fenvC.env :=
                             RelEnv_exec henv ρ supply c vc ic s1 heC
                               fenv fenvC hrel hfresh hexecC
+                          have hentryC : fenvC.env lastVal = some .unit := by
+                            have hp : fenvC.env lastVal = fenv.env lastVal :=
+                              lower_preserv_regs ρ supply c vc ic s1 heC fenv
+                                fenvC hexecC lastVal hlast
+                            rw [hp, hacc, haccU]
                           have hsuffix : ∀ (ρm : List
                               (HIR.Id × ValId)) (s2 : Nat)
                               (mphis : List Instr)
@@ -27280,7 +27291,7 @@ theorem lowerStmtsCFG_bindArm_if_total (budget : Nat) :
                                                     armBlockBound fuelB th)
                                                     hrelC hg_t fh env_arm
                                                     (HFlow.value u_arm)
-                                                    har).1 u_arm rfl)
+                                                    har hs1 (fun b hb => hsub _ (if_asm_mem_of_lt hb)) hentryC).1 u_arm rfl)
                                                   obtain ⟨fenvJ, happJ, hrelJ,
                                                       hvmJ, -⟩ :=
                                                     bindArm_join_exec prog hmk rfl
@@ -27425,7 +27436,7 @@ theorem lowerStmtsCFG_bindArm_if_total (budget : Nat) :
                                                         armBlockBound fuelB th)
                                                         hrelC hg_t fh env_arm
                                                         (HFlow.value u_arm)
-                                                        har).1 u_arm rfl)
+                                                        har hs1 (fun b hb => hsub _ (if_asm_mem_of_lt hb)) hentryC).1 u_arm rfl)
                                                       obtain ⟨fenvJ, happJ, hrelJ,
                                                           hvmJ, -⟩ :=
                                                         bindArm_join_exec prog hmk rfl
@@ -27592,7 +27603,7 @@ theorem lowerStmtsCFG_bindArm_if_total (budget : Nat) :
                                                       armBlockBound fuelB th)
                                                       hrelC hg_tr fh env_arm
                                                       (HFlow.returned e_arm)
-                                                      har).2 e_arm rfl)
+                                                      har hs1 (fun b hb => hsub _ (if_asm_mem_of_lt hb)) hentryC).2 e_arm rfl)
                                                     exact ⟨w_e, hret_e.trans hu_e,
                                                       hentry_r.trans heq_e⟩
                                           | cons hdR tlR =>
@@ -27693,7 +27704,7 @@ theorem lowerStmtsCFG_bindArm_if_total (budget : Nat) :
                                                           armBlockBound fuelB th)
                                                           hrelC hg_tr fh env_arm
                                                           (HFlow.returned e_arm)
-                                                          har).2 e_arm rfl)
+                                                          har hs1 (fun b hb => hsub _ (if_asm_mem_of_lt hb)) hentryC).2 e_arm rfl)
                                                         exact ⟨w_e, hret_e.trans hu_e,
                                                           hentry_r.trans heq_e⟩
                                       | broke =>
@@ -27880,7 +27891,7 @@ theorem lowerStmtsCFG_bindArm_if_total (budget : Nat) :
                                                     armBlockBound fuelB el)
                                                     hrelC hg_e fh env_arm
                                                     (HFlow.value u_arm)
-                                                    har).1 u_arm rfl)
+                                                    har (fun b hb => hsub _ (if_asm_mem_of_le hb)) hfE1 hlastE1 hentryC).1 u_arm rfl)
                                                   obtain ⟨fenvJ, happJ, hrelJ,
                                                       hvmJ, -⟩ :=
                                                     bindArm_join_execE prog hmk
@@ -28028,7 +28039,7 @@ theorem lowerStmtsCFG_bindArm_if_total (budget : Nat) :
                                                         armBlockBound fuelB el)
                                                         hrelC hg_e fh env_arm
                                                         (HFlow.value u_arm)
-                                                        har).1 u_arm rfl)
+                                                        har (fun b hb => hsub _ (if_asm_mem_of_le hb)) hfE1 hlastE1 hentryC).1 u_arm rfl)
                                                       obtain ⟨fenvJ, happJ, hrelJ,
                                                           hvmJ, -⟩ :=
                                                         bindArm_join_execE prog hmk
@@ -28198,7 +28209,7 @@ theorem lowerStmtsCFG_bindArm_if_total (budget : Nat) :
                                                       armBlockBound fuelB el)
                                                       hrelC hg_er fh env_arm
                                                       (HFlow.returned e_arm)
-                                                      har).2 e_arm rfl)
+                                                      har (fun b hb => hsub _ (if_asm_mem_of_le hb)) (FreshAbove.mono ρ supply lt.supply (Nat.le_trans hs1 hst) hfresh) (Nat.lt_of_lt_of_le hlast1 hst) hentryC).2 e_arm rfl)
                                                     exact ⟨w_e, hret_e.trans hu_e,
                                                       hentry_r.trans heq_e⟩
                                           | cons hdR tlR =>
@@ -28299,7 +28310,7 @@ theorem lowerStmtsCFG_bindArm_if_total (budget : Nat) :
                                                           armBlockBound fuelB el)
                                                           hrelC hg_er fh env_arm
                                                           (HFlow.returned e_arm)
-                                                          har).2 e_arm rfl)
+                                                          har (fun b hb => hsub _ (if_asm_mem_of_le hb)) (FreshAbove.mono ρ supply lt.supply (Nat.le_trans hs1 hst) hfresh) (Nat.lt_of_lt_of_le hlast1 hst) hentryC).2 e_arm rfl)
                                                         exact ⟨w_e, hret_e.trans hu_e,
                                                           hentry_r.trans heq_e⟩
                                       | broke =>
@@ -28444,6 +28455,72 @@ theorem lowerStmtsCFG_bindArm_if_total (budget : Nat) :
                                 simp [hst] at hout
                               · intro e hout2
                                 simp [hst] at hout2
+
+/-- Closed top-level binding-arm `if` (C2c integration): `bindArm_if_total`
+with both worker contracts discharged by `bindArm_total`. The then-arm rides
+the cond's supply step; the else-arm's freshness is part of its contract. -/
+theorem lowerStmtsCFG_bindArm_if_closed (budget : Nat) :
+    ∀ (bId : MIR.BlockId) (ρ : List (HIR.Id × ValId))
+      (supply nextB : Nat) (lastVal : ValId) (hasVal : Bool)
+      (c : HIR.Expr) (th el rest : List HIR.Stmt) (L : Lowered),
+      lowerStmtsCFG bId none false ρ supply nextB lastVal hasVal none
+        (.ifStmt c th el :: rest) = some L →
+      IsStraight c → SLWeight c < budget →
+      BindArmStmts budget th → BindArmStmts budget el →
+      BranchStmts budget rest →
+      FreshAbove ρ supply → lastVal < supply → bId < nextB →
+      ∀ (accH : Value) (henv : HEnv) (fenv : FullEnv),
+      RelEnv henv ρ fenv.env →
+      fenv.env lastVal = some accH →
+      accH = .unit →
+      ∀ (fuelH : Nat) (henv' : HEnv) (out : HFlow),
+      runHIRStmts fuelH henv (.ifStmt c th el :: rest) (.value (.lit accH)) =
+        (out, henv') →
+      ∀ (prog : Program) (f : Func) (prev : Option MIR.BlockId)
+        (F : Nat),
+      (∀ b ∈ L.blocks, b ∈ f.blocks) →
+      (f.blocks.map Block.id).Nodup →
+      ∀ (fuelB : Nat), F ≥ blockBound fuelB (.ifStmt c th el :: rest) →
+        fuelH ≤ fuelB →
+      ∀ (u : HIR.Expr),
+      (out = .value u →
+        ∃ w_u, u = .lit w_u ∧
+          execBlockFromIn prog F f prev ⟨bId, L.instrs, L.term⟩ fenv =
+            some w_u) ∧
+      (∀ (e : HIR.Expr), out = .returned e →
+        ∃ w_e, e = .lit w_e ∧
+          execBlockFromIn prog F f prev ⟨bId, L.instrs, L.term⟩ fenv =
+            some w_e) := by
+  intro bId ρ supply nextB lastVal hasVal c th el rest L h hstr hlt hTh hEl
+    hrs hfresh hlast hltB accH henv fenv hrel hacc haccU fuelH henv' out hrun
+    prog f prev F hsub hnodf fuelB hg hfb u
+  refine lowerStmtsCFG_bindArm_if_total budget bId ρ supply nextB lastVal
+    hasVal c th el rest L h hstr hlt hTh hEl hrs hfresh hlast hltB accH henv
+    fenv hrel hacc haccU fuelH henv' out hrun prog f prev F hsub hnodf fuelB
+    hg hfb ?_ ?_ u
+  · intro s1 lt exitT ht' hexit joinBlock hfindJb fenvC F1 C hrelC hg1 fh
+      henvArm outArm hrunT hs1T hsubT hregT
+    have hf1 : FreshAbove ρ s1 :=
+      FreshAbove.mono ρ supply s1 hs1T hfresh
+    have hlast1 : lastVal < s1 := Nat.lt_of_lt_of_le hlast hs1T
+    have hT := lowerStmtsCFG_bindArm_total budget nextB (nextB + 2) ρ s1
+      (nextB + 3) lastVal false th lt ht' hTh hf1 hlast1 .unit henv fenvC
+      hrelC (fun _ => rfl) hregT fh henvArm outArm hrunT prog f (some bId)
+      joinBlock F1 hsubT hnodf hfindJb fuelB C hg1
+    refine ⟨fun uArm hout => ?_, fun e hout2 => (hT e).2 e hout2⟩
+    obtain ⟨w, hu, F', fenvT, hle, hge, heq, hrelA, hval⟩ := (hT uArm).1 hout
+    rw [hexit] at heq
+    exact ⟨w, fenvT, F', hu, hle, hge, heq, hrelA, hval⟩
+  · intro s1t ltE s1e le exitE he'T he'E hexitE joinBlock hfindJb fenvC F1 C hrelC
+      hg1 fh henvArm outArm hrunE hsubE hfE hlE hregE
+    have hE := lowerStmtsCFG_bindArm_total budget (nextB + 1) (nextB + 2) ρ
+      s1e ltE.next lastVal false el le he'E hEl hfE hlE .unit henv fenvC hrelC
+      (fun _ => rfl) hregE fh henvArm outArm hrunE prog f (some bId) joinBlock
+      F1 hsubE hnodf hfindJb fuelB C hg1
+    refine ⟨fun uArm hout => ?_, fun e hout2 => (hE e).2 e hout2⟩
+    obtain ⟨w, hu, F', fenvT, hle, hge, heq, hrelA, hval⟩ := (hE uArm).1 hout
+    rw [hexitE] at heq
+    exact ⟨w, fenvT, F', hu, hle, hge, heq, hrelA, hval⟩
 
 /-! ## §4.4: the fuel bound, and closed programs
 
