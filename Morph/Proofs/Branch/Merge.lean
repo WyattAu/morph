@@ -365,6 +365,40 @@ theorem mkMergePhis_lookup_mem {ρ ltρ leρ : List (HIR.Id × ValId)}
                     rw [hstep]
                     exact hr
 
+/-- Merged ids resolve on both arm exits: `mkMergePhis` only conses past a
+pair of successful arm-exit lookups, so every id it processes has a source
+register on each side. The merge-join proof feeds these sources to the
+arm-exit `RelEnv` to name the values the join phis carry. -/
+theorem mkMergePhis_mem_lookup {ρ ltρ leρ : List (HIR.Id × ValId)}
+    {s : Nat} {predT predE : MIR.BlockId} {ids : List HIR.Id}
+    {phis : List Instr} {s' : Nat} {ρm : List (HIR.Id × ValId)} {id : HIR.Id}
+    (h : mkMergePhis ρ ltρ leρ s predT predE ids = some (phis, s', ρm))
+    (hmem : id ∈ ids) :
+    (∃ srcT, rhoLookup ltρ id = some srcT) ∧
+      (∃ srcE, rhoLookup leρ id = some srcE) := by
+  induction ids generalizing ρ s phis s' ρm with
+  | nil => simp at hmem
+  | cons mid mids ih =>
+      simp only [mkMergePhis] at h
+      cases hT : rhoLookup ltρ mid with
+      | none => rw [hT] at h; simp at h
+      | some srcT =>
+          rw [hT] at h
+          cases hE : rhoLookup leρ mid with
+          | none => rw [hE] at h; simp at h
+          | some srcE =>
+              rw [hE] at h
+              cases hrec : mkMergePhis ρ ltρ leρ (s + 1) predT predE mids with
+              | none => rw [hrec] at h; simp at h
+              | some q =>
+                  obtain ⟨phis', s'', ρ''⟩ := q
+                  rw [hrec] at h
+                  obtain ⟨rfl, rfl, rfl⟩ := Option.some.inj h
+                  rcases List.mem_cons.mp hmem with h | h
+                  · subst h
+                    exact ⟨⟨srcT, hT⟩, ⟨srcE, hE⟩⟩
+                  · exact ih hrec h
+
 /-- Ids an arm run may rebind: `assign` targets plus `varDecl` introductions,
 through nested arm `if`s. `assignedIds` misses `varDecl` (it falls in the
 catch-all), so arms need their own measure; loop bodies keep `assignedIds`
