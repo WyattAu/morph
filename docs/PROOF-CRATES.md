@@ -69,5 +69,8 @@ L0 module or any L1 module; no L1 module imports `HIRToMIRBranch`.
 4. ✅ `LoopAlloc` — `mkCarried`/`mkHeaderPhis` moved with growth proofs (0
    lowering cites); the `mkCarried_*` worker lemmas stay (they reason about
    lowering call sites).
-5. `Spine` → `BodyWorker` → `Workers` → `Loop` — the proof core, last (deep
+5. ✅ `Assembly` — block-assembly nodup (`nodup_concat`, `if`/`while` +
+   `findBlock_of_nodup_mem`) and arrival lifts (`if_asm_mem_*`): pure
+   list reasoning, zero lowering cites.
+6. `Spine` → `BodyWorker` → `Workers` → `Loop` — the proof core, last (deep
    lowering interdeps; extract only with the lowering).
