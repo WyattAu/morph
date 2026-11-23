@@ -28807,6 +28807,52 @@ example :
         (fun f => execFuncFrom 3 f ⟨fun _ => none, Store.empty⟩)
       == some (.int 5) := by
   native_decide
+/-! ## Binding arms: the merge join (C2c evidence)
+
+The merge path (`mergeIds` non-empty) only fires when an id bound *before*
+the `if` is rebound inside an arm: the join carries one `mkMergePhis` phi
+per rebound id plus the value phi. A fresh `varDecl` inside an arm is not
+in the pre-branch env, so it takes the old join verbatim. These pins cover
+the merge join: `x` is declared before, assigned in each arm, and read
+after. -/
+
+/-- Binding-arm `if`, true edge: `x` is 10 after the join. -/
+def bindIfAssignProg : HIR.Program :=
+  ⟨[.varDecl ⟨0, "x"⟩ .intType (.lit (.int 0)),
+    .ifStmt (.lit (.bool true)) [.assign ⟨0, "x"⟩ (.lit (.int 10))]
+      [.assign ⟨0, "x"⟩ (.lit (.int 20))],
+    .exprStmt (.var ⟨0, "x"⟩)]⟩
+
+/-- Same program, false edge: `x` is 20 after the join. -/
+def bindIfAssignFalseProg : HIR.Program :=
+  ⟨[.varDecl ⟨0, "x"⟩ .intType (.lit (.int 0)),
+    .ifStmt (.lit (.bool false)) [.assign ⟨0, "x"⟩ (.lit (.int 10))]
+      [.assign ⟨0, "x"⟩ (.lit (.int 20))],
+    .exprStmt (.var ⟨0, "x"⟩)]⟩
+
+/-- Four blocks, like the binding-free `if`: the merge phi lives in the join. -/
+example : (lowerProgramCFG bindIfAssignProg).map (fun f => f.blocks.length) =
+    some 4 := by
+  native_decide
+
+/-- The bound agrees: entry plus the `if`'s three. -/
+example : blockBound 8 bindIfAssignProg.stmts = 4 := by
+  native_decide
+
+/-- The true arm's assignment reaches the trailing read. -/
+example :
+    (lowerProgramCFG bindIfAssignProg).bind
+        (fun f => execFuncFrom 4 f ⟨fun _ => none, Store.empty⟩)
+      == some (.int 10) := by
+  native_decide
+
+/-- The false arm's assignment reaches the trailing read. -/
+example :
+    (lowerProgramCFG bindIfAssignFalseProg).bind
+        (fun f => execFuncFrom 4 f ⟨fun _ => none, Store.empty⟩)
+      == some (.int 20) := by
+  native_decide
+
 
 /-! ## Nested arms: the phi's predecessor
 
