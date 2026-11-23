@@ -356,7 +356,6 @@ theorem lowerStmtsCFG_bindArm_if_closed_bound (budget : Nat) :
     (Nat.le_refl (blockBound fuelH (.ifStmt c th el :: rest)))
     (Nat.le_refl fuelH) u
 
-/-- Top corollary (C3 exit): a closed lowered program runs the oracle's value.
 /-- Static invariant for a top-level binding-arm `if` (C2c): the `bindArm_inv`
 conclusion for the `.ifStmt c th el :: rest` shape at top level
 (`cont = none`, `arm = false`). Arms ride `bindArm_inv`; the tail rides
@@ -414,7 +413,7 @@ theorem lowerStmtsCFG_bindArm_if_top_inv (budget : Nat) :
                       dsimp only at ⊢
                       obtain ⟨hmnr, hmsr, hbndr, hnodr⟩ :=
                         lowerStmtsCFG_branch_inv budget _ _ _ _ _ _ _ _ _
-                          hr hrs
+                          _ hr hrs
                       refine ⟨by omega, by omega, ?_, ?_⟩
                       · intro b hb
                         simp only [List.mem_append, List.mem_singleton] at hb
@@ -486,7 +485,7 @@ theorem lowerStmtsCFG_bindArm_if_top_inv (budget : Nat) :
                             mkMergePhis_le hmk
                           obtain ⟨hmnr, hmsr, hbndr, hnodr⟩ :=
                             lowerStmtsCFG_branch_inv budget _ _ _ _ _ _ _ _ _
-                              hr hrs
+                              _ hr hrs
                           refine ⟨by omega, by omega, ?_, ?_⟩
                           · intro b hb
                             simp only [List.mem_append, List.mem_singleton] at hb
@@ -535,6 +534,7 @@ theorem lowerStmtsCFG_bindArm_if_top_inv (budget : Nat) :
                               hmnt hmne hmnr hbndt hbnde hbndr
                               rfl rfl rfl hnodt hnode hnodr
 
+/-- Top corollary (C3 exit): a closed lowered program runs the oracle's value.
 C7 cites this: HIR success (`runHIRProgram = value`) is MIR success
 (`execFuncFrom = some`), with executor fuel `blockBound 1024`. The entry
 block's `const 0 unit` prologue peels first (supply starts at 1, so register
@@ -681,7 +681,7 @@ theorem lowerProgramCFG_correct (budget : Nat) (prog : HIR.Program)
               rw [hF] at heq
               exact hrunF.trans (hpeel.trans heq)
 
-/-! ## The lowered CFG runs
+/-! ## The lowered CFG runs -/
 /-- Top program corollary for a binding-arm `if` head (C2c): a closed lowered
 program whose statements are `.ifStmt c th el :: rest` with binding arms runs
 the oracle's value. Mirrors `lowerProgramCFG_correct`, citing
@@ -767,6 +767,7 @@ theorem lowerProgramCFG_bindArm_if_correct (budget : Nat) (prog : HIR.Program)
           have hout : out = .value (.lit w) := by
             have h1 : (runHIRStmts 1024 [] prog.stmts
                 (.value (.lit .unit))).1 = .value (.lit w) := hrun
+            rw [hshape] at h1
             rw [hp] at h1
             simp only [] at h1
             exact h1
@@ -838,7 +839,7 @@ theorem lowerProgramCFG_bindArm_if_correct (budget : Nat) (prog : HIR.Program)
               exact hrunF.trans (hpeel.trans heq)
 
 
-These are evidence, not the theorem: the same expression in both arms would pass
+/- These are evidence, not the theorem: the same expression in both arms would pass
 even if the phi rule were wrong, so the arms deliberately differ, and the
 condition appears in both truth values. -/
 
