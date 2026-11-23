@@ -29411,4 +29411,48 @@ example : ∃ f, lowerProgramCFG whileIfBreakProg = some f ∧
     rfl
   exact lowerProgramCFG_correct 256 whileIfBreakProg f ⟨[]⟩ hf hfrag (.int 0) hrun
 
+/-- `continue`-via-`if` inside a loop body: progress (`x = 5`) runs before
+the branch, then the `if` takes its `continue` arm on the `false` edge
+(`5 < 1` is false) and exits on the next header test. Both arms are
+break-free (`continue` is allowed by `ArmNoBreak`), so this exercises
+`LoopStmts.ifStmt` with an arm `continue` — the last member of the
+arm-leave-loop family (`break` pinned above, fall-through pinned before). -/
+def whileContinueProg : HIR.Program :=
+  ⟨[.varDecl ⟨0, "x"⟩ .intType (.lit (.int 0)),
+    .whileLoop (.binop .lt (.var ⟨0, "x"⟩) (.lit (.int 1)))
+      [.assign ⟨0, "x"⟩ (.lit (.int 5)),
+       .ifStmt (.binop .lt (.var ⟨0, "x"⟩) (.lit (.int 1)))
+        [.exprStmt (.lit (.int 20))] [.continue]],
+    .exprStmt (.var ⟨0, "x"⟩)]⟩
+
+/-- End-to-end `continue`-via-`if` (C7): the fifth concrete application of
+the program corollary. Lowering by `isSome`/`native_decide`, fragment
+witness supplies `ArmStmts`/`ArmNoBreak` (taken arm is
+`.continueStmt .nil`), oracle run by `rfl`. -/
+example : ∃ f, lowerProgramCFG whileContinueProg = some f ∧
+    execFuncFrom (blockBound 1024 whileContinueProg.stmts) f
+      ⟨fun _ => none, Store.empty⟩ = some (.int 5) := by
+  obtain ⟨f, hf⟩ := Option.isSome_iff_exists.mp
+    ((by native_decide : (lowerProgramCFG whileContinueProg).isSome = true))
+  refine ⟨f, hf, ?_⟩
+  have hfrag : BranchStmts 256 whileContinueProg.stmts :=
+    .cons (.varDecl _ _ _ (.lit _) (by simp [SLWeight]))
+      (.cons (.whileStmt _ _
+        (.binop _ _ _ (by simp [toBinOp]) (.var _) (.lit _))
+        (by simp [SLWeight])
+        (.assign _ _ _ (.lit _) (by simp [SLWeight])
+          (.ifStmt _ _ _ _
+            (.binop _ _ _ (by simp [toBinOp]) (.var _) (.lit _))
+            (by simp [SLWeight])
+            (.exprStmt _ _ (.lit _) (by simp [SLWeight]) .nil)
+            (.continueStmt _ .nil)
+            .nil
+            (.exprStmt _ _ .nil)
+            (.continueStmt _ .nil))
+          (.lit _)))
+      (.cons (.exprStmt _ (.var _) (by simp [SLWeight])) .nil))
+  have hrun : runHIRProgram whileContinueProg = .value (.lit (.int 5)) := by
+    rfl
+  exact lowerProgramCFG_correct 256 whileContinueProg f ⟨[]⟩ hf hfrag (.int 5) hrun
+
 end Morph.HIRToMIRCorrect
