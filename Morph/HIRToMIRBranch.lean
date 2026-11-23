@@ -28558,6 +28558,47 @@ theorem lowerStmtsCFG_total_bound (budget : Nat) :
     prev (blockBound fuelH ss) hsub hnodf fuelH
     (Nat.le_refl (blockBound fuelH ss)) (Nat.le_refl fuelH) u
 
+/-- Binding `if` fuel closure (§4.4, C2c): `bindArm_if_closed` at
+`F := blockBound fuelH` with `fuelB := fuelH`. C7 cites this, never the worker. -/
+theorem lowerStmtsCFG_bindArm_if_closed_bound (budget : Nat) :
+    ∀ (bId : MIR.BlockId) (ρ : List (HIR.Id × ValId))
+      (supply nextB : Nat) (lastVal : ValId) (hasVal : Bool)
+      (c : HIR.Expr) (th el rest : List HIR.Stmt) (L : Lowered),
+      lowerStmtsCFG bId none false ρ supply nextB lastVal hasVal none
+        (.ifStmt c th el :: rest) = some L →
+      IsStraight c → SLWeight c < budget →
+      BindArmStmts budget th → BindArmStmts budget el →
+      BranchStmts budget rest →
+      FreshAbove ρ supply → lastVal < supply → bId < nextB →
+      ∀ (accH : Value) (henv : HEnv) (fenv : FullEnv),
+      RelEnv henv ρ fenv.env →
+      fenv.env lastVal = some accH →
+      accH = .unit →
+      ∀ (fuelH : Nat) (henv' : HEnv) (out : HFlow),
+      runHIRStmts fuelH henv (.ifStmt c th el :: rest) (.value (.lit accH)) =
+        (out, henv') →
+      ∀ (prog : Program) (f : Func) (prev : Option MIR.BlockId),
+      (∀ b ∈ L.blocks, b ∈ f.blocks) →
+      (f.blocks.map Block.id).Nodup →
+      ∀ (u : HIR.Expr),
+      (out = .value u →
+        ∃ w_u, u = .lit w_u ∧
+          execBlockFromIn prog (blockBound fuelH (.ifStmt c th el :: rest)) f prev
+            ⟨bId, L.instrs, L.term⟩ fenv = some w_u) ∧
+      (∀ (e : HIR.Expr), out = .returned e →
+        ∃ w_e, e = .lit w_e ∧
+          execBlockFromIn prog (blockBound fuelH (.ifStmt c th el :: rest)) f prev
+            ⟨bId, L.instrs, L.term⟩ fenv = some w_e) := by
+  intro bId ρ supply nextB lastVal hasVal c th el rest L h hstr hlt hTh hEl
+    hrs hfresh hlast hltB accH henv fenv hrel hacc haccU fuelH henv' out hrun
+    prog f prev hsub hnodf u
+  exact lowerStmtsCFG_bindArm_if_closed budget bId ρ supply nextB lastVal
+    hasVal c th el rest L h hstr hlt hTh hEl hrs hfresh hlast hltB accH henv
+    fenv hrel hacc haccU fuelH henv' out hrun prog f prev
+    (blockBound fuelH (.ifStmt c th el :: rest)) hsub hnodf fuelH
+    (Nat.le_refl (blockBound fuelH (.ifStmt c th el :: rest)))
+    (Nat.le_refl fuelH) u
+
 /-- Top corollary (C3 exit): a closed lowered program runs the oracle's value.
 C7 cites this: HIR success (`runHIRProgram = value`) is MIR success
 (`execFuncFrom = some`), with executor fuel `blockBound 1024`. The entry
