@@ -29271,4 +29271,29 @@ example :
       == some (.int 5) := by
   native_decide
 
+/-- End-to-end loop correctness (C7): the `break` program through the program
+corollary. This is the first concrete application of the C7 chain — a manual
+fragment witness (the body is one `break`, so no `VarFree` obligation), the
+oracle run by `rfl` (the loop breaks on its first iteration), and
+`lowerProgramCFG_correct` closing it at `blockBound 1024` fuel. -/
+example : ∃ f, lowerProgramCFG whileBreakProg = some f ∧
+    execFuncFrom (blockBound 1024 whileBreakProg.stmts) f
+      ⟨fun _ => none, Store.empty⟩ = some (.int 5) := by
+  have hexec : (lowerProgramCFG whileBreakProg).bind
+      (fun f => execFuncFrom 5 f ⟨fun _ => none, Store.empty⟩) ==
+      some (.int 5) := by
+    native_decide
+  have hsome : (lowerProgramCFG whileBreakProg).isSome := by
+    cases h : lowerProgramCFG whileBreakProg with
+    | none => simp [h] at hexec
+    | some f => rfl
+  obtain ⟨f, hf⟩ := Option.isSome_iff_exists.mp hsome
+  refine ⟨f, hf, ?_⟩
+  have hfrag : BranchStmts 256 whileBreakProg.stmts :=
+    .cons (.whileStmt _ _ (.lit _) (by simp [SLWeight]) (.breakStmt [] .nil))
+      (.cons (.exprStmt _ (.lit _) (by simp [SLWeight])) .nil)
+  have hrun : runHIRProgram whileBreakProg = .value (.lit (.int 5)) := by
+    rfl
+  exact lowerProgramCFG_correct 256 whileBreakProg f ⟨[]⟩ hf hfrag (.int 5) hrun
+
 end Morph.HIRToMIRCorrect
