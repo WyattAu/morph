@@ -29296,4 +29296,34 @@ example : ∃ f, lowerProgramCFG whileBreakProg = some f ∧
     rfl
   exact lowerProgramCFG_correct 256 whileBreakProg f ⟨[]⟩ hf hfrag (.int 5) hrun
 
+/-- Carried register through the back edge: `x` is 0 on entry, the loop takes
+the back edge once (`0 < 1`), then exits when the carried `5` fails the test. -/
+def whileCarryProg : HIR.Program :=
+  ⟨[.varDecl ⟨0, "x"⟩ .intType (.lit (.int 0)),
+    .whileLoop (.binop .lt (.var ⟨0, "x"⟩) (.lit (.int 1)))
+      [.assign ⟨0, "x"⟩ (.lit (.int 5))],
+    .exprStmt (.var ⟨0, "x"⟩)]⟩
+
+/-- End-to-end carried-register loop (C7): the second concrete application of
+the program corollary, and the first to take the back edge — the header phi
+re-reads the carried `x`, unlike the `break` pin which never loops back. The
+body assigns a literal, so the `VarFree` side condition holds; the oracle run
+is by `rfl` (two header evaluations, one body). -/
+example : ∃ f, lowerProgramCFG whileCarryProg = some f ∧
+    execFuncFrom (blockBound 1024 whileCarryProg.stmts) f
+      ⟨fun _ => none, Store.empty⟩ = some (.int 5) := by
+  obtain ⟨f, hf⟩ := Option.isSome_iff_exists.mp
+    ((by native_decide : (lowerProgramCFG whileCarryProg).isSome = true))
+  refine ⟨f, hf, ?_⟩
+  have hfrag : BranchStmts 256 whileCarryProg.stmts :=
+    .cons (.varDecl _ _ _ (.lit _) (by simp [SLWeight]))
+      (.cons (.whileStmt _ _
+        (.binop _ _ _ (by simp [toBinOp]) (.var _) (.lit _))
+        (by simp [SLWeight])
+        (.assign _ _ _ (.lit _) (by simp [SLWeight]) .nil (.lit _)))
+      (.cons (.exprStmt _ (.var _) (by simp [SLWeight])) .nil))
+  have hrun : runHIRProgram whileCarryProg = .value (.lit (.int 5)) := by
+    rfl
+  exact lowerProgramCFG_correct 256 whileCarryProg f ⟨[]⟩ hf hfrag (.int 5) hrun
+
 end Morph.HIRToMIRCorrect
