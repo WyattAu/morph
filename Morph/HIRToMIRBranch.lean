@@ -29495,4 +29495,51 @@ example : ∃ f, lowerProgramCFG whileIfBreakTailProg = some f ∧
     rfl
   exact lowerProgramCFG_correct 256 whileIfBreakTailProg f ⟨[]⟩ hf hfrag (.int 0) hrun
 
+/-- Nested `if` inside a loop-body arm: the taken outer arm holds an inner
+`if` over a literal, so both the `ArmStmts` and `ArmNoBreak` predicates
+recurse one level deeper. The outer `else` stays a binding-free discard
+and the post-join tail assigns the exit constant. First pass takes
+outer-true/inner-true, assigns `5`, then exits. -/
+def whileNestedIfProg : HIR.Program :=
+  ⟨[.varDecl ⟨0, "x"⟩ .intType (.lit (.int 0)),
+    .whileLoop (.binop .lt (.var ⟨0, "x"⟩) (.lit (.int 1)))
+      [.ifStmt (.binop .lt (.var ⟨0, "x"⟩) (.lit (.int 1)))
+        [.ifStmt (.lit (.bool true))
+          [.exprStmt (.lit (.int 10))] [.exprStmt (.lit (.int 11))]]
+        [.exprStmt (.lit (.int 20))],
+       .assign ⟨0, "x"⟩ (.lit (.int 5))],
+    .exprStmt (.var ⟨0, "x"⟩)]⟩
+
+/-- End-to-end nested-`if` arm (C7): the seventh concrete application of
+the program corollary. Lowering by `isSome`/`native_decide`, the fragment
+witness nests `ArmStmts.ifStmt`/`ArmNoBreak.ifStmt` one level, oracle run
+by `rfl`. -/
+example : ∃ f, lowerProgramCFG whileNestedIfProg = some f ∧
+    execFuncFrom (blockBound 1024 whileNestedIfProg.stmts) f
+      ⟨fun _ => none, Store.empty⟩ = some (.int 5) := by
+  obtain ⟨f, hf⟩ := Option.isSome_iff_exists.mp
+    ((by native_decide : (lowerProgramCFG whileNestedIfProg).isSome = true))
+  refine ⟨f, hf, ?_⟩
+  have hfrag : BranchStmts 256 whileNestedIfProg.stmts :=
+    .cons (.varDecl _ _ _ (.lit _) (by simp [SLWeight]))
+      (.cons (.whileStmt _ _
+        (.binop _ _ _ (by simp [toBinOp]) (.var _) (.lit _))
+        (by simp [SLWeight])
+        (.ifStmt _ _ _ _
+          (.binop _ _ _ (by simp [toBinOp]) (.var _) (.lit _))
+          (by simp [SLWeight])
+          (.ifStmt _ _ _ _ (.lit _) (by simp [SLWeight])
+            (.exprStmt _ _ (.lit _) (by simp [SLWeight]) .nil)
+            (.exprStmt _ _ (.lit _) (by simp [SLWeight]) .nil)
+            .nil)
+          (.exprStmt _ _ (.lit _) (by simp [SLWeight]) .nil)
+          (.assign _ _ _ (.lit _) (by simp [SLWeight]) .nil (.lit _))
+          (.ifStmt _ _ _ _
+            (.exprStmt _ _ .nil) (.exprStmt _ _ .nil) .nil)
+          (.exprStmt _ _ .nil)))
+      (.cons (.exprStmt _ (.var _) (by simp [SLWeight])) .nil))
+  have hrun : runHIRProgram whileNestedIfProg = .value (.lit (.int 5)) := by
+    rfl
+  exact lowerProgramCFG_correct 256 whileNestedIfProg f ⟨[]⟩ hf hfrag (.int 5) hrun
+
 end Morph.HIRToMIRCorrect
