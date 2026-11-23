@@ -29455,4 +29455,44 @@ example : ∃ f, lowerProgramCFG whileContinueProg = some f ∧
     rfl
   exact lowerProgramCFG_correct 256 whileContinueProg f ⟨[]⟩ hf hfrag (.int 5) hrun
 
+/-- Arm-`break` with a real tail: the taken `break` arm skips the
+binding-free tail (`exprStmt 30`) while the static exit env still mentions
+only carried registers. This exercises `LoopStmts.ifStmtBreak` with a
+non-empty `rest` satisfying both `LoopStmts` and `ArmStmts`, rather than
+the empty-tail pin above. First pass breaks with `x = 0`. -/
+def whileIfBreakTailProg : HIR.Program :=
+  ⟨[.varDecl ⟨0, "x"⟩ .intType (.lit (.int 0)),
+    .whileLoop (.binop .lt (.var ⟨0, "x"⟩) (.lit (.int 1)))
+      [.ifStmt (.binop .lt (.var ⟨0, "x"⟩) (.lit (.int 1)))
+        [.break] [.exprStmt (.lit (.int 20))],
+       .exprStmt (.lit (.int 30))],
+    .exprStmt (.var ⟨0, "x"⟩)]⟩
+
+/-- End-to-end arm-`break` with tail (C7): the sixth concrete application
+of the program corollary. Lowering by `isSome`/`native_decide`, fragment
+witness supplies the `ArmStmts` arms plus the shared binding-free tail on
+both the `LoopStmts` and `ArmStmts` sides, oracle run by `rfl`. -/
+example : ∃ f, lowerProgramCFG whileIfBreakTailProg = some f ∧
+    execFuncFrom (blockBound 1024 whileIfBreakTailProg.stmts) f
+      ⟨fun _ => none, Store.empty⟩ = some (.int 0) := by
+  obtain ⟨f, hf⟩ := Option.isSome_iff_exists.mp
+    ((by native_decide : (lowerProgramCFG whileIfBreakTailProg).isSome = true))
+  refine ⟨f, hf, ?_⟩
+  have hfrag : BranchStmts 256 whileIfBreakTailProg.stmts :=
+    .cons (.varDecl _ _ _ (.lit _) (by simp [SLWeight]))
+      (.cons (.whileStmt _ _
+        (.binop _ _ _ (by simp [toBinOp]) (.var _) (.lit _))
+        (by simp [SLWeight])
+        (.ifStmtBreak _ _ _ _
+          (.binop _ _ _ (by simp [toBinOp]) (.var _) (.lit _))
+          (by simp [SLWeight])
+          (.breakStmt _ .nil)
+          (.exprStmt _ _ (.lit _) (by simp [SLWeight]) .nil)
+          (.exprStmt _ _ (.lit _) (by simp [SLWeight]) .nil)
+          (.exprStmt _ _ (.lit _) (by simp [SLWeight]) .nil)))
+      (.cons (.exprStmt _ (.var _) (by simp [SLWeight])) .nil))
+  have hrun : runHIRProgram whileIfBreakTailProg = .value (.lit (.int 0)) := by
+    rfl
+  exact lowerProgramCFG_correct 256 whileIfBreakTailProg f ⟨[]⟩ hf hfrag (.int 0) hrun
+
 end Morph.HIRToMIRCorrect
