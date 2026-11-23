@@ -29326,4 +29326,47 @@ example : ∃ f, lowerProgramCFG whileCarryProg = some f ∧
     rfl
   exact lowerProgramCFG_correct 256 whileCarryProg f ⟨[]⟩ hf hfrag (.int 5) hrun
 
+/-- Loop-body `if` on the back-edge path: the header reads the carried `x`,
+the body branches on the same carried `x` (true edge on the first pass),
+then assigns the exit constant after the join and loops back. Arms are
+binding-free (`exprStmt` discards differing so the value phi matters) with
+`ArmNoBreak`, so this exercises `LoopStmts.ifStmt` — the non-break
+loop-body arm gate — rather than the `break` pin above. -/
+def whileIfBodyProg : HIR.Program :=
+  ⟨[.varDecl ⟨0, "x"⟩ .intType (.lit (.int 0)),
+    .whileLoop (.binop .lt (.var ⟨0, "x"⟩) (.lit (.int 1)))
+      [.ifStmt (.binop .lt (.var ⟨0, "x"⟩) (.lit (.int 1)))
+        [.exprStmt (.lit (.int 10))] [.exprStmt (.lit (.int 20))],
+       .assign ⟨0, "x"⟩ (.lit (.int 5))],
+    .exprStmt (.var ⟨0, "x"⟩)]⟩
+
+/-- End-to-end loop-body `if` (C7): the third concrete application of the
+program corollary, and the first to run an `if` inside a taken back edge.
+Lowering success is by `isSome`/`native_decide`, the fragment witness
+supplies the `ArmStmts`/`ArmNoBreak`/`VarFree` obligations (arms differ so
+the value phi is load-bearing), and the oracle run is by `rfl`. -/
+example : ∃ f, lowerProgramCFG whileIfBodyProg = some f ∧
+    execFuncFrom (blockBound 1024 whileIfBodyProg.stmts) f
+      ⟨fun _ => none, Store.empty⟩ = some (.int 5) := by
+  obtain ⟨f, hf⟩ := Option.isSome_iff_exists.mp
+    ((by native_decide : (lowerProgramCFG whileIfBodyProg).isSome = true))
+  refine ⟨f, hf, ?_⟩
+  have hfrag : BranchStmts 256 whileIfBodyProg.stmts :=
+    .cons (.varDecl _ _ _ (.lit _) (by simp [SLWeight]))
+      (.cons (.whileStmt _ _
+        (.binop _ _ _ (by simp [toBinOp]) (.var _) (.lit _))
+        (by simp [SLWeight])
+        (.ifStmt _ _ _ _
+          (.binop _ _ _ (by simp [toBinOp]) (.var _) (.lit _))
+          (by simp [SLWeight])
+          (.exprStmt _ _ (.lit _) (by simp [SLWeight]) .nil)
+          (.exprStmt _ _ (.lit _) (by simp [SLWeight]) .nil)
+          (.assign _ _ _ (.lit _) (by simp [SLWeight]) .nil (.lit _))
+          (.exprStmt _ _ .nil)
+          (.exprStmt _ _ .nil)))
+      (.cons (.exprStmt _ (.var _) (by simp [SLWeight])) .nil))
+  have hrun : runHIRProgram whileIfBodyProg = .value (.lit (.int 5)) := by
+    rfl
+  exact lowerProgramCFG_correct 256 whileIfBodyProg f ⟨[]⟩ hf hfrag (.int 5) hrun
+
 end Morph.HIRToMIRCorrect
