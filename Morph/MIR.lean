@@ -834,5 +834,265 @@ theorem execFuncIn_eq (prog : Program) (fuel : Nat) (f : Func) (fenv : FullEnv) 
   · exact execBlockFromIn_eq prog fuel f none _ fenv
   · rfl
 
+/-! ## Single-level calls (Stage C, item C8a)
+
+`evalInstrFull` returns `none` for `Instr.call` because it cannot look the
+callee up. This section executes the one case the scope admits —
+single-function (non-recursive, single-level) calls — beside the existing
+executors, so nothing already proved moves (the C1/C8-hedge move).
+
+`execInstrsCall` mirrors `execInstrsFullFromIn` with one extra arm. On
+`.call dst fn args` it looks `fn` up in `prog`, binds the actuals to the
+callee's parameters over a fresh activation, runs the callee's entry with the
+call-free block executor, and writes the result to `dst` (`none` discards
+it). The callee runs through `execBlockFrom`, which stalls on any nested
+`.call`, so calls nest at most one level deep: recursion and mutual recursion
+return `none`, exactly the fragment §3 admits. The callee shares the caller's
+store, but store effects do not propagate back (`execBlockFrom` returns only
+the value); the fragment's call discipline is value-passing.
+
+The agreement lemmas say the new executors coincide with the program-aware
+ones on call-free code — the hypothesis C8c will carry when the stage's
+statements are restated for calls. -/
+
+/-- Find a function by name. -/
+def findFunc (prog : Program) (fn : FnId) : Option Func :=
+  prog.funcs.find? (fun f => f.name == fn)
+
+/-- A call reads this instruction. -/
+def Instr.isCall : Instr → Bool
+  | .call _ _ _ => true
+  | _ => false
+
+/-- Bind actuals to formals over a fresh activation (`none` on arity
+mismatch). Parameter types are unchecked: the fragment's calls are
+value-passing and the callee's own execution checks what it uses. -/
+def bindCallArgs : List (ValId × Typ) → List Value → Option Env
+  | [], [] => some (fun _ => none)
+  | (v, _) :: ps, w :: ws =>
+      match bindCallArgs ps ws with
+      | none => none
+      | some env => some (env.update v w)
+  | _, _ => none
+
+/-- Stage C item C8b (ABI/value-passing): binding succeeds only on matching
+arity. These are the layout lemmas the scope asks for, in the value-passing
+form the fragment admits (parameter types unchecked; the callee's own
+execution checks what it uses). -/
+theorem bindCallArgs_some_length {ps : List (ValId × Typ)} {ws : List Value}
+    {env : Env} (h : bindCallArgs ps ws = some env) :
+    ps.length = ws.length := by
+  induction ps generalizing ws env with
+  | nil =>
+      cases ws with
+      | nil => rfl
+      | cons w ws => simp [bindCallArgs] at h
+  | cons p ps ih =>
+      cases ws with
+      | nil => simp [bindCallArgs] at h
+      | cons w ws =>
+          simp only [bindCallArgs] at h
+          cases hbind : bindCallArgs ps ws with
+          | none => rw [hbind] at h; exact absurd h (by simp)
+          | some env' =>
+              have := ih (env := env') hbind
+              simp only [List.length_cons] at this ⊢
+              omega
+
+theorem bindCallArgs_length_mismatch {ps : List (ValId × Typ)} {ws : List Value}
+    (h : ps.length ≠ ws.length) : bindCallArgs ps ws = none := by
+  cases hbind : bindCallArgs ps ws with
+  | none => rfl
+  | some env =>
+      exact absurd (bindCallArgs_some_length hbind) h
+
+/-- Call-aware instruction execution: `execInstrsFullFromIn` plus the `.call`
+case. The `fuel` funds the callee's block run; the instruction walk itself is
+structural on the list, so no termination proof is owed (the callee runs
+through the already-total `execBlockFrom`). -/
+def execInstrsCall (prog : Program) (fuel : Nat) (prev : Option BlockId)
+    (fenv : FullEnv) : List Instr → Option FullEnv
+  | [] => some fenv
+  | .phi dst pred src :: rest =>
+      match prev with
+      | none => execInstrsCall prog fuel prev fenv rest
+      | some p =>
+          if pred = p then
+            match fenv.env src with
+            | none => none
+            | some v =>
+                execInstrsCall prog fuel prev
+                  ⟨fenv.env.update dst v, fenv.store⟩ rest
+          else execInstrsCall prog fuel prev fenv rest
+  | .call dst fn args :: rest =>
+      match findFunc prog fn with
+      | none => none
+      | some callee =>
+          match args.mapM fenv.env with
+          | none => none
+          | some argv =>
+              match bindCallArgs callee.params argv with
+              | none => none
+              | some envCal =>
+                  match findBlock callee callee.entry with
+                  | none => none
+                  | some entry =>
+                      match execBlockFrom fuel callee none entry
+                          ⟨envCal, fenv.store⟩ with
+                      | none => none
+                      | some w =>
+                          match dst with
+                          | none => execInstrsCall prog fuel prev fenv rest
+                          | some d =>
+                              execInstrsCall prog fuel prev
+                                ⟨fenv.env.update d w, fenv.store⟩ rest
+  | i :: rest =>
+      match evalInstrFull fenv i with
+      | none => none
+      | some fenv' => execInstrsCall prog fuel prev fenv' rest
+
+/-- Call-aware block execution: `execBlockFromIn` with the call-aware
+instruction walk. -/
+def execBlockCall (prog : Program) (fuel : Nat) (f : Func)
+    (prev : Option BlockId) (b : Block) (fenv : FullEnv) : Option Value :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
+      match execInstrsCall prog (fuel + 1) prev fenv b.instrs with
+      | none => none
+      | some fenv' =>
+          match b.terminator with
+          | .return_ v => fenv'.env v
+          | .goto t =>
+              match findBlock f t with
+              | some b' => execBlockCall prog fuel f (some b.id) b' fenv'
+              | none => none
+          | .branch cond tt ff =>
+              match fenv'.boolOf cond with
+              | some true =>
+                  match findBlock f tt with
+                  | some b' => execBlockCall prog fuel f (some b.id) b' fenv'
+                  | none => none
+              | some false =>
+                  match findBlock f ff with
+                  | some b' => execBlockCall prog fuel f (some b.id) b' fenv'
+                  | none => none
+              | none => none
+          | .switch _ _ _ => none
+
+/-- Call-aware entry dispatch. -/
+def execFuncCall (prog : Program) (fuel : Nat) (f : Func)
+    (fenv : FullEnv) : Option Value :=
+  match findBlock f f.entry with
+  | some b => execBlockCall prog fuel f none b fenv
+  | none => none
+
+/-- On call-free code the new walk is the program-aware one. -/
+theorem execInstrsCall_of_noCall (prog : Program) (fuel : Nat)
+    (prev : Option BlockId) (fenv : FullEnv) (is : List Instr)
+    (hno : ∀ i ∈ is, i.isCall = false) :
+    execInstrsCall prog fuel prev fenv is =
+      execInstrsFullFromIn prog prev fenv is := by
+  induction is generalizing fenv with
+  | nil => rfl
+  | cons i rest ih =>
+      have hi : i.isCall = false := hno i (List.mem_cons.mpr (Or.inl rfl))
+      have hrest : ∀ j ∈ rest, j.isCall = false := by
+        intro j hj
+        exact hno j (List.mem_cons_of_mem _ hj)
+      cases i with
+      | phi dst pred src =>
+          cases prev with
+          | none => exact ih fenv hrest
+          | some p =>
+              by_cases hp : pred = p
+              · subst hp
+                cases hsrc : fenv.env src with
+                | none => simp [execInstrsCall, execInstrsFullFromIn, hsrc]
+                | some v =>
+                    simp [execInstrsCall, execInstrsFullFromIn, hsrc,
+                      ih _ hrest]
+              · simp [execInstrsCall, execInstrsFullFromIn, hp, ih _ hrest]
+      | call dst fn args =>
+          simp [Instr.isCall] at hi
+      | _ =>
+          simp only [execInstrsCall, execInstrsFullFromIn]
+          split
+          · rfl
+          · rename_i fenv' _
+            rw [ih fenv' hrest]
+
+/-- On call-free functions the new block walk is the program-aware one. -/
+theorem execBlockCall_eq (prog : Program) (fuel : Nat) (f : Func)
+    (prev : Option BlockId) (b : Block) (fenv : FullEnv)
+    (hno : ∀ b ∈ f.blocks, ∀ i ∈ b.instrs, i.isCall = false) :
+    b ∈ f.blocks →
+    execBlockCall prog fuel f prev b fenv =
+      execBlockFromIn prog fuel f prev b fenv := by
+  intro hb
+  induction fuel generalizing prev b fenv with
+  | zero => rfl
+  | succ fuel ih =>
+      have key : ∀ (prev : Option BlockId) (b : Block) (fenv : FullEnv),
+          b ∈ f.blocks →
+          execBlockCall prog (fuel + 1) f prev b fenv =
+            execBlockFromIn prog (fuel + 1) f prev b fenv := by
+        intro prev b fenv hb
+        rw [execBlockCall, execBlockFromIn,
+          execInstrsCall_of_noCall prog (fuel + 1) prev fenv b.instrs
+            (hno b hb)]
+        cases hpre : execInstrsFullFromIn prog prev fenv b.instrs with
+        | none => rfl
+        | some fenv' =>
+            cases ht : b.terminator with
+            | return_ v => rfl
+            | goto t =>
+                dsimp only []
+                cases hgt : findBlock f t with
+                | some bt =>
+                    dsimp only []
+                    exact ih _ _ _ (List.mem_of_find?_eq_some hgt)
+                | none =>
+                    dsimp only []
+            | branch cond tt ff =>
+                dsimp only []
+                cases hbb : fenv'.boolOf cond with
+                | some b =>
+                    cases b with
+                    | true =>
+                        dsimp only []
+                        cases hbt : findBlock f tt with
+                        | some bt =>
+                            dsimp only []
+                            exact ih _ _ _
+                              (List.mem_of_find?_eq_some hbt)
+                        | none =>
+                            dsimp only []
+                    | false =>
+                        dsimp only []
+                        cases hbf : findBlock f ff with
+                        | some bf =>
+                            dsimp only []
+                            exact ih _ _ _
+                              (List.mem_of_find?_eq_some hbf)
+                        | none =>
+                            dsimp only []
+                | none =>
+                    dsimp only []
+            | switch sc tr df => rfl
+      exact key prev b fenv hb
+
+/-- Entry dispatch agrees on call-free functions. -/
+theorem execFuncCall_eq (prog : Program) (fuel : Nat) (f : Func)
+    (fenv : FullEnv)
+    (hno : ∀ b ∈ f.blocks, ∀ i ∈ b.instrs, i.isCall = false) :
+    execFuncCall prog fuel f fenv = execFuncIn prog fuel f fenv := by
+  rw [execFuncCall, execFuncIn]
+  split
+  · rename_i b hfind
+    exact execBlockCall_eq prog fuel f none b fenv hno
+      (List.mem_of_find?_eq_some hfind)
+  · rfl
+
 end Morph.MIR
 

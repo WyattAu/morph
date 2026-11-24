@@ -142,6 +142,96 @@ def blockEncode (b : Morph.MIR.Block) : Option Func :=
 @[simp] theorem instrEncode_load (dst loc : Nat) (cap : Capability) :
     instrEncode (.load dst loc cap) = none := rfl
 
+/-- Stage C item C8b: `call` has no CLIF encoding in this subset. The target
+cannot name a call (there is no `Instr.call`, by design — it would break every
+Stage B match), so the encoder refuses it and no call-bearing block reaches
+the target. The call/sig model itself lives additively in `Morph.ClifTarget`
+(`Sig`/`CFunc`/`bindCArgs`/`runCallee`), with the value-passing bridge below. -/
+@[simp] theorem instrEncode_call (dst : Option Nat) (fn : String)
+    (args : List Nat) : instrEncode (.call dst fn args) = none := rfl
+
+/-- Encoder success implies the list is call-free. -/
+theorem instrEncodes_some_noCall {is : List Morph.MIR.Instr}
+    {cs : List Instr} (h : instrEncodes is = some cs) :
+    ∀ dst fn args, Morph.MIR.Instr.call dst fn args ∉ is := by
+  induction is generalizing cs with
+  | nil =>
+      intro dst fn args hmem
+      exact absurd hmem (by simp)
+  | cons i rest ih =>
+      intro dst fn args hmem
+      rw [instrEncodes_cons] at h
+      obtain ⟨c, cs', henc, hrest, rfl⟩ := h
+      simp only [List.mem_cons] at hmem
+      rcases hmem with rfl | hmem
+      · simp [instrEncode_call] at henc
+      · exact ih hrest dst fn args hmem
+
+/-- Any instruction list containing a `call` is refused by the encoder. -/
+theorem instrEncodes_of_hasCall {is : List Morph.MIR.Instr}
+    (h : ∃ dst fn args, Morph.MIR.Instr.call dst fn args ∈ is) :
+    instrEncodes is = none := by
+  cases henc : instrEncodes is with
+  | none => rfl
+  | some cs =>
+      obtain ⟨dst, fn, args, hmem⟩ := h
+      exact absurd hmem
+        (instrEncodes_some_noCall henc dst fn args)
+
+/-! ## Value-passing bridge (Stage C, item C8 remainder)
+
+`MIR.bindCallArgs` binds actuals to `(register, type)` formals with
+`MIR.Env.update`; `bindCArgs` binds the same values to the signature's
+registers with `Clif.Env.set`. When the formal registers are the signature
+(`ps.map Prod.fst = rs`), both succeed on the same arguments to the same
+environment — the ABI/layout correspondence the call simulation is stated
+over. The two register files are definitionally one (`Nat → Option Value`),
+so the conclusion is function equality, via `update_eq_set`. -/
+
+/-- The MIR and CLIF binders agree when the formals name the signature. -/
+theorem bindCallArgs_bindCArgs_agree {ps : List (Morph.MIR.ValId × Typ)}
+    {rs : List Reg} {ws : List Value} (hregs : ps.map Prod.fst = rs)
+    {menv : Morph.MIR.Env} {cenv : Env}
+    (hm : Morph.MIR.bindCallArgs ps ws = some menv)
+    (hc : bindCArgs rs ws = some cenv) :
+    menv = cenv := by
+  induction ps generalizing rs ws menv cenv with
+  | nil =>
+      cases rs with
+      | nil =>
+          cases ws with
+          | nil =>
+              simp only [Morph.MIR.bindCallArgs] at hm
+              simp only [bindCArgs] at hc
+              obtain rfl := Option.some.inj hm
+              obtain rfl := Option.some.inj hc
+              rfl
+          | cons w ws => simp [Morph.MIR.bindCallArgs] at hm
+      | cons r rs => simp at hregs
+  | cons p ps ih =>
+      obtain ⟨v, τ⟩ := p
+      cases rs with
+      | nil => simp at hregs
+      | cons r rs =>
+          simp at hregs
+          obtain ⟨rfl, hrest⟩ := hregs
+          cases ws with
+          | nil => simp [Morph.MIR.bindCallArgs] at hm
+          | cons w ws =>
+              simp only [Morph.MIR.bindCallArgs] at hm
+              simp only [bindCArgs] at hc
+              cases hbindM : Morph.MIR.bindCallArgs ps ws with
+              | none => rw [hbindM] at hm; simp at hm
+              | some envM' =>
+                  cases hbindC : bindCArgs rs ws with
+                  | none => rw [hbindC] at hc; simp at hc
+                  | some envC' =>
+                      rw [hbindM] at hm; rw [hbindC] at hc
+                      obtain rfl := Option.some.inj hm
+                      obtain rfl := Option.some.inj hc
+                      have ihe := ih hrest hbindM hbindC
+                      rw [update_eq_set, ihe]
+
 /-! ## Per-operator agreement (B3)
 
 Each lemma states: under the fragment's hypotheses, the CLIF step produces

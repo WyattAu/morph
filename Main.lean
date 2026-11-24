@@ -41,5 +41,23 @@ def main (args : List String) : IO UInt32 := do
       | out => finish out
   | ["fmt", path] => finish (formatProgram (← IO.FS.readFile path))
   | ["doc", path] => finish (docSource (← IO.FS.readFile path))
+  | ["test", path] => do
+      let targets : List String ← try
+        do let entries ← System.FilePath.readDir path
+           let files := (entries.toList.map fun e => e.path.toString).filter
+             (·.endsWith ".hum")
+           pure (files.mergeSort (· ≤ ·))
+        catch _ => pure [path]
+      if targets.isEmpty then
+        IO.eprintln s!"no .hum test files found under {path}"
+        return 1
+      else
+        let mut results : List (String × Bool × String) := []
+        for t in targets do
+          let content ← try IO.FS.readFile t catch _ => pure ""
+          let (passed, detail) := runTestCase content
+          results := results ++ [(t, passed, detail)]
+        IO.println (formatTestReport results)
+        return if results.all fun (_, p, _) => p then 0 else 1
   | ["version"] => IO.println Morph.versionString; return 0
   | _ => IO.println usage; return 1

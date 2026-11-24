@@ -214,4 +214,111 @@ register. This is the Stage B counterpart of `MIR.execFunc`. -/
 def run (f : Func) : Option Value :=
   (runInstrs (fun _ => none) f.instrs) >>= fun env => env f.retSrc
 
+/-! ## Single-level calls (Stage C, item C8 remainder)
+
+The single-block target has no `call` instruction — adding one would break
+every Stage B match on `Instr` — so calls are modelled additively, beside the
+existing runners (the C1/C8a hedge move). A callable pairs a `Func` body with
+its signature, and the program is a name-indexed list, mirroring
+`MIR.Program`/`findFunc`. The call discipline mirrors `MIR.execFuncCall`:
+single-level only. The callee body runs through the call-free `runInstrs`, so
+a callee that itself needs a call stalls to `none`; recursion and mutual
+recursion return `none`, exactly the fragment §3 admits.
+
+A Cranelift signature declares parameter and return types; this model is
+untyped (values carry their own tags), so `Sig` is the parameter register
+list and its length is the arity check. Binding is the same shape as
+`MIR.bindCallArgs` — recurse to the end, then set on the way out — so the
+value-passing correspondence (`bindCallArgs_bindCArgs_agree` in
+`Morph.ClifLower`) is a clean induction rather than a reordering argument.
+-/
+
+/-- A CLIF signature: the parameter registers, in order. Its length is the
+arity the caller must pass. -/
+abbrev Sig := List Reg
+
+/-- A callable: a name, its signature, and a single-block body. -/
+structure CFunc where
+  name : String
+  sig : Sig
+  body : Func
+  deriving Repr, BEq
+
+/-- A CLIF call program: name-indexed callables. -/
+abbrev CProgram := List CFunc
+
+/-- Find a callable by name. -/
+def findCFunc (prog : CProgram) (fn : String) : Option CFunc :=
+  prog.find? (fun f => f.name == fn)
+
+/-- Bind argument values to the signature's registers over an empty file
+(`none` on arity mismatch). Parameter types are unchecked, as on the MIR
+side; the callee's own execution checks what it uses. -/
+def bindCArgs : Sig → List Value → Option Env
+  | [], [] => some (fun _ => none)
+  | r :: rs, v :: vs =>
+      match bindCArgs rs vs with
+      | none => none
+      | some env => some (env.set r v)
+  | _, _ => none
+
+/-- Binding succeeds only on matching arity. -/
+theorem bindCArgs_some_length {rs : Sig} {ws : List Value}
+    {env : Env} (h : bindCArgs rs ws = some env) :
+    rs.length = ws.length := by
+  induction rs generalizing ws env with
+  | nil =>
+      cases ws with
+      | nil => rfl
+      | cons w ws => simp [bindCArgs] at h
+  | cons r rs ih =>
+      cases ws with
+      | nil => simp [bindCArgs] at h
+      | cons v vs =>
+          simp only [bindCArgs] at h
+          cases hbind : bindCArgs rs vs with
+          | none => rw [hbind] at h; exact absurd h (by simp)
+          | some env' =>
+              have := ih (ws := vs) (env := env') hbind
+              simp only [List.length_cons] at this ⊢
+              omega
+
+/-- Arity mismatch fails to bind. -/
+theorem bindCArgs_length_mismatch {rs : Sig} {ws : List Value}
+    (h : rs.length ≠ ws.length) : bindCArgs rs ws = none := by
+  cases hbind : bindCArgs rs ws with
+  | none => rfl
+  | some env =>
+      exact absurd (bindCArgs_some_length hbind) h
+
+/-- Run a resolved callee: bind the arguments, run the call-free body, read
+the return register. -/
+def runCallee (cf : CFunc) (ws : List Value) : Option Value :=
+  match bindCArgs cf.sig ws with
+  | none => none
+  | some env =>
+      match runInstrs env cf.body.instrs with
+      | none => none
+      | some env' => env' cf.body.retSrc
+
+/-- Run by name: look the callee up, then run it. Unknown names stall, as on
+the MIR side (`execInstrsCall` returns `none` when `findFunc` fails). -/
+def runCall (prog : CProgram) (fn : String) (ws : List Value) : Option Value :=
+  match findCFunc prog fn with
+  | none => none
+  | some cf => runCallee cf ws
+
+/-- Unknown callees stall. -/
+theorem runCall_none_unknown (prog : CProgram) (fn : String) (ws : List Value)
+    (h : findCFunc prog fn = none) : runCall prog fn ws = none := by
+  simp [runCall, h]
+
+/-- Arity mismatches stall. -/
+theorem runCall_none_arity (prog : CProgram) (cf : CFunc) (ws : List Value)
+    (hfind : findCFunc prog cf.name = some cf)
+    (hlen : cf.sig.length ≠ ws.length) :
+    runCall prog cf.name ws = none := by
+  have hbind : bindCArgs cf.sig ws = none := bindCArgs_length_mismatch hlen
+  simp [runCall, hfind, runCallee, hbind]
+
 end Morph.Clif

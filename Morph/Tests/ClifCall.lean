@@ -1,0 +1,90 @@
+/- Copyright 2024-2025 The Morph Project Authors
+SPDX-License-Identifier: Apache-2.0 -/
+
+import Morph.ClifSimulate
+
+/-!
+# Tests for Stage C item C8: calls stop at the encoder, run in the models
+
+`Morph.MIR` executes single-level calls (`execFuncCall`, pinned in
+`Morph.Tests.MIR`), and `Morph.ClifTarget` now models them additively
+(`CFunc`/`bindCArgs`/`runCallee`/`runCall`): the single-block target has no
+`call` instruction by design, so the encoder still refuses call-bearing code
+(`instrEncodes_of_hasCall`, pinned below) while resolved callees run through
+the call-free `runInstrs`. These pins state the boundary from the target side
+plus the value-passing correspondence that ties the two binders together:
+
+* a lone `call` encodes to `none`, and any list containing one is refused;
+* call-free code still encodes (the contrast case);
+* `bindCArgs` binds on matching arity and fails on mismatch;
+* the MIR and CLIF binders agree (`bindCallArgs_bindCArgs_agree`);
+* `runCallee` runs a resolved callee, `runCall` stalls on unknown names and
+  arity mismatches, and `callee_correct` certifies the run against a `Trace`.
+-/
+
+namespace Morph.Tests.ClifCall
+
+open Morph.Clif
+open Morph.MIR
+open Morph.Core (Typ)
+
+/-- A lone `call` has no CLIF encoding. -/
+example : instrEncode (.call (some 0) "add" [0, 1]) = none := rfl
+
+/-- A list containing a `call` is refused, via the general lemma. -/
+example : instrEncodes
+    [.const 0 (.int 5), .call (some 2) "add" [0, 1]] = none := by
+  apply instrEncodes_of_hasCall
+  exact ⟨some 2, "add", [0, 1],
+    List.mem_cons_of_mem _ (List.mem_cons.mpr (Or.inl rfl))⟩
+
+/-- Call-free code still encodes: the contrast case. -/
+example : instrEncodes [.const 0 (.int 5)] =
+    some [Morph.Clif.Instr.iconst 0 5] := rfl
+
+/-- Value-passing binds on matching arity (MIR side, pinned for the pair). -/
+example : (bindCallArgs [(0, Typ.intType)] [.int 5]).isSome = true := rfl
+
+/-- Arity mismatch fails to bind (MIR side). -/
+example : bindCallArgs [(0, Typ.intType)] [] = none :=
+  bindCallArgs_length_mismatch (by decide)
+
+/-- Value-passing binds on matching arity (CLIF side). -/
+example : (bindCArgs [0] [.int 5]).isSome = true := rfl
+
+/-- Arity mismatch fails to bind (CLIF side). -/
+example : bindCArgs [0] [] = none :=
+  bindCArgs_length_mismatch (by decide)
+
+/-- The two binders agree whenever the formals name the signature. -/
+example (menv cenv)
+    (hm : bindCallArgs [(0, Typ.intType)] [.int 5] = some menv)
+    (hc : bindCArgs [0] [.int 5] = some cenv) :
+    menv = cenv :=
+  bindCallArgs_bindCArgs_agree rfl hm hc
+
+/-- A two-argument adder, as a CLIF callable. -/
+def addCF : CFunc := ⟨"add", [0, 1], ⟨[.iadd 2 0 1], 2⟩⟩
+
+/-- A resolved callee runs: `5 + 7 = 12`. -/
+example : runCallee addCF [.int 5, .int 7] = some (.int 12) := rfl
+
+/-- Unknown callees stall. -/
+example : runCall [addCF] "missing" [.int 1] = none :=
+  runCall_none_unknown _ _ _ rfl
+
+/-- Arity mismatches stall. -/
+example : runCall [addCF] "add" [.int 1] = none :=
+  runCall_none_arity [addCF] addCF [.int 1] rfl (by decide)
+
+/-- The simulation certifies the run: the same argument values drive a MIR
+`Trace` over the encoded body to the value `runCallee` returns. -/
+example : runCallee addCF [.int 5, .int 7] = some (.int 12) :=
+  callee_correct (ps := [(0, Typ.intType), (1, Typ.intType)]) (rs := [0, 1])
+    (is := [Morph.MIR.Instr.binop 2 .add 0 1 Typ.intType])
+    rfl rfl rfl rfl rfl
+    (Trace.cons (Step.add (by rfl) (by rfl) ⟨by decide, by decide⟩)
+      (Trace.nil _))
+    rfl (by rfl)
+
+end Morph.Tests.ClifCall

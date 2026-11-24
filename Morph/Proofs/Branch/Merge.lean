@@ -399,6 +399,59 @@ theorem mkMergePhis_mem_lookup {ρ ltρ leρ : List (HIR.Id × ValId)}
                     exact ⟨⟨srcT, hT⟩, ⟨srcE, hE⟩⟩
                   · exact ih hrec h
 
+/-- Merge allocation keeps every pre-branch binding: the consed pairs only
+shadow merged ids, so an old pair stays a member. The arm-exit growth
+lemma feeds this to show merged ids resolve on both arm exits. -/
+theorem mkMergePhis_mem_of_mem {ρ ltρ leρ : List (HIR.Id × ValId)}
+    {s : Nat} {predT predE : MIR.BlockId} {ids : List HIR.Id}
+    {phis : List Instr} {s' : Nat} {ρm : List (HIR.Id × ValId)}
+    {j : HIR.Id} {v : ValId}
+    (h : mkMergePhis ρ ltρ leρ s predT predE ids = some (phis, s', ρm))
+    (hmem : (j, v) ∈ ρ) : (j, v) ∈ ρm := by
+  induction ids generalizing ρ s phis s' ρm with
+  | nil =>
+      simp only [mkMergePhis] at h
+      obtain ⟨rfl, rfl, rfl⟩ := Option.some.inj h
+      exact hmem
+  | cons mid mids ih =>
+      simp only [mkMergePhis] at h
+      cases hT : rhoLookup ltρ mid with
+      | none => rw [hT] at h; simp at h
+      | some _ =>
+          rw [hT] at h
+          cases hE : rhoLookup leρ mid with
+          | none => rw [hE] at h; simp at h
+          | some _ =>
+              rw [hE] at h
+              cases hrec : mkMergePhis ρ ltρ leρ (s + 1) predT predE mids with
+              | none => rw [hrec] at h; simp at h
+              | some q =>
+                  obtain ⟨phis', s'', ρ''⟩ := q
+                  rw [hrec] at h
+                  obtain ⟨rfl, rfl, rfl⟩ := Option.some.inj h
+                  exact List.mem_cons.mpr (Or.inr (ih hrec hmem))
+
+/-- Merge allocation succeeds when both arm exits cover the merge list:
+cons past each pair of successful lookups. The top-level binding-arm
+case feeds this the arm-exit growth facts to discharge the merge decision
+on the join path. -/
+theorem mkMergePhis_of_covers {ρ ltρ leρ : List (HIR.Id × ValId)}
+    {s : Nat} {predT predE : MIR.BlockId} {mids : List HIR.Id}
+    (hlt : ∀ id ∈ mids, ∃ w, rhoLookup ltρ id = some w)
+    (hle : ∀ id ∈ mids, ∃ w, rhoLookup leρ id = some w) :
+    ∃ phis s' ρm, mkMergePhis ρ ltρ leρ s predT predE mids =
+      some (phis, s', ρm) := by
+  induction mids generalizing ρ s with
+  | nil => exact ⟨[], s, ρ, rfl⟩
+  | cons mid mids ih =>
+      obtain ⟨srcT, hT⟩ := hlt mid (List.mem_cons_self ..)
+      obtain ⟨srcE, hE⟩ := hle mid (List.mem_cons_self ..)
+      obtain ⟨phis', s'', ρ'', hrec⟩ := ih (ρ := ρ) (s := s + 1)
+        (fun id hm => hlt id (List.mem_cons_of_mem _ hm))
+        (fun id hm => hle id (List.mem_cons_of_mem _ hm))
+      exact ⟨[.phi s predT srcT, .phi s predE srcE] ++ phis', s'',
+        (mid, s) :: ρ'', by simp [mkMergePhis, hT, hE, hrec]⟩
+
 /-- Ids an arm run may rebind: `assign` targets plus `varDecl` introductions,
 through nested arm `if`s. `assignedIds` misses `varDecl` (it falls in the
 catch-all), so arms need their own measure; loop bodies keep `assignedIds`

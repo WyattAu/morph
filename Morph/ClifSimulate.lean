@@ -349,4 +349,51 @@ theorem clif_correct {instrs : List Morph.MIR.Instr} {ret : ValId} {cf : Func}
     simp only [run, hrun]
     exact hval
 
+/-! ## Call simulation (Stage C, item C8 remainder)
+
+B4's `run_simulate` starts its trace at the prologue environment; a callee
+starts its trace at the bound-argument environment instead. The two binders
+supply the two sides (`MIR.bindCallArgs` for the trace, `bindCArgs` for the
+CLIF run), and the value-passing bridge rewrites one to the other, so the
+trace does the rest. `callee_correct` is the `runCallee`-level statement: a
+call-free, encodable callee body run from the same argument values returns
+the trace's return register on both sides. The certificate discipline is
+B4's — the fragment (a range analysis) owes the `Trace`, this file says the
+certificate is enough. -/
+
+/-- A typed trace run from a bound-argument environment reaches the same
+environment on the CLIF side, when the binders agree. -/
+theorem call_simulate {is : List Morph.MIR.Instr} {cs : List Instr}
+    {ps : List (Morph.MIR.ValId × Typ)} {rs : List Reg} {ws : List Value}
+    {menv m' : Morph.MIR.Env} {cenv : Env}
+    (hregs : ps.map Prod.fst = rs)
+    (hm : Morph.MIR.bindCallArgs ps ws = some menv)
+    (hc : bindCArgs rs ws = some cenv)
+    (htr : Trace is menv m') (henc : instrEncodes is = some cs) :
+    runInstrs cenv cs = some m' := by
+  have heq : menv = cenv := bindCallArgs_bindCArgs_agree hregs hm hc
+  subst heq
+  exact run_simulate htr henc
+
+/-- A resolved callee runs to the same value on both sides. -/
+theorem callee_correct {is : List Morph.MIR.Instr} {cs : List Instr}
+    {ps : List (Morph.MIR.ValId × Typ)} {rs : List Reg} {ws : List Value}
+    {menv : Morph.MIR.Env} {cenv : Env} {m' : Morph.MIR.Env}
+    {cf : CFunc} {ret : Reg} {w : Value}
+    (hregs : ps.map Prod.fst = rs)
+    (hm : Morph.MIR.bindCallArgs ps ws = some menv)
+    (hc : bindCArgs rs ws = some cenv)
+    (hbody : cf.body = ⟨cs, ret⟩)
+    (hsig : cf.sig = rs)
+    (htr : Trace is menv m') (henc : instrEncodes is = some cs)
+    (hret : m' ret = some w) :
+    runCallee cf ws = some w := by
+  have hrun : runInstrs cenv cs = some m' :=
+    call_simulate hregs hm hc htr henc
+  have hbind : bindCArgs cf.sig ws = some cenv := by rw [hsig]; exact hc
+  have hins : cf.body.instrs = cs := by simp [hbody]
+  have hretSrc : cf.body.retSrc = ret := by simp [hbody]
+  simp only [runCallee, hbind, hins, hrun, hretSrc]
+  exact hret
+
 end Morph.Clif

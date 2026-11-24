@@ -266,4 +266,121 @@ example : execFuncFrom 1 fEntryPhi ⟨fun _ => none, Store.empty⟩ == some (.in
 example : execFuncFrom 1 fEntryPhi ⟨fun _ => none, Store.empty⟩ != none := by
   native_decide
 
+/-! ## Single-level calls (Stage C item C8a)
+
+`evalInstr` still stalls on `call` (the golden above is untouched). The
+call-aware executor runs it instead: the caller below evaluates `add(5, 7)`
+through the existing `fAdd` (`x + y`, registers 0/1 in, 2 out) and returns
+12. Everything else pins a refusal: unknown names, arity mismatch, unbound
+actuals, a callee that itself calls (single-level only, so recursion is
+`none`), while `dst = none` discards the result and runs on. -/
+
+/-- Caller: `add(5, 7)` into register 2, return it. -/
+def fCallMain : Func where
+  name := "main"
+  params := []
+  blocks := [⟨0, [.const 0 (.int 5), .const 1 (.int 7),
+    .call (some 2) "add" [0, 1]], .return_ 2⟩]
+  entry := 0
+  retType := Typ.intType
+
+def progCall : Program := ⟨[fAdd, fCallMain]⟩
+
+-- The call runs: 5 + 7 = 12.
+example : execFuncCall progCall 5 fCallMain ⟨fun _ => none, Store.empty⟩ ==
+    some (.int 12) := by
+  native_decide
+
+/-- Unknown callee: nothing to run. -/
+def fCallUnknown : Func where
+  name := "main"
+  params := []
+  blocks := [⟨0, [.const 0 (.int 5), .call (some 2) "nope" [0]], .return_ 2⟩]
+  entry := 0
+  retType := Typ.intType
+
+example : execFuncCall ⟨[fAdd, fCallUnknown]⟩ 5 fCallUnknown
+    ⟨fun _ => none, Store.empty⟩ == none := by
+  native_decide
+
+/-- Arity mismatch: one actual for two formals. -/
+def fCallArity : Func where
+  name := "main"
+  params := []
+  blocks := [⟨0, [.const 0 (.int 5), .call (some 2) "add" [0]], .return_ 2⟩]
+  entry := 0
+  retType := Typ.intType
+
+example : execFuncCall ⟨[fAdd, fCallArity]⟩ 5 fCallArity
+    ⟨fun _ => none, Store.empty⟩ == none := by
+  native_decide
+
+/-- Unbound actual: register 9 is never defined. -/
+def fCallUnbound : Func where
+  name := "main"
+  params := []
+  blocks := [⟨0, [.const 0 (.int 5), .call (some 2) "add" [0, 9]],
+    .return_ 2⟩]
+  entry := 0
+  retType := Typ.intType
+
+example : execFuncCall ⟨[fAdd, fCallUnbound]⟩ 5 fCallUnbound
+    ⟨fun _ => none, Store.empty⟩ == none := by
+  native_decide
+
+/-- A callee that itself calls stalls: single-level only, so direct
+recursion and mutual recursion are `none`, not divergence. -/
+def fCallMid : Func where
+  name := "mid"
+  params := [(0, Typ.intType), (1, Typ.intType)]
+  blocks := [⟨0, [.call (some 2) "add" [0, 1]], .return_ 2⟩]
+  entry := 0
+  retType := Typ.intType
+
+def fCallViaMid : Func where
+  name := "main"
+  params := []
+  blocks := [⟨0, [.const 0 (.int 5), .const 1 (.int 7),
+    .call (some 2) "mid" [0, 1]], .return_ 2⟩]
+  entry := 0
+  retType := Typ.intType
+
+example : execFuncCall ⟨[fAdd, fCallMid, fCallViaMid]⟩ 9 fCallViaMid
+    ⟨fun _ => none, Store.empty⟩ == none := by
+  native_decide
+
+/-- `dst = none` discards the result and runs on. -/
+def fCallDiscard : Func where
+  name := "main"
+  params := []
+  blocks := [⟨0, [.const 0 (.int 5), .const 1 (.int 7),
+    .call none "add" [0, 1], .const 3 (.int 42)], .return_ 3⟩]
+  entry := 0
+  retType := Typ.intType
+
+example : execFuncCall ⟨[fAdd, fCallDiscard]⟩ 5 fCallDiscard
+    ⟨fun _ => none, Store.empty⟩ == some (.int 42) := by
+  native_decide
+
+/-- Call-free code agrees with the program-aware executor, computationally:
+the diamond returns 10 under both. -/
+example : execFuncCall ⟨[fDiamond]⟩ 3 fDiamond
+    ⟨fun _ => none, Store.empty⟩ ==
+    execFuncIn ⟨[fDiamond]⟩ 3 fDiamond ⟨fun _ => none, Store.empty⟩ := by
+  native_decide
+
+/-- Lookup and binding pins. -/
+example : findFunc progCall "add" == some fAdd := by native_decide
+
+example : findFunc progCall "nope" == none := by native_decide
+
+example : (bindCallArgs [(0, Typ.intType)] [.int 5]).map (fun env => env 0) ==
+    some (some (.int 5)) := by
+  native_decide
+
+example : (bindCallArgs [(0, Typ.intType)] []).isNone == true := by
+  native_decide
+
+example : (bindCallArgs [] [.int 5]).isNone == true := by native_decide
+
 end Morph.Tests.MIR
