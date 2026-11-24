@@ -1180,4 +1180,183 @@ theorem callee_agree {params : List HIR.Id} {body : HIR.Expr}
   simp only []
   exact hwreg
 
+/-! ## Call-aware composition
+
+The statement induction (`lowerCallStmts_total`, next) composes three
+facts: lowered argument code runs under the call-aware executor exactly
+as under the plain one (it is pure), instruction lists split
+sequentially, and reversed actuals map to reversed values. The single
+`.call` step is isolated last, so the induction only rewrites with it.
+-/
+
+/-- `mapM` success survives reversal, pointwise. -/
+theorem mapM_reverse_some {α β : Type} {f : α → Option β} {l : List α}
+    {r : List β} (h : l.mapM f = some r) :
+    l.reverse.mapM f = some r.reverse := by
+  have hlen : l.length = r.length := (mapM_some_length h).symm
+  apply mapM_of_pointwise (l := l.reverse) (r := r.reverse)
+    (by simp [hlen])
+  intro j a ha
+  obtain ⟨hltRev, _⟩ := List.getElem?_eq_some_iff.mp ha
+  have hlenRev : l.reverse.length = l.length := by simp
+  have hjL : j < l.length := hlenRev ▸ hltRev
+  have hLa : l[l.length - 1 - j]? = some a := by
+    have hrev := List.getElem?_reverse hjL
+    have hsymm := hrev.symm.trans ha
+    simpa using hsymm
+  obtain ⟨b, hbr, hfb⟩ := mapM_pointwise f l r h _ _ hLa
+  have hjR : j < r.length := hlen ▸ hjL
+  have hrIdx : l.length - 1 - j = r.length - 1 - j := by rw [hlen]
+  rw [hrIdx] at hbr
+  have hRev := List.getElem?_reverse hjR
+  exact ⟨b, by rw [hRev]; exact hbr, hfb⟩
+
+/-- Sequential composition for the call-aware walk: running `l₁ ++ l₂`
+is running `l₁`, then `l₂`. Mirrors `execInstrsFull_append`; the `.call`
+arm threads its updated environment into the induction hypothesis, every
+other arm mirrors `execInstrsCall_of_noCall`. -/
+theorem execInstrsCall_append (prog : MIR.Program) (fuel : Nat)
+    (prev : Option MIR.BlockId) (fenv : FullEnv) (l₁ l₂ : List Instr) :
+    execInstrsCall prog fuel prev fenv (l₁ ++ l₂) =
+      match execInstrsCall prog fuel prev fenv l₁ with
+      | none => none
+      | some fenv' => execInstrsCall prog fuel prev fenv' l₂ := by
+  induction l₁ generalizing fenv with
+  | nil => simp [execInstrsCall]
+  | cons i rest ih =>
+      simp only [List.cons_append]
+      cases i with
+      | phi dst pred src =>
+          cases prev with
+          | none =>
+              simp only [execInstrsCall]
+              exact ih fenv
+          | some p =>
+              by_cases hp : pred = p
+              · subst hp
+                cases hsrc : fenv.env src with
+                | none => simp [execInstrsCall, hsrc]
+                | some v => simp [execInstrsCall, hsrc, ih]
+              · simp [execInstrsCall, hp, ih]
+      | call dst fn args =>
+          cases hfind : findFunc prog fn with
+          | none =>
+              simp [execInstrsCall, hfind]
+          | some callee =>
+              cases hargs : args.mapM fenv.env with
+              | none =>
+                  simp [execInstrsCall, hfind, hargs]
+              | some argv =>
+                  cases hbind : bindCallArgs callee.params argv with
+                  | none =>
+                      simp [execInstrsCall, hfind, hargs, hbind]
+                  | some envCal =>
+                      cases hentry : findBlock callee callee.entry with
+                      | none =>
+                          simp [execInstrsCall, hfind, hargs, hbind, hentry]
+                      | some entry =>
+                          cases hrun : execBlockFrom fuel callee none entry
+                              ⟨envCal, fenv.store⟩ with
+                          | none =>
+                              simp [execInstrsCall, hfind, hargs, hbind, hentry,
+                                hrun]
+                          | some w =>
+                              cases dst with
+                              | none =>
+                                  simp [execInstrsCall, hfind, hargs, hbind,
+                                    hentry, hrun, ih]
+                              | some d =>
+                                  simp [execInstrsCall, hfind, hargs, hbind,
+                                    hentry, hrun, ih]
+      | const dst v =>
+          simp only [execInstrsCall]
+          cases _ : evalInstrFull fenv (.const dst v) with
+          | none => rfl
+          | some fenv1 => exact ih fenv1
+      | copy dst src =>
+          simp only [execInstrsCall]
+          cases _ : evalInstrFull fenv (.copy dst src) with
+          | none => rfl
+          | some fenv1 => exact ih fenv1
+      | unop dst op src τ =>
+          simp only [execInstrsCall]
+          cases _ : evalInstrFull fenv (.unop dst op src τ) with
+          | none => rfl
+          | some fenv1 => exact ih fenv1
+      | binop dst op l r τ =>
+          simp only [execInstrsCall]
+          cases _ : evalInstrFull fenv (.binop dst op l r τ) with
+          | none => rfl
+          | some fenv1 => exact ih fenv1
+      | load dst loc cap =>
+          simp only [execInstrsCall]
+          cases _ : evalInstrFull fenv (.load dst loc cap) with
+          | none => rfl
+          | some fenv1 => exact ih fenv1
+      | store loc src cap =>
+          simp only [execInstrsCall]
+          cases _ : evalInstrFull fenv (.store loc src cap) with
+          | none => rfl
+          | some fenv1 => exact ih fenv1
+      | alloc dst cap τ =>
+          simp only [execInstrsCall]
+          cases _ : evalInstrFull fenv (.alloc dst cap τ) with
+          | none => rfl
+          | some fenv1 => exact ih fenv1
+      | free loc =>
+          simp only [execInstrsCall]
+          cases _ : evalInstrFull fenv (.free loc) with
+          | none => rfl
+          | some fenv1 => exact ih fenv1
+      | allocClosure dst fn captures =>
+          simp only [execInstrsCall]
+          cases _ : evalInstrFull fenv (.allocClosure dst fn captures) with
+          | none => rfl
+          | some fenv1 => exact ih fenv1
+      | callClosure dst clo args =>
+          simp only [execInstrsCall]
+          cases _ : evalInstrFull fenv (.callClosure dst clo args) with
+          | none => rfl
+          | some fenv1 => exact ih fenv1
+
+/-- Pure prefixes run identically under both executors: the shape the
+`lowerArgs` prefix of every call arm uses. -/
+theorem execInstrsCall_pure_prefix (prog : MIR.Program) (fuel : Nat)
+    (fenv : FullEnv) (ias : List Instr)
+    (hpure : ∀ i ∈ ias, IsPure i) (fenv1 : FullEnv)
+    (hexec : execInstrsFull fenv ias = some fenv1) :
+    execInstrsCall prog fuel none fenv ias = some fenv1 := by
+  have hno : ∀ i ∈ ias, i.isCall = false :=
+    fun i hi => IsPure_noCall (hpure i hi)
+  have h1 : execInstrsCall prog fuel none fenv ias =
+      execInstrsFullFromIn prog none fenv ias :=
+    execInstrsCall_of_noCall prog fuel none fenv ias hno
+  rw [h1, execInstrsFullFromIn_eq]
+  have h2 : execInstrsFullFrom none fenv ias = execInstrsFull fenv ias :=
+    execInstrsFullFrom_none_of_pure fenv ias hpure
+  rw [h2, hexec]
+
+/-- One `.call` step, isolated: with the callee resolved, actuals read,
+arguments bound, entry found, and the call-free body run, the instruction
+writes the result (or discards it for `dst = none`). -/
+theorem execInstrsCall_call_step (prog : MIR.Program) (fuel : Nat)
+    (prev : Option MIR.BlockId) (fenv1 : FullEnv) (fn : FnId)
+    (argRegs : List ValId) (dst : Option ValId)
+    (callee : MIR.Func) (argv : List Value) (envCal : MIR.Env)
+    (entry : MIR.Block) (w : Value)
+    (hfind : findFunc prog fn = some callee)
+    (hargs : argRegs.mapM fenv1.env = some argv)
+    (hbind : bindCallArgs callee.params argv = some envCal)
+    (hentry : findBlock callee callee.entry = some entry)
+    (hrun : execBlockFrom fuel callee none entry ⟨envCal, fenv1.store⟩ =
+      some w) :
+    execInstrsCall prog fuel prev fenv1 [.call dst fn argRegs] =
+      match dst with
+      | none => some fenv1
+      | some d => some ⟨fenv1.env.update d w, fenv1.store⟩ := by
+  simp only [execInstrsCall, hfind, hargs, hbind, hentry, hrun]
+  cases dst with
+  | none => rfl
+  | some d => rfl
+
 end Morph.Proofs.Call
