@@ -1,8 +1,10 @@
 # Stage C scope — control flow, calls, and `morph test`
 
-Status: design record, loop 154 (2026-11-08); **revised loop 159** after C1–C2b
-landed and the CLIF block model was re-read against Cranelift's actual surface.
-C1–C2b are in the tree; C2c and C3–C9 are not. Follows `docs/STAGEB-SCOPE.md`
+Status: design record, loop 154 (2026-11-08); **revised loops 159–187** as
+items landed and the CLIF block model was re-read against Cranelift's actual
+surface. C1–C7, C8 (HIR→MIR bridge + MIR executor), and C9 are in the tree;
+open is only the C8 CLIF `call` encoder (the target side models calls and
+refuses to encode them — see the C8 row). Follows `docs/STAGEB-SCOPE.md`
 (closed, B1–B9) and the staging in `docs/ERA2-BACKEND-SCOPE.md`. Governed by
 ADR-032 (Cranelift, verified lowering) and D-4 (`docs/STAGEA-PREP-125.md` §1,
 confirmed as a decision in ADR-032 §Status). Moves no gates: G-1, G-3, G-7
@@ -140,8 +142,12 @@ implementation still move in lockstep; they just have two names instead of
 one. `StraightStmts` and every projection over it are untouched.
 3. **Fuel derivation** (§1.5, §4.4). A bound lemma over `BranchStmts` —
 "a program with `k` statement-level steps executes within `blockBound k`
-blocks" — proved once against the executor, so C3 and C7 cite it instead of
-redoing arithmetic.
+blocks" — **landed** as fuel-parameterized totality
+(`lowerStmtsCFG_total_bound` in `Morph/Proofs/Branch/TopLevel.lean`:
+`F ≥ blockBound fuelB ss → fuelH ≤ fuelB` implies executor success), so C3
+and C7 cite `blockBound` instead of redoing arithmetic. `blockBound` /
+`armBlockBound` live in `Morph/Proofs/Branch/Fuel.lean` with their equation
+lemmas.
 
 ## 3. The Stage C subset (the D-4 contract for control flow)
 
@@ -255,7 +261,7 @@ that the CLIF-side theorem is a statement about the artifact.
 `2 * fuelH + 3` (§4.2) is right for `if` — entry, one arm, join, so three
 blocks traversed per oracle step — and wrong for `while`, which traverses a
 block per iteration. Rather than repair the constant at C7, the bound is a
-computable function, **landed loop 166** in `Morph/HIRToMIRBranch.lean`:
+computable function, **landed loop 166** (now `Morph/Proofs/Branch/Fuel.lean`, re-exported through `Morph/HIRToMIRBranch.lean`):
 
 ```lean
 def armBlockBound (fuel : Nat) : List HIR.Stmt → Nat   -- extra blocks; 3 per if, arms by max
@@ -274,11 +280,13 @@ Two decisions in that signature, both about C7:
   statement from having to be restated when its `whileLoop` case lands — the
   same move as `MIR.execFuncIn`'s program parameter.
 
-The bound lemma C3 owes — "blocks traversed ≤ `blockBound fuelH stmts`" — is
-stated against the executor and proved once, by the same induction as C3's main
-theorem; it is not yet in the tree. What is in the tree is the function, its
-equations, and three pins in `Morph/HIRToMIRBranch.lean` (`ifProg` = 4,
-`nestedThenProg` = 7, an `if`-free body = 1).
+The bound lemma C3 owed — "blocks traversed ≤ `blockBound fuelH stmts`" —
+**landed** as fuel-parameterized totality: `lowerStmtsCFG_total_bound`
+states executor success for every `F ≥ blockBound fuelB ss` with
+`fuelH ≤ fuelB`, proved by the same induction as C3's main theorem; the
+program exit `lowerProgramCFG_correct` instantiates it at
+`blockBound 1024`. The equation pins (`ifProg` = 4, `nestedThenProg` = 7,
+an `if`-free body = 1) are beside the function in `Fuel.lean`.
 
 Note for proofs, not for callers: `HIR.Stmt`/`HIR.Expr` are mutually recursive,
 so `armBlockBound` recurses through the **mutual** recursor and Lean compiles it
@@ -295,14 +303,14 @@ as well-founded recursion. `rfl` does not see the equations and `simp
 | C2a | Fragment predicate: `BranchStmts`/`BranchStep` (`Morph/HIRToMIRBranch.lean`), superset embedding from `StraightStmts`, boundary examples | pure Lean — **done, loop 157** | C1 |
 | C2b | `lowerStmtsCFG`/`lowerProgramCFG`: arm blocks + join, value phi per edge, `ArmStmts` refusal of binding arms | pure Lean — **done, loop 158** | C2a |
 | C2c | Binding merges: `varDecl`/`assign` inside top-level arms, one phi per merged binding at the join — **done**: `bindArm_total`, the `bindArm_if` workers, program corollaries, and value goldens for a fresh-`varDecl` arm and an `assign`-merge arm in `Morph/Tests/Driver.lean` | pure Lean + goldens | C2b |
-| C3 | `lowerStmts_if_correct` (§4.2), `blockBound` + its bound lemma (§4.4), and the `if` case of the preservation bridge | pure Lean | C1, C2 |
+| C3 | `lowerStmts_if_correct` (§4.2), `blockBound` + its bound lemma (§4.4), and the `if` case of the preservation bridge — **done**: fuel-parameterized totality `lowerStmtsCFG_total_bound`, the binding-arm `if` closure `lowerStmtsCFG_bindArm_if_closed_bound`, and the program exit `lowerProgramCFG_correct` at `blockBound 1024` fuel (all `Morph/Proofs/Branch/TopLevel.lean`; `if` worker in `IfTotal.lean`, arm leaves in `ArmTotal`/`ArmBroke`/`ArmContinued`/`BindArm.lean`) | pure Lean | C1, C2 |
 | C4a | CLIF block model: `Term` with arguments, `Block` with params, block list, `ClifStepRel`, `run` over blocks, single-block base case reproved through the new surface — **done, loop 160** (`Morph/ClifBlocks.lean`); `ClifStepRel` is deferred to C4b, which is where it is used | pure Lean | — (parallel with C1–C3) |
 | C4b | **Multi-block MIR→CLIF correctness** — the Stage C counterpart of B4: a block-level MIR trace plus the encoder yields a `Clif.run` that returns the same value; contains the phi↔block-argument lemma. Encoder **done, loop 160** (`encodeFunc` in `Morph/ClifCfgEncode.lean`: phi↔parameter, per-edge arguments, refusals); binding half **done, loop 162** (`Morph/ClifCfgCorrect.lean`: `bindParams_nodup_mem`, `bindParams_not_mem`, `edgeArgs_length`, `paramsOf_nodup`); simulation half **started, loop 163** (`Morph/ClifCfgSimulate.lean`: `trace_runInstrs_agree`, `argsFor_get?`, `evalArgs_get?`, `bindParams_get?`, `params_bound_get?`); MIR phi fold **done, loop 164** (`phiFoldEnv`, `execInstrsFullFrom_split`, `splitPhis_reconstruct`); the fold↔binding correspondence **done, loop 167** (`phiFoldEnv_not_dst`, `phiFoldEnv_get`, `edgeArg?_find`, `params_hold_fold`, `params_hold_fold_of_checks`, with the hypotheses discharged by `noDupPairs_huniq`/`noPhiChain_hsep` and a new `noPhiChain` gate in `encodeBlock` refusing same-edge read-after-write, pinned on `ifLtProg` by `native_decide`); the terminator lemma **done, loop 168** (`encodeTerm_return/goto/branch`, `runTerm_return_agree`, `boolOf_asBool_agree`, `agrees_after_edge` + `_of_checks`, `hreg_of_agree`); the body bridge **done, loop 170** (`instrEncodes_noPhi`, `execInstrsFullFrom_of_noPhi`, `execInstrsFullFrom_none_phis`, `block_exec_of_cert`, `encodeBlock_inv`); the path certificate + MIR realization **done, loop 171** (`BlockStep`, `BlockPath`, `pathFuel`, `blockPath_exec`; `Step.const_unit` for the entry prologue); the CLIF realization + composed `cfg_correct` **done, loop 172** (`blockPath_runFuel`, `cfg_correct`; `encodeBlockAt` names the entry-strip once) — **C4b closed** | pure Lean | C4a |
 | C5 | Multi-block `emitFunc` + `lowerProgram` extended to CFGs; golden artifacts for one `if` function — **done, loops 161/173**: `Cfg.funcText` renders blocks/parameters/edge arguments, `emitCfg` composes with `encodeFunc`, and `morph build` falls through to the CFG path when the straight-line lowering refuses. Straight-line programs keep the proved Stage B path; the one-`if` text golden plus the refusal goldens (`while`, literal bool condition) are pinned in `Morph/Tests/Driver.lean`; the binding-arm programs C2c admits are pinned as value goldens beside them | Lean + goldens | C2, C4a |
 | C6 | Corpus: branch programs in `tests/codegen` (`if` with a value, `if` with a `return`, nested `if`), `native.sh` rows; refusal rows in `rejects.tsv` for loop-body declarations and `matchStmt` — **done, loop 173; refusal row updated when C2c landed**: 4 branch rows (`if_true`, `if_false`, `if_nested`, `if_return`) + 9 reject rows (the 7 stage-B gates plus the Stage C branch-fragment refusals `loop_body_decl` and `match_stmt`, a match on a literal that clears HIR but has no branch lowering); 22/22 `check.sh`, 13/13 native | harness | C5, C4b |
-| C7 | `whileLoop`/`break`/`continue`/`doWhile`: loop-carried phi, bound-dependent fuel, preservation | pure Lean | C3, C4b |
+| C7 | `whileLoop`/`break`/`continue`/`doWhile`: loop-carried phi, bound-dependent fuel, preservation — **done**: `whileLoop_correct` (`Morph/Proofs/Branch/WhileLoop.lean`, via `header_loop_correct` in `Spine.lean`), cited by the `Total.lean` worker so `lowerProgramCFG_correct` covers loop programs; `break`/`continue` paths in the `ArmBroke`/`ArmContinued`/`LoopBodyRun` leaves; `doWhile` needs no HIR case (refused at HIR lowering — at-least-once has no HIR counterpart, `toHIRStmt_doWhile_none`) | pure Lean | C3, C4b |
 | C8 | `Instr.call`: program-in-executor semantics, single-function calls, ABI/layout lemmas, CLIF `call`/`sig` — HIR side **done, loop 186** (`Morph/HIRFunc.lean` fragment + lowering; `Morph/Proofs/Call/`: the app-unfold lemma and the `add`/`main` end-to-end pin, oracle and executor both returning 3); C8c bridge **done, loop 187** in `Morph/Proofs/Call/Correct.lean`: table correspondence (`LamEnv`, `findFunc_lowerCallProg`), binder agreement (`relEnv_appBinds_bindCallArgs`), callee agreement (`callee_agree`), call-aware composition (`execInstrsCall_append`, `execInstrsCall_pure_prefix`, `mapM_reverse_some`, `execInstrsCall_call_step`), statement induction (`lower_isStraight`, `lowerCallStmts_total`), and the program-level exit (`lowerCallProg_correct` through `execFuncCall` entry dispatch, zero sorry); MIR executor **done**, CLIF encoder in flight | Lean + ADR | C4b |
-| C9 | `morph test`: run an in-source suite through `runHIRStmts` and report pass/fail per case; no new semantics — **deferred to Stage C exit (loop 165)** | Lean CLI | — (independent, but sequenced last by maintainer direction) |
+| C9 | `morph test`: run an in-source suite through `runHIRStmts` and report pass/fail per case; no new semantics — **done**: `runTestCase`/`formatTestReport` in `Morph/Driver.lean`, `test <file\|dir>` wired in `Main.lean` with usage row, goldens in `Morph/Tests/Driver.lean`, verified 13/13 through the CLI on `tests/codegen/corpus` | Lean CLI | — (independent, but sequenced last by maintainer direction) |
 
 C9 is technically independent — `morph test` is a driver command over the
 existing oracle, so it *could* ship while C1–C3 are in progress — but it is
