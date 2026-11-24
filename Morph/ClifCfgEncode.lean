@@ -6,6 +6,7 @@ import Morph.ClifBlocks
 import Morph.ClifLower
 import Morph.ClifRender
 import Morph.HIRToMIRBranch
+import Morph.Proofs.Branch.Evidence
 
 /-!
 # Stage C items C4b/C5: encoding a MIR CFG into the CLIF block model
@@ -35,7 +36,7 @@ entry block only; a `.const 0 (.int _)` is a real definition and is left alone.
 ## What this file does and does not prove
 
 It is the encoder plus evidence. The four `native_decide` facts run real
-lowerings (`Morph/HIRToMIRBranch.lean`'s `ifProg`, `ifProgFalse`, `ifThenAdd`)
+lowerings (`Morph/Proofs/Branch/Evidence.lean`'s `ifProg`, `ifProgFalse`, `ifThenAdd`)
 through `Cfg.run` — HIR statement list → lowerer → CLIF block model → value —
 and two refusals (a `switch`, a non-leading phi). The general statement, that
 *any* MIR run through the edge-aware executor is reproduced by the encoded
