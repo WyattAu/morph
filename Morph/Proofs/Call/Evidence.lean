@@ -63,7 +63,7 @@ def addMIR : MIR.Func :=
 def addMainMIR : MIR.Func :=
   ⟨"main", [],
     [⟨0, [.const 0 .unit, .const 1 (.int 1), .const 2 (.int 2),
-      .call (some 3) "add" [1, 2]], .return_ 3⟩],
+      .call (some 3) "add" [2, 1]], .return_ 3⟩],
     0, .unitType⟩
 
 /-- `lowerCallProg` produces exactly the two-function program. -/
@@ -110,7 +110,7 @@ trailing addition reads. -/
 def addVarMainMIR : MIR.Func :=
   ⟨"main", [],
     [⟨0, [.const 0 .unit, .const 1 (.int 1), .const 2 (.int 2),
-      .call (some 3) "add" [1, 2], .const 4 (.int 10),
+      .call (some 3) "add" [2, 1], .const 4 (.int 10),
       .binop 5 .add 3 4 .intType], .return_ 5⟩],
     0, .unitType⟩
 
@@ -140,7 +140,7 @@ def addAssignProg : Morph.HIRFunc.CallProg :=
 def addAssignMainMIR : MIR.Func :=
   ⟨"main", [],
     [⟨0, [.const 0 .unit, .const 1 (.int 0), .const 2 (.int 3),
-      .const 3 (.int 4), .call (some 4) "add" [2, 3]], .return_ 4⟩],
+      .const 3 (.int 4), .call (some 4) "add" [3, 2]], .return_ 4⟩],
     0, .unitType⟩
 
 example : lowerCallProg addAssignProg == some ⟨[addAssignMainMIR, addMIR]⟩ := by
@@ -179,6 +179,59 @@ example : lowerCallProg ⟨[addFunc],
 /-- Bare call statements refuse (the value would be lost). -/
 example : lowerCallProg ⟨[addFunc],
     [.exprStmt (.app addId [.lit (.int 1), .lit (.int 2)])]⟩ == none := by
+  native_decide
+
+/-! ## Argument order is load-bearing
+
+`add` commutes, so the three pins above cannot tell whether actuals
+arrive in order. They do not: HIR params list innermost-first, so the
+call delivers them back-to-front (`vs.reverse` in `lowerCallStmts`).
+`sub` (outer minus inner) distinguishes the orders — with actuals in
+call order the executor would compute `3 - 5` where the oracle computes
+`5 - 3`. -/
+
+/-- Callee name and parameter ids (`i` innermost, `o` outermost). -/
+def subId : HIR.Id := ⟨4, "sub"⟩
+
+/-- `sub(o, i) = o - i`: straight-line, call-free, non-commutative. -/
+def subFunc : Morph.HIRFunc.Func :=
+  ⟨subId, [⟨6, "i"⟩, ⟨5, "o"⟩],
+    .binop .sub (.var ⟨5, "o"⟩) (.var ⟨6, "i"⟩)⟩
+
+/-- The callee as an environment value. -/
+def subLam : HIR.Expr :=
+  .lam [⟨6, "i"⟩, ⟨5, "o"⟩] subFunc.body
+
+/-- The pin program: `main` returns `sub(5, 3)`. -/
+def subProg : Morph.HIRFunc.CallProg :=
+  ⟨[subFunc],
+    [.returnStmt (.app subId [.lit (.int 5), .lit (.int 3)])]⟩
+
+/-- The lowered callee: `i` on register 1, `o` on register 2. -/
+def subMIR : MIR.Func :=
+  ⟨"sub", [(1, .unitType), (2, .unitType)],
+    [⟨0, [.const 0 .unit, .binop 3 .sub 2 1 .intType], .return_ 3⟩],
+    0, .unitType⟩
+
+/-- The lowered entry: actuals delivered back-to-front. -/
+def subMainMIR : MIR.Func :=
+  ⟨"main", [],
+    [⟨0, [.const 0 .unit, .const 1 (.int 5), .const 2 (.int 3),
+      .call (some 3) "sub" [2, 1]], .return_ 3⟩],
+    0, .unitType⟩
+
+example : lowerCallProg subProg == some ⟨[subMainMIR, subMIR]⟩ := by
+  native_decide
+
+example : (runHIRStmts 256 [(subId, subLam)]
+    [.returnStmt (.app subId [.lit (.int 5), .lit (.int 3)])]
+    (.value (.lit .unit))).1 = .returned (.lit (.int 2)) := by
+  rfl
+
+example : (lowerCallProg subProg).bind (fun p =>
+    p.funcs[0]?.bind fun f =>
+      execFuncCall p 5 f ⟨fun _ => none, Store.empty⟩) ==
+    some (.int 2) := by
   native_decide
 
 end Morph.Proofs.Call

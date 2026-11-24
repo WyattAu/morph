@@ -25,7 +25,11 @@ that gap, in the order the C8 design proposal sequences it:
    `binop`/`unop`/`let`, where `lowerExpr` (which has no table) already
    returns `none`. Bare `.exprStmt (.app ..)` is refused: the oracle keeps
    the call's return value as the statement value, but `MIR.call` with
-   `dst = none` discards it, so lowering it would lie. Callee bodies must
+   `dst = none` discards it, so lowering it would lie. Actuals pass
+   **reversed**: HIR `lam` params list innermost-first (mirroring de Bruijn
+   levels — `toHIR` maps binder `j` to index `d + n - 1 - j`), so
+   `params[j]` takes `argv[n-1-j]`, while MIR `bindCallArgs` binds
+   positionally. Callee bodies must
    be `NoApp` (see below): the callee runs through the call-free block
    executor, which stalls on a nested `.call`, so a nested HIR call would
    succeed in the oracle and fail in MIR.
@@ -169,7 +173,11 @@ def lowerFunc (f : Func) : Option MIR.Func :=
 - `varDecl`/`assign`/`returnStmt` directly over `.app fid args`: resolve
   `fid` in the table, check arity up front (the executor would fail it
   anyway via `bindCallArgs`), require a call-free callee body, lower the
-  arguments, and emit one `.call` writing a fresh register.
+  arguments, and emit one `.call` writing a fresh register — with the
+  argument registers **reversed** (`vs.reverse`): HIR params are
+  innermost-first (`params[j]` takes `argv[n-1-j]`), MIR formals bind
+  positionally, so the call delivers actuals back-to-front. Forgetting
+  the reversal is silent on commutative callees and wrong on the rest;
 - bare `.exprStmt (.app ..)` is refused (the return value would be lost).
 - `.app` anywhere else is already `none` via `lowerExpr`.
 
@@ -197,7 +205,7 @@ def lowerCallStmts (tab : List Func) (ρ : List (HIR.Id × ValId))
             | some (vs, ias, s1) =>
                 match lowerCallStmts tab ((id, s1) :: ρ) (s1 + 1) lastVal rest with
                 | some (ρ', v', ia', s2) =>
-                    some (ρ', v', ias ++ [.call (some s1) f.name.name vs] ++ ia', s2)
+                    some (ρ', v', ias ++ [.call (some s1) f.name.name vs.reverse] ++ ia', s2)
                 | none => none
           else none
   | .varDecl id _ init :: rest =>
@@ -217,7 +225,7 @@ def lowerCallStmts (tab : List Func) (ρ : List (HIR.Id × ValId))
             | some (vs, ias, s1) =>
                 match lowerCallStmts tab (updAssoc ρ id s1) (s1 + 1) lastVal rest with
                 | some (ρ', v', ia', s2) =>
-                    some (ρ', v', ias ++ [.call (some s1) f.name.name vs] ++ ia', s2)
+                    some (ρ', v', ias ++ [.call (some s1) f.name.name vs.reverse] ++ ia', s2)
                 | none => none
           else none
   | .assign id e :: rest =>
@@ -235,7 +243,7 @@ def lowerCallStmts (tab : List Func) (ρ : List (HIR.Id × ValId))
             match lowerArgs ρ supply args with
             | none => none
             | some (vs, ias, s1) =>
-                some (ρ, s1, ias ++ [.call (some s1) f.name.name vs], s1 + 1)
+                some (ρ, s1, ias ++ [.call (some s1) f.name.name vs.reverse], s1 + 1)
           else none
   | .returnStmt e :: _ =>
       (lowerExpr ρ supply e).map fun (v, ie, s1) => (ρ, v, ie, s1)
