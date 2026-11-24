@@ -51,13 +51,12 @@ Three deliberate shape choices:
   `lowerStmts` never lowers the tail, so `BranchStmts` does not constrain that
   tail either. This is exactly why `returnStmt` is a `BranchStmts` constructor
   rather than a `BranchStep`: a terminal shape is not a step.
-- **Arms have their own grammar** (`ArmStmts`): an arm may evaluate expressions,
-  nest `if`s, and `return`, but it may **not** declare or assign
-  (`varDecl`/`assign`). An arm that rebinds changes the register file, and the
-  join point would then need one phi *per merged binding*, not just the value
-  phi. That is C2c; until it exists the lowering must refuse such arms, and this
-  grammar is where it refuses them (`lowerStmtsCFG` returns `none` inside an
-  arm, exactly like `lowerExpr` does outside the expression fragment).
+- **Arms have their own grammars** (`ArmStmts`, `BindArmStmts`): an arm may
+  evaluate expressions, nest `if`s, and `return`. A top-level arm may also
+  declare or assign (`varDecl`/`assign`): an arm that rebinds changes the
+  register file, so the join point carries one phi *per merged binding*, not
+  just the value phi (C2c: `mergeIds`/`mkMergePhis`). Loop-body arms keep the
+  binding-free grammar, guarding the loop workers.
 
 **The lowering** (`lowerStmtsCFG`, `lowerProgramCFG`). Blocks are produced by a
 worker that fills one caller-owned block and returns the rest:
@@ -224,12 +223,13 @@ imports it back; the Evidence leaf cites those names. -/
 
 /-! ## Evidence: now in `Morph.Proofs.Branch.Evidence` -/
 
-/- The concrete programs (`ifProg`, `ifProgFalse`, `ifThenAdd`,
-`bindIfAssignProg`, `bindIfAssignFalseProg`, `nestedThenProg`,
-`nestedElseProg`, `whileCountProg`, `whileBreakProg`) and their
-`native_decide` / end-to-end pins live in the Evidence leaf (moved
-verbatim). This module imports nothing back; Evidence cites this
-module's theorems. -/
+/- The concrete programs (`whileCarryProg`, `whileIfBodyProg`,
+`whileIfBreakProg`, `whileContinueProg`, `whileIfBreakTailProg`,
+`whileNestedIfProg`, `ifProg`, `ifProgFalse`, `bindIfAssignProg`,
+`bindIfAssignFalseProg`, `nestedThenProg`, `nestedElseProg`, `whileCountProg`,
+`whileBreakProg`) and their `native_decide` / end-to-end pins live in the
+Evidence leaf (moved verbatim). This module imports nothing back; Evidence
+cites this module's theorems. -/
 
 
 end Morph.HIRToMIRCorrect

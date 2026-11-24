@@ -147,7 +147,35 @@ def usage : String :=
   "  build --codegen=cranelift <file>  emit a CLIF artifact for the file\n" ++
   "  fmt <file>    format the statement program in a file\n" ++
   "  doc <file>    render the file's /// docs as Markdown\n" ++
+  "  test <file|dir>  run .hum test files through the HIR interpreter\n" ++
   "  version       print the Morph version\n"
+
+/-- **The test pipeline** (Stage C, item C9): run one in-source test case
+through the HIR statement interpreter (`runHIRStmts` via `runHIRProgram`).
+No new semantics — parse, lower to the HIR fragment, run. A case passes when
+the program terminates with a value (a `return` counts as termination); every
+other outcome fails with a one-line reason, so the CLI can report per-case
+pass/fail. -/
+def runTestCase (src : String) : Bool × String :=
+  match Morph.Frontend.parseProgram src with
+  | .error errs => (false, "parse error: " ++ renderErrors errs)
+  | .ok prog =>
+      match Morph.Frontend.HIRLower.toHIRProgram prog with
+      | none => (false, "program leaves the HIR fragment")
+      | some hprog =>
+          match Morph.Frontend.HIRInterp.runHIRProgram hprog with
+          | .value _ => (true, "ok")
+          | .returned _ => (true, "ok")
+          | .stuck => (false, "stuck: evaluation got stuck or exhausted its fuel")
+          | .broke => (false, "broke: top-level break")
+          | .continued => (false, "continued: top-level continue")
+
+/-- Render per-case results plus a `passed/total` summary line. -/
+def formatTestReport (results : List (String × Bool × String)) : String :=
+  let lines := results.map fun (name, passed, detail) =>
+    if passed then s!"ok {name}" else s!"FAIL {name}: {detail}"
+  let passed := (results.filter fun (_, p, _) => p).length
+  String.intercalate "\n" (lines ++ [s!"{passed}/{results.length} tests passed"])
 
 /-- **The formatter** (loop 90): parse a statement program, print the
 canonical `hum` rendering. Fails exactly when the program fails to parse,
@@ -197,7 +225,7 @@ def buildClif (src : String) : Outcome :=
               -- C6's native rows until C4b's theorem lands.
               match Morph.HIRToMIRCorrect.lowerProgramCFG hprog with
               | none => .unsupported
-                  "codegen: program is outside the branch fragment (straight-line statements or if with non-binding arms; see docs/STAGEC-SCOPE.md §3)"
+                  "codegen: program is outside the branch fragment (straight-line statements, if, and single-level while; no match statements or declarations inside loop bodies; see docs/STAGEC-SCOPE.md §3)"
               | some func =>
                   match Morph.Clif.Cfg.emitCfg func with
                   | some text => .value text

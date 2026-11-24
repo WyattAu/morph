@@ -579,6 +579,17 @@ example : buildClif "if (1 < 2) { let x = 1; } else { 2 }" ==
     .value "function %main() -> i64 {\nblock0:\n  v1 = iconst.i64 1\n  v2 = iconst.i64 2\n  v3 = icmp slt v1, v2\n  brif v3, block1, block2\nblock3(v6: i64):\n  return v6\nblock2:\n  v5 = iconst.i64 2\n  jump block3(v5)\nblock1:\n  v4 = iconst.i64 1\n  jump block3(v0)\n}\n" := by
   native_decide
 
+-- Golden: an `assign` to a pre-branch binding in one arm takes the C2c merge
+-- path with a two-parameter join: `x` is bound before the branch (`v1 = 0`),
+-- rebound in the then-arm (`v5 = 1`), and untouched in the else-arm, so the
+-- join carries one value phi (`v7`, returned) plus one phi per merged binding
+-- (`v8`, the merged `x`). The then-edge delivers `(v0, v5)` — arm value unit,
+-- merged `x = 1` — and the else-edge delivers `(v6, v1)` — value `2`, `x`
+-- still `0`. The lowered CFG executes this to unit, matching the interpreter.
+example : buildClif "let x = 0; if (1 < 2) { x = 1; } else { 2 }" ==
+    .value "function %main() -> i64 {\nblock0:\n  v1 = iconst.i64 0\n  v2 = iconst.i64 1\n  v3 = iconst.i64 2\n  v4 = icmp slt v2, v3\n  brif v4, block1, block2\nblock3(v7: i64, v8: i64):\n  return v7\nblock2:\n  v6 = iconst.i64 2\n  jump block3(v6, v1)\nblock1:\n  v5 = iconst.i64 1\n  jump block3(v0, v5)\n}\n" := by
+  native_decide
+
 -- Golden: a loop lowers (C7a) but the cyclic CFG is outside the CLIF block
 -- subset the emitter encodes (back-edges carry no edge arguments there).
 example : buildClif "while (1 < 2) { 1 }" ==

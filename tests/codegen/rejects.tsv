@@ -5,8 +5,8 @@ unit_value.hum	codegen: the CLIF subset cannot encode this program (boolean- or 
 empty.hum	codegen: the CLIF subset cannot encode this program (boolean- or unit-valued programs, div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)
 boolean_value.hum	codegen: the CLIF subset cannot encode this program (boolean- or unit-valued programs, div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)
 division.hum	codegen: the CLIF subset cannot encode this program (boolean- or unit-valued programs, div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)
-unary_minus.hum	codegen: program is outside the branch fragment (straight-line statements or if with non-binding arms; see docs/STAGEC-SCOPE.md §3)
+unary_minus.hum	codegen: program is outside the branch fragment (straight-line statements, if, and single-level while; no match statements or declarations inside loop bodies; see docs/STAGEC-SCOPE.md §3)
 control_flow.hum	codegen: program leaves the HIR fragment (stage B compiles first-order let/assign/return programs only)
 parse_error.hum	line 1, col 1: failed to parse
-binding_arm.hum	codegen: program is outside the branch fragment (straight-line statements or if with non-binding arms; see docs/STAGEC-SCOPE.md §3)
-match_stmt.hum	codegen: program is outside the branch fragment (straight-line statements or if with non-binding arms; see docs/STAGEC-SCOPE.md §3)
+loop_body_decl.hum	codegen: program is outside the branch fragment (straight-line statements, if, and single-level while; no match statements or declarations inside loop bodies; see docs/STAGEC-SCOPE.md §3)
+match_stmt.hum	codegen: program is outside the branch fragment (straight-line statements, if, and single-level while; no match statements or declarations inside loop bodies; see docs/STAGEC-SCOPE.md §3)
