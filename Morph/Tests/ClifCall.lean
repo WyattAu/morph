@@ -2,6 +2,7 @@
 SPDX-License-Identifier: Apache-2.0 -/
 
 import Morph.ClifSimulate
+import Morph.ClifCfgEncode
 
 /-!
 # Tests for Stage C item C8: calls stop at the encoder, run in the models
@@ -65,6 +66,24 @@ example (menv cenv)
 
 /-- A two-argument adder, as a CLIF callable. -/
 def addCF : CFunc := ⟨"add", [0, 1], ⟨[.iadd 2 0 1], 2⟩⟩
+
+/-- A call-bearing block is refused by the CFG encoder. -/
+example : Cfg.encodeBlock (⟨"f", [], [], 0, .unitType⟩ : Morph.MIR.Func)
+    ⟨0, [.call (some 2) "add" [0, 1]], .return_ 2⟩ = none :=
+  Cfg.encodeBlock_hasCall ⟨some 2, "add", [0, 1], by simp⟩
+
+/-- A call-bearing function is refused by the CFG encoder. -/
+example : Cfg.encodeFunc (⟨"f", [],
+    [⟨0, [.call (some 2) "add" [0, 1]], .return_ 2⟩], 0,
+    .unitType⟩ : Morph.MIR.Func) = none := by
+  apply Cfg.encodeFunc_hasCall
+    (b := (⟨0, [.call (some 2) "add" [0, 1]], .return_ 2⟩ :
+      Morph.MIR.Block))
+  · simp
+  · refine ⟨some 2, "add", [0, 1], ?_⟩
+    change Morph.MIR.Instr.call (some 2) "add" [0, 1] ∈
+      [Morph.MIR.Instr.call (some 2) "add" [0, 1]]
+    exact List.mem_cons.mpr (Or.inl rfl)
 
 /-- A resolved callee runs: `5 + 7 = 12`. -/
 example : runCallee addCF [.int 5, .int 7] = some (.int 12) := rfl

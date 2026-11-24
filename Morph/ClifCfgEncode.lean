@@ -167,6 +167,83 @@ def encodeFunc (f : Morph.MIR.Func) : Option Func := do
   let bs ← f.blocks.mapM (encodeBlockAt f)
   some ⟨bs, f.entry⟩
 
+/-! ## Calls stop at the CFG encoder (Stage C, item C8)
+
+The single-block encoder refuses `.call` (`instrEncode_call`, C8b); the CFG
+encoder inherits the refusal through `instrEncodes`, since `encodeBlock`
+encodes exactly the non-phi remainder. A call in a block's instructions
+survives `splitPhis` (only leading `.phi` is stripped, and a call is not a
+phi), so the encoder fails the block — and a failed block fails the function
+through `mapM`. -/
+
+/-- A `mapM` with a failing member fails. -/
+theorem mapM_none_of_mem_none {α β : Type} {f : α → Option β} {l : List α}
+    {x : α} (hmem : x ∈ l) (h : f x = none) : l.mapM f = none := by
+  induction l with
+  | nil => simp at hmem
+  | cons a as ih =>
+    rcases List.mem_cons.mp hmem with rfl | hmem2
+    · simp [h]
+    · cases ha : f a with
+      | none => simp [ha]
+      | some y =>
+        have htail := ih hmem2
+        simp [List.mapM_cons, ha, htail]
+
+/-- A call survives `splitPhis`: only leading `.phi` is stripped, and a call
+is not a phi. (Local: `splitPhis_reconstruct` lives in `ClifCfgSimulate`,
+which sits above the encoder — importing it here would be a cycle.) -/
+theorem splitPhis_call_mem {is : List Morph.MIR.Instr} {dst : Option ValId}
+    {fn : Morph.MIR.FnId} {args : List ValId}
+    (h : Morph.MIR.Instr.call dst fn args ∈ is) :
+    Morph.MIR.Instr.call dst fn args ∈ (splitPhis is).2 := by
+  induction is with
+  | nil => simp at h
+  | cons i is ih =>
+    cases hi : phiInfo i with
+    | none =>
+        simp only [splitPhis, hi] at h ⊢
+        exact h
+    | some q =>
+        have hmem : Morph.MIR.Instr.call dst fn args ∈ is := by
+          rcases List.mem_cons.mp h with rfl | hm
+          · simp [phiInfo] at hi
+          · exact hm
+        have htail := ih hmem
+        simpa [splitPhis, hi] using htail
+
+/-- A call-bearing block is refused by the CFG encoder. -/
+theorem encodeBlock_hasCall {f : Morph.MIR.Func} {b : Morph.MIR.Block}
+    (h : ∃ dst fn args, Morph.MIR.Instr.call dst fn args ∈ b.instrs) :
+    encodeBlock f b = none := by
+  obtain ⟨dst, fn, args, hmem⟩ := h
+  have henc := instrEncodes_of_hasCall (is := (splitPhis b.instrs).2)
+    ⟨dst, fn, args, splitPhis_call_mem hmem⟩
+  simp only [encodeBlock, henc]
+  by_cases h1 : (!noDupPairs (splitPhis b.instrs).1) = true <;>
+    by_cases h2 : (!noPhiChain (splitPhis b.instrs).1) = true <;>
+    simp_all
+
+/-- A call-bearing function is refused by the CFG encoder. The hypothesis is
+on the block as the encoder sees it (prologue stripped at the entry). -/
+theorem encodeFunc_hasCall {f : Morph.MIR.Func} {b : Morph.MIR.Block}
+    (hmem : b ∈ f.blocks)
+    (h : ∃ dst fn args, Morph.MIR.Instr.call dst fn args ∈
+      (if b.id == f.entry then stripPrologue b else b).instrs) :
+    encodeFunc f = none := by
+  have hblk : encodeBlockAt f b = none := by
+    cases heq : (b.id == f.entry) with
+    | true =>
+        simp only [encodeBlockAt, heq, if_true]
+        exact encodeBlock_hasCall (by simpa [heq] using h)
+    | false =>
+        simp only [encodeBlockAt, heq]
+        exact encodeBlock_hasCall (by simpa [heq] using h)
+  have hmap := mapM_none_of_mem_none hmem hblk
+  unfold encodeFunc
+  rw [hmap]
+  exact Option.bind_none _
+
 /-- The artifact text for a lowered MIR function: encode to the block model, then
 render. This is the CFG counterpart of `Morph.Codegen.emitClif`. -/
 def emitCfg (f : Morph.MIR.Func) : Option String :=
