@@ -304,6 +304,7 @@ example : usage =
     "  build --codegen=cranelift <file>  emit a CLIF artifact for the file\n" ++
     "  fmt <file>    format the statement program in a file\n" ++
     "  doc <file>    render the file's /// docs as Markdown\n" ++
+    "  test <file|dir>  run .hum test files through the HIR interpreter\n" ++
     "  version       print the Morph version\n" := by
   native_decide
 
@@ -569,11 +570,13 @@ example : buildClif "if (1 < 2) { 10 } else { 20 }" ==
     .value "function %main() -> i64 {\nblock0:\n  v1 = iconst.i64 1\n  v2 = iconst.i64 2\n  v3 = icmp slt v1, v2\n  brif v3, block1, block2\nblock3(v6: i64):\n  return v6\nblock2:\n  v5 = iconst.i64 20\n  jump block3(v5)\nblock1:\n  v4 = iconst.i64 10\n  jump block3(v4)\n}\n" := by
   native_decide
 
--- Golden: a binding arm is outside the branch fragment until C2c (a merge needs
--- one phi per merged binding).
+-- Golden: a fresh `varDecl` inside an arm takes the old join verbatim (C2c
+-- merge path): `x` is not in the pre-branch env, so no merge phi is needed
+-- and the arm's value is unit (the prologue register `v0`), merged against
+-- the else-arm's `2`. The lowered CFG executes this to unit, matching the
+-- interpreter, so the program now encodes instead of being refused.
 example : buildClif "if (1 < 2) { let x = 1; } else { 2 }" ==
-    .unsupported
-      "codegen: program is outside the branch fragment (straight-line statements or if with non-binding arms; see docs/STAGEC-SCOPE.md §3)" := by
+    .value "function %main() -> i64 {\nblock0:\n  v1 = iconst.i64 1\n  v2 = iconst.i64 2\n  v3 = icmp slt v1, v2\n  brif v3, block1, block2\nblock3(v6: i64):\n  return v6\nblock2:\n  v5 = iconst.i64 2\n  jump block3(v5)\nblock1:\n  v4 = iconst.i64 1\n  jump block3(v0)\n}\n" := by
   native_decide
 
 -- Golden: a loop lowers (C7a) but the cyclic CFG is outside the CLIF block
@@ -589,6 +592,36 @@ example : buildClif "while (1 < 2) { 1 }" ==
 example : buildClif "if (true) { 10 } else { 20 }" ==
     .unsupported
       "codegen: the CLIF block subset cannot encode this program (switch, non-leading phi, missing edge argument, bool constants)" := by
+  native_decide
+
+/-! ### Stage C: `morph test` goldens (C9)
+
+`runTestCase` is the per-case pipeline the `test` command runs: parse, lower
+to the HIR fragment, run `runHIRStmts` to completion. A terminating value
+(including `return`) passes; stuck, top-level `break`/`continue`, fragment
+refusals and parse failures fail with a one-line reason. `formatTestReport`
+pins the CLI text: one line per case plus the `passed/total` summary. -/
+
+example : runTestCase "let y = 5; y" == (true, "ok") := by native_decide
+
+example : runTestCase "while (true) { return 7; }" == (true, "ok") := by
+  native_decide
+
+example : runTestCase "1 + true" ==
+    (false, "stuck: evaluation got stuck or exhausted its fuel") := by
+  native_decide
+
+example : runTestCase "let y = 0; match none { case none => { y = 1; } }" ==
+    (false, "program leaves the HIR fragment") := by
+  native_decide
+
+example : runTestCase "1 +" ==
+    (false, "parse error: line 1, col 1: failed to parse") := by
+  native_decide
+
+example : formatTestReport [("a.hum", true, "ok"),
+    ("b.hum", false, "stuck: evaluation got stuck or exhausted its fuel")] ==
+    "ok a.hum\nFAIL b.hum: stuck: evaluation got stuck or exhausted its fuel\n1/2 tests passed" := by
   native_decide
 
 end Morph.Tests.Driver
