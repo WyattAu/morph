@@ -158,7 +158,8 @@ passes.
 Slice D1 (`3562f1a`): named rendering — `renderFuncFor` names the
 function and declares its return slot in the header, matching the
 line `sigDecl` contributes to the preamble; the historic renderer is
-the `main`/`intType` case by `rfl`.
+the `main`/`intType` case by `rfl` (C3a generalizes the callers to
+computed headers, so the historic case survives as a theorem).
 
 Slice D2 (`b7cc044`): whole-program emission — `emitProg` writes one
 preamble plus every function body under its declared header, each
@@ -167,3 +168,11 @@ and end-to-end pins; a bool-bodied callee still refuses at the body
 gate). The driver path waits on the surface language: nothing builds
 a `CallProg` from source yet, so there is no call-bearing program for
 `buildClif` to accept — threading one through would be dead code.
+
+Slice C3a (`d4926dc`): the slotted body gate — `emitBlock` admits any
+body whose computed type occupies a slot (`bodySlotTyp`), and every
+header renders from the computed type (`renderChecked`), so a header
+can never disagree with its body. Bool bodies emit under `-> i8`, the
+`a < b` driver golden flips from refusal to artifact, and the CLI
+message drops its stale boolean-valued claim. D-7's encoder work is
+now fully closed: every slotted program emits.
