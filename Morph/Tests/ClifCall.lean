@@ -493,4 +493,18 @@ example : Morph.Codegen.emitBlock
     ⟨0, [.const 0 .unit, .const 0 (.int 1), .const 1 (.int 1),
       .binop 2 .eq 0 1 .boolType], .return_ 2⟩ = none := rfl
 
+/-! ## Named rendering pins (D-7 option C, slice D1)
+
+The header names the function and declares its return slot, matching
+the line `sigDecl` contributes to the preamble; the historic
+renderer is the `main`/`intType` case (`renderFuncFor_main`). -/
+
+/-- A named body header matches its preamble declaration. -/
+example : Morph.Clif.renderFuncFor "iseq" Typ.boolType ⟨[.icmp 2 .eq 0 1], 2⟩
+    = "function %iseq() -> i8 {\nblock0:\n  v2 = icmp eq v0, v1\n  return v2\n}\n" := rfl
+
+/-- A void header takes no suffix, like the declaration. -/
+example : Morph.Clif.renderFuncFor "unitfn" Typ.unitType ⟨[], 0⟩
+    = "function %unitfn() {\nblock0:\n\n  return v0\n}\n" := rfl
+
 end Morph.Tests.ClifCall

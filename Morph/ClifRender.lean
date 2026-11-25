@@ -379,6 +379,19 @@ def renderFunc (f : Func) : String :=
     String.intercalate "\n" (f.instrs.map Instr.text) ++
     "\n  return v" ++ toString f.retSrc ++ "\n}\n"
 
+/-- Named rendering (D-7 option C, slice D1): the header names the
+function and declares its return slot, matching the line `sigDecl`
+contributes to the preamble. Bodies stay parameter-free (single
+block, registers pre-bound), so only the header generalizes. -/
+def renderFuncFor (name : String) (ret : Typ) (f : Func) : String :=
+  "function %" ++ name ++ "()" ++ retSuffix ret ++ " {\nblock0:\n" ++
+    String.intercalate "\n" (f.instrs.map Instr.text) ++
+    "\n  return v" ++ toString f.retSrc ++ "\n}\n"
+
+/-- The historic renderer is the `main`/`intType` case. -/
+theorem renderFuncFor_main (f : Func) :
+    renderFuncFor "main" .intType f = renderFunc f := rfl
+
 end Morph.Clif
 
 /-! ## Stage C: the multi-block form
