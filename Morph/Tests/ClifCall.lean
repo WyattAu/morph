@@ -507,4 +507,41 @@ example : Morph.Clif.renderFuncFor "iseq" Typ.boolType ⟨[.icmp 2 .eq 0 1], 2�
 example : Morph.Clif.renderFuncFor "unitfn" Typ.unitType ⟨[], 0⟩
     = "function %unitfn() {\nblock0:\n\n  return v0\n}\n" := rfl
 
+/-! ## Program emission pins (D-7 option C, slice D2)
+
+One preamble for the program, then every function body under its
+declared header. The empty program emits the empty artifact; a full
+int-world program emits end to end; a bool-bodied callee still
+refuses at the body gate, so the program does too. -/
+
+/-- The empty program emits the empty artifact. -/
+example : Morph.Codegen.emitProg ⟨[]⟩ = some "" :=
+  Morph.Codegen.emitProg_nil
+
+/-- The full int-world callee. -/
+def addMIRFull : Morph.MIR.Func :=
+  ⟨"add", [(0, Typ.intType), (1, Typ.intType)],
+    [⟨0, [.const 0 .unit, .binop 2 .add 0 1 .intType], .return_ 2⟩],
+    0, Typ.intType⟩
+
+/-- The full int-world entry. -/
+def addMainFull : Morph.MIR.Func :=
+  ⟨"main", [],
+    [⟨0, [.const 0 .unit, .const 0 (.int 5), .const 1 (.int 7),
+      .call (some 2) "add" [0, 1]], .return_ 2⟩],
+    0, Typ.intType⟩
+
+/-- A two-function program. -/
+def progAddFull : Morph.MIR.Program := ⟨[addMainFull, addMIRFull]⟩
+
+/-- It emits end to end: preamble, entry, callee. -/
+example : Morph.Codegen.emitProg progAddFull
+    = some ("function %main() -> i64\nfunction %add(i64, i64) -> i64\n" ++
+      "function %main() -> i64 {\nblock0:\n  v0 = iconst.i64 5\n  v1 = iconst.i64 7\n  v2 = call %add(v0, v1) -> i64\n  return v2\n}\n" ++
+      "function %add() -> i64 {\nblock0:\n  v2 = iadd v0, v1\n  return v2\n}\n") := by
+  native_decide
+
+/-- ...while a bool-bodied callee refuses the whole program. -/
+example : Morph.Codegen.emitProg progBool = none := rfl
+
 end Morph.Tests.ClifCall

@@ -281,6 +281,21 @@ preamble followed by the encoded function. -/
 def emitClif (f : Func) (prog : Program := { funcs := [] }) : Option String :=
   (emitFunc f prog).map (fun cf => preamble prog ++ Morph.Clif.renderFunc cf)
 
+/-- Whole-program emission (D-7 option C, slice D2): one preamble for
+the program, then every function's body under its declared header.
+Each body encodes against the full program, so calls resolve; each
+renders under its own name and return slot (`renderFuncFor`). -/
+def emitProg (prog : Program) : Option String :=
+  match prog.funcs.mapM (fun f => (emitFunc f prog).map (fun cf => (f, cf))) with
+  | none => none
+  | some fcs =>
+      some (preamble prog ++
+        (fcs.map fun (f, cf) => Morph.Clif.renderFuncFor f.name f.retType cf).foldl
+          (· ++ ·) "")
+
+/-- The empty program emits the empty artifact. -/
+theorem emitProg_nil : emitProg { funcs := [] } = some "" := rfl
+
 /-! ## Characterizations
 
 The CLI writes artifact text; these lemmas say what the text is, so the artifact
@@ -375,6 +390,27 @@ theorem emitClif_sound {f : Func} {prog : Program} {s : String}
   | none => rw [hf] at h; simp at h
   | some cf => rw [hf] at h; simp only [Option.map_some, Option.some.injEq] at h
                exact ⟨cf, rfl, h.symm⟩
+
+/-- A successful program emission pairs every function with its encoding,
+and the text is the preamble plus every declared rendering. -/
+theorem emitProg_sound {prog : Program} {s : String}
+    (h : emitProg prog = some s) :
+    ∃ fcs, prog.funcs.mapM (fun f => (emitFunc f prog).map
+        (fun cf => (f, cf))) = some fcs ∧
+      s = preamble prog ++
+        (fcs.map fun (f, cf) => Morph.Clif.renderFuncFor f.name f.retType cf).foldl
+          (· ++ ·) "" := by
+  unfold emitProg at h
+  cases hm : prog.funcs.mapM (fun f => (emitFunc f prog).map
+    (fun cf => (f, cf))) with
+  | none =>
+      rw [hm] at h
+      simp at h
+  | some fcs =>
+      rw [hm] at h
+      dsimp only at h
+      simp only [Option.some.injEq] at h
+      exact ⟨fcs, rfl, h.symm⟩
 
 /-- `lowerProgram`'s shape, stated so the emitter's gate is visibly vacuous on
 lowered functions: the body starts with the unit prologue and the block is the
