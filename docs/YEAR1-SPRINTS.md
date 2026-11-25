@@ -56,7 +56,7 @@
   35 definitions; memo bridge-vs-supersede with the cost of each (a
   D2-style relation pair vs a rewrite of the spec side's authority).
 - **Exit:** both memos circulated; *(maintainer calls dated; deadline:
-  end of S4; unanswered ⇒ provisional defaults — bridge for D-9, the
+  end of S4; unanswered ⇒ provisional defaults — supersede for D-9, the
   S4 memo's stated reading for D-8 — recorded as provisional ADRs)*.
 
 ### S5 — `HeapSafe` as a definition (wks 9–10)
@@ -194,7 +194,7 @@
 
 ### S25 — Scoreboard + annual review prep (wks 49–50)
 
-- Recount everything (theorems, modules, coverage, links, runs);
+- Recount everything (theorems, modules, coverage, links, runs; method locked: `scripts/regression-snapshot.sh` all-in counting, test pins included);
   quarterly score the `FIVE-YEAR-ROADMAP.md` table; draft the annual
   review ADR (confirm or revise, never drift).
 - **Exit:** scoreboard current; review ADR drafted.
@@ -219,8 +219,10 @@
 2. **Decisions are dated, not awaited — and they have deadlines.** D-7
    answers by end of S3, D-8/D-9 by end of S4. Past the deadline, work
    proceeds on a stated provisional default recorded as a provisional
-   ADR (D-7 default: refusal stands; D-9 default: bridge; D-8 default:
-   the reading the S4 memo recommends). A wrong provisional default
+   ADR (D-7 default: refusal stands; D-9 default: supersede —
+   executable `Memory.lean` authoritative, spec model as requirements
+   only, per the roadmap register; D-8 default: the reading the S4
+   memo recommends). A wrong provisional default
    costs a refactor; a stalled chain costs the quarter.
 3. **Predicates before proofs, pins before theorems.** Every D-item
    lands its fragment predicate, its corpus/pin pair (success +

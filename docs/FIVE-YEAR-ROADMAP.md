@@ -9,7 +9,7 @@
 >
 > **Second edition, constructed 2026-11-25** — supersedes the loop-122
 > (2026-11-03) edition. What changed and why: entry state re-measured
-> (theorems 2081 → 2342, Stages A–C closed in the tree); the "blocked on
+> (theorems 2081 → 2545, Stages A–C closed in the tree); the "blocked on
 > billing" premise struck everywhere (public repo, free runners, CI
 > observably green); D-2/D-3/D-4 recorded decided (ADR-032, loop 134);
 > years re-timed to measured velocity (Stages B and C closed inside
@@ -19,15 +19,15 @@
 
 | Asset | State |
 |---|---|
-| Lean core | 309 `.lean` files, 2,342 theorem/lemma declarations (1,632 in `Specs/`), 68 spec modules, 0 sorry / 0 stubs / 0 build warnings; `check-gates.sh` green |
+| Lean core | 309 `.lean` files (208 under `Specs/`), 2,545 theorem/lemma declarations (1,633 in `Specs/`, 704 core, 208 `Tests/` pins — counting per `scripts/regression-snapshot.sh`), 0 sorry / 0 stubs / 0 build warnings; `check-gates.sh` green |
 | Proved chain | HIR run → MIR run (straight-line, branches, HIR→MIR calls) → CLIF text: `compile_total`, `lowerCallProg_correct`, `lowerProgramCFG_correct`; `morph test` goldens 13/13; codegen corpus 22/22 |
 | Open technical item | Exactly one: C8 CLIF `call` encoder refused for want of the ABI decision (D-7); refusal proved as pins, encoder unblocked by the decision, not by more proof |
 | Agreement story | `agreeBoth` triple + `runHIRProgram_preservation`; `ifStmt`/`matchStmt` 1:1; `doWhile`/`forLoop` rejected with recorded analysis (G-6) |
 | Contradictions | All 11 resolved or adjudicated false positive (#11 resolved loop 111) |
-| Python tooling | 844 tests, 96.06% coverage (gate: 95%); ruff + mypy clean on `spec_tools` scope; cross-refs 2021/2021; spec-links 992 markdown links, 0 broken |
+| Python tooling | 844 tests, 96.06% coverage (gate: 95%); ruff + mypy clean on `spec_tools` scope; cross-refs 2027/2027; spec-links 992 markdown links, 0 broken |
 | Rust workspace | `morph build --codegen=cranelift` exercised by `tests/codegen/check.sh` (22/22); 9/9 native differential under the trusted half (loop-153 record); full workspace test count last reported loop 122, not rebuilt in this environment |
 | Stdlib | Seed only: `Morph/Stdlib.lean` (187 lines, unwired) |
-| CI | Push pipeline live (Spec Validation green on the 2026-11-25 push; Lean Build read in flight at construction time); nightly green 2026-11-21…24; Pages deploys on push |
+| CI | Push pipeline green on the 2026-11-25 push (Lean Build + Spec Validation) with manual dispatch verified on both; nightly green 2026-11-21…24; Pages deploy-live verified by hand-trigger (rerun green after a transient artifact-listing failure, no repo change) |
 | Stage D position | Scoped (`docs/STAGED-SCOPE.md`) + inventoried (`docs/STAGED-D1-INVENTORY.md`): executable memory/runtime models carry 0 theorems, `Specs/MemoryModel`'s 34 sit over a disconnected model, `borrow_preservation` is the one executable invariant; `HeapSafe`-as-definition is the opener, D3 gated on the `stepActor` interface (D-8) |
 | Audit | Packet current (`docs/AUDIT-PACKET-0.1.md`), invites templated, G-7 checklist ready — **no invites sent, no tag cut (G-3/G-7 open)** |
 | Release | 0.1.0 prepared, never tagged |
@@ -214,8 +214,8 @@ used to justify slipping a year.
 | Metric | Now (2026-11-25) | Y1 | Y2 | Y3 | Y4 | Y5 |
 |---|---|---|---|---|---|---|
 | sorry / warnings (Lean) | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
-| Theorems | 2342 | ≥2600 | ≥3000 | ≥3800 | ≥4800 | ≥6000 |
-| CI per push | Pipeline live, first read in flight | Green | Green | Green | Green + diff. matrix | Green, 3-ver compat |
+| Theorems | 2545 | ≥2600 | ≥3000 | ≥3800 | ≥4800 | ≥6000 |
+| CI per push | Green (first green push pipeline 2026-11-25) | Green | Green | Green | Green + diff. matrix | Green, 3-ver compat |
 | Pipeline theorem | HIR→MIR→CLIF exc. CLIF `call` | + call (D-7) | Frozen with 1.0 | Certified artifacts | Stable | Stable, first -O2 level |
 | `morph build` | Flagged (`--codegen=cranelift`) | Flagged, broader fragment | General (1.0) | Certified `--certify` | Certified | Self-hosted fragment |
 | Conformance suite | — | — | Draft + v1.0 | v2.0 | Ratified (2 impls) | Done |

@@ -35,6 +35,14 @@ MANIFEST
 pip-log.txt
 pip-delete-this-directory.txt
 
+# Local machine-specific toolchain config (absolute user paths)
+.cargo/
+
+# Regression snapshots: one Era-1 baseline is committed, the rest are
+# regenerable local artifacts (S1).
+.reports/regression/snapshot-*.json
+.reports/regression/snapshot-*.txt
+
 # Unit test / coverage reports
 htmlcov/
 .tox/
