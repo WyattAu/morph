@@ -28,7 +28,7 @@
 | Rust workspace | `morph build --codegen=cranelift` exercised by `tests/codegen/check.sh` (22/22); 9/9 native differential under the trusted half (loop-153 record); full workspace test count last reported loop 122, not rebuilt in this environment |
 | Stdlib | Seed only: `Morph/Stdlib.lean` (187 lines, unwired) |
 | CI | Push pipeline green on the 2026-11-25 push (Lean Build + Spec Validation) with manual dispatch verified on both; nightly green 2026-11-21…24; Pages deploy-live verified by hand-trigger (rerun green after a transient artifact-listing failure, no repo change) |
-| Stage D position | Scoped (`docs/STAGED-SCOPE.md`) + inventoried (`docs/STAGED-D1-INVENTORY.md`): executable memory/runtime models carry 0 theorems, `Specs/MemoryModel`'s 34 sit over a disconnected model, `borrow_preservation` is the one executable invariant; `HeapSafe` defined + pinned (S5) and preserved by alloc/free/write (S6, provisional on the scrub default, circulated for attack), D3 gated on the `stepActor` interface (D-8) |
+| Stage D position | Scoped (`docs/STAGED-SCOPE.md`) + inventoried (`docs/STAGED-D1-INVENTORY.md`): executable memory/runtime models carry 0 theorems, `Specs/MemoryModel`'s 34 sit over a disconnected model, `borrow_preservation` is the one executable invariant; `HeapSafe` defined + pinned (S5) and preserved by alloc/free/write (S6, provisional on the scrub default, circulated for attack); D2 bridge stated (S7: `heapOf` projection, base-place fragment, deref refusal pinned, S8 agreement previewed), D3 gated on the `stepActor` interface (D-8) |
 | Audit | Packet current (`docs/AUDIT-PACKET-0.1.md`), invites templated, G-7 checklist ready — **no invites sent, no tag cut (G-3/G-7 open)** |
 | Release | 0.1.0 prepared, never tagged |
 
