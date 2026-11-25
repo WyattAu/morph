@@ -145,3 +145,12 @@ Slice C1b (`ed8d6a3`): the memo's acceptance test — the first
 bool-returning call (`iseq`, an `icmp` body) encodes, runs, and agrees
 via `tcallee_correct` with `Step.eq`, and the caller artifact carries
 the `-> i8` preamble line.
+
+Slice C2 (`c2fb91e`): step 3's gate switch — `emitBlock` checks the
+computed body type (`bodyResultTyp`) instead of the conservative
+`allI64` scan, so compare-then-int bodies emit and only non-`int`
+results refuse. The characterizations rest on the exact gate
+(`emitBlock_prologue`/`emitClif_lowered` take the type fact;
+`emitBlock_bool` splits into encode-failure and non-`int`-type
+refusals), with the step-2 bridge showing every old-gate body still
+passes.
