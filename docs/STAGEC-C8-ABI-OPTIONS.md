@@ -158,5 +158,12 @@ passes.
 Slice D1 (`3562f1a`): named rendering — `renderFuncFor` names the
 function and declares its return slot in the header, matching the
 line `sigDecl` contributes to the preamble; the historic renderer is
-the `main`/`intType` case by `rfl`. Next: program emission (one
-preamble plus every function body), then the driver path.
+the `main`/`intType` case by `rfl`.
+
+Slice D2 (`b7cc044`): whole-program emission — `emitProg` writes one
+preamble plus every function body under its declared header, each
+encoded against the full program (`emitProg_nil`, `emitProg_sound`,
+and end-to-end pins; a bool-bodied callee still refuses at the body
+gate). The driver path waits on the surface language: nothing builds
+a `CallProg` from source yet, so there is no call-bearing program for
+`buildClif` to accept — threading one through would be dead code.
