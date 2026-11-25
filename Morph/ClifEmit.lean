@@ -199,11 +199,40 @@ theorem encodes_bodyResultTyp_int {is : List Instr} {cs : List Morph.Clif.Instr}
       obtain rfl := Option.some.inj hbody
       exact encodes_allI64_int hall henc i (Morph.Clif.lastDef_mem hlast)
 
--- Slice B1 boundary: the single-function emitter carries no program context
--- (default `[]`), so call-bearing bodies fail at `instrEncodes` exactly as
--- before — the model admits them, the artifact does not. Deliberate, per
--- the printer's "model admits more than the text" rule; slice B2 threads a
--- real program from the driver with the preamble and signature declarations.
+/-! ## Signature-declaration preamble (D-7 option B, slice B2)
+
+A call-bearing artifact names its callees (`Instr.text`'s `call` arm),
+so the text must declare them: one `function %name(params) -> ret` line
+per MIR function in the program, typed through `clifTyOfTyp` (the
+`Runtime.marshal` table). Parameters without a call slot (unit and
+non-first-order types) refuse the whole declaration (`none`); a `unit`
+return is void and takes no suffix (via `retSuffix`). The preamble of
+the empty program is empty, so every existing statement about the
+one-argument form holds unchanged. -/
+
+/-- One signature declaration for the emission preamble. -/
+def sigDecl (f : Func) : Option String :=
+  match f.params.mapM (fun p => Morph.Clif.clifTyOfTyp p.2) with
+  | none => none
+  | some ts =>
+      some ("function %" ++ f.name ++ "(" ++
+        String.intercalate ", " (ts.map Morph.Clif.ClifTy.text) ++ ")" ++
+        Morph.Clif.retSuffix f.retType ++ "\n")
+
+/-- The emission preamble: the declarations of every function in the
+program that has one, concatenated. -/
+def preamble (prog : Program) : String :=
+  (prog.funcs.filterMap sigDecl).foldl (· ++ ·) ""
+
+/-- The empty program declares nothing, so the default-program emitter
+is byte-for-byte the historic one. -/
+theorem preamble_empty : preamble { funcs := [] } = "" := rfl
+
+-- Slice B2: the single-function emitter threads a program (default
+-- empty, so call-bearing bodies still fail at `instrEncodes` exactly as
+-- before) and prepends its preamble; an explicit int-world program
+-- admits calls per `callResolved`. The default-program refusal pins
+-- stay green. -/
 /-- Encode a lowered block, dropping `lowerProgram`'s unit prologue.
 
 The prologue is required, not merely tolerated: a block that does not start with
@@ -218,27 +247,28 @@ but a function `-> i64` that reads an undefined `v0` is not CLIF, so the printer
 refuses it rather than write an artifact no reader can accept. This is the same
 shape as the encoder's other narrowing decisions: the model admits more than the
 text does, deliberately and visibly. -/
-def emitBlock (b : Block) : Option Morph.Clif.Func :=
+def emitBlock (b : Block) (prog : Program := { funcs := [] }) : Option Morph.Clif.Func :=
   match b.terminator with
   | .return_ src =>
       match b.instrs with
       | .const 0 .unit :: body =>
           if src = 0 then none
-          else if allI64 body then Morph.Clif.blockEncode ⟨b.id, body, .return_ src⟩
+          else if allI64 body then Morph.Clif.blockEncode ⟨b.id, body, .return_ src⟩ prog
           else none
       | _ => none
   | _ => none
 
 /-- The CLIF function for a lowered MIR function: its single entry block, minus
 the unit prologue. -/
-def emitFunc (f : Func) : Option Morph.Clif.Func :=
+def emitFunc (f : Func) (prog : Program := { funcs := [] }) : Option Morph.Clif.Func :=
   match f.blocks with
-  | [b] => if b.id = f.entry then emitBlock b else none
+  | [b] => if b.id = f.entry then emitBlock b prog else none
   | _ => none
 
-/-- The artifact text for a lowered MIR function. -/
-def emitClif (f : Func) : Option String :=
-  (emitFunc f).map Morph.Clif.renderFunc
+/-- The artifact text for a lowered MIR function: the program's signature
+preamble followed by the encoded function. -/
+def emitClif (f : Func) (prog : Program := { funcs := [] }) : Option String :=
+  (emitFunc f prog).map (fun cf => preamble prog ++ Morph.Clif.renderFunc cf)
 
 /-! ## Characterizations
 
@@ -251,38 +281,41 @@ prologue-free body. This is the lemma the gate above rests on: the prologue
 disappears from the artifact and nothing else about the body changes. The
 `src ≠ 0` premise is the unit case, which `emitBlock` refuses. -/
 theorem emitBlock_prologue (id : Nat) (body : List Instr) (src : Nat) (hsrc : src ≠ 0)
-    (hall : allI64 body = true) :
-    emitBlock ⟨id, .const 0 .unit :: body, .return_ src⟩
-      = Morph.Clif.blockEncode ⟨id, body, .return_ src⟩ := by
+    (hall : allI64 body = true) (prog : Program := { funcs := [] }) :
+    emitBlock ⟨id, .const 0 .unit :: body, .return_ src⟩ prog
+      = Morph.Clif.blockEncode ⟨id, body, .return_ src⟩ prog := by
   simp only [emitBlock]
   rw [if_neg hsrc, if_pos hall]
 
 /-- Composing the shape with the emitter: on a lowered function the artifact is
-`blockEncode`'s rendering, with no prologue instruction in it. -/
+the preamble plus `blockEncode`'s rendering, with no prologue instruction in
+it. -/
 theorem emitClif_lowered (body : List Instr) (v : Nat) (hv : v ≠ 0)
-    (hall : allI64 body = true) :
-    emitClif ⟨"main", [], [⟨0, .const 0 .unit :: body, .return_ v⟩], 0, .unitType⟩
-      = (Morph.Clif.blockEncode ⟨0, body, .return_ v⟩).map Morph.Clif.renderFunc := by
-  simp [emitClif, emitFunc, emitBlock_prologue 0 body v hv hall]
+    (hall : allI64 body = true) (prog : Program := { funcs := [] }) :
+    emitClif ⟨"main", [], [⟨0, .const 0 .unit :: body, .return_ v⟩], 0, .unitType⟩ prog
+      = (Morph.Clif.blockEncode ⟨0, body, .return_ v⟩ prog).map
+        (fun cf => preamble prog ++ Morph.Clif.renderFunc cf) := by
+  simp [emitClif, emitFunc, emitBlock_prologue 0 body v hv hall prog]
 
 /-- A unit-valued program is refused: its value is the prologue's register. -/
-theorem emitBlock_unit (id : Nat) (body : List Instr) :
-    emitBlock ⟨id, .const 0 .unit :: body, .return_ 0⟩ = none := by
+theorem emitBlock_unit (id : Nat) (body : List Instr)
+    (prog : Program := { funcs := [] }) :
+    emitBlock ⟨id, .const 0 .unit :: body, .return_ 0⟩ prog = none := by
   simp [emitBlock]
 
 /-- A boolean-valued program is refused: the text's signature is `-> i64`. -/
 theorem emitBlock_bool {id : Nat} {body : List Instr} {src : Nat}
-    (hall : allI64 body = false) :
-    emitBlock ⟨id, .const 0 .unit :: body, .return_ src⟩ = none := by
+    (hall : allI64 body = false) (prog : Program := { funcs := [] }) :
+    emitBlock ⟨id, .const 0 .unit :: body, .return_ src⟩ prog = none := by
   by_cases hsrc : src = 0
   · simp [emitBlock, hsrc]
   · simp [emitBlock, hsrc, hall]
 
 /-- A successful emission is a single block, the entry block, carrying the
 prologue. -/
-theorem emitFunc_sound {f : Func} {cf : Morph.Clif.Func}
-    (h : emitFunc f = some cf) :
-    ∃ b : Block, f.blocks = [b] ∧ b.id = f.entry ∧ emitBlock b = some cf := by
+theorem emitFunc_sound {f : Func} {prog : Program} {cf : Morph.Clif.Func}
+    (h : emitFunc f prog = some cf) :
+    ∃ b : Block, f.blocks = [b] ∧ b.id = f.entry ∧ emitBlock b prog = some cf := by
   unfold emitFunc at h
   split at h
   · rename_i b hblocks
@@ -292,11 +325,14 @@ theorem emitFunc_sound {f : Func} {cf : Morph.Clif.Func}
     · simp at h
   · simp at h
 
-/-- The artifact text is the rendering of the encoded function. -/
-theorem emitClif_sound {f : Func} {s : String} (h : emitClif f = some s) :
-    ∃ cf : Morph.Clif.Func, emitFunc f = some cf ∧ s = Morph.Clif.renderFunc cf := by
+/-- The artifact text is the preamble plus the rendering of the encoded
+function. -/
+theorem emitClif_sound {f : Func} {prog : Program} {s : String}
+    (h : emitClif f prog = some s) :
+    ∃ cf : Morph.Clif.Func, emitFunc f prog = some cf ∧
+      s = preamble prog ++ Morph.Clif.renderFunc cf := by
   unfold emitClif at h
-  cases hf : emitFunc f with
+  cases hf : emitFunc f prog with
   | none => rw [hf] at h; simp at h
   | some cf => rw [hf] at h; simp only [Option.map_some, Option.some.injEq] at h
                exact ⟨cf, rfl, h.symm⟩

@@ -246,6 +246,94 @@ theorem parseFunc_toksFunc_append (f : Func) (t : Tok) :
     rw [hlist]
     simp only [parseFunc, parseInstrs_toksInstrs]
 
+/-! ## Signature declarations (D-7 option B, slice B2)
+
+The emission preamble declares each callee's typed signature; the
+token-level declaration below is what the preamble renders. `toksSig`
+carries the callee name, the formal type list under an arity header
+(the same fuel pattern as `parseRegs`/`parseInstrs`), and the return
+type. `parseSig` is its left inverse (`parseSig_toksSig`), and
+`parseSigs_toksSigs` lifts it to whole preambles. -/
+
+/-- Token stream of one signature declaration. -/
+def toksSig (name : String) (params : List Typ) (ret : Typ) : List Tok :=
+  [.kw .fn, .str name, .arity params.length] ++
+    params.map .typ ++ [.typ ret]
+
+/-- Read `n` declared types. Bounded by `n` so the recursion is
+structural in the fuel; the signature arity header supplies the bound. -/
+def parseTyps : Nat → List Tok → Option (List Typ × List Tok)
+  | 0, toks => some ([], toks)
+  | n + 1, .typ τ :: rest =>
+      match parseTyps n rest with
+      | some (τs, rest') => some (τ :: τs, rest')
+      | none => none
+  | _, _ => none
+
+/-- Reading back the types a signature tokenises returns them and leaves
+the tail alone. -/
+theorem parseTyps_toksTyps (τs : List Typ) (rest : List Tok) :
+    parseTyps τs.length (τs.map .typ ++ rest) = some (τs, rest) := by
+  induction τs generalizing rest with
+  | nil => rfl
+  | cons τ τs ih =>
+      simp only [List.map_cons]
+      show parseTyps (Nat.succ τs.length) (.typ τ :: (τs.map .typ ++ rest)) = _
+      simp only [parseTyps, ih]
+
+/-- Read one signature declaration, returning it with the tokens it did
+not consume. -/
+def parseSig : List Tok → Option ((String × List Typ × Typ) × List Tok)
+  | .kw .fn :: .str name :: .arity n :: rest =>
+      match parseTyps n rest with
+      | some (τs, .typ ret :: rest') => some ((name, τs, ret), rest')
+      | _ => none
+  | _ => none
+
+/-- `parseSig` is a left inverse of `toksSig`, with the rest of the stream
+carried through untouched. -/
+theorem parseSig_toksSig (name : String) (params : List Typ) (ret : Typ)
+    (rest : List Tok) :
+    parseSig (toksSig name params ret ++ rest) = some ((name, params, ret), rest) := by
+  rw [show toksSig name params ret ++ rest
+        = .kw .fn :: .str name :: .arity params.length ::
+          (params.map .typ ++ ([.typ ret] ++ rest)) from by simp [toksSig]]
+  simp only [parseSig, parseTyps_toksTyps, List.singleton_append]
+
+/-- Read `n` signature declarations. -/
+def parseSigs : Nat → List Tok → Option (List (String × List Typ × Typ) × List Tok)
+  | 0, toks => some ([], toks)
+  | n + 1, toks =>
+    match parseSig toks with
+    | some (s, rest) =>
+      match parseSigs n rest with
+      | some (ss, rest') => some (s :: ss, rest')
+      | none => none
+    | none => none
+
+/-- One unfolding step of `parseSigs` at a successor fuel, stated separately so
+the round-trip proof never has to convince the elaborator that `n + 1` is a
+successor. -/
+theorem parseSigs_succ (n : Nat) (toks : List Tok) :
+    parseSigs (n + 1) toks =
+      (match parseSig toks with
+       | some (s, rest) =>
+         match parseSigs n rest with
+         | some (ss, rest') => some (s :: ss, rest')
+         | none => none
+       | none => none) := rfl
+
+/-- Reading back `n` encoded signatures returns them and leaves the tail
+alone. -/
+theorem parseSigs_toksSigs : ∀ (ss : List (String × List Typ × Typ)) (rest : List Tok),
+    parseSigs ss.length ((ss.map fun s => toksSig s.1 s.2.1 s.2.2).flatten ++ rest)
+      = some (ss, rest)
+  | [], rest => by simp [parseSigs]
+  | (name, τs, ret) :: ss, rest => by
+      simp only [List.map_cons, List.flatten_cons, List.length_cons]
+      rw [parseSigs_succ, List.append_assoc, parseSig_toksSig]
+      simp only [parseSigs_toksSigs ss rest]
+
 /-- Render a declared CLIF type. `addr` is address-sized on the x86-64
 SystemV target, hence `i64` — the assumption the `CallingConvention`
 revisit records. Placed before the printers: the declared type

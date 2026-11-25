@@ -344,10 +344,46 @@ example : (stepIn tprogAdd
     = some true := by
   native_decide
 
-/-- The emitter still refuses call-bearing bodies (slice B1 boundary:
-the single-function emitter carries no program context). -/
+/-- The emitter still refuses call-bearing bodies under the default
+(empty) program. -/
 example : Morph.Codegen.emitBlock
     ⟨0, [.const 0 .unit, .call (some 2) "add" [0, 1]], .return_ 2⟩ = none :=
   rfl
+
+/-! ## Preamble and program-aware emission pins (D-7 option B, slice B2) -/
+
+/-- A signature declaration tokenises and parses back. -/
+example : parseSig (toksSig "add" [Typ.intType, Typ.intType] Typ.intType)
+    = some ((("add", [Typ.intType, Typ.intType], Typ.intType)), []) := by
+  simpa using parseSig_toksSig "add" [Typ.intType, Typ.intType] Typ.intType []
+
+/-- A whole preamble round-trips. -/
+example : parseSigs 1 (((("add", [Typ.intType, Typ.intType], Typ.intType) :: [] ).map
+    fun s => toksSig s.1 s.2.1 s.2.2).flatten)
+    = some ([(("add", [Typ.intType, Typ.intType], Typ.intType))], []) := by
+  simpa using parseSigs_toksSigs [(("add", [Typ.intType, Typ.intType], Typ.intType))] []
+
+/-- The `add` signature declares its ABI slots. -/
+example : Morph.Codegen.sigDecl addMIR
+    = some "function %add(i64, i64) -> i64\n" := rfl
+
+/-- Empty programs declare nothing, so default emission is byte-identical. -/
+example : Morph.Codegen.preamble ⟨[]⟩ = "" := rfl
+
+/-- The test program's preamble. -/
+example : Morph.Codegen.preamble progAdd
+    = "function %add(i64, i64) -> i64\n" := rfl
+
+/-- With a program, the emitter admits the int-world call. -/
+example : Morph.Codegen.emitBlock
+    ⟨0, [.const 0 .unit, .call (some 2) "add" [0, 1]], .return_ 2⟩ progAdd
+    = some ⟨[Morph.Clif.Instr.call 2 "add" [0, 1] Typ.intType], 2⟩ := rfl
+
+/-- ...and the artifact carries the preamble ahead of the body. -/
+example : Morph.Codegen.emitClif
+    ⟨"main", [], [⟨0, [.const 0 .unit, .call (some 2) "add" [0, 1]], .return_ 2⟩],
+      0, Typ.intType⟩ progAdd
+    = some ("function %add(i64, i64) -> i64\n" ++
+      "function %main() -> i64 {\nblock0:\n  v2 = call %add(v0, v1) -> i64\n  return v2\n}\n") := rfl
 
 end Morph.Tests.ClifCall
