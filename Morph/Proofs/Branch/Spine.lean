@@ -46,7 +46,7 @@ nothing (`runHIRStmts_arm_lookup`); everything else leaves the env alone.
 `cases hss` is safe here (fuel, not `ss`, is the induction target). -/
 theorem spine_P (budget : Nat) (carried : List (HIR.Id × ValId)) :
     ∀ (fuel : Nat) (henv henv' : HEnv) (ss : List HIR.Stmt)
-      (hss : LoopStmts budget ss) (acc out : HFlow),
+      (_hss : LoopStmts budget ss) (acc out : HFlow),
       runHIRStmts fuel henv ss acc = (out, henv') →
       (∀ id r, (id, r) ∈ carried → ∃ w, lookupHEnv henv id = some (.lit w)) →
       (∀ id r, (id, r) ∈ carried → ∃ w, lookupHEnv henv' id = some (.lit w)) := by
@@ -443,9 +443,9 @@ theorem tramp_post_RelEnv (budget : Nat)
       ((dedupIds (assignedIds body)).filterMap
         (fun id => (rhoLookup ρ id).map (fun _ => id))) =
       some (carried, sA, ρb))
-    (hbody : lowerStmtsCFG (nextB + 2) (some nextB) false ρb (s1 + 1)
+    (_hbody : lowerStmtsCFG (nextB + 2) (some nextB) false ρb (s1 + 1)
       (nextB + 3) s1 true (some ⟨nextB, nextB + 1, carried⟩) body = some lb)
-    (hloop : LoopStmts budget body)
+    (_hloop : LoopStmts budget body)
     (hfresh : FreshAbove ρ supply)
     (bId fallEnd : MIR.BlockId) (tramps : List MIR.BlockId)
     (phif : HIR.Id × ValId → List MIR.Instr)
@@ -454,8 +454,8 @@ theorem tramp_post_RelEnv (budget : Nat)
       phif q = ([MIR.Instr.phi q.2 bId entrySrc,
         MIR.Instr.phi q.2 fallEnd backSrc] ++
         tramps.map (MIR.Instr.phi q.2 · q.2)))
-    (hfallNe : fallEnd ≠ bId)
-    (htrNe : ∀ t ∈ tramps, t ≠ bId)
+    (_hfallNe : fallEnd ≠ bId)
+    (_htrNe : ∀ t ∈ tramps, t ≠ bId)
     (hdistC : ∀ id₁ r₁ id₂ r₂, (id₁, r₁) ∈ carried → (id₂, r₂) ∈ carried →
       r₁ = r₂ → id₁ = id₂)
     (envB : HEnv) (henv : HEnv) (fenv fenvArr : FullEnv)
@@ -467,7 +467,7 @@ theorem tramp_post_RelEnv (budget : Nat)
       fenvArr.env r = fenv.env r)
     (hlookB : ∀ id, id ∉ assignedIds body →
       lookupHEnv envB id = lookupHEnv henv id)
-    (t : MIR.BlockId) (htmem : t ∈ tramps) (hfallt : fallEnd ≠ t)
+    (t : MIR.BlockId) (_htmem : t ∈ tramps) (hfallt : fallEnd ≠ t)
     (hbIdt : bId ≠ t) (prog : Program) :
     ∃ fenv', execInstrsFullFromIn prog (some t) fenvArr
         ((carried.map phif).flatten) = some fenv' ∧
@@ -671,7 +671,7 @@ theorem headerPhis_tramp_hit_exec (t bId fallEnd : MIR.BlockId)
       f q = ([MIR.Instr.phi q.2 bId entrySrc,
         MIR.Instr.phi q.2 fallEnd backSrc] ++
         tramps.map (MIR.Instr.phi q.2 · q.2)))
-    (htmem : t ∈ tramps) (hnt : bId ≠ t) (hnf : fallEnd ≠ t)
+    (_htmem : t ∈ tramps) (hnt : bId ≠ t) (hnf : fallEnd ≠ t)
     (prog : Program) (fenv : FullEnv)
     (hval : ∀ id r, (id, r) ∈ l → ∃ w, fenv.env r = some w) :
     execInstrsFullFromIn prog (some t) fenv ((l.map f).flatten) =
@@ -909,7 +909,7 @@ Carried ids use the post-body HIR-lit fact (`spine_P` from pre-body
 binding) plus the worker's bind; assigned-but-not-carried resolve through
 `carried`; unassigned ids use HIR lookup preservation plus the pre-body
 `RelEnv` and the frame. -/
-theorem cont_post_RelEnv (budget : Nat)
+theorem cont_post_RelEnv (_budget : Nat)
     (ρ : List (HIR.Id × ValId)) (supply : Nat)
     (body : List HIR.Stmt) (carried : List (HIR.Id × ValId)) (sA : Nat)
     (ρb : List (HIR.Id × ValId))
@@ -1225,12 +1225,12 @@ theorem header_loop_correct (budget : Nat) :
             have hbnd := hinv.2.2.1
             cases hgl : lb.blocks.getLast? with
             | none =>
-                simp only [hgl, Option.map_none, Option.getD_none]
+                simp only [Option.map_none, Option.getD_none]
                 exact Nat.ne_of_gt (Nat.lt_of_lt_of_le hltB (Nat.le_add_right _ _))
             | some bb =>
                 have hm : bb ∈ lb.blocks := getLast?_mem hgl
                 have hb := hbnd bb hm
-                simp only [hgl, Option.map_some, Option.getD_some]
+                simp only [Option.map_some, Option.getD_some]
                 have hle : nextB ≤ bb.id := Nat.le_trans (Nat.le_add_right _ _) hb.1
                 exact Nat.ne_of_gt (Nat.lt_of_lt_of_le hltB hle)
           have htrFall : ∀ t ∈ (lb.blocks.filterMap (fun b : Block => match b.terminator with | .goto tt => if tt == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2) then some b.id else none | _ => none)),
@@ -1249,7 +1249,7 @@ theorem header_loop_correct (budget : Nat) :
                     simpa using h2
                   rw [heq]
                   exact hne
-                · simp only [hC, if_false] at hfb
+                · simp only [hC] at hfb
                   exact absurd hfb (by simp)
             | _ =>
                 simp only [htb] at hfb
@@ -2030,12 +2030,12 @@ theorem header_loop_correct (budget : Nat) :
             have hbnd := hinv.2.2.1
             cases hgl : lb.blocks.getLast? with
             | none =>
-                simp only [hgl, Option.map_none, Option.getD_none]
+                simp only [Option.map_none, Option.getD_none]
                 exact Nat.ne_of_gt (Nat.lt_of_lt_of_le hltB (Nat.le_add_right _ _))
             | some bb =>
                 have hm : bb ∈ lb.blocks := getLast?_mem hgl
                 have hb := hbnd bb hm
-                simp only [hgl, Option.map_some, Option.getD_some]
+                simp only [Option.map_some, Option.getD_some]
                 have hle : nextB ≤ bb.id := Nat.le_trans (Nat.le_add_right _ _) hb.1
                 exact Nat.ne_of_gt (Nat.lt_of_lt_of_le hltB hle)
           have htrFall : ∀ t ∈ (lb.blocks.filterMap (fun b : Block => match b.terminator with | .goto tt => if tt == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2) then some b.id else none | _ => none)),
@@ -2054,7 +2054,7 @@ theorem header_loop_correct (budget : Nat) :
                     simpa using h2
                   rw [heq]
                   exact hne
-                · simp only [hC, if_false] at hfb
+                · simp only [hC] at hfb
                   exact absurd hfb (by simp)
             | _ =>
                 simp only [htb] at hfb

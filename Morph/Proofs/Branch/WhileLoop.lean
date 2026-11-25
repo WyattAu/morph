@@ -252,12 +252,12 @@ theorem whileLoop_correct (budget : Nat) :
                           have hbnd := hinv.2.2.1
                           cases hgl : lb.blocks.getLast? with
                           | none =>
-                              simp only [hgl, Option.map_none, Option.getD_none]
+                              simp only [Option.map_none, Option.getD_none]
                               exact Nat.ne_of_gt (Nat.lt_of_lt_of_le hltB (Nat.le_add_right _ _))
                           | some bb =>
                               have hm : bb ∈ lb.blocks := getLast?_mem hgl
                               have hb := hbnd bb hm
-                              simp only [hgl, Option.map_some, Option.getD_some]
+                              simp only [Option.map_some, Option.getD_some]
                               have hle : nextB ≤ bb.id := Nat.le_trans (Nat.le_add_right _ _) hb.1
                               exact Nat.ne_of_gt (Nat.lt_of_lt_of_le hltB hle)
                         have htrNe : ∀ t ∈ (lb.blocks.filterMap (fun b : Block => match b.terminator with | .goto tt => if tt == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2) then some b.id else none | _ => none)), t ≠ bId := by
@@ -273,7 +273,7 @@ theorem whileLoop_correct (budget : Nat) :
                                 by_cases hC : (tt == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2)) = true
                                 · simp only [hC, if_true] at hfb
                                   exact ⟨b, hb, (Option.some.inj hfb).symm⟩
-                                · simp only [hC, if_false] at hfb
+                                · simp only [hC] at hfb
                                   exact absurd hfb (by simp)
                             | _ =>
                                 simp only [htb] at hfb
@@ -322,7 +322,7 @@ theorem whileLoop_correct (budget : Nat) :
                         have hbool : fenvC.boolOf vc = some false := boolOf_of_lit fenvC vc false hregC
                         have hexPhiIc : execInstrsFullFromIn prog (some bId) fenv (phis ++ ic) = some fenvC := by
                           rw [execInstrsFullFromIn_append prog (some bId) fenv phis ic, hexP]
-                          simp only [Option.some.injEq] at hexC ⊢
+                          simp only at hexC ⊢
                           rw [execInstrsFullFromIn_of_noPhi] at hexC ⊢
                           · exact hexC
                           · intro d p src hm
@@ -356,7 +356,7 @@ theorem whileLoop_correct (budget : Nat) :
                               execBlockFromIn prog (Fmid + 1) f (some (nextB + 1)) ⟨nextB + 1, lr.instrs, lr.term⟩ ⟨fenvC.env.update lb.supply Value.unit, fenvC.store⟩ := by
                             cases hFmid : Fmid with
                             | zero =>
-                                simp only [execBlockFromIn, hconst]
+                                simp only [execBlockFromIn]
                                 have happ : execInstrsFullFromIn prog (some nextB) fenvC (MIR.Instr.const lb.supply Value.unit :: lr.instrs) =
                                     execInstrsFullFromIn prog (some nextB) ⟨fenvC.env.update lb.supply Value.unit, fenvC.store⟩ lr.instrs := by
                                   have happ0 := execInstrsFullFromIn_append prog (some nextB) fenvC [MIR.Instr.const lb.supply Value.unit] lr.instrs
@@ -448,12 +448,12 @@ theorem whileLoop_correct (budget : Nat) :
                                   have hbnd := hinv.2.2.1
                                   cases hgl : lb.blocks.getLast? with
                                   | none =>
-                                      simp only [hgl, Option.map_none, Option.getD_none]
+                                      simp only [Option.map_none, Option.getD_none]
                                       exact Nat.ne_of_gt (Nat.lt_of_lt_of_le hltB (Nat.le_add_right _ _))
                                   | some bb =>
                                       have hm : bb ∈ lb.blocks := getLast?_mem hgl
                                       have hb := hbnd bb hm
-                                      simp only [hgl, Option.map_some, Option.getD_some]
+                                      simp only [Option.map_some, Option.getD_some]
                                       have hle : nextB ≤ bb.id := Nat.le_trans (Nat.le_add_right _ _) hb.1
                                       exact Nat.ne_of_gt (Nat.lt_of_lt_of_le hltB hle)
                                 have htrNe : ∀ t ∈ (lb.blocks.filterMap (fun b : Block => match b.terminator with | .goto tt => if tt == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2) then some b.id else none | _ => none)), t ≠ bId := by
@@ -469,7 +469,7 @@ theorem whileLoop_correct (budget : Nat) :
                                         by_cases hC : (tt == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2)) = true
                                         · simp only [hC, if_true] at hfb
                                           exact ⟨b, hb, (Option.some.inj hfb).symm⟩
-                                        · simp only [hC, if_false] at hfb
+                                        · simp only [hC] at hfb
                                           exact absurd hfb (by simp)
                                     | _ =>
                                         simp only [htb] at hfb
@@ -665,7 +665,7 @@ theorem whileLoop_correct (budget : Nat) :
                                   | some bb =>
                                       have hm : bb ∈ lb.blocks := getLast?_mem hgl
                                       have hb := hbnd bb hm
-                                      simp only [hgl, Option.map_some, Option.getD_some]
+                                      simp only [Option.map_some, Option.getD_some]
                                       have hle : nextB ≤ bb.id := Nat.le_trans (Nat.le_add_right _ _) hb.1
                                       exact Nat.ne_of_gt (Nat.lt_of_lt_of_le hltB hle)
                                 have htrNe : ∀ t ∈ (lb.blocks.filterMap (fun b : Block => match b.terminator with | .goto tt => if tt == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2) then some b.id else none | _ => none)), t ≠ bId := by
@@ -850,7 +850,7 @@ theorem whileLoop_correct (budget : Nat) :
                                     execBlockFromIn prog (Fbp + 1) f (some (nextB + 1)) ⟨nextB + 1, lr.instrs, lr.term⟩ ⟨fenvArr.env.update lb.supply Value.unit, fenvArr.store⟩ := by
                                   cases hFbp : Fbp with
                                   | zero =>
-                                      simp only [execBlockFromIn, hconstE]
+                                      simp only [execBlockFromIn]
                                       have happ : execInstrsFullFromIn prog (some blkPrev) fenvArr (MIR.Instr.const lb.supply Value.unit :: lr.instrs) =
                                           execInstrsFullFromIn prog (some blkPrev) ⟨fenvArr.env.update lb.supply Value.unit, fenvArr.store⟩ lr.instrs := by
                                         have happ0 := execInstrsFullFromIn_append prog (some blkPrev) fenvArr [MIR.Instr.const lb.supply Value.unit] lr.instrs
@@ -926,12 +926,12 @@ theorem whileLoop_correct (budget : Nat) :
                                   have hbnd := hinv.2.2.1
                                   cases hgl : lb.blocks.getLast? with
                                   | none =>
-                                      simp only [hgl, Option.map_none, Option.getD_none]
+                                      simp only [Option.map_none, Option.getD_none]
                                       exact Nat.ne_of_gt (Nat.lt_of_lt_of_le hltB (Nat.le_add_right _ _))
                                   | some bb =>
                                       have hm : bb ∈ lb.blocks := getLast?_mem hgl
                                       have hb := hbnd bb hm
-                                      simp only [hgl, Option.map_some, Option.getD_some]
+                                      simp only [Option.map_some, Option.getD_some]
                                       have hle : nextB ≤ bb.id := Nat.le_trans (Nat.le_add_right _ _) hb.1
                                       exact Nat.ne_of_gt (Nat.lt_of_lt_of_le hltB hle)
                                 have htrNe : ∀ t ∈ (lb.blocks.filterMap (fun b : Block => match b.terminator with | .goto tt => if tt == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2) then some b.id else none | _ => none)), t ≠ bId := by
@@ -947,7 +947,7 @@ theorem whileLoop_correct (budget : Nat) :
                                         by_cases hC : (tt == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2)) = true
                                         · simp only [hC, if_true] at hfb
                                           exact ⟨b, hb, (Option.some.inj hfb).symm⟩
-                                        · simp only [hC, if_false] at hfb
+                                        · simp only [hC] at hfb
                                           exact absurd hfb (by simp)
                                     | _ =>
                                         simp only [htb] at hfb
@@ -1167,12 +1167,12 @@ theorem whileLoop_correct (budget : Nat) :
                                   have hbnd := hinv.2.2.1
                                   cases hgl : lb.blocks.getLast? with
                                   | none =>
-                                      simp only [hgl, Option.map_none, Option.getD_none]
+                                      simp only [Option.map_none, Option.getD_none]
                                       exact Nat.ne_of_gt (Nat.lt_of_lt_of_le hltB (Nat.le_add_right _ _))
                                   | some bb =>
                                       have hm : bb ∈ lb.blocks := getLast?_mem hgl
                                       have hb := hbnd bb hm
-                                      simp only [hgl, Option.map_some, Option.getD_some]
+                                      simp only [Option.map_some, Option.getD_some]
                                       have hle : nextB ≤ bb.id := Nat.le_trans (Nat.le_add_right _ _) hb.1
                                       exact Nat.ne_of_gt (Nat.lt_of_lt_of_le hltB hle)
                                 have htrNe : ∀ t ∈ (lb.blocks.filterMap (fun b : Block => match b.terminator with | .goto tt => if tt == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2) then some b.id else none | _ => none)), t ≠ bId := by
@@ -1188,7 +1188,7 @@ theorem whileLoop_correct (budget : Nat) :
                                         by_cases hC : (tt == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2)) = true
                                         · simp only [hC, if_true] at hfb
                                           exact ⟨b, hb, (Option.some.inj hfb).symm⟩
-                                        · simp only [hC, if_false] at hfb
+                                        · simp only [hC] at hfb
                                           exact absurd hfb (by simp)
                                     | _ =>
                                         simp only [htb] at hfb
@@ -1376,7 +1376,7 @@ theorem whileLoop_correct (budget : Nat) :
                                   | some bb =>
                                       have hm : bb ∈ lb.blocks := getLast?_mem hgl
                                       have hb := hbnd bb hm
-                                      simp only [hgl, Option.map_some, Option.getD_some]
+                                      simp only [Option.map_some, Option.getD_some]
                                       have hle : nextB ≤ bb.id := Nat.le_trans (Nat.le_add_right _ _) hb.1
                                       exact Nat.ne_of_gt (Nat.lt_of_lt_of_le hltB hle)
                                 have htrNe : ∀ t ∈ (lb.blocks.filterMap (fun b : Block => match b.terminator with | .goto tt => if tt == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2) then some b.id else none | _ => none)), t ≠ bId := by
@@ -1573,12 +1573,12 @@ theorem whileLoop_correct (budget : Nat) :
                                   have hbnd := hinv.2.2.1
                                   cases hgl : lb.blocks.getLast? with
                                   | none =>
-                                      simp only [hgl, Option.map_none, Option.getD_none]
+                                      simp only [Option.map_none, Option.getD_none]
                                       exact Nat.ne_of_gt (Nat.lt_of_lt_of_le hltB (Nat.le_add_right _ _))
                                   | some bb =>
                                       have hm : bb ∈ lb.blocks := getLast?_mem hgl
                                       have hb := hbnd bb hm
-                                      simp only [hgl, Option.map_some, Option.getD_some]
+                                      simp only [Option.map_some, Option.getD_some]
                                       have hle : nextB ≤ bb.id := Nat.le_trans (Nat.le_add_right _ _) hb.1
                                       exact Nat.ne_of_gt (Nat.lt_of_lt_of_le hltB hle)
                                 have htrNe : ∀ t ∈ (lb.blocks.filterMap (fun b : Block => match b.terminator with | .goto tt => if tt == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2) then some b.id else none | _ => none)), t ≠ bId := by
@@ -1594,7 +1594,7 @@ theorem whileLoop_correct (budget : Nat) :
                                         by_cases hC : (tt == nextB && b.id != (lb.blocks.getLast?.map fun b => b.id).getD (nextB + 2)) = true
                                         · simp only [hC, if_true] at hfb
                                           exact ⟨b, hb, (Option.some.inj hfb).symm⟩
-                                        · simp only [hC, if_false] at hfb
+                                        · simp only [hC] at hfb
                                           exact absurd hfb (by simp)
                                     | _ =>
                                         simp only [htb] at hfb

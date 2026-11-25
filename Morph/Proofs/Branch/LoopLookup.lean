@@ -1032,7 +1032,7 @@ theorem lowerStmtsCFG_loopBody_carriedExcl (budget : Nat) :
       (carried : List (HIR.Id × ValId)) (sA : Nat) (ρb : List (HIR.Id × ValId))
       (preρ : List (HIR.Id × ValId)) (INPUT : List HIR.Id)
       (ss : List HIR.Stmt) (L : Lowered)
-      (hc : IsChain base lo ρ)
+      (_hc : IsChain base lo ρ)
       (id : HIR.Id) (r : ValId) (id' : HIR.Id),
       loop = some info →
       lowerStmtsCFG bId (some contB) false ρ supply nextB lastVal true loop ss =
