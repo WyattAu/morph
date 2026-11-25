@@ -154,3 +154,9 @@ results refuse. The characterizations rest on the exact gate
 `emitBlock_bool` splits into encode-failure and non-`int`-type
 refusals), with the step-2 bridge showing every old-gate body still
 passes.
+
+Slice D1 (`3562f1a`): named rendering — `renderFuncFor` names the
+function and declares its return slot in the header, matching the
+line `sigDecl` contributes to the preamble; the historic renderer is
+the `main`/`intType` case by `rfl`. Next: program emission (one
+preamble plus every function body), then the driver path.
