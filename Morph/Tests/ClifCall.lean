@@ -3,6 +3,7 @@ SPDX-License-Identifier: Apache-2.0 -/
 
 import Morph.ClifSimulate
 import Morph.ClifCfgEncode
+import Morph.ClifEmit
 
 /-!
 # Tests for Stage C item C8: calls stop at the encoder, run in the models
@@ -179,5 +180,32 @@ example (env' : Morph.Clif.Env)
     (h : step (fun _ => (none : Option Morph.Core.Value)) (.iconst 3 7) = some env') :
     ∃ v, env' 3 = some v ∧ valueTyp v = some Typ.intType :=
   step_resultTyp h
+
+/-! ## Body-type pins (D-7 option B, step 2)
+
+`lastDef` finds the last writer; an `allI64` body that encodes has
+`intType` everywhere, so the computed body type is `intType`. -/
+
+/-- `lastDef` finds the last writer, not the first. -/
+example : lastDef [.iconst 0 5, .iadd 2 0 1] 2 = some (.iadd 2 0 1) := rfl
+
+/-- An untouched register keeps its earlier writer. -/
+example : lastDef [.iconst 0 5, .iadd 2 0 1] 0 = some (.iconst 0 5) := rfl
+
+/-- The computed body type of a one-instruction int body. -/
+example : bodyResultTyp [.iadd 2 0 1] 2 = some Typ.intType := rfl
+
+/-- An `allI64` body encodes to all-`intType` instructions. -/
+example (cs : List Morph.Clif.Instr)
+    (h : instrEncodes [.const 0 (.int 5), .binop 2 .add 0 1 Typ.intType] = some cs) :
+    ∀ c ∈ cs, Morph.Clif.Instr.resultTyp c = Typ.intType :=
+  Morph.Codegen.encodes_allI64_int (by decide) h
+
+/-- The computed body type of that encoded body is `intType`. -/
+example (cs : List Morph.Clif.Instr) (τ : Typ)
+    (h : instrEncodes [.const 0 (.int 5)] = some cs)
+    (hb : bodyResultTyp cs 0 = some τ) :
+    τ = Typ.intType :=
+  Morph.Codegen.encodes_bodyResultTyp_int (by decide) h hb
 
 end Morph.Tests.ClifCall

@@ -68,6 +68,137 @@ theorem allI64_no_and (is : List Instr) (d l r : ValId) (τ : Morph.Core.Typ) :
 theorem allI64_no_not (is : List Instr) (d s : ValId) (τ : Morph.Core.Typ) :
     allI64 (.unop d .not s τ :: is) = false := rfl
 
+/-! ## The type pass succeeds the `allI64` gate (D-7 option B, step 2)
+
+`allI64` is conservative by design (see its docstring): a body that
+computes a comparison and returns an integer is refused alongside one
+that returns a boolean. The exact pass is `lastDef` (the last
+instruction defining the return register) read through `resultTyp`.
+`encodes_allI64_int` says an `allI64` body that encodes successfully
+encodes to all-`intType` instructions — each case is one row of the
+encoder's rejection table (`instrEncode`, `binopInstr`, `unopInstr`):
+refused constructs contradict a successful encode, bool-producing ones
+contradict `allI64`. `encodes_bodyResultTyp_int` is the form step 3's
+gate switch rests on: the computed body type of such a body is
+`intType`, so the `-> i64` signature `renderFunc` declares stays
+sound. -/
+
+/-- An `allI64` tail stays `allI64`. -/
+theorem allI64_cons_tail {i : Instr} {is : List Instr}
+    (h : allI64 (i :: is) = true) : allI64 is = true := by
+  cases htail : allI64 is with
+  | true => rfl
+  | false => simp [allI64, htail] at h
+
+/-- An `allI64` body that encodes successfully encodes to
+all-`intType` instructions. -/
+theorem encodes_allI64_int {is : List Instr} {cs : List Morph.Clif.Instr}
+    (hall : allI64 is = true) (henc : Morph.Clif.instrEncodes is = some cs) :
+    ∀ c ∈ cs, Morph.Clif.Instr.resultTyp c = .intType := by
+  induction is generalizing cs with
+  | nil =>
+      simp only [Morph.Clif.instrEncodes] at henc
+      obtain rfl := Option.some.inj henc
+      intro c hmem
+      simp at hmem
+  | cons i is ih =>
+      rw [Morph.Clif.instrEncodes_cons] at henc
+      obtain ⟨c', cs', hci, hrest, rfl⟩ := henc
+      have htail := allI64_cons_tail hall
+      intro c hmem
+      simp only [List.mem_cons] at hmem
+      rcases hmem with rfl | hmem
+      · cases i with
+        | const dst v =>
+            cases v with
+            | int n =>
+                simp only [Morph.Clif.instrEncode] at hci
+                obtain rfl := Option.some.inj hci
+                rfl
+            | bool b => simp [Morph.Clif.instrEncode] at hci
+            | string s => simp [Morph.Clif.instrEncode] at hci
+            | pointer p => simp [Morph.Clif.instrEncode] at hci
+            | float f => simp [Morph.Clif.instrEncode] at hci
+            | unit => simp [Morph.Clif.instrEncode] at hci
+            | undef => simp [Morph.Clif.instrEncode] at hci
+            | some w => simp [Morph.Clif.instrEncode] at hci
+            | none => simp [Morph.Clif.instrEncode] at hci
+            | ok w => simp [Morph.Clif.instrEncode] at hci
+            | err w => simp [Morph.Clif.instrEncode] at hci
+            | tuple_ l => simp [Morph.Clif.instrEncode] at hci
+            | array_ l => simp [Morph.Clif.instrEncode] at hci
+            | loc n => simp [Morph.Clif.instrEncode] at hci
+            | closure f e => simp [Morph.Clif.instrEncode] at hci
+        | copy dst src => simp [Morph.Clif.instrEncode] at hci
+        | unop dst op src τ =>
+            cases op with
+            | not => simp [allI64] at hall
+            | notb =>
+                simp only [Morph.Clif.instrEncode, Morph.Clif.unopInstr] at hci
+                obtain rfl := Option.some.inj hci
+                rfl
+        | binop dst op l r τ =>
+            cases op with
+            | add =>
+                simp only [Morph.Clif.instrEncode, Morph.Clif.binopInstr] at hci
+                obtain rfl := Option.some.inj hci
+                rfl
+            | sub =>
+                simp only [Morph.Clif.instrEncode, Morph.Clif.binopInstr] at hci
+                obtain rfl := Option.some.inj hci
+                rfl
+            | mul =>
+                simp only [Morph.Clif.instrEncode, Morph.Clif.binopInstr] at hci
+                obtain rfl := Option.some.inj hci
+                rfl
+            | shl =>
+                simp only [Morph.Clif.instrEncode, Morph.Clif.binopInstr] at hci
+                obtain rfl := Option.some.inj hci
+                rfl
+            | shr =>
+                simp only [Morph.Clif.instrEncode, Morph.Clif.binopInstr] at hci
+                obtain rfl := Option.some.inj hci
+                rfl
+            | eq => simp [allI64] at hall
+            | neq => simp [allI64] at hall
+            | lt => simp [allI64] at hall
+            | leq => simp [allI64] at hall
+            | gt => simp [allI64] at hall
+            | geq => simp [allI64] at hall
+            | and => simp [allI64] at hall
+            | or => simp [allI64] at hall
+            | not => simp [Morph.Clif.instrEncode, Morph.Clif.binopInstr] at hci
+            | div => simp [Morph.Clif.instrEncode, Morph.Clif.binopInstr] at hci
+            | mod => simp [Morph.Clif.instrEncode, Morph.Clif.binopInstr] at hci
+            | andb => simp [Morph.Clif.instrEncode, Morph.Clif.binopInstr] at hci
+            | orb => simp [Morph.Clif.instrEncode, Morph.Clif.binopInstr] at hci
+            | xorb => simp [Morph.Clif.instrEncode, Morph.Clif.binopInstr] at hci
+        | load dst loc cap => simp [Morph.Clif.instrEncode] at hci
+        | store loc src cap => simp [Morph.Clif.instrEncode] at hci
+        | alloc dst cap τ => simp [Morph.Clif.instrEncode] at hci
+        | free loc => simp [Morph.Clif.instrEncode] at hci
+        | call dst fn args => simp [Morph.Clif.instrEncode] at hci
+        | phi dst pred src => simp [Morph.Clif.instrEncode] at hci
+        | allocClosure dst fn captures => simp [Morph.Clif.instrEncode] at hci
+        | callClosure dst clo args => simp [Morph.Clif.instrEncode] at hci
+      · exact ih htail hrest c hmem
+
+/-- The computed body type of an `allI64` encoded body is `intType`.
+`lastDef` returns a member of the body (`lastDef_mem`), and every
+member is `intType` by `encodes_allI64_int`. -/
+theorem encodes_bodyResultTyp_int {is : List Instr} {cs : List Morph.Clif.Instr}
+    {ret : Nat} {τ : Morph.Core.Typ}
+    (hall : allI64 is = true) (henc : Morph.Clif.instrEncodes is = some cs)
+    (hbody : Morph.Clif.bodyResultTyp cs ret = some τ) :
+    τ = .intType := by
+  unfold Morph.Clif.bodyResultTyp at hbody
+  cases hlast : Morph.Clif.lastDef cs ret with
+  | none => simp [hlast] at hbody
+  | some i =>
+      simp only [hlast] at hbody
+      obtain rfl := Option.some.inj hbody
+      exact encodes_allI64_int hall henc i (Morph.Clif.lastDef_mem hlast)
+
 /-- Encode a lowered block, dropping `lowerProgram`'s unit prologue.
 
 The prologue is required, not merely tolerated: a block that does not start with

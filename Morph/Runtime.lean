@@ -146,11 +146,15 @@ def stepActor (system : ActorSystem) (turn : Nat) (_heap : Heap) (_stack : Stack
 
 /-! ## FFI Bridge -/
 
-/-- FFI calling convention supported by the Morph runtime. -/
+/-- The foreign-call convention. D-7 option B+C declares signatures
+Morph-side and lets Cranelift's isa assign locations, so the only
+convention this model names is the target it lowers to: x86-64 SystemV
+(the Linux Cranelift backend). The x86-32 trio (`cdecl`/`stdcall`/
+`fastcall`) retired with D-7: no lowering in this pipeline targets them,
+and naming them invited signatures Cranelift would assign differently.
+Windows x64 stays out of scope until a Windows target exists. -/
 inductive CallingConvention where
-  | cdecl
-  | stdcall
-  | fastcall
+  | systemV
 deriving Repr, BEq
 
 /-- An FFI binding describes a foreign function that can be called

@@ -690,4 +690,48 @@ theorem step_resultTyp {env : Env} {i : Instr} {env' : Env}
                       rw [← h]
                       exact ⟨_, Env.set_same _ _ _, rfl⟩
 
+/-! ## Body result types (D-7 option B, step 2)
+
+The type pass's body half: `lastDef` finds the last instruction defining
+a register (later definitions shadow earlier ones; single-assignment is
+not assumed), and `bodyResultTyp` reads its `resultTyp`. `lastDef_mem`
+lets step 3's gate switch move from a computed body type to a member of
+the encoded body. -/
+
+/-- The last instruction defining a register, if any. -/
+def lastDef : List Instr → Reg → Option Instr
+  | [], _ => none
+  | i :: is, r =>
+      match lastDef is r with
+      | some j => some j
+      | none =>
+          match (i.dst == r) with
+          | true => some i
+          | false => none
+
+/-- The result type of the value a body returns in a register. -/
+def bodyResultTyp (is : List Instr) (ret : Reg) : Option Typ :=
+  (lastDef is ret).map Instr.resultTyp
+
+/-- `lastDef` returns a member of the body. -/
+theorem lastDef_mem {is : List Instr} {r : Reg} {i : Instr}
+    (h : lastDef is r = some i) : i ∈ is := by
+  induction is with
+  | nil => simp [lastDef] at h
+  | cons j js ih =>
+      simp only [lastDef] at h
+      cases htail : lastDef js r with
+      | some k =>
+          simp only [htail] at h
+          obtain rfl := Option.some.inj h
+          exact List.mem_cons_of_mem _ (ih htail)
+      | none =>
+          simp only [htail] at h
+          cases he : (j.dst == r) with
+          | false => simp [he] at h
+          | true =>
+              simp only [he] at h
+              obtain rfl := Option.some.inj h
+              exact List.mem_cons.mpr (Or.inl rfl)
+
 end Morph.Clif
