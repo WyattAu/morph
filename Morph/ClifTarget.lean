@@ -86,11 +86,14 @@ inductive Cond where
   | eq | ne | slt | sle | sgt | sge
   deriving Repr, BEq, DecidableEq, DecidableEq
 
-/-- The CLIF instruction subset of Stage B. Every constructor has (or will have)
+/-- The CLIF instruction subset of Stage B, plus a named `call` (D-7
+option B slice A). Every constructor has (or will have)
 a per-operator agreement lemma in `Morph/ClifLower.lean`; `iconst` takes an
 `Int` because `Value` payloads other than integers have no encoding in this
 subset, so the encoder rejects `.const` with a non-integer payload rather than
-inventing one. -/
+inventing one. `call` names the callee, the actual registers, and the
+declared return type; bare `step` cannot resolve the callee, so calls stall
+there and run additively (`runCallee`/`runCall`) instead. -/
 inductive Instr where
   | iconst (dst : Reg) (v : Int)
   | iadd (dst : Reg) (l r : Reg)
@@ -102,6 +105,7 @@ inductive Instr where
   | bnot (dst : Reg) (src : Reg)
   | ishl (dst : Reg) (l r : Reg)
   | sshr (dst : Reg) (l r : Reg)
+  | call (dst : Reg) (fn : String) (args : List Reg) (ret : Typ)
   deriving Repr, BEq
 
 /-- A single-block CLIF function: straight-line instructions and the register
@@ -203,6 +207,11 @@ def step (env : Env) : Instr → Option Env
     -- which is what an arithmetic shift right computes; it cannot overflow, so
     -- unlike `ishl` there is no `wrap` here.
     some (env.set dst (.int (Int.shiftRight a n)))
+  -- A call names a callee `step` cannot resolve (no program in scope), so
+  -- the program-blind step stalls; resolved callees run additively through
+  -- `runCallee`/`runCall`. The encoder's refusal pins stay green through
+  -- this arm: nothing that encoded before changes shape.
+  | .call .. => none
 
 /-- Run a straight-line instruction list. -/
 def runInstrs (env : Env) : List Instr → Option Env
@@ -216,9 +225,12 @@ def run (f : Func) : Option Value :=
 
 /-! ## Single-level calls (Stage C, item C8 remainder)
 
-The single-block target has no `call` instruction — adding one would break
-every Stage B match on `Instr` — so calls are modelled additively, beside the
-existing runners (the C1/C8a hedge move). A callable pairs a `Func` body with
+The target now names calls (`Instr.call` carries the callee, the actuals,
+and the declared return type — D-7 option B slice A), but executes them
+additively, beside the existing runners (the C1/C8a hedge move): bare
+`step` is program-blind — it cannot resolve a callee — so a call stalls
+there exactly as an unmodelled instruction would, while resolved callees
+run through `runCallee`/`runCall`. A callable still pairs a `Func` body A callable pairs a `Func` body with
 its signature, and the program is a name-indexed list, mirroring
 `MIR.Program`/`findFunc`. The call discipline mirrors `MIR.execFuncCall`:
 single-level only. The callee body runs through the call-free `runInstrs`, so
@@ -447,11 +459,8 @@ register, and the result type is read off the constructor — arithmetic,
 constants and shifts produce ints; comparisons and boolean ops produce
 bools. This is the same split the `step` views (`asInt`/`asBool`)
 enforce, so `step_resultTyp` below holds without extra hypotheses: a
-successful step has already checked its inputs. -/
-
-/-- The register an instruction writes. Every constructor writes exactly
-one destination — the target has no control instructions yet, so no
-case is absent. -/
+successful step has already checked its inputs. -//-- The register an instruction writes. Every constructor writes exactly
+one destination, `call` its declared return register. -/
 def Instr.dst : Instr → Reg
   | .iconst d _ => d
   | .iadd d _ _ => d
@@ -463,6 +472,7 @@ def Instr.dst : Instr → Reg
   | .bnot d _ => d
   | .ishl d _ _ => d
   | .sshr d _ _ => d
+  | .call d _ _ _ => d
 
 /-- The result type of one instruction. -/
 def Instr.resultTyp : Instr → Typ
@@ -476,6 +486,7 @@ def Instr.resultTyp : Instr → Typ
   | .bnot _ _ => .intType
   | .ishl _ _ _ => .intType
   | .sshr _ _ _ => .intType
+  | .call _ _ _ τ => τ
 
 /-- `evalCond` only ever produces booleans. -/
 theorem evalCond_bool {c : Cond} {v1 v2 w : Value}
@@ -689,6 +700,8 @@ theorem step_resultTyp {env : Env} {i : Instr} {env' : Env}
                       simp [step, hl, ha, hr, hn] at h
                       rw [← h]
                       exact ⟨_, Env.set_same _ _ _, rfl⟩
+  | call d fn args τ =>
+      simp [step] at h
 
 /-! ## Body result types (D-7 option B, step 2)
 

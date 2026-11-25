@@ -63,6 +63,7 @@ format an `Instr` value to print an instruction's name. -/
 inductive Name where
   | iconst | iadd | isub | imul | icmp
   | band | bor | bnot | ishl | sshr
+  | call
   | fn | ret
   deriving Repr, BEq, DecidableEq
 
@@ -74,6 +75,8 @@ inductive Tok where
   | imm (i : Int)
   | cond (c : Cond)
   | arity (n : Nat)
+  | str (s : String)
+  | typ (τ : Typ)
   deriving Repr, BEq, DecidableEq
 
 /-- The condition keywords, in the order the grammar above lists them. -/
@@ -98,6 +101,31 @@ def toksInstr : Instr → List Tok
   | .bnot d s => [.kw .bnot, .reg d, .reg s]
   | .ishl d l r => [.kw .ishl, .reg d, .reg l, .reg r]
   | .sshr d l r => [.kw .sshr, .reg d, .reg l, .reg r]
+  | .call d fn args ret =>
+      [.kw .call, .reg d, .str fn, .arity args.length] ++
+        args.map .reg ++ [.typ ret]
+
+/-- Read `n` register tokens. Bounded by `n` so the recursion is
+structural in the fuel; the call arity header supplies the bound, and
+`parseRegs_toksRegs` shows `n := args.length` is exactly right. -/
+def parseRegs : Nat → List Tok → Option (List Reg × List Tok)
+  | 0, toks => some ([], toks)
+  | n + 1, .reg r :: rest =>
+      match parseRegs n rest with
+      | some (rs, rest') => some (r :: rs, rest')
+      | none => none
+  | _, _ => none
+
+/-- Reading back the registers a call tokenises returns them and leaves
+the tail alone. -/
+theorem parseRegs_toksRegs (rs : List Reg) (rest : List Tok) :
+    parseRegs rs.length (rs.map .reg ++ rest) = some (rs, rest) := by
+  induction rs generalizing rest with
+  | nil => rfl
+  | cons r rs ih =>
+      simp only [List.map_cons]
+      show parseRegs (Nat.succ rs.length) (.reg r :: (rs.map .reg ++ rest)) = _
+      simp only [parseRegs, ih]
 
 /-- Read one instruction, returning it with the tokens it did not consume. -/
 def parseInstr : List Tok → Option (Instr × List Tok)
@@ -111,6 +139,10 @@ def parseInstr : List Tok → Option (Instr × List Tok)
   | .kw .bnot :: .reg d :: .reg s :: rest => some (.bnot d s, rest)
   | .kw .ishl :: .reg d :: .reg l :: .reg r :: rest => some (.ishl d l r, rest)
   | .kw .sshr :: .reg d :: .reg l :: .reg r :: rest => some (.sshr d l r, rest)
+  | .kw .call :: .reg d :: .str fn :: .arity n :: rest =>
+      match parseRegs n rest with
+      | some (args, .typ ret :: rest') => some (.call d fn args ret, rest')
+      | _ => none
   | _ => none
 
 /-- `parseInstr` is a left inverse of `toksInstr`, with the rest of the stream
@@ -118,7 +150,22 @@ carried through untouched. This is the interesting half of the round trip: every
 case is decided by the name token alone. -/
 theorem parseInstr_toksInstr (i : Instr) (rest : List Tok) :
     parseInstr (toksInstr i ++ rest) = some (i, rest) := by
-  cases i <;> rfl
+  cases i with
+  | iconst d v => rfl
+  | iadd d l r => rfl
+  | isub d l r => rfl
+  | imul d l r => rfl
+  | icmp d c l r => rfl
+  | band d l r => rfl
+  | bor d l r => rfl
+  | bnot d s => rfl
+  | ishl d l r => rfl
+  | sshr d l r => rfl
+  | call d fn args ret =>
+      rw [show toksInstr (.call d fn args ret) ++ rest
+            = .kw .call :: .reg d :: .str fn :: .arity args.length ::
+              (args.map .reg ++ ([.typ ret] ++ rest)) from by simp [toksInstr]]
+      simp only [parseInstr, parseRegs_toksRegs, List.singleton_append]
 
 /-- Read `n` instructions. Bounded by `n` rather than by a terminator so the
 recursion is structural in the fuel; the arity header supplies the bound, and
@@ -199,6 +246,24 @@ theorem parseFunc_toksFunc_append (f : Func) (t : Tok) :
     rw [hlist]
     simp only [parseFunc, parseInstrs_toksInstrs]
 
+/-- Render a declared CLIF type. `addr` is address-sized on the x86-64
+SystemV target, hence `i64` — the assumption the `CallingConvention`
+revisit records. Placed before the printers: the declared type
+vocabulary belongs to the whole `Clif` model, not to the multi-block
+layer. -/
+def ClifTy.text : ClifTy → String
+  | .i64 => "i64"
+  | .i8 => "i8"
+  | .addr => "i64"
+
+/-- The declared return signature of a call being printed. Types with no
+call slot (unit and non-first-order) take no result suffix. -/
+def retSuffix : Typ → String
+  | τ =>
+      match clifTyOfTyp τ with
+      | some t => " -> " ++ t.text
+      | none => ""
+
 /-- Text of one instruction, in the grammar at the top of the file. -/
 def Instr.text : Instr → String
   | .iconst d v => s!"  v{d} = iconst.i64 {v}"
@@ -211,6 +276,13 @@ def Instr.text : Instr → String
   | .bnot d s => s!"  v{d} = bnot v{s}"
   | .ishl d l r => s!"  v{d} = ishl v{l}, v{r}"
   | .sshr d l r => s!"  v{d} = sshr v{l}, v{r}"
+  | .call d fn args ret =>
+      -- The preamble (`fn0` reference) and signature declarations arrive
+      -- with emission (slice B); this arm names the callee, the actuals,
+      -- and the declared return type in the shape the preamble will anchor.
+      "  v" ++ toString d ++ " = call %" ++ fn ++ "(" ++
+        String.intercalate ", " (args.map (fun a => "v" ++ toString a)) ++
+        ")" ++ retSuffix ret
 
 /-- The CLIF text for a function. Not proved to be its own inverse here: the
 reader of this text is `cranelift-reader`, a trusted component per ADR-032 §3. -/
@@ -281,14 +353,5 @@ def funcText (f : Func) : String :=
     String.intercalate "\n" (f.blocks.map blockText) ++ "\n}\n"
 
 end Cfg
-
-/-- Render a declared CLIF type. `addr` is address-sized on the x86-64
-SystemV target, hence `i64` — the assumption the `CallingConvention`
-revisit records. Placed outside `Cfg`: the declared type vocabulary
-belongs to the whole `Clif` model, not to the multi-block layer. -/
-def ClifTy.text : ClifTy → String
-  | .i64 => "i64"
-  | .i8 => "i8"
-  | .addr => "i64"
 
 end Morph.Clif

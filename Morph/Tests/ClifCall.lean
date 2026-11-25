@@ -208,4 +208,25 @@ example (cs : List Morph.Clif.Instr) (τ : Typ)
     τ = Typ.intType :=
   Morph.Codegen.encodes_bodyResultTyp_int (by decide) h hb
 
+/-! ## Named-call pins (D-7 option B, slice A)
+
+The target names calls; bare `step` stays program-blind, so a call
+stalls there, while tokens round-trip. -/
+
+/-- A call stalls in the program-blind step. -/
+example : step (fun _ => (none : Option Morph.Core.Value))
+    (.call 2 "add" [0, 1] Typ.intType) = none := rfl
+
+/-- A call writes its declared return register. -/
+example : Morph.Clif.Instr.dst (.call 2 "add" [0, 1] Typ.intType) = 2 := rfl
+
+/-- A call's result type is its declared return type. -/
+example : Morph.Clif.Instr.resultTyp (.call 2 "add" [0, 1] Typ.boolType)
+    = Typ.boolType := rfl
+
+/-- Calls tokenise and parse back. -/
+example : parseInstr (toksInstr (.call 2 "add" [0, 1] Typ.intType))
+    = some ((.call 2 "add" [0, 1] Typ.intType), []) := by
+  simpa using parseInstr_toksInstr (.call 2 "add" [0, 1] Typ.intType) []
+
 end Morph.Tests.ClifCall
