@@ -177,9 +177,7 @@ theorem encodes_allI64_int {is : List Instr} {cs : List Morph.Clif.Instr}
         | store loc src cap => simp [Morph.Clif.instrEncode] at hci
         | alloc dst cap τ => simp [Morph.Clif.instrEncode] at hci
         | free loc => simp [Morph.Clif.instrEncode] at hci
-        | call dst fn args =>
-            have hempty : findFunc { funcs := [] } fn = none := rfl
-            simp [hempty] at hci
+        | call dst fn args => simp at hci
         | phi dst pred src => simp [Morph.Clif.instrEncode] at hci
         | allocClosure dst fn captures => simp [Morph.Clif.instrEncode] at hci
         | callClosure dst clo args => simp [Morph.Clif.instrEncode] at hci

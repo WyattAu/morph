@@ -280,6 +280,27 @@ def addTCF : TCFunc :=
 /-- A one-callable typed program. -/
 def tprogAdd : TCProgram := [addTCF]
 
+/-- The typed simulation certifies the typed run: the same argument
+values drive a MIR `Trace` over the encoded body to the value
+`runTCallee` returns. The typed bind is proved by rewriting with the
+two (decided) `typMatches` facts — kernel `rfl` cannot cross `Typ`'s
+derived `BEq`, so the bind hypothesis is discharged by `simp` with
+the checks as rewrite rules. -/
+example : runTCallee addTCF [.int 5, .int 7] = some (.int 12) := by
+  have e1 : typMatches (.int 5) Typ.intType = true := by native_decide
+  have e2 : typMatches (.int 7) Typ.intType = true := by native_decide
+  have ht : bindTArgs [(0, Typ.intType), (1, Typ.intType)] [.int 5, .int 7]
+      = some (Morph.Clif.Env.set
+        (Morph.Clif.Env.set (fun _ => none) 1 (.int 7)) 0 (.int 5)) := by
+    simp [bindTArgs, e1, e2]
+  exact tcallee_correct (ps := [(0, Typ.intType), (1, Typ.intType)])
+    (ts := [(0, Typ.intType), (1, Typ.intType)])
+    (is := [Morph.MIR.Instr.binop 2 .add 0 1 Typ.intType])
+    rfl rfl ht rfl rfl
+    (Trace.cons (Step.add (by rfl) (by rfl) ⟨by decide, by decide⟩)
+      (Trace.nil _))
+    rfl (by rfl)
+
 /-- A typed call runs. -/
 example : (runTCall tprogAdd "add" [.int 5, .int 7]).isSome = true := by
   native_decide

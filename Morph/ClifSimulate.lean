@@ -396,4 +396,48 @@ theorem callee_correct {is : List Morph.MIR.Instr} {cs : List Instr}
   simp only [runCallee, hbind, hins, hrun, hretSrc]
   exact hret
 
+/-! ## Typed call simulation (D-7 option B, slice B2)
+
+The same two statements over the typed binder: a successful typed bind
+has already checked every actual, so `bindCallArgs_bindTArgs_agree`
+rewrites the trace environment to the typed one and the trace does
+the rest. The encoder hypothesis keeps the default (empty) program,
+so an encodable callee body is call-free by construction — the typed
+layer certifies the leaf calls slice B1 admits. -/
+
+/-- A typed trace run from a bound-argument environment reaches the same
+environment on the CLIF side, when the binders agree. -/
+theorem call_simulate_typed {is : List Morph.MIR.Instr} {cs : List Instr}
+    {ps : List (Morph.MIR.ValId × Typ)} {ts : TSig} {ws : List Value}
+    {menv : Morph.MIR.Env} {tenv : Env} {m' : Morph.MIR.Env}
+    (h : ps = ts)
+    (hm : Morph.MIR.bindCallArgs ps ws = some menv)
+    (ht : bindTArgs ts ws = some tenv)
+    (htr : Trace is menv m') (henc : instrEncodes is = some cs) :
+    runInstrs tenv cs = some m' := by
+  have heq : menv = tenv := bindCallArgs_bindTArgs_agree h hm ht
+  subst heq
+  exact run_simulate htr henc
+
+/-- A resolved typed callee runs to the same value on both sides. -/
+theorem tcallee_correct {is : List Morph.MIR.Instr} {cs : List Instr}
+    {ps : List (Morph.MIR.ValId × Typ)} {ts : TSig} {ws : List Value}
+    {menv : Morph.MIR.Env} {tenv : Env} {m' : Morph.MIR.Env}
+    {cf : TCFunc} {ret : Reg} {w : Value}
+    (h : ps = ts)
+    (hm : Morph.MIR.bindCallArgs ps ws = some menv)
+    (ht : bindTArgs ts ws = some tenv)
+    (hbody : cf.body = ⟨cs, ret⟩)
+    (hsig : cf.tsig = ts)
+    (htr : Trace is menv m') (henc : instrEncodes is = some cs)
+    (hret : m' ret = some w) :
+    runTCallee cf ws = some w := by
+  have hrun : runInstrs tenv cs = some m' :=
+    call_simulate_typed h hm ht htr henc
+  have hbind : bindTArgs cf.tsig ws = some tenv := by rw [hsig]; exact ht
+  have hins : cf.body.instrs = cs := by simp [hbody]
+  have hretSrc : cf.body.retSrc = ret := by simp [hbody]
+  simp only [runTCallee, hbind, hins, hrun, hretSrc]
+  exact hret
+
 end Morph.Clif
