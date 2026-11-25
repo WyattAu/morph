@@ -115,3 +115,14 @@ stand unchanged); the typed runner is in (`TCFunc`/`TCProgram`,
 single-function emitter still refuses call-bearing bodies (it carries
 no program context — the B1 boundary, pinned). Next: slice B2, the
 call agreement proof (`blockAgreement` over `callResolved`).
+
+Slice B2a (`bfc04d2`): `call_simulate_typed` + `tcallee_correct` over
+the typed binder via the pre-proved `bindCallArgs_bindTArgs_agree`
+bridge, with a green `runTCallee` pin.
+
+Slice B2b (`3e66801`): the emitter threads a program (default empty)
+and prepends the signature-declaration preamble (`sigDecl`/`preamble`,
+with token-level `toksSig`/`parseSig`/`parseSigs` round-trips); an
+explicit int-world program admits calls, default-program refusal pins
+stay green. Next: slice B2c, Evidence migration (typed params;
+`lowerFunc` still stamps `.unitType` — see `Morph/HIRFunc.lean:164`).
