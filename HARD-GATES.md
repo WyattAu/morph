@@ -11,8 +11,8 @@
 
 | # | Gate | Blocked by | Unblocks when | Disposition |
 |---|---|---|---|---|
-| G-1 | CI per push (lean-build, spec-validation, nightly, Pages) | GitHub billing spending limit (account-level, ROADMAP §2.4) | A maintainer resolves billing | Workflows verified correct by reading; cannot execute here |
-| G-2 | GitHub Pages deploy + versioned spec index | Same billing gate (G-1) | Billing resolved | `site/` + `pages.yml` verified present and correct |
+| G-1 | CI per push (lean-build, spec-validation, nightly, Pages) | ~~GitHub billing spending limit~~ — premise false, corrected 2026-11-25 (public repo, free runners, CI runs) | First green push pipeline observed (nightly green 2026-11-21…24; push pipeline live from 2026-11-25) | Gate closes by reading CI results, not by resolving billing |
+| G-2 | GitHub Pages deploy + versioned spec index | ~~Same billing gate (G-1)~~ — none; `pages.yml` deploys on push (success 2026-11-20) | Versioned index live from a tagged push | `site/` + `pages.yml` present and correct; gate closes on a live deploy |
 | G-3 | External audit of the soundness story (Era-1 exit) | Requires real external reviewers | Maintainers invite 2–3 reviewers | Cannot be produced from inside the repo |
 | G-4 | Rust runtime (`compiler/`, `runtime/`, `cli/`) completion | Era-2+ 12-month track; needs backend/ISA decisions (ADRs) | Era-1 exit + backend ADR | Sprint 1 checks whether the workspace builds; no feature work here |
 | G-5 | Standard library (§6.4: core types, collections, IO, concurrency) | Era-2 track, 7–11 weeks, needs runtime (G-4) | G-4 + Era-1 exit | Not started; not a current-core defect |
@@ -30,7 +30,7 @@ Preconditions (all true as of loop 116): `lake build Morph Morph.Tests`
    no regressions; keep the snapshot JSON as the tag's metrics record
    (ships to auditors per `docs/AUDIT-INVITES-0.1.md` item 3).
 2. `git tag 0.1.0` on the verified commit; push tag.
-3. Billing resolved (G-1) → CI/Pages run on the tag; confirm green.
+3. Push the tag — G-1/G-2 run live (verified 2026-11-25) → CI/Pages run on the tag; confirm green.
 4. Send audit invites with packet + snapshot + timeline (G-3).
 5. Re-stamp release-pinned numbers: `SPECIFICATION_INDEX.md` and
    `site/docs/specs.html` still carry the 0.1.0 stamp ("170 spec
