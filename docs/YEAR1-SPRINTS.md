@@ -15,8 +15,10 @@
 
 ### S1 — First green pipeline (wks 1–2)
 
-- Land any `Morph/**` change (or wait for the next one) and read the
-  full Lean Build result; the sort-fix verification predicts green.
+- If the fortnight holds a `Morph/**` change, read the push pipeline;
+  if not, hand-trigger (`gh workflow run Lean\ Build --ref main`,
+  likewise Specification Validation) instead of manufacturing churn.
+  The sort-fix verification predicts green.
 - Confirm a Pages deploy from a live run; close G-1/G-2 in
   `HARD-GATES.md` against observed evidence, not predictions.
 - Resolve the untracked `.reports/regression/snapshot-*.json` strays:
@@ -30,14 +32,17 @@
   recorded analysis. Write the options (encode with stated ABI vs keep
   refusing) with the cost of each: hypotheses the encoder would need,
   tests it would add, what stays pinned either way.
-- **Exit:** memo circulated; *(maintainer call D-7 dated)*.
+- **Exit:** memo circulated; *(maintainer call D-7 dated; deadline:
+  end of S3; unanswered ⇒ default, refusal stands, provisional ADR)*.
 
 ### S3 — D-7 lands, C8 moves (wks 5–6)
 
 - If D-7 decides encode: spec the encoder statement (fragment predicate
   + agreement shape, Stage-C discipline: MIR produced `w` ⇒ CLIF
   produced `w`), following the relations→agreement→composition pattern.
-- If D-7 decides refuse: publish the rationale beside the pins and close
+- If D-7 decides refuse — or is unanswered past the S3 deadline, in
+  which case the default (refusal stands) proceeds as a provisional
+  ADR: publish the rationale beside the pins and close
   the item; C8 is a leaf, D-work is unaffected either way.
 - **Exit:** C8 encoder spec'd or refusal published; no open "ABI?" thread.
 
@@ -50,7 +55,9 @@
 - D-9: read the 34 `Specs/MemoryModel` theorems against `Memory.lean`'s
   35 definitions; memo bridge-vs-supersede with the cost of each (a
   D2-style relation pair vs a rewrite of the spec side's authority).
-- **Exit:** both memos circulated; *(maintainer calls dated)*.
+- **Exit:** both memos circulated; *(maintainer calls dated; deadline:
+  end of S4; unanswered ⇒ provisional defaults — bridge for D-9, the
+  S4 memo's stated reading for D-8 — recorded as provisional ADRs)*.
 
 ### S5 — `HeapSafe` as a definition (wks 9–10)
 
@@ -76,7 +83,8 @@
 
 - Build the D2 bridge: `heapOf` projection (or an explicit
   `RelBorrowHeap` relation) from `Borrows.lean` provenances to
-  `Memory.lean` heaps. Depends on D1 + D-9's verdict on what a heap is.
+  `Memory.lean` heaps. Depends on D1 + D-9's verdict on what a heap is
+  (or its provisional default — rule 2, no waiting past S4).
 - **Exit:** relation stated; projection total on the fragment or its
   partiality characterized with pins.
 
@@ -92,8 +100,10 @@
 - Cut the snapshot (`scripts/regression-snapshot.sh`), refresh
   `docs/AUDIT-PACKET-0.1.md`, send invites per
   `docs/AUDIT-INVITES-0.1.md` (G-3 opens, 3-week review clock starts).
-- No proof work that the audit could contest starts this sprint;
-  D3 prep (reading) only.
+- No proof work that the audit could contest starts this sprint. D3
+  reading prep (the `stepActor` interface, the D3 sketch, the actor
+  specs) fills the quiet days after the invites go out — reading only,
+  no drafting.
 - **Exit:** invites sent with packet + snapshot + timeline.
 
 ### S10–S11 — Review window (wks 19–22)
@@ -101,10 +111,11 @@
 - Answer reviewers; triage each finding the day it lands: spec
   contradiction, named future work, or accepted-baseline waiver with
   rationale. Nothing evaporates.
-- D3 prep in parallel: draft the `ActorStmts`-style fragment predicate
-  behind the D-8 interface (predicate first, invariant later — the S5
-  lesson).
-- **Exit:** review closes; every finding triaged with an owner.
+- No D3 drafting these sprints — the review window is reactive work
+  and will crowd it out. Reading notes only; drafting lives in S16
+  deliberately.
+- **Exit:** review closes (overrun ⇒ rule 5); every finding triaged with
+  an owner.
 
 ### S12 — Tag 0.1.0 (wks 23–24)
 
@@ -112,6 +123,9 @@
   CI/Pages green on the tag, re-stamp `SPECIFICATION_INDEX.md` +
   `site/docs/specs.html` to measured values (or mark historical),
   announce.
+- If the review overruns: the tag waits (rule 5) — remediation absorbs
+  the slip first, tag moves at most 2 sprints, then tags with known
+  findings documented as errata.
 - **Exit:** tag cut, deploy observed, announcement out; Era-1 exit
   criteria checked (CI per push; 0/0/0; `--hir` end-to-end; 0.1
   released; one audit published).
@@ -131,7 +145,8 @@
 
 - State the actor fragment predicate (the `ActorStmts` analogue of
   `BranchStmts`: new constructors beside the old ones, never widening)
-  plus the per-actor progress statement behind the D-8 interface.
+  plus the per-actor progress statement behind the D-8 interface
+  (drafting deferred here from S10–S11 deliberately).
 - **Exit:** predicate + progress statement circulated for attack.
 
 ### S17–S18 — `stepActor` invariant (wks 33–36)
@@ -194,14 +209,19 @@
 
 ## Sprint operating rules
 
-1. **Push per sprint, read every pipeline.** CI reads the tree only when
-   a watched path changes (`Morph/**` for lean-build; `spec/**`,
-   `docs/conventions/**`, `scripts/spec_tools/**` for spec-validation)
-   — a docs-only sprint produces no runs, and that is correct, not a
-   gap. Nightly (06:00 UTC) covers the rest.
-2. **Decisions are dated, not awaited.** A sprint blocked on D-7/D-8/D-9
-   produces the options memo and moves to unblocked work; the register
-   records the date the question was asked.
+1. **Push per sprint, read every pipeline.** CI reads the tree on push
+   only when a watched path changes (`Morph/**` for lean-build;
+   `spec/**`, `docs/conventions/**`, `scripts/spec_tools/**` for
+   spec-validation) — a sprint with no watched-path change
+   hand-triggers its read (`workflow_dispatch` is enabled on both
+   workflows) instead of manufacturing churn. Nightly (06:00 UTC)
+   covers the rest.
+2. **Decisions are dated, not awaited — and they have deadlines.** D-7
+   answers by end of S3, D-8/D-9 by end of S4. Past the deadline, work
+   proceeds on a stated provisional default recorded as a provisional
+   ADR (D-7 default: refusal stands; D-9 default: bridge; D-8 default:
+   the reading the S4 memo recommends). A wrong provisional default
+   costs a refactor; a stalled chain costs the quarter.
 3. **Predicates before proofs, pins before theorems.** Every D-item
    lands its fragment predicate, its corpus/pin pair (success +
    refusal), and only then its preservation/agreement proof.
@@ -209,3 +229,8 @@
    reviewer attacks each resolve to exactly one of: contradiction entry,
    named future work with a sprint number, or accepted-baseline waiver
    with rationale.
+5. **The tag waits for the review.** If the audit review overruns, the
+   S12 tag slips rather than ships blind: the remediation block absorbs
+   the slip first, the tag moves at most 2 sprints, and past that it
+   tags with known findings documented as errata. Schedule slips;
+   honesty about the release does not.

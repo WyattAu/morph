@@ -19,6 +19,8 @@ on:
       - 'docs/conventions/**'
       - 'scripts/spec_tools/**'
       - '.github/workflows/spec-validation.yml'
+  # Hand-trigger for sprints with no watched-path change (YEAR1-SPRINTS rule 1).
+  workflow_dispatch:
 
 permissions:
   contents: read
