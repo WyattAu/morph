@@ -124,5 +124,12 @@ Slice B2b (`3e66801`): the emitter threads a program (default empty)
 and prepends the signature-declaration preamble (`sigDecl`/`preamble`,
 with token-level `toksSig`/`parseSig`/`parseSigs` round-trips); an
 explicit int-world program admits calls, default-program refusal pins
-stay green. Next: slice B2c, Evidence migration (typed params;
-`lowerFunc` still stamps `.unitType` — see `Morph/HIRFunc.lean:164`).
+stay green.
+
+Slice B2c (`7da6367`): the C8 evidence migrates to the typed layer
+(`Morph/Proofs/Call/Evidence.lean`, typed-convergence section) — the
+typed mirror of the lowered `add` runs to the same `3` through the
+bridge-agreed environment, and the int-typed program emits the
+preamble ahead of the call-bearing body. `lowerFunc` still stamps
+`.unitType` (HIR is untyped), so the migration is a typed view beside
+the untyped lowering, not a change to it; all untyped pins stand.
