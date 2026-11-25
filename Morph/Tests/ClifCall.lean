@@ -467,4 +467,30 @@ example : Morph.Codegen.emitClif isEqMainMIR progBool
       "function %main() -> i64 {\nblock0:\n  v0 = iconst.i64 1\n  v1 = iconst.i64 1\n  v2 = call %iseq(v0, v1) -> i8\n  v3 = iconst.i64 0\n  return v3\n}\n") := by
   native_decide
 
+/-! ## Gate succession pins (D-7 option B, slice C2)
+
+Step 3's switch, pinned both ways: a body that computes a comparison
+but returns an integer now emits (the old `allI64` scan refused it),
+while a genuinely boolean result still refuses. -/
+
+/-- Compare-then-int emits: the gate is the computed type. -/
+example : Morph.Codegen.emitBlock
+    ⟨0, [.const 0 .unit, .const 0 (.int 1), .const 1 (.int 1),
+      .binop 2 .eq 0 1 .boolType, .const 3 (.int 7)], .return_ 3⟩
+    = some ⟨[.iconst 0 1, .iconst 1 1,
+      .icmp 2 .eq 0 1, .iconst 3 7], 3⟩ := rfl
+
+/-- ...with the comparison printed in the artifact. -/
+example : Morph.Codegen.emitClif
+    ⟨"main", [], [⟨0, [.const 0 .unit, .const 0 (.int 1), .const 1 (.int 1),
+      .binop 2 .eq 0 1 .boolType, .const 3 (.int 7)], .return_ 3⟩],
+      0, Typ.intType⟩ ⟨[]⟩
+    = some ("function %main() -> i64 {\nblock0:\n  v0 = iconst.i64 1\n  v1 = iconst.i64 1\n  v2 = icmp eq v0, v1\n  v3 = iconst.i64 7\n  return v3\n}\n") := by
+  native_decide
+
+/-- ...while a boolean result still refuses. -/
+example : Morph.Codegen.emitBlock
+    ⟨0, [.const 0 .unit, .const 0 (.int 1), .const 1 (.int 1),
+      .binop 2 .eq 0 1 .boolType], .return_ 2⟩ = none := rfl
+
 end Morph.Tests.ClifCall

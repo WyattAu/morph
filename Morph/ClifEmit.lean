@@ -81,7 +81,9 @@ refused constructs contradict a successful encode, bool-producing ones
 contradict `allI64`. `encodes_bodyResultTyp_int` is the form step 3's
 gate switch rests on: the computed body type of such a body is
 `intType`, so the `-> i64` signature `renderFunc` declares stays
-sound. -/
+sound. Step 3 has landed in `emitBlock` above — the gate is the
+computed type, and these lemmas are the bridge showing every body the
+old gate admitted still passes. -/
 
 /-- An `allI64` tail stays `allI64`. -/
 theorem allI64_cons_tail {i : Instr} {is : List Instr}
@@ -253,8 +255,17 @@ def emitBlock (b : Block) (prog : Program := { funcs := [] }) : Option Morph.Cli
       match b.instrs with
       | .const 0 .unit :: body =>
           if src = 0 then none
-          else if allI64 body then Morph.Clif.blockEncode ⟨b.id, body, .return_ src⟩ prog
-          else none
+          else match Morph.Clif.blockEncode ⟨b.id, body, .return_ src⟩ prog with
+               | none => none
+               | some cf =>
+                   -- Step 3's gate switch: the computed body type, not the
+                   -- conservative `allI64` scan. A body that computes a
+                   -- comparison and returns an integer is admitted; only a
+                   -- non-`int` result refuses, which is exactly what the
+                   -- `-> i64` signature `renderFunc` declares needs.
+                   match Morph.Clif.bodyResultTyp cf.instrs cf.retSrc with
+                   | some .intType => some cf
+                   | _ => none
       | _ => none
   | _ => none
 
@@ -277,25 +288,32 @@ is not a black box: it is `renderFunc` applied to `blockEncode` of the block wit
 the prologue dropped. -/
 
 /-- On the shape `lowerProgram` produces, the emitter *is* the encoder of the
-prologue-free body. This is the lemma the gate above rests on: the prologue
-disappears from the artifact and nothing else about the body changes. The
-`src ≠ 0` premise is the unit case, which `emitBlock` refuses. -/
+prologue-free body, when the computed body type is `intType`. This is the
+lemma the gate above rests on: the prologue disappears from the artifact
+and nothing else about the body changes. The `src ≠ 0` premise is the
+unit case, which `emitBlock` refuses. -/
 theorem emitBlock_prologue (id : Nat) (body : List Instr) (src : Nat) (hsrc : src ≠ 0)
-    (hall : allI64 body = true) (prog : Program := { funcs := [] }) :
-    emitBlock ⟨id, .const 0 .unit :: body, .return_ src⟩ prog
-      = Morph.Clif.blockEncode ⟨id, body, .return_ src⟩ prog := by
+    {cf : Morph.Clif.Func} (prog : Program := { funcs := [] })
+    (henc : Morph.Clif.blockEncode ⟨id, body, .return_ src⟩ prog = some cf)
+    (htyp : Morph.Clif.bodyResultTyp cf.instrs cf.retSrc = some .intType) :
+    emitBlock ⟨id, .const 0 .unit :: body, .return_ src⟩ prog = some cf := by
   simp only [emitBlock]
-  rw [if_neg hsrc, if_pos hall]
+  rw [if_neg hsrc, henc]
+  dsimp only
+  rw [htyp]
 
 /-- Composing the shape with the emitter: on a lowered function the artifact is
-the preamble plus `blockEncode`'s rendering, with no prologue instruction in
+the preamble plus the encoded rendering, with no prologue instruction in
 it. -/
 theorem emitClif_lowered (body : List Instr) (v : Nat) (hv : v ≠ 0)
-    (hall : allI64 body = true) (prog : Program := { funcs := [] }) :
+    {cf : Morph.Clif.Func} (prog : Program := { funcs := [] })
+    (henc : Morph.Clif.blockEncode ⟨0, body, .return_ v⟩ prog = some cf)
+    (htyp : Morph.Clif.bodyResultTyp cf.instrs cf.retSrc = some .intType) :
     emitClif ⟨"main", [], [⟨0, .const 0 .unit :: body, .return_ v⟩], 0, .unitType⟩ prog
-      = (Morph.Clif.blockEncode ⟨0, body, .return_ v⟩ prog).map
-        (fun cf => preamble prog ++ Morph.Clif.renderFunc cf) := by
-  simp [emitClif, emitFunc, emitBlock_prologue 0 body v hv hall prog]
+      = some (preamble prog ++ Morph.Clif.renderFunc cf) := by
+  have h : emitBlock ⟨0, .const 0 .unit :: body, .return_ v⟩ prog = some cf :=
+    emitBlock_prologue 0 body v hv prog henc htyp
+  simp [emitClif, emitFunc, h]
 
 /-- A unit-valued program is refused: its value is the prologue's register. -/
 theorem emitBlock_unit (id : Nat) (body : List Instr)
@@ -303,13 +321,34 @@ theorem emitBlock_unit (id : Nat) (body : List Instr)
     emitBlock ⟨id, .const 0 .unit :: body, .return_ 0⟩ prog = none := by
   simp [emitBlock]
 
-/-- A boolean-valued program is refused: the text's signature is `-> i64`. -/
-theorem emitBlock_bool {id : Nat} {body : List Instr} {src : Nat}
-    (hall : allI64 body = false) (prog : Program := { funcs := [] }) :
+/-- Encode failure refuses: nothing to type. -/
+theorem emitBlock_encode_none (id : Nat) (body : List Instr) (src : Nat)
+    (prog : Program := { funcs := [] })
+    (henc : Morph.Clif.blockEncode ⟨id, body, .return_ src⟩ prog = none) :
     emitBlock ⟨id, .const 0 .unit :: body, .return_ src⟩ prog = none := by
+  simp only [emitBlock]
   by_cases hsrc : src = 0
-  · simp [emitBlock, hsrc]
-  · simp [emitBlock, hsrc, hall]
+  · simp [hsrc]
+  · simp [hsrc, henc]
+
+/-- A non-`int` body type refuses: the text's signature is `-> i64`. This
+is the exact form of the old `allI64` refusal — a body that computes a
+comparison and returns an integer now passes, and only a genuinely
+non-integer result is turned away. -/
+theorem emitBlock_typ_nonint (id : Nat) (body : List Instr) (src : Nat)
+    {cs : Morph.Clif.Func} (prog : Program := { funcs := [] })
+    (henc : Morph.Clif.blockEncode ⟨id, body, .return_ src⟩ prog = some cs)
+    (htyp : Morph.Clif.bodyResultTyp cs.instrs cs.retSrc ≠ some .intType) :
+    emitBlock ⟨id, .const 0 .unit :: body, .return_ src⟩ prog = none := by
+  simp only [emitBlock]
+  by_cases hsrc : src = 0
+  · simp [hsrc]
+  · rw [if_neg hsrc, henc]
+    dsimp only
+    cases hb : Morph.Clif.bodyResultTyp cs.instrs cs.retSrc with
+    | none => rfl
+    | some t =>
+        cases t <;> first | exact absurd hb htyp | rfl
 
 /-- A successful emission is a single block, the entry block, carrying the
 prologue. -/
