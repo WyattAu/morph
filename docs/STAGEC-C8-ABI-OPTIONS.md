@@ -133,3 +133,15 @@ bridge-agreed environment, and the int-typed program emits the
 preamble ahead of the call-bearing body. `lowerFunc` still stamps
 `.unitType` (HIR is untyped), so the migration is a typed view beside
 the untyped lowering, not a change to it; all untyped pins stand.
+
+Slice C1a (`4d5ea83`): the encoder call arm and `callResolved`
+generalize from `intType`-only to any result with a CLIF slot per the
+marshal table (int, bool, string, pointer); unit and non-first-order
+results and effect-only calls stay refused, and the
+`instrEncodes_some_resolved` proof cases on the slot instead of the
+constructor.
+
+Slice C1b (`ed8d6a3`): the memo's acceptance test — the first
+bool-returning call (`iseq`, an `icmp` body) encodes, runs, and agrees
+via `tcallee_correct` with `Step.eq`, and the caller artifact carries
+the `-> i8` preamble line.
