@@ -229,11 +229,12 @@ example : parseInstr (toksInstr (.call 2 "add" [0, 1] Typ.intType))
     = some ((.call 2 "add" [0, 1] Typ.intType), []) := by
   simpa using parseInstr_toksInstr (.call 2 "add" [0, 1] Typ.intType) []
 
-/-! ## Explicit-program encoder pins (D-7 option B, slice B1)
+/-! ## Explicit-program encoder pins (D-7 option B, slices B1/C1)
 
-With a program the encoder admits int-world calls; without one (and
-for unknown callees, arity mismatches, non-`int` results, and
-effect-only calls) it refuses exactly as before. -/
+With a program the encoder admits slotted calls (any result with a
+CLIF slot per the marshal table); without one (and for unknown
+callees, arity mismatches, slotless results, and effect-only calls)
+it refuses exactly as before. -/
 
 /-- The callee side of the test program: `add` takes two ints. The
 encoder never looks at the body, only name, params, and return type. -/
@@ -256,11 +257,22 @@ example : instrEncode (.call (some 2) "add" [0]) progAdd = none := rfl
 /-- Effect-only calls refuse (no destination to write). -/
 example : instrEncode (.call none "add" [0, 1]) progAdd = none := rfl
 
-/-- A bool-returning callee refuses (int-world only in slice B1). -/
+/-- A bool-returning callee encodes (slot `.i8`, slice C1). -/
 def notMIR : Morph.MIR.Func :=
   ⟨"notfn", [(0, Typ.boolType)], [], 0, Typ.boolType⟩
 
-example : instrEncode (.call (some 2) "notfn" [0]) ⟨[notMIR]⟩ = none := rfl
+example : instrEncode (.call (some 2) "notfn" [0]) ⟨[notMIR]⟩
+    = some (.call 2 "notfn" [0] Typ.boolType) := rfl
+
+/-- ...and resolves, naming the slot. -/
+example : callResolved ⟨[notMIR]⟩ (.call (some 2) "notfn" [0]) :=
+  ⟨notMIR, rfl, rfl, Morph.Clif.ClifTy.i8, rfl⟩
+
+/-- A unit-returning callee refuses (no slot). -/
+def unitMIR : Morph.MIR.Func :=
+  ⟨"unitfn", [(0, Typ.intType)], [], 0, Typ.unitType⟩
+
+example : instrEncode (.call (some 2) "unitfn" [0]) ⟨[unitMIR]⟩ = none := rfl
 
 /-- A mixed body encodes around its call. -/
 example : instrEncodes [.const 0 (.int 5), .call (some 2) "add" [0, 1]] progAdd
@@ -269,7 +281,7 @@ example : instrEncodes [.const 0 (.int 5), .call (some 2) "add" [0, 1]] progAdd
 
 /-- The encoded call satisfies the resolved-call contract. -/
 example : callResolved progAdd (.call (some 2) "add" [0, 1]) :=
-  ⟨addMIR, rfl, rfl, rfl⟩
+  ⟨addMIR, rfl, rfl, Morph.Clif.ClifTy.i64, rfl⟩
 
 /-! ## Typed-runner and stepping pins (D-7 option B, slice B1) -/
 

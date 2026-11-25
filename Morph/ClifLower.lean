@@ -92,9 +92,11 @@ def unopInstr : Morph.MIR.UnOp → Nat → Nat → Option Instr
 defaults to empty: with no program every callee is unknown, so the
 `call` case below reduces to the historic refusal and every existing
 statement about the one-argument form holds unchanged. Pass an explicit
-program to admit int-world calls (D-7 option B slice B1): the callee
-must be known, take as many formals as actuals, and return `intType`;
-effect-only calls (`dst = none`) and non-`int` results stay refused. -/
+program to admit slotted calls (D-7 option B slice C1): the callee
+must be known, take as many formals as actuals, and return a type with
+a CLIF slot (`clifTyOfTyp`, the marshal table — int, bool, string,
+pointer); effect-only calls (`dst = none`) and slotless results (unit,
+non-first-order) stay refused. -/
 def instrEncode : Morph.MIR.Instr → (prog : Morph.MIR.Program := { funcs := [] }) →
     Option Instr
   | .const dst (.int n), _ => some (.iconst dst n)
@@ -103,12 +105,12 @@ def instrEncode : Morph.MIR.Instr → (prog : Morph.MIR.Program := { funcs := []
   | .call dst fn args, prog =>
       match Morph.MIR.findFunc prog fn, dst with
       | some callee, some d =>
-          match callee.retType with
-          | .intType =>
+          match clifTyOfTyp callee.retType with
+          | some _ =>
               if _ : callee.params.length = args.length then
-                some (.call d fn args .intType)
+                some (.call d fn args callee.retType)
               else none
-          | _ => none
+          | none => none
       | _, _ => none
   | _, _ => none
 
@@ -167,20 +169,20 @@ def blockEncode (b : Morph.MIR.Block)
 
 /-- Stage C item C8b, default program: with no program every callee is
 unknown, so `call` has no encoding and no call-bearing block reaches the
-target. Slice A named the target call (`Instr.call`); slice B1 admits
-int-world calls under an explicit program (see `callResolved`). The
+target. Slice A named the target call (`Instr.call`); slices B1/C1
+admit slotted calls under an explicit program (see `callResolved`). The
 call/sig model itself lives additively in `Morph.ClifTarget`
 (`Sig`/`CFunc`/`bindCArgs`/`runCallee`), with the value-passing bridge below. -/
 @[simp] theorem instrEncode_call (dst : Option Nat) (fn : String)
     (args : List Nat) : instrEncode (.call dst fn args) = none := rfl
 
 /-- What an encoded call guarantees about its callee: known, arity
-matching, `intType` result. Effect-only calls (`dst = none`) never
-satisfy this — they stay refused. -/
+matching, and a result with a CLIF slot. Effect-only calls
+(`dst = none`) never satisfy this — they stay refused. -/
 def callResolved (prog : Morph.MIR.Program) : Morph.MIR.Instr → Prop
   | .call (some _) fn args =>
       ∃ f, Morph.MIR.findFunc prog fn = some f ∧
-        f.params.length = args.length ∧ f.retType = .intType
+        f.params.length = args.length ∧ ∃ t, clifTyOfTyp f.retType = some t
   | .call none _ _ => False
   | _ => True
 
@@ -236,31 +238,16 @@ theorem instrEncodes_some_resolved {prog : Morph.MIR.Program}
                 cases hd : dst with
                 | none => simp [hf, hd] at hci
                 | some d =>
-                    cases hr : callee.retType with
-                    | intType =>
-                        simp only [hf, hd, hr] at hci
+                    cases hs : clifTyOfTyp callee.retType with
+                    | none => simp [hf, hd, hs] at hci
+                    | some t =>
+                        simp only [hf, hd, hs] at hci
                         by_cases hlen : callee.params.length = args.length
                         · simp only [dif_pos hlen] at hci
                           obtain rfl := Option.some.inj hci
-                          exact ⟨callee, hf, hlen, hr⟩
+                          exact ⟨callee, hf, hlen, t, hs⟩
                         · simp only [dif_neg hlen] at hci
                           simp at hci
-                    | boolType => simp [hf, hd, hr] at hci
-                    | stringType => simp [hf, hd, hr] at hci
-                    | pointerType => simp [hf, hd, hr] at hci
-                    | unitType => simp [hf, hd, hr] at hci
-                    | arrayType e n => simp [hf, hd, hr] at hci
-                    | functionType ps r => simp [hf, hd, hr] at hci
-                    | linearFunctionType ps r => simp [hf, hd, hr] at hci
-                    | intWidthType w => simp [hf, hd, hr] at hci
-                    | floatType w => simp [hf, hd, hr] at hci
-                    | neverType => simp [hf, hd, hr] at hci
-                    | refType c t => simp [hf, hd, hr] at hci
-                    | typeVar n => simp [hf, hd, hr] at hci
-                    | optionType t => simp [hf, hd, hr] at hci
-                    | resultType a b => simp [hf, hd, hr] at hci
-                    | tupleType l => simp [hf, hd, hr] at hci
-                    | structType n fs => simp [hf, hd, hr] at hci
         | phi dst pred src => exact True.intro
         | allocClosure dst fn captures => exact True.intro
         | callClosure dst clo args => exact True.intro
