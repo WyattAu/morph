@@ -93,6 +93,10 @@ D-7/D-8/D-9 decided; D1–D4 proved (D4 at minimum witness-style
 progress). **If missed:** D5 and the 1.0 freeze slip to Y2 H2; theorem
 scope is never cut to compensate.
 
+Execution detail: [Year 1 sprints](YEAR1-SPRINTS.md) (S1–S26,
+two-week sprints with per-sprint exit criteria, operating rules, and the
+miss rules).
+
 ## Year 2 (2027-11 → 2028-11): 1.0 frozen, language complete
 
 **Theme:** from proved fragment to standard-track language.
