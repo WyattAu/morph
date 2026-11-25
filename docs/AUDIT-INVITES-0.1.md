@@ -20,7 +20,10 @@ independent Lean practitioner. Names intentionally left blank — fill in.
 ## What each reviewer receives
 
 1. `docs/AUDIT-PACKET-0.1.md` (scope, proof inventory, trust base, repro).
-2. Repo access at the tagged release (`git tag 0.1.0` — cut before sending).
+2. Repo access at the pinned commit (hash + snapshot in the packet §1/§5).
+   The 0.1.0 tag follows the review by sprint rule 5 (the tag waits for
+   the review) — reviewers re-verify the tag against the pinned commit
+   before publication.
 3. The regression snapshot JSON for the tag.
 4. This timeline and the findings template below.
 
@@ -29,7 +32,7 @@ independent Lean practitioner. Names intentionally left blank — fill in.
 > Subject: External review invite — Morph 0.1.0 soundness story
 >
 > We're inviting 2–3 reviewers for a public audit of Morph 0.1.0's
-> verification story: a Lean 4 formalization (2,081 theorems, 0 sorry,
+> verification story: a Lean 4 formalization (2,609 theorems, 0 sorry,
 > 0 axioms, 0 build warnings) behind a small CLI
 > (`eval/parse/check/run/fmt/doc/version`). Enclosed is the audit
 > packet: scope, what is proved vs. trusted, known issues (including a
@@ -42,7 +45,9 @@ findings are
 
 ## Timeline
 
-- Week 0: tag 0.1.0, freeze packet, send invites with the materials above.
+- Week 0: pin commit, freeze packet, send invites with the materials above.
+  (Tag 0.1.0 is cut after the review closes, per rule 5 — see item 2
+  above.)
 - Weeks 1–3: review window; maintainer available for pipeline/orientation
   questions, no steer on findings.
 - Week 4: collect findings, publish (attributed or anonymous per reviewer),

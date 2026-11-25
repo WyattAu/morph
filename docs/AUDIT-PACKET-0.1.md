@@ -1,9 +1,10 @@
 # External audit packet — Morph 0.1.0
 
 Review scope for an outside auditor. All claims below reproduce from a clean
-checkout (see §5). Metrics re-verified loop 125 (2026-11-03); the
-tag-time regression snapshot JSON ships with the release materials (see
-`docs/AUDIT-INVITES-0.1.md`).
+checkout (see §5). Metrics re-verified S9 (2026-11-25) via
+`scripts/regression-snapshot.sh` (see §5); the snapshot JSON for the
+pinned commit is committed in-tree under `.reports/regression/` and ships
+with the release materials (see `docs/AUDIT-INVITES-0.1.md`).
 
 ## 1. What is being audited
 
@@ -53,9 +54,11 @@ compatibility promises are `STABILITY.md`.
 - **Substitution theory.** Simultaneous substitution
   (`Morph/Specs/SimultaneousSubst/`), machine↔relation β-agreement
   (`Morph/Specs/MachineRelation`, loop 10).
-- **Spec depth.** 2081 machine-checked theorems repo-wide, 1633 in
-  `Specs/`, across 68 spec modules (`SPEC_STATUS.md`: 1408 Lemmas
-  theorems, 934 examples), 0 `sorry`, 0 axioms, 0 build warnings. The loop-17 consolidation
+- **Spec depth.** 2609 machine-checked theorems repo-wide, 1633 in
+  `Specs/`, across 68 spec modules and 313 Lean modules
+  (`SPEC_STATUS.md`: 1408 Lemmas theorems, 934 examples — regenerated
+deterministically since the `LC_ALL=C` fix), 0 `sorry`, 0 axioms,
+  0 build warnings. The loop-17 consolidation
   convention: superseded spec fragments keep a finding record in their
   `Lemmas.lean` rather than being deleted silently.
 
@@ -71,8 +74,9 @@ compatibility promises are `STABILITY.md`.
   spot-check others — #11 is the precedent for why.
 - `morph check` checks elaboration only; checking against an expected type
   needs type-syntax parsing (named future work, `CHANGELOG.md`).
-- The Python spec-lint tooling (`scripts/spec_tools/`): 836 tests, 96%
-  coverage (96.14% measured loop 125), 0 lint errors, 105 lint warnings (19 waived), 0 broken cross-refs.
+- The Python spec-lint tooling (`scripts/spec_tools/`): 844 tests, 96%
+  coverage (snapshot method, S9 2026-11-25), 0 lint errors, 105 lint
+  warnings (19 waived), 0 broken cross-refs (2037 checked).
   Warnings are the accepted baseline, not failures (zero-warning gate
   covers Lean only).
 
@@ -86,16 +90,15 @@ compatibility promises are `STABILITY.md`.
 3. `morph doc` shows a statement's first line only (no source spans in the
    AST — documented limitation, `Morph/Frontend/DocComment.lean`).
 
-## 5. How to reproduce
-
-```bash
-lake build Morph Morph.Tests  # 0 warnings, 0 errors (454 jobs)
+## 5. How to reproduce```bash
+lake build Morph Morph.Tests  # 0 warnings, 0 errors
 lake build morph              # the CLI
-unset TMPDIR; python3 -m pytest -q            # 836 passed
+unset TMPDIR; python3 -m pytest -q            # 844 passed
 python3 scripts/spec_tools/cli/main.py lint spec  # 0 errors, 105 warnings (baseline; 19 waived)
-bash scripts/cross-ref-validate.sh               # 1700 pass / 0 failbash scripts/regression-snapshot.sh             # metrics + no-regression verdict
+bash scripts/cross-ref-validate.sh             # 2037 pass / 0 fail
+bash scripts/regression-snapshot.sh             # metrics + no-regression verdict
 cargo build -p morph-codegen                  # morph-clif (stage B item B7)
-tests/codegen/check.sh                       # 16/16: corpus accept/reject, Lean only
+tests/codegen/check.sh                       # 22/22: corpus accept/reject, Lean only
 tests/codegen/native.sh                      # 9/9: Lean value vs native value
 ```
 
@@ -155,15 +158,66 @@ undefined `v0`) were found by *running the pipeline*, not by proofs, and both ar
 now pinned by goldens or corpus rows. Mappings that say "delegated to a trusted
 component" should be read as "unchecked by us", not "accepted by it".
 
-## 7. Era-2 scope for auditors to react to
+## 7. Stage C closure, D-7, and the Stage-D memory core (in scope)
 
-- `docs/ERA2-BACKEND-SCOPE.md` (post-audit Stages A–D, open audit
-  questions) + `docs/STAGEA-PREP-125.md` (Year-1 design-only positions:
+Stage C closed after the §6 snapshot: the first-order pipeline
+(HIR run → MIR run → CLIF text) is proved end to end, and the one open
+item — the CLIF `call` encoder, refused for want of the call ABI
+decision (D-7) — is decided and landed. D-7 took option B+C (typed
+signatures per the Runtime marshal table, declared Morph-side); the
+encoder, its agreement lemmas, and per-shape refusal pins are in the
+tree and green (`Morph/Tests/ClifCall.lean`). No surface syntax builds
+a multi-function `CallProg` yet, so whole-program emission is proved
+over explicitly constructed programs (driver path deferred, stated in
+the tree — not a gap in the proof).
+
+The Stage-D memory core is proved and is inside this audit's baseline
+by sprint design (the last proof work before the invites):
+
+- **D1.** `HeapSafe` over `Morph/Memory.lean` blocks (allocated ⇒
+  in-bounds, freed ⇒ unreadable, no resurrection) in
+  `Morph/Memory.lean`, preserved by allocate/free/write in
+  `Morph/Proofs/Memory/Safety.lean`. Reads are pure projections, so
+  read preservation is vacuous (stated, not faked). One provisional
+  default the auditor should attack: `Block.freeBlock` scrubs freed
+  bytes to `undef`, which makes `free` preserve safety
+  unconditionally. The pre-scrub hole (write-then-free left a defined
+  byte observable) is a retained pin; the remaining bypass needs
+  direct block-API misuse no `Memory`-level path performs (also
+  pinned). If the scrub is rejected, D1 re-proves under checked
+  wrappers — a refactor, not a redesign.
+- **D2.** The borrow–heap bridge (`Morph/BorrowHeap.lean`): `heapOf`
+  projects provenances to a canonical heap (one block per borrowed
+  register, block id naming the register), total on the base-place
+  fragment, refusing `deref` loans (pinned). The agreement
+  `wfBorrow_heapSafe` (`Morph/Proofs/BorrowHeap/Agreement.lean`)
+  closes D2. Openly recorded for the audit: stage-1 `WFBorrow` holds
+  of every loan list (field-equal loans are value-equal), so the
+  agreement rests on the projection's faithfulness, not on the
+  premise — stage-2 NLL kill is what makes borrow well-formedness
+  real. Of particular audit value: whether the canonical heap is the
+  right image (it forgets capabilities and lifetimes), and whether
+  any `Memory`-level path builds the pinned bypass states.
+
+D-9 is carried on its provisional default (executable `Memory.lean`
+authoritative; `Specs/MemoryModel` cited as requirements only, not
+bridged). D-8 (`stepActor` interface) and D3/D4 are explicitly *out* of
+this audit's scope — reading only until the review closes, drafting in
+S16 (see §8).
+
+## 8. Era-2 scope for auditors to react to
+
+- `docs/ERA2-BACKEND-SCOPE.md` (Stages A–C closed in the tree, Stage D
+  scoped in `docs/STAGED-SCOPE.md`, open audit questions) +
+  `docs/STAGEA-PREP-125.md` (Year-1 design-only positions:
   strict-subset `morph build` contract, verified-lowering default, MIR
-  small-step gap). No Era-2 implementation lands until the audit
-  publishes (Year-1 freeze).
+  small-step gap). The Year-1 freeze was lifted by maintainer directive
+  (`docs/ERA2-UNFREEZE.md`, loop 133): Stages A–C and the Stage-D
+  memory core (§7) landed before this audit and are in scope. What has
+  *not* landed — and must not until the review closes — is D3/D4 proof
+  work and any change the review contests.
 
-## 8. Hard gate
+## 9. Hard gate
 
 **Sending review invitations is the hard gate for this sprint and is NOT
 done here.** The packet above is the prep; invites (recipients, access,

@@ -1,10 +1,9 @@
 # Stage B codegen rejects: one case per gate, with the exact stderr message.
 # Columns: file<TAB>expected `morph build` stderr.
 # Last component of the message: the encoder's D-4 subset list.
-unit_value.hum	codegen: the CLIF subset cannot encode this program (boolean- or unit-valued programs, div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)
-empty.hum	codegen: the CLIF subset cannot encode this program (boolean- or unit-valued programs, div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)
-boolean_value.hum	codegen: the CLIF subset cannot encode this program (boolean- or unit-valued programs, div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)
-division.hum	codegen: the CLIF subset cannot encode this program (boolean- or unit-valued programs, div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)
+unit_value.hum	codegen: the CLIF subset cannot encode this program (unit-valued programs, div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)
+empty.hum	codegen: the CLIF subset cannot encode this program (unit-valued programs, div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)
+division.hum	codegen: the CLIF subset cannot encode this program (unit-valued programs, div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)
 unary_minus.hum	codegen: program is outside the branch fragment (straight-line statements, if, and single-level while; no match statements or declarations inside loop bodies; see docs/STAGEC-SCOPE.md §3)
 control_flow.hum	codegen: program leaves the HIR fragment (stage B compiles first-order let/assign/return programs only)
 parse_error.hum	line 1, col 1: failed to parse

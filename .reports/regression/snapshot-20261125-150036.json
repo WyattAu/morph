@@ -1,0 +1,21 @@
+{
+  "timestamp": "2026-11-25T15:00:36",
+  "lean_version": "4.27.0",
+  "metrics": {
+    "build_errors": 0,
+    "build_warnings": 0,
+    "sorry_count": 0,
+    "stub_count": 0,
+    "python_tests_passed": 844,
+    "python_tests_failed": 0,
+    "python_coverage_pct": 96,
+    "lean_modules": 313,
+    "spec_modules": 208,
+    "specs_theorems": 1633,
+    "total_theorems": 2609,
+    "lean_loc": 107653,
+    "lint_errors": 0,
+    "lint_warnings": 105,
+    "crossref_broken": 0
+  }
+}
