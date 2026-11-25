@@ -83,9 +83,17 @@ jobs:
           spec-tools validate spec/ --check-traceability --check-security --check-performance --check-maintainability --check-risk --check-verification 2>&1 | tee validate-report.txt || true
       
       - name: Check links
+        # Blocking: the corpus is at zero broken links (2026-11-25) and the
+        # markdown-link standard is enforced by scripts/cross-ref-validate.sh
+        # below. `check-file-references` is opt-in because bare `.md` prose
+        # mentions legitimately name planned/example files.
         run: |
           echo "Running link check..."
-          spec-tools check-links spec/ --output link-report.json --format json || true
+          spec-tools check-links spec/ --output link-report.json --format json
+
+      - name: Validate cross-references
+        # Blocking: imports, markdown links in spec/ and docs/, ADR ids.
+        run: bash scripts/cross-ref-validate.sh
       
       - name: Upload validation reports
         uses: actions/upload-artifact@v4

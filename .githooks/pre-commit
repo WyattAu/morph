@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # Pre-commit hook for Morph monorepo
-# Enforces: Lean 4 compilation, sorry scanning, Python spec-tools tests,
-#           ruff lint, ruff format, mypy type-check, and stub detection.
+# Enforces: Lean 4 compilation, build-quality gates (warnings, sorrys, stubs,
+#           cross-references, spec links), Python spec-tools tests, ruff lint,
+#           ruff format, mypy type-check, and spec-tools lint.
 #
 # Install: cp .githooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+#
+# The gates themselves live in scripts/check-gates.sh so this hook and CI run
+# the same rules; this file only sequences them with the build it already does.
 
 set -euo pipefail
 
@@ -13,7 +17,7 @@ echo "========================================="
 echo ""
 
 # Step 1: Lake build (compile all Lean 4 sources)
-echo "[1/7] Running lake build Morph..."
+echo "[1/6] Running lake build Morph..."
 BUILD_START=$(date +%s)
 BUILD_LOG=$(mktemp /tmp/morph_precommit_build_XXXXXX.log)
 
@@ -21,11 +25,10 @@ if lake build Morph 2>&1 | tee "$BUILD_LOG"; then
     BUILD_END=$(date +%s)
     BUILD_SECS=$((BUILD_END - BUILD_START))
     echo ""
-    echo "[1/7] Lake build PASSED (${BUILD_SECS}s)"
+    echo "[1/6] Lake build PASSED (${BUILD_SECS}s)"
 else
-    ERR_COUNT=$(grep -c "^error:" /tmp/morph_precommit_build.log 2>/dev/null || echo "unknown")
     echo ""
-    echo "[1/7] Lake build FAILED (${ERR_COUNT} errors)"
+    echo "[1/6] Lake build FAILED"
     echo ""
     echo "First 10 errors:"
     grep "^error:" "$BUILD_LOG" | head -10
@@ -34,54 +37,29 @@ else
     rm -f "$BUILD_LOG"
     exit 1
 fi
+
+# Step 2: Build-quality gates over that build log, plus link gates
+echo ""
+echo "[2/6] Running build-quality gates..."
+if ! bash scripts/check-gates.sh "$BUILD_LOG"; then
+    echo ""
+    echo "Commit blocked. Fix the gate failures above before committing."
+    rm -f "$BUILD_LOG"
+    exit 1
+fi
 rm -f "$BUILD_LOG"
 
-# Step 2: Check for sorry declarations (formal verification gaps)
+# Step 3: Lake build Morph.Tests
 echo ""
-echo "[2/7] Checking for 'sorry' declarations..."
-
-SORRY_COUNT=$(grep -rn "sorry" Morph/ --include="*.lean" 2>/dev/null | grep -v "^\s*--" | wc -l || true)
-SORRY_FILES=$(grep -rl "sorry" Morph/ --include="*.lean" 2>/dev/null | wc -l || true)
-
-if [ "$SORRY_COUNT" -gt 0 ]; then
-    echo "[2/7] FAILED: Found ${SORRY_COUNT} 'sorry' declarations in ${SORRY_FILES} files."
-    echo "       These represent gaps in formal verification."
-    echo "       Listing affected files:"
-    grep -rn "sorry" Morph/ --include="*.lean" 2>/dev/null | grep -v "^\s*--" | head -20
-    echo ""
-    echo "Commit blocked. Fix all 'sorry' declarations before committing."
-    exit 1
-else
-    echo "[2/7] No 'sorry' declarations found."
-fi
-
-# Step 3: Check for spec stubs
-echo ""
-echo "[3/7] Checking for spec stubs (example : True := trivial)..."
-
-STUB_COUNT=$(grep -r "example : True := trivial" Morph/Specs/ --include="*.lean" 2>/dev/null | wc -l || true)
-
-if [ "$STUB_COUNT" -gt 0 ]; then
-    echo "[3/7] FAILED: Found ${STUB_COUNT} spec stubs in Morph/Specs/."
-    echo "       These should be replaced with real proofs."
-    echo ""
-    echo "Commit blocked. Replace stubs with real proofs."
-    exit 1
-else
-    echo "[3/7] No spec stubs found."
-fi
-
-# Step 4: Lake build Morph.Tests
-echo ""
-echo "[4/7] Running lake build Morph.Tests..."
+echo "[3/6] Running lake build Morph.Tests..."
 TESTS_LOG=$(mktemp /tmp/morph_precommit_tests_XXXXXX.log)
 
 if lake build Morph.Tests 2>&1 | tee "$TESTS_LOG"; then
     echo ""
-    echo "[4/7] Morph.Tests build PASSED"
+    echo "[3/6] Morph.Tests build PASSED"
 else
     echo ""
-    echo "[4/7] Morph.Tests build FAILED"
+    echo "[3/6] Morph.Tests build FAILED"
     echo ""
     echo "First 10 errors:"
     grep "^error:" "$TESTS_LOG" | head -10
@@ -92,9 +70,9 @@ else
 fi
 rm -f "$TESTS_LOG"
 
-# Step 5: Python spec-tools tests (if available)
+# Step 4: Python spec-tools tests (if available)
 echo ""
-echo "[5/7] Running Python spec-tools tests..."
+echo "[4/6] Running Python spec-tools tests..."
 
 SPEC_TOOLS_PYTEST=""
 if [ -f ".venv/bin/pytest" ] && [ -d ".venv/lib" ]; then
@@ -106,22 +84,22 @@ fi
 if [ -n "$SPEC_TOOLS_PYTEST" ]; then
     if $SPEC_TOOLS_PYTEST scripts/tests/ --tb=short -q 2>&1 | tee /tmp/morph_precommit_pytest.log; then
         echo ""
-        echo "[5/7] Python spec-tools tests PASSED"
+        echo "[4/6] Python spec-tools tests PASSED"
     else
         echo ""
-        echo "[5/7] Python spec-tools tests FAILED"
+        echo "[4/6] Python spec-tools tests FAILED"
         echo ""
         echo "Commit blocked. Fix the failing Python tests above."
         exit 1
     fi
 else
-    echo "[5/7] Python spec-tools not found (skipped)."
+    echo "[4/6] Python spec-tools not found (skipped)."
     echo "       To enable: pip install -e scripts/ in a virtual environment."
 fi
 
-# Step 6: Python linting and type-checking (if available)
+# Step 5: Python linting and type-checking (if available)
 echo ""
-echo "[6/7] Running ruff lint and mypy type-check..."
+echo "[5/6] Running ruff lint and mypy type-check..."
 
 LINT_PASS=true
 
@@ -171,14 +149,14 @@ fi
 
 if [ "$LINT_PASS" = false ]; then
     echo ""
-    echo "[6/7] Lint/type-check FAILED. Commit blocked."
+    echo "[5/6] Lint/type-check FAILED. Commit blocked."
     exit 1
 fi
-echo "[6/7] All lint/type-check PASSED"
+echo "[5/6] All lint/type-check PASSED"
 
-# Step 7: spec-tools checks on staged markdown files (if available)
+# Step 6: spec-tools lint on staged markdown files (if available)
 echo ""
-echo "[7/7] Running spec-tools checks on markdown files..."
+echo "[6/6] Running spec-tools lint on markdown files..."
 SPEC_TOOLS_CMD=""
 if [ -f ".venv/bin/spec-tools" ]; then
     SPEC_TOOLS_CMD=".venv/bin/spec-tools"
@@ -203,15 +181,15 @@ if [ -n "$SPEC_TOOLS_CMD" ]; then
             fi
         done
         if [ "$LINT_OK" = true ]; then
-            echo "[7/7] spec-tools lint PASSED"
+            echo "[6/6] spec-tools lint PASSED"
         else
-            echo "[7/7] spec-tools lint FAILED (warnings only, commit allowed)"
+            echo "[6/6] spec-tools lint FAILED (warnings only, commit allowed)"
         fi
     else
-        echo "[7/7] No markdown files staged, skipping spec-tools."
+        echo "[6/6] No markdown files staged, skipping spec-tools."
     fi
 else
-    echo "[7/7] spec-tools not found (skipped)."
+    echo "[6/6] spec-tools not found (skipped)."
 fi
 
 echo ""

@@ -20,9 +20,9 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 | Real theorems/lemmas | 2549 repo-wide / 1635 in `Specs/` (measured 2026-11-25) |
 | `sorry` declarations | **0** (measured 2026-11-25) |
 | `example : True := trivial` stubs | 0 |
-| Pre-commit hook | 7-step gate (lake build, sorry scan, stub detect, pytest, ruff, mypy, spec-tools lint) |
+| Pre-commit hook | 6-step gate: lake build, `scripts/check-gates.sh` (warnings, `sorry`, stubs, cross-refs, spec links), test build, pytest, ruff+mypy, spec-tools lint |
 | CI/CD | 4 GitHub Actions + GitLab CI + Jenkins |
-| Cross-reference integrity | repo gate `scripts/cross-ref-validate.sh` 2021/2021 PASS (measured 2026-11-25); 12 malformed link-syntax sites repaired (GLOSSARY/README/memory/type); `spec-tools check-links` still reports 107, all code-span/mermaid phantoms or same-dir links the gate accepts (tool resolver conflict, not content) |
+| Cross-reference integrity | repo gate `scripts/cross-ref-validate.sh` 2021/2021 PASS and `spec-tools check-links spec/` 0 broken — both blocking in CI and pre-commit via `scripts/check-gates.sh` (measured 2026-11-25); 12 malformed link-syntax sites and 31 wrong tooling paths repaired |
 | Documentation site | Landing page + 5 doc pages (specs, architecture, tools, ADRs) |
 
 ### Audit Findings (Resolved)
@@ -36,13 +36,14 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 | spec-tools CLI called with multiple positional args | Fixed: iterate files individually |
 | GitHub Pages not deployed | Blocked by GitHub billing; workflow correct |
 | 6 `sorry` declarations (audit-era) | Was blocking zero-warning CI gate | §1.1 done 2026-10-30; still 0, verified 2026-11-25 |
-| 12 malformed spec link-syntax sites | Rendered as text, broken under every resolver | Brackets repaired 2026-11-25 (GLOSSARY ×8, README, memory_model ×2, type_system) |
+| 12 malformed spec link-syntax sites (rendered as text, broken under every resolver) | Brackets repaired 2026-11-25 (GLOSSARY ×8, README, memory_model ×2, type_system) |
+| `spec-tools check-links` disagreed with the repo gate (107 vs 0): results were cached by URL alone, so one directory's failure leaked into every other directory using the same name, and bare `.md` prose mentions counted as links | Fixed 2026-11-25: cache keyed by referring directory, resolution falls back to enclosing roots, prose mentions opt-in (`--check-file-refs`); 31 wrong `../tooling/…` paths repaired; both gates report 0 and are blocking in CI + pre-commit |
+| Warnings and broken links were not gated locally | `scripts/check-gates.sh` (build warnings, `sorry`, stubs, cross-refs, spec links) is now blocking in `.githooks/pre-commit` and CI |
 
 ### Audit Findings (Outstanding)
 
 | Finding | Impact | Resolution Path |
 |---|---|---|
-| `spec-tools check-links` reports 107 broken | Spec-tool noise (phantoms) + resolver conflict with the repo gate | Fix the tool's resolver to be file-relative (gate semantics); until then the repo gate is the standard — do NOT "fix" content links to satisfy spec-tools, it breaks the gate |
 | CI/CD not running (GitHub billing) | No automated verification | Resolve billing |
 | Section numbering warnings in specs (3868) | Lint noise | Normalize numbering or suppress |
 | `impl/roadmap.md` describes Rust/C++ runtime not yet started | Future work | Section 6 |

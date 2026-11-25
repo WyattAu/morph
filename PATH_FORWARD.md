@@ -145,6 +145,12 @@ All `example : True := trivial` stubs have been eliminated (0 remaining). This s
 > Loop 81 status: §2.1 done (warning + stub gates now blocking in
 > `lean-build.yml`; stub check blocking in `.githooks/pre-commit`). §2.2
 > was already blocking before loop 81. CI itself still blocked on billing.
+> 2026-11-25: the gate rules moved into `scripts/check-gates.sh` (build
+> warnings, compiler-reported `sorry`, `sorry` token, stubs,
+> `cross-ref-validate.sh`, `spec-tools check-links`), so the pre-commit hook
+> and CI run identical rules rather than two drifting copies. §2.4 is
+> therefore done for the hooks that exist; the repo has 0 warnings and 0
+> broken links, so the gates are green today.
 
 ### 2.1 Zero-warning CI gate — DONE (loop 81: 89 linter warnings cleared, gate flipped to `exit 1`)
 
@@ -260,7 +266,7 @@ Three overlapping workflows exist:
 | Workflow | Purpose | Action |
 |----------|---------|--------|
 | `lean-build.yml` | Lake build + quality gates | Keep, harden |
-| `spec-validation.yml` | spec-tools format/lint/validate | Keep |
+| `spec-validation.yml` | spec-tools format/lint/validate/link-check + cross-ref gate | Keep; link check and cross-refs now blocking (2026-11-25) |
 | `specification_tests.yml` | Python pytest on ghost files | Already gone — nothing to fold (loop 118) |
 
 `lean-build.yml` already builds `Morph.Tests`, gates errors/warnings/
