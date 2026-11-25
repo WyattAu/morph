@@ -397,7 +397,10 @@ marks without scrubbing, so write-then-free leaves an unsafe state, and
 refuses. S6's preservation work must close this — either by scrubbing in
 `free` or by checked partial wrappers (`Block.write`/`read` are total,
 so the §4 `heapWrite_safe` shape's `= some h'` already presumes them,
-C8-refusal style).
+C8-refusal style). Compatibility note (verified 2026-11-25): no
+pin in `Morph/Tests/Memory.lean` observes a freed block's bytes
+(the `free` pins check only the state flip and the missing-id
+no-op), so scrub-in-`free` would break nothing pinned.
 -/
 
 namespace Memory
