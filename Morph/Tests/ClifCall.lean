@@ -398,4 +398,73 @@ example : Morph.Codegen.emitClif
     = some ("function %add(i64, i64) -> i64\n" ++
       "function %main() -> i64 {\nblock0:\n  v2 = call %add(v0, v1) -> i64\n  return v2\n}\n") := rfl
 
+/-! ## Bool-call acceptance pins (D-7 option B, slice C1)
+
+The memo's test for the decision: the first bool-returning call must
+encode, run, and agree. `iseq` compares two ints; its declaration
+names the `.i8` slot, the typed run returns the comparison, and the
+agreement proof ties the run to a `Trace` exactly as the int case
+does — with `Step.eq`, which carries no range fact. -/
+
+/-- A bool signature declaration tokenises and parses back. -/
+example : parseSig (toksSig "iseq" [Typ.intType, Typ.intType] Typ.boolType)
+    = some ((("iseq", [Typ.intType, Typ.intType], Typ.boolType)), []) := by
+  simpa using parseSig_toksSig "iseq" [Typ.intType, Typ.intType] Typ.boolType []
+
+/-- The `iseq` signature declares the `.i8` slot. -/
+def isEqMIR : Morph.MIR.Func :=
+  ⟨"iseq", [(0, Typ.intType), (1, Typ.intType)],
+    [⟨0, [.const 0 .unit, .binop 2 .eq 0 1 .boolType], .return_ 2⟩],
+    0, Typ.boolType⟩
+
+example : Morph.Codegen.sigDecl isEqMIR
+    = some "function %iseq(i64, i64) -> i8\n" := rfl
+
+/-- The typed `iseq` callable. -/
+def isEqTC : TCFunc :=
+  ⟨"iseq", [(0, Typ.intType), (1, Typ.intType)],
+    ⟨[.icmp 2 .eq 0 1], 2⟩⟩
+
+/-- A bool call runs. -/
+example : (runTCall [isEqTC] "iseq" [.int 1, .int 1]).map
+    (fun w => w == .bool true)
+    = some true := by
+  native_decide
+
+/-- ...to the comparison value, certified against a `Trace`. -/
+example : runTCallee isEqTC [.int 1, .int 1] = some (.bool true) := by
+  have e1 : typMatches (.int 1) Typ.intType = true := by native_decide
+  have ht : bindTArgs [(0, Typ.intType), (1, Typ.intType)] [.int 1, .int 1]
+      = some (Morph.Clif.Env.set
+        (Morph.Clif.Env.set (fun _ => none) 1 (.int 1)) 0 (.int 1)) := by
+    simp [bindTArgs, e1]
+  exact tcallee_correct (ps := [(0, Typ.intType), (1, Typ.intType)])
+    (ts := [(0, Typ.intType), (1, Typ.intType)])
+    (is := [Morph.MIR.Instr.binop 2 .eq 0 1 Typ.boolType])
+    rfl rfl ht rfl rfl
+    (Trace.cons (Step.eq (by rfl) (by rfl))
+      (Trace.nil _))
+    rfl (by rfl)
+
+/-- The caller: calls `iseq`, returns an int (the artifact printer is
+still `-> i64` at the top level). -/
+def isEqMainMIR : Morph.MIR.Func :=
+  ⟨"main", [],
+    [⟨0, [.const 0 .unit, .const 0 (.int 1), .const 1 (.int 1),
+      .call (some 2) "iseq" [0, 1], .const 3 (.int 0)], .return_ 3⟩],
+    0, Typ.intType⟩
+
+/-- A two-function program. -/
+def progBool : Morph.MIR.Program := ⟨[isEqMainMIR, isEqMIR]⟩
+
+/-- Its preamble declares the `.i8` result. -/
+example : Morph.Codegen.preamble progBool
+    = "function %main() -> i64\nfunction %iseq(i64, i64) -> i8\n" := rfl
+
+/-- ...and the artifact calls into it. -/
+example : Morph.Codegen.emitClif isEqMainMIR progBool
+    = some ("function %main() -> i64\nfunction %iseq(i64, i64) -> i8\n" ++
+      "function %main() -> i64 {\nblock0:\n  v0 = iconst.i64 1\n  v1 = iconst.i64 1\n  v2 = call %iseq(v0, v1) -> i8\n  v3 = iconst.i64 0\n  return v3\n}\n") := by
+  native_decide
+
 end Morph.Tests.ClifCall
