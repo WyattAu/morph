@@ -371,4 +371,60 @@ class MonadMemory (m : Type → Type) where
   /-- Copy bytes between memory locations -/
   copy (src dst : Core.Pointer) (size : Nat) : m Unit
 
+/-!
+## HeapSafe (D1 fragment predicate, S5)
+
+Definition only: a predicate needs no theorems to be stated, but it
+needs reviewers before proofs begin (`docs/STAGED-SCOPE.md` §5).
+Stated over `Memory.lean` blocks per the S5 mandate and the D-9
+provisional default (executable `Memory.lean` authoritative).
+
+Mandate mapping (S5: allocated ⇒ in-bounds, freed ⇒ unreadable, no
+use-after-free):
+- `blockBacked`: an allocated block's byte array has exactly the size
+  it claims, so every in-bounds offset indexes real storage.
+- `blockScrubbed`: a freed block holds no defined byte, so nothing
+  observable lingers for a later read through the block API.
+- `idsFresh`: every block id sits below the allocator cursor, so no
+  stale id can resolve to a block allocated after it was observed
+  (the no-resurrection half of no-use-after-free; the no-observation
+  half is the conjunction of the first two with the pointer API's
+  existing allocated-check in `check_pointer_valid`).
+
+Known boundary, exhibited by the S5 pins rather than hidden: `Memory.free`
+marks without scrubbing, so write-then-free leaves an unsafe state, and
+`Block.read`/`getBlock?` observe freed bytes that `check_pointer_valid`
+refuses. S6's preservation work must close this — either by scrubbing in
+`free` or by checked partial wrappers (`Block.write`/`read` are total,
+so the §4 `heapWrite_safe` shape's `= some h'` already presumes them,
+C8-refusal style).
+-/
+
+namespace Memory
+
+/-- Allocated ⇒ in-bounds: backing matches the claimed size. -/
+def blockBacked (b : Block) : Bool :=
+  !b.isAllocated || (b.bytes.size == b.size)
+
+/-- Freed ⇒ unreadable: no defined byte lingers. -/
+def blockScrubbed (b : Block) : Bool :=
+  !b.isFreed || b.bytes.all (fun byte => !byte.isDefined)
+
+/-- No-resurrection: every block id is below the fresh cursor. -/
+def idsFresh (m : Memory) : Bool :=
+  m.blocks.all (fun p => decide (p.1.id < m.nextBlockId))
+
+/-- The D1 fragment predicate: backing, scrub, and freshness. -/
+def HeapSafe (m : Memory) : Prop :=
+  m.blocks.all (fun p => blockBacked p.2) = true
+  ∧ m.blocks.all (fun p => blockScrubbed p.2) = true
+  ∧ idsFresh m = true
+
+/-- `HeapSafe` is executable: the S5 pins decide it. -/
+instance decHeapSafe (m : Memory) : Decidable (HeapSafe m) := by
+  unfold HeapSafe
+  infer_instance
+
+end Memory
+
 end Morph

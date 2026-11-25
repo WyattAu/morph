@@ -269,4 +269,53 @@ section AlignmentTests
 
 end AlignmentTests
 
+section HeapSafePins
+
+/-! ## `HeapSafe` pins (S5)
+
+Success case plus boundary case, mirroring the C8 pins: empty and
+freshly-allocated memories are safe; write-then-free through the API
+leaves an unsafe state (freed block with a lingering defined byte),
+observable through the block API though refused at the pointer level.
+The boundary is exhibited, not hidden — S6 must close it. -/
+
+  /-- Empty memory is safe, vacuously. -/
+  example : Memory.HeapSafe Memory.empty := by
+    native_decide
+
+  /-- A freshly allocated block is safe: backing matches, nothing
+  freed, id below the cursor. -/
+  example : Memory.HeapSafe (Memory.empty.allocate 4 1).1 := by
+    native_decide
+
+  /-- The boundary state: write a defined byte, then free without
+  scrub — the API itself produces it. -/
+  def writeThenFree : Memory :=
+    let (m, id) := Memory.empty.allocate 4 1
+    match Memory.getBlock? m id with
+    | none => m
+    | some b =>
+      let wb := Block.write b 0 (MemByte.value 7)
+      let m' : Memory := { m with blocks := Memory.updateBlock m.blocks id wb }
+      m'.free id
+
+  /-- ...and it violates the freed clause, so the whole predicate. -/
+  example : ¬ Memory.HeapSafe writeThenFree := by
+    native_decide
+
+  /-- The witness: the old byte is still observable through the block
+  API (`getBlock?` + `Block.read` perform no state check). -/
+  example : ((writeThenFree.getBlock? { id := 0 }).map (fun b => b.read 0)
+      == some (MemByte.value 7)) = true := by
+    native_decide
+
+  /-- While the pointer API refuses the same block (`check_pointer_valid`
+  demands allocated): two levels, two answers — the scrub must reunite
+  them. -/
+  example : check_pointer_valid writeThenFree
+      { block := { id := 0 }, offset := 0, provenance := none } = false := by
+    native_decide
+
+end HeapSafePins
+
 end Tests.Memory
