@@ -71,14 +71,18 @@ def basePlaces (π : Provenances) : List ValId :=
 
 /-! ## Projection: canonical heap over the borrowed registers -/
 
-/-- The D2 projection. Outside the fragment: `none`. Inside: one
-allocated size-1 `undef` block per distinct borrowed register, block id
-naming the register, cursor past the largest register. -/
+/-- The canonical heap over a register list: one allocated size-1
+`undef` block per entry, block id naming the register, cursor past the
+largest entry. Factored out of `heapOf` (S8) so the agreement lemmas
+state over an arbitrary list, with no `let` in the projection equation. -/
+def canonicalHeap (places : List ValId) : Memory :=
+  { blocks := places.map (fun v => ({ id := v }, Block.make { id := v } 1 1)),
+    nextBlockId := places.foldl Nat.max 0 + 1 }
+
+/-- The D2 projection. Outside the fragment: `none`. Inside: the
+canonical heap over the distinct borrowed registers. -/
 def heapOf (π : Provenances) : Option Memory :=
-  if heapFragment π then
-    let places := (basePlaces π).eraseDups
-    some { blocks := places.map (fun v => ({ id := v }, Block.make { id := v } 1 1)),
-           nextBlockId := places.foldl Nat.max 0 + 1 }
+  if heapFragment π then some (canonicalHeap ((basePlaces π).eraseDups))
   else none
 
 /-! ## Total on the fragment, refusal outside it -/
