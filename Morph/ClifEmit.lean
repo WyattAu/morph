@@ -177,7 +177,9 @@ theorem encodes_allI64_int {is : List Instr} {cs : List Morph.Clif.Instr}
         | store loc src cap => simp [Morph.Clif.instrEncode] at hci
         | alloc dst cap τ => simp [Morph.Clif.instrEncode] at hci
         | free loc => simp [Morph.Clif.instrEncode] at hci
-        | call dst fn args => simp [Morph.Clif.instrEncode] at hci
+        | call dst fn args =>
+            have hempty : findFunc { funcs := [] } fn = none := rfl
+            simp [hempty] at hci
         | phi dst pred src => simp [Morph.Clif.instrEncode] at hci
         | allocClosure dst fn captures => simp [Morph.Clif.instrEncode] at hci
         | callClosure dst clo args => simp [Morph.Clif.instrEncode] at hci
@@ -199,6 +201,11 @@ theorem encodes_bodyResultTyp_int {is : List Instr} {cs : List Morph.Clif.Instr}
       obtain rfl := Option.some.inj hbody
       exact encodes_allI64_int hall henc i (Morph.Clif.lastDef_mem hlast)
 
+-- Slice B1 boundary: the single-function emitter carries no program context
+-- (default `[]`), so call-bearing bodies fail at `instrEncodes` exactly as
+-- before — the model admits them, the artifact does not. Deliberate, per
+-- the printer's "model admits more than the text" rule; slice B2 threads a
+-- real program from the driver with the preamble and signature declarations.
 /-- Encode a lowered block, dropping `lowerProgram`'s unit prologue.
 
 The prologue is required, not merely tolerated: a block that does not start with

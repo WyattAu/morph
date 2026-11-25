@@ -99,3 +99,19 @@ convention. Fallback **A + C** if S3 review prices B out of the
 quarter. The memo's test for either: the first bool-returning call in
 the corpus must encode, run, and agree — that case is today's
 `allI64`-refused shape, so it exercises exactly what D-7 adds.
+
+## Status
+
+Slice A (commit `c83a2b0`): `Morph.MIR.Instr.call` exists in the
+model, the text layer, and the encoder, and the encoder still refuses
+every call — the refusal is now proved per-shape rather than
+per-absence.
+
+Slice B1 (this commit): program threading is in
+(`instrEncode`/`instrEncodes`/`blockEncode`/`encodeBlockAt`/`encodeFunc`
+take an optional program, defaulting to empty so all existing proofs
+stand unchanged); the typed runner is in (`TCFunc`/`TCProgram`,
+`runTCall`, `stepIn`, with the bind/call refusal and step lemmas); the
+single-function emitter still refuses call-bearing bodies (it carries
+no program context — the B1 boundary, pinned). Next: slice B2, the
+call agreement proof (`blockAgreement` over `callResolved`).

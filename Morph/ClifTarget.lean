@@ -413,6 +413,13 @@ theorem bindTArgs_some_length {ts : TSig} {ws : List Value}
                   simp only [List.length_cons] at hlen ⊢
                   omega
 
+/-- A length mismatch refuses the whole bind. -/
+theorem bindTArgs_length_mismatch {ts : TSig} {ws : List Value}
+    (h : ts.length ≠ ws.length) : bindTArgs ts ws = none := by
+  cases hb : bindTArgs ts ws with
+  | some env => exact absurd (bindTArgs_some_length hb) h
+  | none => rfl
+
 /-- A head type mismatch refuses: the equation on `==` is the premise
 because `Typ`'s derived `BEq` is not proved lawful, so propositional
 inequality cannot supply it. -/
@@ -427,6 +434,15 @@ theorem bindTArgs_head_unrepresentable {r : Reg} {τ : Typ} {ts : TSig}
     {v : Value} {vs : List Value} (hv : valueTyp v = none) :
     bindTArgs ((r, τ) :: ts) (v :: vs) = none := by
   simp [bindTArgs, hv]
+
+/-- A refusal in the tail refuses the whole bind, whatever the head
+checks to. -/
+theorem bindTArgs_cons_none {r : Reg} {τ : Typ} {ts : TSig}
+    {v : Value} {vs : List Value} (h : bindTArgs ts vs = none) :
+    bindTArgs ((r, τ) :: ts) (v :: vs) = none := by
+  cases he : typMatches v τ with
+  | false => simp [bindTArgs, he]
+  | true => simp [bindTArgs, he, h]
 
 /-! ## Declared CLIF types (D-7 option B, step 2)
 
@@ -746,5 +762,74 @@ theorem lastDef_mem {is : List Instr} {r : Reg} {i : Instr}
               simp only [he] at h
               obtain rfl := Option.some.inj h
               exact List.mem_cons.mpr (Or.inl rfl)
+
+/-! ## Typed call programs and program-aware stepping (D-7 option B, slice B1)
+
+`CFunc`/`runCall` bind by arity only. The typed twins below check the
+declared types as well (`TSig` from step 1): a typed callee stalls on
+arity *or* type mismatch. `stepIn` runs one instruction against a typed
+target program — pure instructions delegate to `step`, calls resolve
+through `runTCall` — so the model executes what the explicit-program
+encoder accepts. The dynamic check runs at bind time; the static half
+(checking caller actuals against callee formals) arrives with the type
+environment in slice B2. The untyped layer stays for the C8 evidence
+that predates typed signatures; it converges onto this one in B2. -/
+
+/-- A typed callable: a name, its typed signature, and a single-block body. -/
+structure TCFunc where
+  name : String
+  tsig : TSig
+  body : Func
+  deriving Repr, BEq
+
+/-- A typed CLIF call program: name-indexed typed callables. -/
+abbrev TCProgram := List TCFunc
+
+/-- Find a typed callable by name. -/
+def findTCFunc (prog : TCProgram) (fn : String) : Option TCFunc :=
+  prog.find? (fun f => f.name == fn)
+
+/-- Run a resolved typed callee: bind the arguments (arity *and*
+types), run the call-free body, read the return register. -/
+def runTCallee (cf : TCFunc) (ws : List Value) : Option Value :=
+  match bindTArgs cf.tsig ws with
+  | none => none
+  | some env =>
+      match runInstrs env cf.body.instrs with
+      | none => none
+      | some env' => env' cf.body.retSrc
+
+/-- Run by name: look the callee up, then run it. -/
+def runTCall (prog : TCProgram) (fn : String) (ws : List Value) : Option Value :=
+  match findTCFunc prog fn with
+  | none => none
+  | some cf => runTCallee cf ws
+
+/-- Unknown callees stall. -/
+theorem runTCall_none_unknown (prog : TCProgram) (fn : String) (ws : List Value)
+    (h : findTCFunc prog fn = none) : runTCall prog fn ws = none := by
+  simp [runTCall, h]
+
+/-- Arity or type mismatches stall. -/
+theorem runTCall_none_bind (prog : TCProgram) (cf : TCFunc) (ws : List Value)
+    (hfind : findTCFunc prog cf.name = some cf)
+    (hbind : bindTArgs cf.tsig ws = none) :
+    runTCall prog cf.name ws = none := by
+  simp [runTCall, hfind, runTCallee, hbind]
+
+/-- Program-aware single step. Pure instructions delegate to `step`;
+calls look their actuals up in the environment and resolve through
+`runTCall`, writing the return value to the declared destination. Any
+failure along the way — unbound register, unknown name, arity or type
+mismatch, stalled body — stalls the step. -/
+def stepIn (tprog : TCProgram) (env : Env) : Instr → Option Env
+  | .call d fn args _ =>
+      match args.mapM env with
+      | none => none
+      | some vs =>
+          match runTCall tprog fn vs with
+          | none => none
+          | some w => some (env.set d w)
+  | i => step env i
 
 end Morph.Clif

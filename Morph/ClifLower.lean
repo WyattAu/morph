@@ -88,36 +88,59 @@ def unopInstr : Morph.MIR.UnOp → Nat → Nat → Option Instr
   | .notb, dst, src => some (.bnot dst src)
   | .not, _, _ => none
 
-/-- Encode one MIR instruction. -/
-def instrEncode : Morph.MIR.Instr → Option Instr
-  | .const dst (.int n) => some (.iconst dst n)
-  | .binop dst op l r _τ => binopInstr op dst l r
-  | .unop dst op src _τ => unopInstr op dst src
-  | _ => none
+/-- Encode one MIR instruction. The program context is optional and
+defaults to empty: with no program every callee is unknown, so the
+`call` case below reduces to the historic refusal and every existing
+statement about the one-argument form holds unchanged. Pass an explicit
+program to admit int-world calls (D-7 option B slice B1): the callee
+must be known, take as many formals as actuals, and return `intType`;
+effect-only calls (`dst = none`) and non-`int` results stay refused. -/
+def instrEncode : Morph.MIR.Instr → (prog : Morph.MIR.Program := { funcs := [] }) →
+    Option Instr
+  | .const dst (.int n), _ => some (.iconst dst n)
+  | .binop dst op l r _τ, _ => binopInstr op dst l r
+  | .unop dst op src _τ, _ => unopInstr op dst src
+  | .call dst fn args, prog =>
+      match Morph.MIR.findFunc prog fn, dst with
+      | some callee, some d =>
+          match callee.retType with
+          | .intType =>
+              if _ : callee.params.length = args.length then
+                some (.call d fn args .intType)
+              else none
+          | _ => none
+      | _, _ => none
+  | _, _ => none
 
 /-- Encode a straight-line instruction list. Written as an explicit two-way
 match rather than a `do` block so `instrEncodes_cons` below is invertible. -/
-def instrEncodes : List Morph.MIR.Instr → Option (List Instr)
-  | [] => some []
-  | i :: is =>
-    match instrEncode i, instrEncodes is with
+def instrEncodes : List Morph.MIR.Instr →
+    (prog : Morph.MIR.Program := { funcs := [] }) → Option (List Instr)
+  | [], _ => some []
+  | i :: is, prog =>
+    match instrEncode i prog, instrEncodes is prog with
     | some c, some cs => some (c :: cs)
     | _, _ => none
 
-/-- The cons case of the encoder, in the direction the simulation needs. -/
-theorem instrEncodes_cons {i : Morph.MIR.Instr} {is : List Morph.MIR.Instr}
-    {cs : List Instr} :
-    instrEncodes (i :: is) = some cs ↔
-      ∃ c cs', instrEncode i = some c ∧ instrEncodes is = some cs' ∧ cs = c :: cs' := by
-  cases hc : instrEncode i <;> cases hs : instrEncodes is <;>
+/-- The cons case of the encoder, in the direction the simulation needs.
+Stated with an explicit program; the one-argument form is the empty
+program, so existing uses are unaffected. -/
+theorem instrEncodes_cons {prog : Morph.MIR.Program} {i : Morph.MIR.Instr}
+    {is : List Morph.MIR.Instr} {cs : List Instr} :
+    instrEncodes (i :: is) prog = some cs ↔
+      ∃ c cs', instrEncode i prog = some c ∧ instrEncodes is prog = some cs' ∧
+        cs = c :: cs' := by
+  cases hc : instrEncode i prog <;> cases hs : instrEncodes is prog <;>
     simp [instrEncodes, hc, hs, eq_comm]
 
 /-- Encode a single-block function: its `return` register becomes the model's
 return register. Multi-block bodies are rejected — the Stage B fragment is
 `StraightStmts`-shaped, and control flow is a separate obligation. -/
-def blockEncode (b : Morph.MIR.Block) : Option Func :=
+def blockEncode (b : Morph.MIR.Block)
+    (prog : Morph.MIR.Program := { funcs := [] }) : Option Func :=
   match b.terminator with
-  | .return_ src => (instrEncodes b.instrs).map fun is => { instrs := is, retSrc := src }
+  | .return_ src =>
+      (instrEncodes b.instrs prog).map fun is => { instrs := is, retSrc := src }
   | _ => none
 
 /-! Rejections, stated so that later case analysis can discharge them by `simp`. -/
@@ -142,13 +165,106 @@ def blockEncode (b : Morph.MIR.Block) : Option Func :=
 @[simp] theorem instrEncode_load (dst loc : Nat) (cap : Capability) :
     instrEncode (.load dst loc cap) = none := rfl
 
-/-- Stage C item C8b: `call` has no CLIF encoding in this subset. The target
-cannot name a call (there is no `Instr.call`, by design — it would break every
-Stage B match), so the encoder refuses it and no call-bearing block reaches
-the target. The call/sig model itself lives additively in `Morph.ClifTarget`
+/-- Stage C item C8b, default program: with no program every callee is
+unknown, so `call` has no encoding and no call-bearing block reaches the
+target. Slice A named the target call (`Instr.call`); slice B1 admits
+int-world calls under an explicit program (see `callResolved`). The
+call/sig model itself lives additively in `Morph.ClifTarget`
 (`Sig`/`CFunc`/`bindCArgs`/`runCallee`), with the value-passing bridge below. -/
 @[simp] theorem instrEncode_call (dst : Option Nat) (fn : String)
     (args : List Nat) : instrEncode (.call dst fn args) = none := rfl
+
+/-- What an encoded call guarantees about its callee: known, arity
+matching, `intType` result. Effect-only calls (`dst = none`) never
+satisfy this — they stay refused. -/
+def callResolved (prog : Morph.MIR.Program) : Morph.MIR.Instr → Prop
+  | .call (some _) fn args =>
+      ∃ f, Morph.MIR.findFunc prog fn = some f ∧
+        f.params.length = args.length ∧ f.retType = .intType
+  | .call none _ _ => False
+  | _ => True
+
+/-- Encoder success implies every call in the list is resolved. This is
+the explicit-program succession of `instrEncodes_some_noCall` (which is
+the empty-program case: nothing is resolved there, so no call appears). -/
+theorem instrEncodes_some_resolved {prog : Morph.MIR.Program}
+    {is : List Morph.MIR.Instr} {cs : List Instr}
+    (h : instrEncodes is prog = some cs) :
+    ∀ i ∈ is, callResolved prog i := by
+  induction is generalizing cs with
+  | nil =>
+      simp only [instrEncodes] at h
+      obtain rfl := Option.some.inj h
+      intro i hmem
+      simp at hmem
+  | cons i is ih =>
+      rw [instrEncodes_cons] at h
+      obtain ⟨c, cs', hci, hrest, rfl⟩ := h
+      intro j hmem
+      simp only [List.mem_cons] at hmem
+      rcases hmem with rfl | hmem
+      · cases j with
+        | const dst v =>
+            cases v with
+            | int n => exact True.intro
+            | bool b => simp [instrEncode] at hci
+            | string s => simp [instrEncode] at hci
+            | pointer p => simp [instrEncode] at hci
+            | float f => simp [instrEncode] at hci
+            | unit => simp [instrEncode] at hci
+            | undef => simp [instrEncode] at hci
+            | some w => simp [instrEncode] at hci
+            | none => simp [instrEncode] at hci
+            | ok w => simp [instrEncode] at hci
+            | err w => simp [instrEncode] at hci
+            | tuple_ l => simp [instrEncode] at hci
+            | array_ l => simp [instrEncode] at hci
+            | loc n => simp [instrEncode] at hci
+            | closure f e => simp [instrEncode] at hci
+        | copy dst src => exact True.intro
+        | unop dst op src τ => exact True.intro
+        | binop dst op l r τ => exact True.intro
+        | load dst loc cap => exact True.intro
+        | store loc src cap => exact True.intro
+        | alloc dst cap τ => exact True.intro
+        | free loc => exact True.intro
+        | call dst fn args =>
+            simp only [instrEncode] at hci
+            cases hf : Morph.MIR.findFunc prog fn with
+            | none => simp [hf] at hci
+            | some callee =>
+                cases hd : dst with
+                | none => simp [hf, hd] at hci
+                | some d =>
+                    cases hr : callee.retType with
+                    | intType =>
+                        simp only [hf, hd, hr] at hci
+                        by_cases hlen : callee.params.length = args.length
+                        · simp only [dif_pos hlen] at hci
+                          obtain rfl := Option.some.inj hci
+                          exact ⟨callee, hf, hlen, hr⟩
+                        · simp only [dif_neg hlen] at hci
+                          simp at hci
+                    | boolType => simp [hf, hd, hr] at hci
+                    | stringType => simp [hf, hd, hr] at hci
+                    | pointerType => simp [hf, hd, hr] at hci
+                    | unitType => simp [hf, hd, hr] at hci
+                    | arrayType e n => simp [hf, hd, hr] at hci
+                    | functionType ps r => simp [hf, hd, hr] at hci
+                    | linearFunctionType ps r => simp [hf, hd, hr] at hci
+                    | intWidthType w => simp [hf, hd, hr] at hci
+                    | floatType w => simp [hf, hd, hr] at hci
+                    | neverType => simp [hf, hd, hr] at hci
+                    | refType c t => simp [hf, hd, hr] at hci
+                    | typeVar n => simp [hf, hd, hr] at hci
+                    | optionType t => simp [hf, hd, hr] at hci
+                    | resultType a b => simp [hf, hd, hr] at hci
+                    | tupleType l => simp [hf, hd, hr] at hci
+                    | structType n fs => simp [hf, hd, hr] at hci
+        | phi dst pred src => exact True.intro
+        | allocClosure dst fn captures => exact True.intro
+        | callClosure dst clo args => exact True.intro
+      · exact ih hrest j hmem
 
 /-- Encoder success implies the list is call-free. -/
 theorem instrEncodes_some_noCall {is : List Morph.MIR.Instr}

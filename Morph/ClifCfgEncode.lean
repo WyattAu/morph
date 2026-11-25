@@ -144,13 +144,16 @@ def stripPrologue (b : Morph.MIR.Block) : Morph.MIR.Block :=
   | _ => b
 
 /-- Encode one MIR block: leading phis become parameters, the rest is
-straight-line, and the terminator supplies each edge's arguments. -/
-def encodeBlock (f : Morph.MIR.Func) (b : Morph.MIR.Block) : Option Block := do
+straight-line, and the terminator supplies each edge's arguments. The
+program context is optional and defaults to empty (calls refused, as
+before); pass an explicit program to admit int-world calls (slice B1). -/
+def encodeBlock (f : Morph.MIR.Func) (b : Morph.MIR.Block)
+    (prog : Morph.MIR.Program := { funcs := [] }) : Option Block := do
   let phis := (splitPhis b.instrs).1
   if !noDupPairs phis then none
   else if !noPhiChain phis then none
   else
-    let is ← instrEncodes (splitPhis b.instrs).2
+    let is ← instrEncodes (splitPhis b.instrs).2 prog
     let t ← encodeTerm f b
     some ⟨b.id, paramsOf phis, is, t⟩
 
@@ -158,13 +161,15 @@ def encodeBlock (f : Morph.MIR.Func) (b : Morph.MIR.Block) : Option Block := do
 without its unit prologue, every other block as it stands. Named (rather than
 inlined in `encodeFunc`) so the block-lookup proof names the same function
 instead of duplicating the strip conditional. -/
-def encodeBlockAt (f : Morph.MIR.Func) (b : Morph.MIR.Block) : Option Block :=
-  encodeBlock f (if b.id == f.entry then stripPrologue b else b)
+def encodeBlockAt (f : Morph.MIR.Func) (b : Morph.MIR.Block)
+    (prog : Morph.MIR.Program := { funcs := [] }) : Option Block :=
+  encodeBlock f (if b.id == f.entry then stripPrologue b else b) prog
 
 /-- Encode a MIR function into the CLIF block model, dropping the unit prologue
 from the entry block (as `emitBlock` does for the single-block emitter). -/
-def encodeFunc (f : Morph.MIR.Func) : Option Func := do
-  let bs ← f.blocks.mapM (encodeBlockAt f)
+def encodeFunc (f : Morph.MIR.Func)
+    (prog : Morph.MIR.Program := { funcs := [] }) : Option Func := do
+  let bs ← f.blocks.mapM (fun b => encodeBlockAt f b prog)
   some ⟨bs, f.entry⟩
 
 /-! ## Calls stop at the CFG encoder (Stage C, item C8)
@@ -239,7 +244,8 @@ theorem encodeFunc_hasCall {f : Morph.MIR.Func} {b : Morph.MIR.Block}
     | false =>
         simp only [encodeBlockAt, heq]
         exact encodeBlock_hasCall (by simpa [heq] using h)
-  have hmap := mapM_none_of_mem_none hmem hblk
+  have hmap : f.blocks.mapM (fun bb => encodeBlockAt f bb { funcs := [] }) = none :=
+    mapM_none_of_mem_none hmem hblk
   unfold encodeFunc
   rw [hmap]
   exact Option.bind_none _

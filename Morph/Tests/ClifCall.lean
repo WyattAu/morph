@@ -229,4 +229,104 @@ example : parseInstr (toksInstr (.call 2 "add" [0, 1] Typ.intType))
     = some ((.call 2 "add" [0, 1] Typ.intType), []) := by
   simpa using parseInstr_toksInstr (.call 2 "add" [0, 1] Typ.intType) []
 
+/-! ## Explicit-program encoder pins (D-7 option B, slice B1)
+
+With a program the encoder admits int-world calls; without one (and
+for unknown callees, arity mismatches, non-`int` results, and
+effect-only calls) it refuses exactly as before. -/
+
+/-- The callee side of the test program: `add` takes two ints. The
+encoder never looks at the body, only name, params, and return type. -/
+def addMIR : Morph.MIR.Func :=
+  ⟨"add", [(0, Typ.intType), (1, Typ.intType)], [], 0, Typ.intType⟩
+
+/-- A one-function program. -/
+def progAdd : Morph.MIR.Program := ⟨[addMIR]⟩
+
+/-- A known int-world call encodes. -/
+example : instrEncode (.call (some 2) "add" [0, 1]) progAdd
+    = some (.call 2 "add" [0, 1] Typ.intType) := rfl
+
+/-- Unknown callees refuse, even with a program. -/
+example : instrEncode (.call (some 2) "missing" [0, 1]) progAdd = none := rfl
+
+/-- Arity mismatches refuse. -/
+example : instrEncode (.call (some 2) "add" [0]) progAdd = none := rfl
+
+/-- Effect-only calls refuse (no destination to write). -/
+example : instrEncode (.call none "add" [0, 1]) progAdd = none := rfl
+
+/-- A bool-returning callee refuses (int-world only in slice B1). -/
+def notMIR : Morph.MIR.Func :=
+  ⟨"notfn", [(0, Typ.boolType)], [], 0, Typ.boolType⟩
+
+example : instrEncode (.call (some 2) "notfn" [0]) ⟨[notMIR]⟩ = none := rfl
+
+/-- A mixed body encodes around its call. -/
+example : instrEncodes [.const 0 (.int 5), .call (some 2) "add" [0, 1]] progAdd
+    = some [.iconst 0 5,
+      Morph.Clif.Instr.call 2 "add" [0, 1] Typ.intType] := rfl
+
+/-- The encoded call satisfies the resolved-call contract. -/
+example : callResolved progAdd (.call (some 2) "add" [0, 1]) :=
+  ⟨addMIR, rfl, rfl, rfl⟩
+
+/-! ## Typed-runner and stepping pins (D-7 option B, slice B1) -/
+
+/-- The typed `add` callable. -/
+def addTCF : TCFunc :=
+  ⟨"add", [(0, Typ.intType), (1, Typ.intType)], ⟨[.iadd 2 0 1], 2⟩⟩
+
+/-- A one-callable typed program. -/
+def tprogAdd : TCProgram := [addTCF]
+
+/-- A typed call runs. -/
+example : (runTCall tprogAdd "add" [.int 5, .int 7]).isSome = true := by
+  native_decide
+
+/-- ...to the right value. -/
+example : (runTCall tprogAdd "add" [.int 5, .int 7]).map (fun w => w == .int 12)
+    = some true := by
+  native_decide
+
+/-- Unknown names stall. -/
+example : runTCall tprogAdd "missing" [.int 1] = none :=
+  runTCall_none_unknown _ _ _ rfl
+
+/-- Arity mismatches stall. -/
+example : runTCall tprogAdd "add" [.int 5] = none :=
+  runTCall_none_bind tprogAdd addTCF [.int 5] rfl
+    (bindTArgs_length_mismatch
+      (show ([(0, Typ.intType), (1, Typ.intType)].length ≠ [.int 5].length)
+        from by decide))
+
+/-- Type mismatches stall, even past a well-typed head. -/
+example : runTCall tprogAdd "add" [.int 5, .bool true] = none :=
+  runTCall_none_bind tprogAdd addTCF [.int 5, .bool true] rfl
+    (bindTArgs_cons_none (bindTArgs_head_mismatch rfl (by native_decide)))
+
+/-- Pure instructions step program-blind, as before. -/
+example : stepIn tprogAdd (fun _ => none) (.iconst 3 7)
+    = step (fun _ => none) (.iconst 3 7) := rfl
+
+/-- Unbound actuals stall the call step. -/
+example : stepIn tprogAdd (fun _ => none)
+    (.call 2 "add" [0, 1] Typ.intType) = none := rfl
+
+/-- A resolved call step writes its return value. -/
+example : (stepIn tprogAdd
+    (fun r => if r == 0 then some (.int 5)
+      else if r == 1 then some (.int 7)
+      else (none : Option Morph.Core.Value))
+    (.call 2 "add" [0, 1] Typ.intType)).map
+    (fun e => match e 2 with | some (.int 12) => true | _ => false)
+    = some true := by
+  native_decide
+
+/-- The emitter still refuses call-bearing bodies (slice B1 boundary:
+the single-function emitter carries no program context). -/
+example : Morph.Codegen.emitBlock
+    ⟨0, [.const 0 .unit, .call (some 2) "add" [0, 1]], .return_ 2⟩ = none :=
+  rfl
+
 end Morph.Tests.ClifCall
