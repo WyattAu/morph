@@ -34,15 +34,21 @@ Two things Stage D must not do:
 poison and `undef` bytes, and bounds checks (`inBounds`, `rangeInBounds`).
 `Morph/Runtime.lean` adds `Heap` (`heapAlloc`/`heapFree`/`heapLookup`),
 a `Stack`, and an `ActorSystem` with `spawn`/`send`/`recv`/`stepActor`.
-These are definitions plus (at sketch time) un-inventoried lemmas — no
-fragment predicate or preservation statement exists over them yet.
+Measured 2026-11-25 (`docs/STAGED-D1-INVENTORY.md`): `Memory.lean` holds
+35 definitions and **0 theorems**; `Runtime.lean` holds 25 definitions and
+**0 theorems** and is imported by nothing. `stepActor` takes `_heap`/`_stack`
+and returns them unchanged in every branch — the actor step is a state
+no-op with evaluation integration explicitly deferred. No fragment
+predicate or preservation statement exists over either file yet.
 
 ### 1.2 The borrow model already has shape lemmas
 
 `Morph/Borrows.lean` defines loans, provenances, `NoConflictingLoan`,
-`CaptureOK`, and `WFBorrow`/`WFBorrowApp`. This is the natural
-no-aliasing core for a memory-safety statement, but nothing connects it to
-`Memory.lean` blocks or to any evaluator yet.
+`CaptureOK`, and `WFBorrow`/`WFBorrowApp` — and, uniquely on the
+executable side, already proves `borrow_preservation` plus boolean-spec
+bridges (16 theorems total). This is the natural no-aliasing core for a
+memory-safety statement, but nothing connects it to `Memory.lean` blocks
+or to any evaluator yet.
 
 ### 1.3 The spec modules exist; the bridge does not
 
@@ -53,7 +59,11 @@ no-aliasing core for a memory-safety statement, but nothing connects it to
 is the same thing Stage C had to build: the *bridge* from the spec statement
 to the executable model (`Memory.lean`/`Runtime.lean`), i.e. agreed
 `Rel`-style relations and fragment predicates. The specs are the requirements;
-the relations are the work.
+the relations are the work. Sharpened by the inventory: `Specs/MemoryModel`
+alone carries 34 theorems — but over a *separate* model the executable never
+touches. The D1–D2 bridge therefore does not start from proved lemmas; it
+starts from two proved-apart artifacts that must first agree on what a heap
+*is*.
 
 ### 1.4 The 1.0 freeze list does not exist yet
 
@@ -74,7 +84,11 @@ no pilot criteria, and no conformance-suite harness exist in the tree.
 - **D3 — Actor step safety.** `stepActor` preserves per-actor progress plus a
   global invariant (mailbox boundedness? crash containment? — open, see §7).
   Needs a fragment predicate (`ActorStmts`?) the way C2a needed
-  `BranchStmts`. Independent of D1/D2; unblocks D4.
+  `BranchStmts`. **Prerequisite, not parallel work:** `stepActor` currently
+  returns heap/stack unchanged (evaluation integration deferred), so the
+  signature that a preservation statement would even quantify over does not
+  exist yet — the interface decision (§7) comes before the invariant.
+  Independent of D1/D2 once the interface is settled; unblocks D4.
 - **D4 — Deadlock-freedom / channel safety.** Over `ActorSystem`
   (`spawn`/`send`/`recv`): the `ActorDeadlock` + `ConcurrencyProcessAlgebra`
   specs bridged to `Runtime.lean`. Needs D3's step invariant. Executable
@@ -108,6 +122,8 @@ theorem wfBorrow_heapSafe : WFBorrow π → heapOf π = some h → HeapSafe h
 
 -- D4 shape (one direction only, Stage C discipline):
 -- a well-formed actor system never gets stuck without a witness
+-- NOTE: `stepActor`'s current signature returns heap/stack unchanged and
+-- has no stuck outcome; this shape presumes the §7 interface decision.
 theorem actors_progress :
   WFActors sys → stepActor sys turn heap stack = (.stuck, _) →
   ∃ witness, DeadlockWitness sys witness
@@ -118,9 +134,13 @@ reviewers can attack them before any proof begins.
 
 ## 5. Work items (scoping work — the proofs come later)
 
-1. Inventory existing lemmas over `Memory.lean`/`Runtime.lean`/`Borrows.lean`
-   (what is already proved vs assumed).
-2. Draft the D1 fragment predicate and circulate for attack.
+1. ~~Inventory existing lemmas over `Memory.lean`/`Runtime.lean`/`Borrows.lean`~~
+   DONE 2026-11-25 — `docs/STAGED-D1-INVENTORY.md` (executable models: 0
+   theorems; `Specs/MemoryModel`: 34 theorems over a disconnected model;
+   `Borrows.lean`: `borrow_preservation` proved).
+2. Draft the D1 fragment predicate (`HeapSafe` as a definition first — a
+   predicate over blocks needs no theorems to be stated) and circulate for
+   attack.
 3. Decide the §7 questions (maintainer call — see below).
 4. Only then: D1 proofs, following the Stage C pattern
    (relations → agreement → composition → pins).
@@ -137,9 +157,15 @@ reviewers can attack them before any proof begins.
 ## 7. Open questions (not decided here — maintainer calls)
 
 - Which model is authoritative for memory: `Memory.lean` blocks,
-  `Runtime.lean` heap, or a merge? (Two models + one agreement lemma, or one
-  model? Stage C's lesson: the fragment predicate, not the function, is the
-  gate — but two models need a D2-style bridge regardless.)
+  `Runtime.lean` heap, or a merge — and what happens to the 34 proved
+  theorems in `Specs/MemoryModel` that touch none of them? (Two models + one
+  agreement lemma, or one model? Stage C's lesson: the fragment predicate,
+  not the function, is the gate — but the proved-apart spec model needs an
+explicit verdict: bridge it, or supersede it.)
+- What is `stepActor`'s interface: does the actor step thread heap/stack
+  (making D3 a preservation proof) or stay state-free with stepping
+  elsewhere (making D3 a different statement)? No invariant can be written
+  until this is decided; the current body returns state unchanged.
 - What is the actor progress statement: per-actor, global, or witness-style?
   (The roadmap demands executable counterexamples — that pushes toward
   witness-style, but it must be written down, not assumed.)
