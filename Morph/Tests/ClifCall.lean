@@ -106,4 +106,40 @@ example : runCallee addCF [.int 5, .int 7] = some (.int 12) :=
       (Trace.nil _))
     rfl (by rfl)
 
+/-! ## Typed-signature pins (D-7 option B, step 1)
+
+The typed layer classifies values, refuses mismatches and
+unrepresentables at the head, and agrees with the MIR binder. -/
+
+/-- Values classify to their ABI types. -/
+example : valueTyp (.int 5) = some Typ.intType := rfl
+
+/-- Values classify to their ABI types. -/
+example : valueTyp (.bool true) = some Typ.boolType := rfl
+
+/-- `undef` has no call representation. -/
+example : valueTyp .undef = none := rfl
+
+/-- Typed binding accepts a matching actual.
+`native_decide`: `Typ`'s derived `BEq` computes correctly but does not
+reduce in the kernel, so `rfl`/`decide` stall on any goal that evaluates
+it; compiled evaluation decides these closed goals. -/
+example : (bindTArgs [(0, Typ.intType)] [.int 5]).isSome = true := by
+  native_decide
+
+/-- A head type mismatch refuses. -/
+example : bindTArgs [(0, Typ.intType)] [.bool true] = none :=
+  bindTArgs_head_mismatch rfl (by native_decide)
+
+/-- An unrepresentable head actual refuses. -/
+example : bindTArgs [(0, Typ.intType)] [.undef] = none :=
+  bindTArgs_head_unrepresentable rfl
+
+/-- The MIR and typed CLIF binders agree on the same formals. -/
+example (menv cenv)
+    (hm : bindCallArgs [(0, Typ.intType)] [.int 5] = some menv)
+    (hc : bindTArgs [(0, Typ.intType)] [.int 5] = some cenv) :
+    menv = cenv :=
+  bindCallArgs_bindTArgs_agree rfl hm hc
+
 end Morph.Tests.ClifCall

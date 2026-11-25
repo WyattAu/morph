@@ -232,6 +232,59 @@ theorem bindCallArgs_bindCArgs_agree {ps : List (Morph.MIR.ValId × Typ)}
                       have ihe := ih hrest hbindM hbindC
                       rw [update_eq_set, ihe]
 
+/-- The MIR and typed CLIF binders agree when the formals are the
+signature. Same shape as `bindCallArgs_bindCArgs_agree`, with the
+registers and the types both named by the hypothesis (`ValId` and `Reg
+are both `Nat`, so one equality says both). The extra `typMatches` case
+is the typed layer's content: a successful typed bind has already
+checked every actual, so the check discharges without new hypotheses. -/
+theorem bindCallArgs_bindTArgs_agree {ps : List (Morph.MIR.ValId × Typ)}
+    {ts : TSig} {ws : List Value} (h : ps = ts)
+    {menv : Morph.MIR.Env} {cenv : Env}
+    (hm : Morph.MIR.bindCallArgs ps ws = some menv)
+    (hc : bindTArgs ts ws = some cenv) :
+    menv = cenv := by
+  induction ps generalizing ts ws menv cenv with
+  | nil =>
+      cases ts with
+      | nil =>
+          cases ws with
+          | nil =>
+              simp only [Morph.MIR.bindCallArgs] at hm
+              simp only [bindTArgs] at hc
+              obtain rfl := Option.some.inj hm
+              obtain rfl := Option.some.inj hc
+              rfl
+          | cons w ws => simp [Morph.MIR.bindCallArgs] at hm
+      | cons t ts => simp at h
+  | cons p ps ih =>
+      obtain ⟨v, τ⟩ := p
+      cases ts with
+      | nil => simp at h
+      | cons t ts =>
+          simp at h
+          obtain ⟨rfl, hrest⟩ := h
+          cases ws with
+          | nil => simp [Morph.MIR.bindCallArgs] at hm
+          | cons w ws =>
+              simp only [Morph.MIR.bindCallArgs] at hm
+              simp only [bindTArgs] at hc
+              cases he : typMatches w τ with
+              | false => simp [he] at hc
+              | true =>
+                  simp only [he] at hc
+                  cases hbindM : Morph.MIR.bindCallArgs ps ws with
+                  | none => rw [hbindM] at hm; simp at hm
+                  | some envM' =>
+                      cases hbindC : bindTArgs ts ws with
+                      | none => rw [hbindC] at hc; simp at hc
+                      | some envC' =>
+                          rw [hbindM] at hm; rw [hbindC] at hc
+                          obtain rfl := Option.some.inj hm
+                          obtain rfl := Option.some.inj hc
+                          have ihe := ih hrest hbindM hbindC
+                          rw [update_eq_set, ihe]
+
 /-! ## Per-operator agreement (B3)
 
 Each lemma states: under the fragment's hypotheses, the CLIF step produces

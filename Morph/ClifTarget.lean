@@ -321,4 +321,99 @@ theorem runCall_none_arity (prog : CProgram) (cf : CFunc) (ws : List Value)
   have hbind : bindCArgs cf.sig ws = none := bindCArgs_length_mismatch hlen
   simp [runCall, hfind, runCallee, hbind]
 
+/-! ## Typed signatures (D-7 decision, option B)
+
+D-7 DECIDED 2026-11-25 (maintainer direction, ahead of the S3 deadline):
+option B+C — typed signatures per the `Morph.Runtime.marshal` table,
+declared Morph-side with locations assigned Cranelift-side.
+
+The untyped `Sig`/`bindCArgs` layer above stays untouched (the C1/C8
+hedge: nothing proved moves); this section adds the typed layer beside
+it. `TSig` pairs each parameter register with its declared `Typ`, and
+`bindTArgs` binds only when every actual's value type is the declared
+one. Values with no ABI representation (`undef`, option/result
+wrappers, tuples, floats — the CLIF subset has no float instructions)
+are unrepresentable and refuse. Which declared types occupy call slots
+in emitted text (unit→void, string/pointer→address) is the emission
+step, not this one. -/
+
+/-- The ABI value type of a runtime value, `none` when the value has no
+call representation. This is the model side of the
+`Morph.Runtime.marshal` table: int/bool/string/pointer/unit cross calls;
+everything else refuses here rather than at emission. -/
+def valueTyp : Value → Option Typ
+  | .int _ => some .intType
+  | .bool _ => some .boolType
+  | .string _ => some .stringType
+  | .pointer _ => some .pointerType
+  | .unit => some .unitType
+  | _ => none
+
+/-- A typed CLIF signature: parameter registers with declared types. -/
+abbrev TSig := List (Reg × Typ)
+
+/-- Whether an actual may cross under a declared formal type. -/
+def typMatches (v : Value) (τ : Typ) : Bool :=
+  match valueTyp v with
+  | some τ' => τ' == τ
+  | none => false
+
+@[simp] theorem typMatches_some {v : Value} {τ τ' : Typ}
+    (h : valueTyp v = some τ') : typMatches v τ = (τ' == τ) := by
+  simp [typMatches, h]
+
+@[simp] theorem typMatches_none {v : Value} {τ : Typ}
+    (h : valueTyp v = none) : typMatches v τ = false := by
+  simp [typMatches, h]
+
+/-- Bind arguments under a typed signature. Succeeds only on matching
+arity with every actual's value type equal to the declared formal type. -/
+def bindTArgs : TSig → List Value → Option Env
+  | [], [] => some (fun _ => none)
+  | (r, τ) :: ts, v :: vs =>
+      match typMatches v τ with
+      | true => (bindTArgs ts vs).map (fun env => env.set r v)
+      | false => none
+  | _, _ => none
+
+/-- Binding succeeds only on matching arity. -/
+theorem bindTArgs_some_length {ts : TSig} {ws : List Value}
+    {env : Env} (h : bindTArgs ts ws = some env) :
+    ts.length = ws.length := by
+  induction ts generalizing ws env with
+  | nil =>
+      cases ws with
+      | nil => rfl
+      | cons w ws => simp [bindTArgs] at h
+  | cons p ts ih =>
+      obtain ⟨r, τ⟩ := p
+      cases ws with
+      | nil => simp [bindTArgs] at h
+      | cons v vs =>
+          cases he : typMatches v τ with
+          | false => simp [bindTArgs, he] at h
+          | true =>
+              simp only [bindTArgs, he] at h
+              cases hbind : bindTArgs ts vs with
+              | none => simp [hbind] at h
+              | some env' =>
+                  have hlen := ih hbind
+                  simp only [List.length_cons] at hlen ⊢
+                  omega
+
+/-- A head type mismatch refuses: the equation on `==` is the premise
+because `Typ`'s derived `BEq` is not proved lawful, so propositional
+inequality cannot supply it. -/
+theorem bindTArgs_head_mismatch {r : Reg} {τ τ' : Typ} {ts : TSig}
+    {v : Value} {vs : List Value}
+    (hv : valueTyp v = some τ') (he : (τ' == τ) = false) :
+    bindTArgs ((r, τ) :: ts) (v :: vs) = none := by
+  simp [bindTArgs, hv, he]
+
+/-- An unrepresentable head actual refuses. -/
+theorem bindTArgs_head_unrepresentable {r : Reg} {τ : Typ} {ts : TSig}
+    {v : Value} {vs : List Value} (hv : valueTyp v = none) :
+    bindTArgs ((r, τ) :: ts) (v :: vs) = none := by
+  simp [bindTArgs, hv]
+
 end Morph.Clif

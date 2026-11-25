@@ -1,8 +1,12 @@
 # C8 call ABI: options memo for D-7
 
-Status: options memo (S2). Decides nothing. D-7 is due end of S3; if
-unanswered, the roadmap register's default holds: the refusal pins
-stand, D-work proceeds unaffected (C8 is a leaf, not a spine).
+Status: DECIDED 2026-11-25 — option B+C by maintainer direction
+("proceed with B"), ahead of the S3 deadline. Implementation is staged:
+step 1 (typed model layer: `TSig`, `typMatches`, `bindTArgs`, typed
+bridge, pins) is in the tree; signature rendering, the `allI64`
+succession, the `CallingConvention` revisit, and lifting the refusal
+follow. S3 review confirms the cost; the A+C fallback stays recorded
+but no longer blocking.
 
 ## What D-7 must fix
 
