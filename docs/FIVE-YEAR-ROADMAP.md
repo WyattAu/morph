@@ -19,7 +19,7 @@
 | Python tooling | 836 tests, 96.08% coverage (gate: 95%), lint 0 errors / 105 warnings (19 waived), cross-refs 1700/0 |
 | Rust workspace | Builds clean: `fmt --check` 0, `clippy -D warnings` 0, 218 tests pass. `compiler/` (lexer/parser/typeck, **no codegen**), `runtime/` (actor/fiber/scheduler/memory/io/sync/value), `cli/` |
 | Stdlib | Seed only: `Morph/Stdlib.lean` (187 lines, unwired) |
-| CI | Configs correct and red-on-arrival-free (loops 118/120), **runners blocked on billing (G-1)** |
+| CI | Configs correct and red-on-arrival-free (loops 118/120); runners free (public repo), nightly green 2026-11-21…24 — the "blocked on billing" story (G-1) was wrong, retired 2026-11-25 |
 | Audit | Packet current (`docs/AUDIT-PACKET-0.1.md`), invites templated, G-7 checklist ready — **no invites sent, no tag cut (G-3/G-7)** |
 | Release | 0.1.0 prepared, never tagged |
 
@@ -48,7 +48,8 @@ the Year 2–3 technical spine.
 
 **Theme:** convert the verified core into a verified *process*.
 
-- Q1: billing resolved (G-1) → CI green per push; Pages deploy; versioned
+- Q1: tree pushed → CI green per push (last push failed only on stale
+  spec-status, all code gates passed); Pages deploy; versioned
   spec index live. Any red-on-arrival found by live runners is fixed
   before feature work (loops 118/120 already cleared the known ones).
 - Q1–Q2: audit invites sent, 3-week review, findings published (G-3).
@@ -167,7 +168,7 @@ programmers. These are tracked, not scheduled.
 
 | # | Decision | Due | Decides | Default if missed |
 |---|---|---|---|---|
-| D-1 | Billing / CI runners | Y1 Q1 | Whether any gate is observable | Plan clock pauses; maintenance only (loop 133: clock paused, then unfreeze lifted the implementation freeze — gates still block release) |
+| D-1 | ~~Billing / CI runners~~ RETIRED 2026-11-25 (premise false: public repo, runners free, CI runs) → replaced by: push tree, read Lean Build | Y1 Q1 | Whether any gate is observable | Push unblocks observation; no clock pause was ever needed |
 | D-2 | Translation validation vs verified lowering | Y1 (audit) | Backend ADR shape | Verified lowering (conservative) |
 | D-3 | Backend target + language (LLVM/Cranelift; C++ question) | Y2 H1 | Stage B direction | Single Rust-native backend, straight-line only |
 | D-4 | Supported-fragment contract for `morph build` | Y2 H1 | What `compile_correct` covers | Strict explicitly-listed subset |

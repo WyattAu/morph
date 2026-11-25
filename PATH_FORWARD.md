@@ -144,7 +144,9 @@ All `example : True := trivial` stubs have been eliminated (0 remaining). This s
 
 > Loop 81 status: §2.1 done (warning + stub gates now blocking in
 > `lean-build.yml`; stub check blocking in `.githooks/pre-commit`). §2.2
-> was already blocking before loop 81. CI itself still blocked on billing.
+> was already blocking before loop 81. The "blocked on billing" tail of
+> this note was wrong (public repo, free runners — verified 2026-11-25);
+> the real §2.4 item is push-and-read-CI.
 > 2026-11-25: the gate rules moved into `scripts/check-gates.sh` (build
 > warnings, compiler-reported `sorry`, `sorry` token, stubs,
 > `cross-ref-validate.sh`, `spec-tools check-links`), so the pre-commit hook
@@ -272,8 +274,9 @@ Three overlapping workflows exist:
 `lean-build.yml` already builds `Morph.Tests`, gates errors/warnings/
 sorries/stubs, enforces spec-status freshness, and caches elan + Lake
 (§4.2 done in the workflow). Remaining §4.1 item: regression snapshot
-in CI (script exists, `.reports/regression/` tracked) — needs CI
-runners (billing, G-1), not config work.
+in CI (script exists, `.reports/regression/` tracked) — needs one
+observed green push to confirm baselines (runners are free; the
+billing/G-1 story was wrong, corrected 2026-11-25), not config work.
 
 **Effort:** 4-6 hours | **Deps:** 3.4
 
@@ -472,7 +475,7 @@ Ongoing:   [7.x]                                -- research directions
 | `lake build Morph` warnings | 0 | 0 | P0 |
 | `sorry` in `Morph/` | 6 | 0 | P0 |
 | Spec stubs (all tiers) | 0 | 0 | PASS |
-| CI passes on every push | Blocked by billing | Yes | P1 |
+| CI passes on every push | Unobserved (unpushed since 2026-11-20) | Yes | P1 |
 | ruff lint errors | 0 | 0 | PASS |
 | ruff format issues | 0 | 0 | PASS |
 | mypy errors | 0 | 0 | PASS |

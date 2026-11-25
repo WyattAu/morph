@@ -34,7 +34,7 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 | spec-validation CI failed on 1857 lint warnings | Changed to non-blocking with reporting |
 | 735 broken cross-references in spec/ | Fixed systematic path resolution |
 | spec-tools CLI called with multiple positional args | Fixed: iterate files individually |
-| GitHub Pages not deployed | Blocked by GitHub billing; workflow correct |
+| GitHub Pages not deployed | Never blocked: `pages.yml` deploys on push (success 2026-11-20); the billing story was wrong, corrected 2026-11-25 |
 | 6 `sorry` declarations (audit-era) | Was blocking zero-warning CI gate | §1.1 done 2026-10-30; still 0, verified 2026-11-25 |
 | 12 malformed spec link-syntax sites (rendered as text, broken under every resolver) | Brackets repaired 2026-11-25 (GLOSSARY ×8, README, memory_model ×2, type_system) |
 | `spec-tools check-links` disagreed with the repo gate (107 vs 0): results were cached by URL alone, so one directory's failure leaked into every other directory using the same name, and bare `.md` prose mentions counted as links | Fixed 2026-11-25: cache keyed by referring directory, resolution falls back to enclosing roots, prose mentions opt-in (`--check-file-refs`); 31 wrong `../tooling/…` paths repaired; both gates report 0 and are blocking in CI + pre-commit |
@@ -44,7 +44,7 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 
 | Finding | Impact | Resolution Path |
 |---|---|---|
-| CI/CD not running (GitHub billing) | No automated verification | Resolve billing |
+| CI status unread on current tree (unpushed since 2026-11-20) | No automated verification of the current tree | Re-run status generator, push, read the Lean Build result |
 | Section numbering warnings in specs (3868) | Lint noise | Normalize numbering or suppress |
 | `impl/roadmap.md` describes Rust/C++ runtime not yet started | Future work | Section 6 |
 | `.gitlab-ci.yml` and `Jenkinsfile` reference Python 3.11 only | Minor | No action needed (Python 3.8+ compatible) |
@@ -163,7 +163,9 @@ every
 
 > Loop 81 status: §2.1 done (89 warnings cleared, gate blocking), §2.2
 > already blocking, §2.3 sorry-check already blocking (stub check flipped
-> to blocking in loop 81). CI itself still blocked on billing (§2.4).
+> to blocking in loop 81). The §2.4 "billing" story was wrong (public
+> repo, free runners — verified against the Actions tab 2026-11-25); §2.4
+> is rewritten as push-and-read-CI.
 
 ### 2.1 Zero-warning CI gate — DONE (loop 81)
 
@@ -207,12 +209,16 @@ fi
 
 **Effort:** 15 min | **Deps:** 1.1
 
-### 2.4 Resolve GitHub billing
+### 2.4 CI observability — CORRECTED 2026-11-25 (was "Resolve GitHub billing")
 
-CI/CD workflows are correct but not executing due to GitHub account spending limit. Resolve billing to enable:
-- Lean Build workflow
-- Specification Validation workflow
-- Nightly Full Build (Nix)
+The billing premise was false and is struck: the repo is public, Actions
+are enabled, all workflows use free `ubuntu-latest` runners, and CI
+observably runs (nightly green 2026-11-21…24; push pipeline ran
+2026-11-20 with Lean Build failing only on stale `spec-status.md`).
+Remaining work is operational, not financial:
+- Re-run `scripts/gen-spec-status.sh` so the freshness gate passes
+- Push the tree (`origin/main` is days behind) and read the Lean Build result
+- Fold the regression snapshot into CI once live runs are observed (was §4.1)
 - GitHub Pages deployment
 
 **Effort:** Account-level action | **Deps:** none
@@ -279,10 +285,10 @@ Priority areas:
 
 | Workflow | Platform | Scope | Status |
 |---|---|---|---|
-| `lean-build.yml` | GitHub Actions | Lake build, sorry/stub scan, error check | Correct, blocked by billing |
-| `spec-validation.yml` | GitHub Actions | spec-tools format/lint/validate/check-links | Correct, blocked by billing; format+validate advisory since loop 118 (were red-on-arrival), lint error-gate blocking |
-| `nightly.yml` | GitHub Actions | Nix-based full build at 06:00 UTC | Correct, blocked by billing |
-| `pages.yml` | GitHub Actions | Deploy site/ to GitHub Pages | Correct, blocked by billing |
+| `lean-build.yml` | GitHub Actions | Lake build, sorry/stub scan, error check | Running; last push run 2026-11-20 failed only on stale `spec-status.md` (all code gates passed) |
+| `spec-validation.yml` | GitHub Actions | spec-tools format/lint/validate/check-links + cross-refs | Running (pass 2026-11-20); format+validate advisory since loop 118 (were red-on-arrival), lint error-gate blocking, link check + cross-refs blocking since 2026-11-25 |
+| `nightly.yml` | GitHub Actions | Nix-based full build at 06:00 UTC | Running, green 2026-11-21…24 |
+| `pages.yml` | GitHub Actions | Deploy site/ to GitHub Pages | Running, deploys on push (success 2026-11-20) |
 | `.gitlab-ci.yml` | GitLab CI | pytest, bandit, safety | Correct for GitLab |
 | `Jenkinsfile` | Jenkins | pytest, spec-tools format/lint/validate | Aligned loop 118 (was red-on-arrival: `--strict` + hard format/validate); lint error-gate blocking, rest advisory |
 
@@ -301,14 +307,13 @@ echo "stubs: $(grep -r 'example : True := trivial' Morph/Specs/ --include='*.lea
 
 Store in `.reports/regression/`. Fail CI on metric regression.
 
-**Effort:** 3-4 hours | **Deps:** 2.4 (CI running)
+**Effort:** 3-4 hours | **Deps:** 2.4 (CI runs; needs one observed green push to confirm metric baselines)
 
 ### 4.3 Lean toolchain caching optimization
 
 Verified loop 120 in `lean-build.yml`: Lake cache key includes
 `lake-manifest.json` and elan caching is present (keyed on
-`lean-toolchain`). No change needed. Monitor cache hit rates after
-billing resolved.
+`lean-toolchain`). No change needed. Monitor cache hit rates on live runs.
 
 **Effort:** 1 hour (verification, spent) | **Deps:** 2.4
 
@@ -470,7 +475,7 @@ Investigate extracting a verified compiler from Lean 4 proofs directly, bypassin
 ## Execution Timeline
 
 ```
-Week  1-2:  [1.1] [3.1] [2.4]                 -- sorries, fix 26 broken links, resolve billing
+Week  1-2:  [1.1] [3.1] [2.4]                 -- sorries, fix 26 broken links, push tree + read CI
 Week  3-4:  [1.1 cont] [2.1] [2.2] [2.3]      -- finish sorries, harden CI gates
 Week  5-6:  [1.2 MemoryModel+SecurityFlow] [3.3] -- Tier 1 start, SlimCheck
 Week  7-8:  [1.2 MorphLanguage+Concurrency] [3.4] -- Tier 1 continue, Python coverage
@@ -495,7 +500,7 @@ Ongoing:   [7.x]                               -- research directions
 | `sorry` in `Morph/` | 0 | 0 (was 6 at audit; resolved by 2026-10-30) |
 | `example : True := trivial` stubs | 0 | 0 (all §1.2–§1.5 tiers; CI-gated) |
 | Broken cross-references | 0 | 0 (§3.1 done loop 118 audit; `cross-ref-validate.sh` 1704/0) |
-| CI passes on every push | Yes | Blocked by billing |
+| CI passes on every push | Yes | Unobserved on current tree (unpushed since 2026-11-20); last push failed only on stale spec-status |
 | Python spec-tools coverage | >= 95% | 96% |
 | Lean tests pass | All | All |
 | Pre-commit blocks on sorry | Yes | Blocks (`.githooks/pre-commit` step 2 exits 1) |
@@ -523,6 +528,6 @@ Ongoing:   [7.x]                               -- research directions
 [3.2 Normalize numbering]                                           |
 [3.3 SlimCheck]          +---> [4.2 Regression snapshots]           |
 [3.4 Python coverage]     +---> [5.3 Spec status tracking]          |
-[2.4 Resolve billing]     +---> [5.2 API docs]                      |
+[2.4 Push tree, read CI]    +---> [5.2 API docs]                      |
                           +---> [4.3 Cache optimization]
 ```
