@@ -142,4 +142,42 @@ example (menv cenv)
     menv = cenv :=
   bindCallArgs_bindTArgs_agree rfl hm hc
 
+/-! ## Declared-type pins (D-7 option B, step 2)
+
+The mapping, the text, and the per-instruction result types. -/
+
+/-- The mapping covers the ABI types. -/
+example : clifTyOfTyp Typ.intType = some .i64 := rfl
+
+/-- The mapping covers the ABI types. -/
+example : clifTyOfTyp Typ.boolType = some .i8 := rfl
+
+/-- Strings cross as addresses. -/
+example : clifTyOfTyp Typ.stringType = some .addr := rfl
+
+/-- Unit occupies no call slot. -/
+example : clifTyOfTyp Typ.unitType = none := rfl
+
+/-- Addresses render as `i64`. -/
+example : ClifTy.text .addr = "i64" := rfl
+
+/-- Comparisons produce bools. Fully qualified: `.dst` collides with the
+`Cfg.Phi.dst` projection in scope, so trailing-dot notation cannot pick
+the `Instr` field. -/
+example : Morph.Clif.Instr.resultTyp (.icmp 2 .slt 0 1) = Typ.boolType := rfl
+
+/-- Arithmetic produces ints. -/
+example : Morph.Clif.Instr.resultTyp (.iadd 2 0 1) = Typ.intType := rfl
+
+/-- Destinations are read off the constructor. -/
+example : Morph.Clif.Instr.dst (.iadd 2 0 1) = 2 := rfl
+
+/-- `step_resultTyp` fires on a concrete step: the written value has the
+instruction's result type. The empty file is annotated: bare `none`
+would be ambiguous between `Option.none` and `Value.none`. -/
+example (env' : Morph.Clif.Env)
+    (h : step (fun _ => (none : Option Morph.Core.Value)) (.iconst 3 7) = some env') :
+    ∃ v, env' 3 = some v ∧ valueTyp v = some Typ.intType :=
+  step_resultTyp h
+
 end Morph.Tests.ClifCall

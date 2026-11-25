@@ -281,4 +281,14 @@ def funcText (f : Func) : String :=
     String.intercalate "\n" (f.blocks.map blockText) ++ "\n}\n"
 
 end Cfg
+
+/-- Render a declared CLIF type. `addr` is address-sized on the x86-64
+SystemV target, hence `i64` — the assumption the `CallingConvention`
+revisit records. Placed outside `Cfg`: the declared type vocabulary
+belongs to the whole `Clif` model, not to the multi-block layer. -/
+def ClifTy.text : ClifTy → String
+  | .i64 => "i64"
+  | .i8 => "i8"
+  | .addr => "i64"
+
 end Morph.Clif

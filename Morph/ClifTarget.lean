@@ -416,4 +416,278 @@ theorem bindTArgs_head_unrepresentable {r : Reg} {τ : Typ} {ts : TSig}
     bindTArgs ((r, τ) :: ts) (v :: vs) = none := by
   simp [bindTArgs, hv]
 
+/-! ## Declared CLIF types (D-7 option B, step 2)
+
+`clifTyOfTyp` is the model side of the `Runtime.marshal` table: the
+first-order types cross calls, everything else occupies no call slot.
+`addr` covers strings and pointers; it renders as `i64` (address-sized
+on the x86-64 SystemV target — the assumption the `CallingConvention`
+revisit records). -/
+
+/-- The CLIF value types a declared signature can name. -/
+inductive ClifTy where
+  | i64
+  | i8
+  | addr
+  deriving Repr, BEq, DecidableEq
+
+/-- The option-B type mapping. Unit and non-first-order types map to
+`none`: they occupy no slot in a declared signature. -/
+def clifTyOfTyp : Typ → Option ClifTy
+  | .intType => some .i64
+  | .boolType => some .i8
+  | .stringType => some .addr
+  | .pointerType => some .addr
+  | _ => none
+
+/-! ## Per-instruction result types (D-7 option B, step 2)
+
+The type pass's instruction half: every constructor writes exactly one
+register, and the result type is read off the constructor — arithmetic,
+constants and shifts produce ints; comparisons and boolean ops produce
+bools. This is the same split the `step` views (`asInt`/`asBool`)
+enforce, so `step_resultTyp` below holds without extra hypotheses: a
+successful step has already checked its inputs. -/
+
+/-- The register an instruction writes. Every constructor writes exactly
+one destination — the target has no control instructions yet, so no
+case is absent. -/
+def Instr.dst : Instr → Reg
+  | .iconst d _ => d
+  | .iadd d _ _ => d
+  | .isub d _ _ => d
+  | .imul d _ _ => d
+  | .icmp d _ _ _ => d
+  | .band d _ _ => d
+  | .bor d _ _ => d
+  | .bnot d _ => d
+  | .ishl d _ _ => d
+  | .sshr d _ _ => d
+
+/-- The result type of one instruction. -/
+def Instr.resultTyp : Instr → Typ
+  | .iconst _ _ => .intType
+  | .iadd _ _ _ => .intType
+  | .isub _ _ _ => .intType
+  | .imul _ _ _ => .intType
+  | .icmp _ _ _ _ => .boolType
+  | .band _ _ _ => .boolType
+  | .bor _ _ _ => .boolType
+  | .bnot _ _ => .intType
+  | .ishl _ _ _ => .intType
+  | .sshr _ _ _ => .intType
+
+/-- `evalCond` only ever produces booleans. -/
+theorem evalCond_bool {c : Cond} {v1 v2 w : Value}
+    (h : evalCond c v1 v2 = some w) : valueTyp w = some .boolType := by
+  cases v1 with
+  | int a => cases v2 with
+    | int b =>
+        simp only [evalCond] at h
+        obtain rfl := Option.some.inj h
+        rfl
+    | bool b => simp [evalCond] at h
+    | string s => simp [evalCond] at h
+    | pointer p => simp [evalCond] at h
+    | float f => simp [evalCond] at h
+    | unit => simp [evalCond] at h
+    | undef => simp [evalCond] at h
+    | some v => simp [evalCond] at h
+    | none => simp [evalCond] at h
+    | ok v => simp [evalCond] at h
+    | err v => simp [evalCond] at h
+    | tuple_ l => simp [evalCond] at h
+    | array_ l => simp [evalCond] at h
+    | loc n => simp [evalCond] at h
+    | closure f e => simp [evalCond] at h
+  | bool a => cases v2 with
+    | bool b =>
+        cases c with
+        | eq =>
+            simp only [evalCond] at h
+            obtain rfl := Option.some.inj h
+            rfl
+        | ne =>
+            simp only [evalCond] at h
+            obtain rfl := Option.some.inj h
+            rfl
+        | slt => simp [evalCond] at h
+        | sle => simp [evalCond] at h
+        | sgt => simp [evalCond] at h
+        | sge => simp [evalCond] at h
+    | int n => simp [evalCond] at h
+    | string s => simp [evalCond] at h
+    | pointer p => simp [evalCond] at h
+    | float f => simp [evalCond] at h
+    | unit => simp [evalCond] at h
+    | undef => simp [evalCond] at h
+    | some v => simp [evalCond] at h
+    | none => simp [evalCond] at h
+    | ok v => simp [evalCond] at h
+    | err v => simp [evalCond] at h
+    | tuple_ l => simp [evalCond] at h
+    | array_ l => simp [evalCond] at h
+    | loc n => simp [evalCond] at h
+    | closure f e => simp [evalCond] at h
+  | string s => simp [evalCond] at h
+  | pointer p => simp [evalCond] at h
+  | float f => simp [evalCond] at h
+  | unit => simp [evalCond] at h
+  | undef => simp [evalCond] at h
+  | some v => simp [evalCond] at h
+  | none => simp [evalCond] at h
+  | ok v => simp [evalCond] at h
+  | err v => simp [evalCond] at h
+  | tuple_ l => simp [evalCond] at h
+  | array_ l => simp [evalCond] at h
+  | loc n => simp [evalCond] at h
+  | closure f e => simp [evalCond] at h
+
+/-- A successful step writes a value of the instruction's result type.
+This is the per-instruction half of the type pass; the body half
+(`bodyResultTyp`) comes with the `allI64` succession. -/
+theorem step_resultTyp {env : Env} {i : Instr} {env' : Env}
+    (h : step env i = some env') :
+    ∃ v, env' i.dst = some v ∧ valueTyp v = some i.resultTyp := by
+  cases i with
+  | iconst d n =>
+      simp only [step] at h
+      obtain rfl := Option.some.inj h
+      exact ⟨_, Env.set_same _ _ _, rfl⟩
+  | iadd d l r =>
+      cases hl : env l with
+      | none => simp [step, hl] at h
+      | some vl =>
+          cases ha : asInt vl with
+          | none => simp [step, hl, ha] at h
+          | some a =>
+              cases hr : env r with
+              | none => simp [step, hl, hr] at h
+              | some vr =>
+                  cases hb : asInt vr with
+                  | none => simp [step, hl, hr, hb] at h
+                  | some b =>
+                      simp [step, hl, ha, hr, hb] at h
+                      rw [← h]
+                      exact ⟨_, Env.set_same _ _ _, rfl⟩
+  | isub d l r =>
+      cases hl : env l with
+      | none => simp [step, hl] at h
+      | some vl =>
+          cases ha : asInt vl with
+          | none => simp [step, hl, ha] at h
+          | some a =>
+              cases hr : env r with
+              | none => simp [step, hl, hr] at h
+              | some vr =>
+                  cases hb : asInt vr with
+                  | none => simp [step, hl, hr, hb] at h
+                  | some b =>
+                      simp [step, hl, ha, hr, hb] at h
+                      rw [← h]
+                      exact ⟨_, Env.set_same _ _ _, rfl⟩
+  | imul d l r =>
+      cases hl : env l with
+      | none => simp [step, hl] at h
+      | some vl =>
+          cases ha : asInt vl with
+          | none => simp [step, hl, ha] at h
+          | some a =>
+              cases hr : env r with
+              | none => simp [step, hl, hr] at h
+              | some vr =>
+                  cases hb : asInt vr with
+                  | none => simp [step, hl, hr, hb] at h
+                  | some b =>
+                      simp [step, hl, ha, hr, hb] at h
+                      rw [← h]
+                      exact ⟨_, Env.set_same _ _ _, rfl⟩
+  | icmp d c l r =>
+      cases hl : env l with
+      | none => simp [step, hl] at h
+      | some vl =>
+          cases hr : env r with
+          | none => simp [step, hl, hr] at h
+          | some vr =>
+              cases he : evalCond c vl vr with
+              | none => simp [step, hl, hr, he] at h
+              | some w =>
+                  simp [step, hl, hr, he] at h
+                  rw [← h]
+                  exact ⟨w, Env.set_same _ _ _, evalCond_bool he⟩
+  | band d l r =>
+      cases hl : env l with
+      | none => simp [step, hl] at h
+      | some vl =>
+          cases ha : asBool vl with
+          | none => simp [step, hl, ha] at h
+          | some a =>
+              cases hr : env r with
+              | none => simp [step, hl, hr] at h
+              | some vr =>
+                  cases hb : asBool vr with
+                  | none => simp [step, hl, hr, hb] at h
+                  | some b =>
+                      simp [step, hl, ha, hr, hb] at h
+                      rw [← h]
+                      exact ⟨_, Env.set_same _ _ _, rfl⟩
+  | bor d l r =>
+      cases hl : env l with
+      | none => simp [step, hl] at h
+      | some vl =>
+          cases ha : asBool vl with
+          | none => simp [step, hl, ha] at h
+          | some a =>
+              cases hr : env r with
+              | none => simp [step, hl, hr] at h
+              | some vr =>
+                  cases hb : asBool vr with
+                  | none => simp [step, hl, hr, hb] at h
+                  | some b =>
+                      simp [step, hl, ha, hr, hb] at h
+                      rw [← h]
+                      exact ⟨_, Env.set_same _ _ _, rfl⟩
+  | bnot d s =>
+      cases hs : env s with
+      | none => simp [step, hs] at h
+      | some vs =>
+          cases ha : asInt vs with
+          | none => simp [step, hs, ha] at h
+          | some a =>
+              simp [step, hs, ha] at h
+              rw [← h]
+              exact ⟨_, Env.set_same _ _ _, rfl⟩
+  | ishl d l r =>
+      cases hl : env l with
+      | none => simp [step, hl] at h
+      | some vl =>
+          cases ha : asInt vl with
+          | none => simp [step, hl, ha] at h
+          | some a =>
+              cases hr : env r with
+              | none => simp [step, hl, hr] at h
+              | some vr =>
+                  cases hn : shiftAmount vr with
+                  | none => simp [step, hl, hr, hn] at h
+                  | some n =>
+                      simp [step, hl, ha, hr, hn] at h
+                      rw [← h]
+                      exact ⟨_, Env.set_same _ _ _, rfl⟩
+  | sshr d l r =>
+      cases hl : env l with
+      | none => simp [step, hl] at h
+      | some vl =>
+          cases ha : asInt vl with
+          | none => simp [step, hl, ha] at h
+          | some a =>
+              cases hr : env r with
+              | none => simp [step, hl, hr] at h
+              | some vr =>
+                  cases hn : shiftAmount vr with
+                  | none => simp [step, hl, hr, hn] at h
+                  | some n =>
+                      simp [step, hl, ha, hr, hn] at h
+                      rw [← h]
+                      exact ⟨_, Env.set_same _ _ _, rfl⟩
+
 end Morph.Clif
