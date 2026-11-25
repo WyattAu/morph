@@ -4,6 +4,9 @@ SPDX-License-Identifier: Apache-2.0
 
 import Morph.HIRFunc
 import Morph.Frontend.HIRInterp
+import Morph.ClifTarget
+import Morph.ClifLower
+import Morph.ClifEmit
 
 /-!
 # Call-fragment evidence (Stage C item C8, end-to-end pin)
@@ -233,5 +236,91 @@ example : (lowerCallProg subProg).bind (fun p =>
       execFuncCall p 5 f ⟨fun _ => none, Store.empty⟩) ==
     some (.int 2) := by
   native_decide
+
+/-! ## Typed convergence (D-7 option B, slice B2c)
+
+The fragment above predates typed signatures: `lowerFunc` stamps
+`.unitType` on every parameter (HIR is untyped, so there is nothing
+else to write), and `bindCallArgs` ignores the stamps. The typed layer
+re-states the same value passing with checks (`bindTArgs`), and the
+two binders agree on int-typed formals
+(`bindCallArgs_bindTArgs_agree`). This section migrates the
+`add(1, 2)` evidence across: the typed mirror of the lowered callee
+checks, binds, and runs to the same `3` through the same environment,
+and the int-typed program emits the preamble the call names. Nothing
+above moves: the untyped goldens, oracle, and executor pins stand
+unchanged beside the typed view.
+-/
+
+/-- The typed mirror of the lowered `add`: int formals on the same
+registers, the encoded body. -/
+def addTEv : Morph.Clif.TCFunc :=
+  ⟨"add", [(1, Typ.intType), (2, Typ.intType)],
+    ⟨[Morph.Clif.Instr.iadd 3 1 2], 3⟩⟩
+
+/-- One-callable typed program. -/
+def tprogEv : Morph.Clif.TCProgram := [addTEv]
+
+/-- The typed run returns the evidence value. -/
+example : (Morph.Clif.runTCall tprogEv "add" [.int 1, .int 2]).map
+    (fun w => w == .int 3)
+    = some true := by
+  native_decide
+
+/-- The typed check passes on the evidence actuals. -/
+example : Morph.Clif.bindTArgs [(1, Typ.intType), (2, Typ.intType)]
+    [.int 1, .int 2]
+    = some (Morph.Clif.Env.set
+      (Morph.Clif.Env.set (fun _ => none) 2 (.int 2)) 1 (.int 1)) := by
+  have e1 : Morph.Clif.typMatches (.int 1) Typ.intType = true := by native_decide
+  have e2 : Morph.Clif.typMatches (.int 2) Typ.intType = true := by native_decide
+  simp [Morph.Clif.bindTArgs, e1, e2]
+
+/-- Both binders reach the same environment on the evidence actuals:
+the untyped bind (which ignores the `.unitType` stamps) lands where
+the checked bind lands, via the bridge. -/
+example : Morph.MIR.bindCallArgs [(1, Typ.intType), (2, Typ.intType)]
+    [.int 1, .int 2]
+    = Morph.Clif.bindTArgs [(1, Typ.intType), (2, Typ.intType)]
+      [.int 1, .int 2] := by
+  have hm : Morph.MIR.bindCallArgs [(1, Typ.intType), (2, Typ.intType)]
+      [.int 1, .int 2] = some (Morph.MIR.Env.update
+        (Morph.MIR.Env.update (fun _ => none) 2 (.int 2)) 1 (.int 1)) := rfl
+  have hc : Morph.Clif.bindTArgs [(1, Typ.intType), (2, Typ.intType)]
+      [.int 1, .int 2] = some (Morph.Clif.Env.set
+        (Morph.Clif.Env.set (fun _ => none) 2 (.int 2)) 1 (.int 1)) := by
+    have e1 : Morph.Clif.typMatches (.int 1) Typ.intType = true := by native_decide
+    have e2 : Morph.Clif.typMatches (.int 2) Typ.intType = true := by native_decide
+    simp [Morph.Clif.bindTArgs, e1, e2]
+  have h := Morph.Clif.bindCallArgs_bindTArgs_agree
+    (ps := [(1, Typ.intType), (2, Typ.intType)]) rfl hm hc
+  rw [hm, hc]
+  exact congrArg some h
+
+/-- The int-typed callee: the lowered `add`'s registers and body with
+the ABI types the preamble declares. -/
+def addMIRT : Morph.MIR.Func :=
+  ⟨"add", [(1, Typ.intType), (2, Typ.intType)],
+    [⟨0, [.const 0 .unit, .binop 3 .add 1 2 .intType], .return_ 3⟩],
+    0, Typ.intType⟩
+
+/-- The int-typed entry: the lowered `main` over the typed program. -/
+def addMainMIRT : Morph.MIR.Func :=
+  ⟨"main", [],
+    [⟨0, [.const 0 .unit, .const 1 (.int 1), .const 2 (.int 2),
+      .call (some 3) "add" [2, 1]], .return_ 3⟩],
+    0, Typ.intType⟩
+
+/-- The typed program. -/
+def progTEv : Morph.MIR.Program := ⟨[addMainMIRT, addMIRT]⟩
+
+/-- Its preamble declares both functions. -/
+example : Morph.Codegen.preamble progTEv
+    = "function %main() -> i64\nfunction %add(i64, i64) -> i64\n" := rfl
+
+/-- ...and the entry emits the preamble ahead of the call-bearing body. -/
+example : Morph.Codegen.emitClif addMainMIRT progTEv
+    = some ("function %main() -> i64\nfunction %add(i64, i64) -> i64\n" ++
+      "function %main() -> i64 {\nblock0:\n  v1 = iconst.i64 1\n  v2 = iconst.i64 2\n  v3 = call %add(v2, v1) -> i64\n  return v3\n}\n") := rfl
 
 end Morph.Proofs.Call
