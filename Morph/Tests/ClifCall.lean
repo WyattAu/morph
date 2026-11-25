@@ -471,7 +471,7 @@ example : Morph.Codegen.emitClif isEqMainMIR progBool
 
 Step 3's switch, pinned both ways: a body that computes a comparison
 but returns an integer now emits (the old `allI64` scan refused it),
-while a genuinely boolean result still refuses. -/
+and a boolean result emits under its computed `-> i8` header. -/
 
 /-- Compare-then-int emits: the gate is the computed type. -/
 example : Morph.Codegen.emitBlock
@@ -488,10 +488,17 @@ example : Morph.Codegen.emitClif
     = some ("function %main() -> i64 {\nblock0:\n  v0 = iconst.i64 1\n  v1 = iconst.i64 1\n  v2 = icmp eq v0, v1\n  v3 = iconst.i64 7\n  return v3\n}\n") := by
   native_decide
 
-/-- ...while a boolean result still refuses. -/
+/-- ...and a boolean result emits under its computed header. -/
 example : Morph.Codegen.emitBlock
     ⟨0, [.const 0 .unit, .const 0 (.int 1), .const 1 (.int 1),
-      .binop 2 .eq 0 1 .boolType], .return_ 2⟩ = none := rfl
+      .binop 2 .eq 0 1 .boolType], .return_ 2⟩
+    = some ⟨[.iconst 0 1, .iconst 1 1, .icmp 2 .eq 0 1], 2⟩ := rfl
+
+/-- The single-function boolean artifact. -/
+example : Morph.Codegen.emitClif
+    ⟨"iseq", [], [⟨0, [.const 0 .unit, .binop 2 .eq 0 1 .boolType],
+      .return_ 2⟩], 0, Typ.boolType⟩ ⟨[]⟩
+    = some ("function %iseq() -> i8 {\nblock0:\n  v2 = icmp eq v0, v1\n  return v2\n}\n") := rfl
 
 /-! ## Named rendering pins (D-7 option C, slice D1)
 
@@ -510,9 +517,8 @@ example : Morph.Clif.renderFuncFor "unitfn" Typ.unitType ⟨[], 0⟩
 /-! ## Program emission pins (D-7 option C, slice D2)
 
 One preamble for the program, then every function body under its
-declared header. The empty program emits the empty artifact; a full
-int-world program emits end to end; a bool-bodied callee still
-refuses at the body gate, so the program does too. -/
+computed header. The empty program emits the empty artifact; full
+int-world and mixed int/bool programs emit end to end. -/
 
 /-- The empty program emits the empty artifact. -/
 example : Morph.Codegen.emitProg ⟨[]⟩ = some "" :=
@@ -541,7 +547,12 @@ example : Morph.Codegen.emitProg progAddFull
       "function %add() -> i64 {\nblock0:\n  v2 = iadd v0, v1\n  return v2\n}\n") := by
   native_decide
 
-/-- ...while a bool-bodied callee refuses the whole program. -/
-example : Morph.Codegen.emitProg progBool = none := rfl
+/-- ...and the mixed program emits end to end: preamble, int entry,
+bool callee under its computed header. -/
+example : Morph.Codegen.emitProg progBool
+    = some ("function %main() -> i64\nfunction %iseq(i64, i64) -> i8\n" ++
+      "function %main() -> i64 {\nblock0:\n  v0 = iconst.i64 1\n  v1 = iconst.i64 1\n  v2 = call %iseq(v0, v1) -> i8\n  v3 = iconst.i64 0\n  return v3\n}\n" ++
+      "function %iseq() -> i8 {\nblock0:\n  v2 = icmp eq v0, v1\n  return v2\n}\n") := by
+  native_decide
 
 end Morph.Tests.ClifCall

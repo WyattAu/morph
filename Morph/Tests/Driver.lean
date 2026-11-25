@@ -509,7 +509,7 @@ example : buildClif "let x = 2; let y = 3; x * y + 1" ==
 -- mistranslated.
 example : buildClif "let x = 7 / 2; x" ==
     .unsupported
-      "codegen: the CLIF subset cannot encode this program (boolean- or unit-valued programs, div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)" := by
+      "codegen: the CLIF subset cannot encode this program (unit-valued programs, div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)" := by
   native_decide
 
 -- Golden: a program whose value is unit is refused (loop 151). `return v0`
@@ -517,20 +517,19 @@ example : buildClif "let x = 7 / 2; x" ==
 -- would not be CLIF. The model can express it; the printer does not pretend to.
 example : buildClif "let y = 5;" ==
     .unsupported
-      "codegen: the CLIF subset cannot encode this program (boolean- or unit-valued programs, div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)" := by
+      "codegen: the CLIF subset cannot encode this program (unit-valued programs, div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)" := by
   native_decide
 
 example : buildClif "" ==
     .unsupported
-      "codegen: the CLIF subset cannot encode this program (boolean- or unit-valued programs, div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)" := by
+      "codegen: the CLIF subset cannot encode this program (unit-valued programs, div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)" := by
   native_decide
 
--- Golden: a boolean-valued program is refused (loop 152). `run` prints `true`,
--- but `icmp` produces an i8 truth value and the printed signature is `-> i64`,
--- with no widening instruction in the modelled subset.
+-- Golden: a boolean-valued program emits under its `-> i8` header (loop 152
+-- revisited: the slotted gate admits it, and the header is computed, not
+-- hardcoded). `run` prints `true`; the artifact names the i8 slot.
 example : buildClif "let a = 3; let b = 5; a < b" ==
-    .unsupported
-      "codegen: the CLIF subset cannot encode this program (boolean- or unit-valued programs, div/mod, bitwise andb/orb/xorb, bool constants, copy, memory, calls)" := by
+    .value "function %main() -> i8 {\nblock0:\n  v1 = iconst.i64 3\n  v2 = iconst.i64 5\n  v3 = icmp slt v1, v2\n  return v3\n}\n" := by
   native_decide
 
 -- Golden: a program outside the HIR fragment is rejected before MIR.

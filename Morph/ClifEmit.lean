@@ -235,6 +235,57 @@ theorem preamble_empty : preamble { funcs := [] } = "" := rfl
 -- before) and prepends its preamble; an explicit int-world program
 -- admits calls per `callResolved`. The default-program refusal pins
 -- stay green. -/
+/-- The body gate (D-7 option B, slice C3): the computed result type
+occupies a CLIF slot. `emitBlock` admits exactly these bodies, and
+`renderChecked` renders the header from the same computed type, so a
+header can never disagree with its body. -/
+def bodySlotTyp (cs : List Morph.Clif.Instr) (ret : Nat) : Option Morph.Core.Typ :=
+  match Morph.Clif.bodyResultTyp cs ret with
+  | some t =>
+      match Morph.Clif.clifTyOfTyp t with
+      | some _ => some t
+      | none => none
+  | none => none
+
+/-- Render one encoded body under its computed header. Fails exactly
+when the body gate fails. -/
+def renderChecked (f : Func) (cf : Morph.Clif.Func) : Option String :=
+  match bodySlotTyp cf.instrs cf.retSrc with
+  | some t => some (Morph.Clif.renderFuncFor f.name t cf)
+  | none => none
+
+/-- `renderChecked` succeeds exactly on slotted bodies, with the
+computed header. -/
+theorem renderChecked_of_slot {f : Func} {cf : Morph.Clif.Func}
+    {t : Morph.Core.Typ}
+    (hslot : bodySlotTyp cf.instrs cf.retSrc = some t) :
+    renderChecked f cf = some (Morph.Clif.renderFuncFor f.name t cf) := by
+  cases hg : bodySlotTyp cf.instrs cf.retSrc with
+  | none =>
+      rw [hg] at hslot
+      simp at hslot
+  | some t' =>
+      rw [hg] at hslot
+      obtain rfl := Option.some.inj hslot
+      simp [renderChecked, hg]
+
+/-- ...and every success comes from a slotted body. -/
+theorem renderChecked_some {f : Func} {cf : Morph.Clif.Func} {text : String}
+    (h : renderChecked f cf = some text) :
+    ∃ t, bodySlotTyp cf.instrs cf.retSrc = some t ∧
+      text = Morph.Clif.renderFuncFor f.name t cf := by
+  cases hg : bodySlotTyp cf.instrs cf.retSrc with
+  | none =>
+      have hnone : renderChecked f cf = none := by simp [renderChecked, hg]
+      rw [hnone] at h
+      simp at h
+  | some t =>
+      have hsome : renderChecked f cf =
+          some (Morph.Clif.renderFuncFor f.name t cf) :=
+        renderChecked_of_slot hg
+      rw [hsome, Option.some.injEq] at h
+      exact ⟨t, rfl, h.symm⟩
+
 /-- Encode a lowered block, dropping `lowerProgram`'s unit prologue.
 
 The prologue is required, not merely tolerated: a block that does not start with
@@ -258,14 +309,9 @@ def emitBlock (b : Block) (prog : Program := { funcs := [] }) : Option Morph.Cli
           else match Morph.Clif.blockEncode ⟨b.id, body, .return_ src⟩ prog with
                | none => none
                | some cf =>
-                   -- Step 3's gate switch: the computed body type, not the
-                   -- conservative `allI64` scan. A body that computes a
-                   -- comparison and returns an integer is admitted; only a
-                   -- non-`int` result refuses, which is exactly what the
-                   -- `-> i64` signature `renderFunc` declares needs.
-                   match Morph.Clif.bodyResultTyp cf.instrs cf.retSrc with
-                   | some .intType => some cf
-                   | _ => none
+                   match bodySlotTyp cf.instrs cf.retSrc with
+                   | some _ => some cf
+                   | none => none
       | _ => none
   | _ => none
 
@@ -277,21 +323,23 @@ def emitFunc (f : Func) (prog : Program := { funcs := [] }) : Option Morph.Clif.
   | _ => none
 
 /-- The artifact text for a lowered MIR function: the program's signature
-preamble followed by the encoded function. -/
+preamble followed by the encoded function under its computed header. -/
 def emitClif (f : Func) (prog : Program := { funcs := [] }) : Option String :=
-  (emitFunc f prog).map (fun cf => preamble prog ++ Morph.Clif.renderFunc cf)
+  match emitFunc f prog with
+  | none => none
+  | some cf =>
+      match renderChecked f cf with
+      | none => none
+      | some text => some (preamble prog ++ text)
 
 /-- Whole-program emission (D-7 option C, slice D2): one preamble for
-the program, then every function's body under its declared header.
-Each body encodes against the full program, so calls resolve; each
-renders under its own name and return slot (`renderFuncFor`). -/
+the program, then every function's body under its computed header.
+Each body encodes against the full program, so calls resolve. -/
 def emitProg (prog : Program) : Option String :=
-  match prog.funcs.mapM (fun f => (emitFunc f prog).map (fun cf => (f, cf))) with
+  match prog.funcs.mapM fun f => (emitFunc f prog).bind fun cf =>
+    renderChecked f cf with
   | none => none
-  | some fcs =>
-      some (preamble prog ++
-        (fcs.map fun (f, cf) => Morph.Clif.renderFuncFor f.name f.retType cf).foldl
-          (· ++ ·) "")
+  | some texts => some (preamble prog ++ texts.foldl (· ++ ·) "")
 
 /-- The empty program emits the empty artifact. -/
 theorem emitProg_nil : emitProg { funcs := [] } = some "" := rfl
@@ -303,32 +351,39 @@ is not a black box: it is `renderFunc` applied to `blockEncode` of the block wit
 the prologue dropped. -/
 
 /-- On the shape `lowerProgram` produces, the emitter *is* the encoder of the
-prologue-free body, when the computed body type is `intType`. This is the
-lemma the gate above rests on: the prologue disappears from the artifact
-and nothing else about the body changes. The `src ≠ 0` premise is the
-unit case, which `emitBlock` refuses. -/
+prologue-free body, when the computed body type occupies a slot. This is
+the lemma the gate above rests on: the prologue disappears from the
+artifact and nothing else about the body changes. The `src ≠ 0` premise
+is the unit case, which `emitBlock` refuses. -/
 theorem emitBlock_prologue (id : Nat) (body : List Instr) (src : Nat) (hsrc : src ≠ 0)
-    {cf : Morph.Clif.Func} (prog : Program := { funcs := [] })
+    {cf : Morph.Clif.Func} {t : Morph.Core.Typ} (prog : Program := { funcs := [] })
     (henc : Morph.Clif.blockEncode ⟨id, body, .return_ src⟩ prog = some cf)
-    (htyp : Morph.Clif.bodyResultTyp cf.instrs cf.retSrc = some .intType) :
+    (hslot : bodySlotTyp cf.instrs cf.retSrc = some t) :
     emitBlock ⟨id, .const 0 .unit :: body, .return_ src⟩ prog = some cf := by
   simp only [emitBlock]
   rw [if_neg hsrc, henc]
   dsimp only
-  rw [htyp]
+  rw [hslot]
 
 /-- Composing the shape with the emitter: on a lowered function the artifact is
-the preamble plus the encoded rendering, with no prologue instruction in
-it. -/
+the preamble plus the computed-header rendering, with no prologue
+instruction in it. -/
 theorem emitClif_lowered (body : List Instr) (v : Nat) (hv : v ≠ 0)
-    {cf : Morph.Clif.Func} (prog : Program := { funcs := [] })
+    {cf : Morph.Clif.Func} {t : Morph.Core.Typ} (prog : Program := { funcs := [] })
     (henc : Morph.Clif.blockEncode ⟨0, body, .return_ v⟩ prog = some cf)
-    (htyp : Morph.Clif.bodyResultTyp cf.instrs cf.retSrc = some .intType) :
+    (hslot : bodySlotTyp cf.instrs cf.retSrc = some t) :
     emitClif ⟨"main", [], [⟨0, .const 0 .unit :: body, .return_ v⟩], 0, .unitType⟩ prog
-      = some (preamble prog ++ Morph.Clif.renderFunc cf) := by
-  have h : emitBlock ⟨0, .const 0 .unit :: body, .return_ v⟩ prog = some cf :=
-    emitBlock_prologue 0 body v hv prog henc htyp
-  simp [emitClif, emitFunc, h]
+      = some (preamble prog ++ Morph.Clif.renderFuncFor "main" t cf) := by
+  have h1 : emitBlock ⟨0, .const 0 .unit :: body, .return_ v⟩ prog = some cf :=
+    emitBlock_prologue 0 body v hv prog henc hslot
+  have h2 : emitFunc ⟨"main", [], [⟨0, .const 0 .unit :: body, .return_ v⟩],
+      0, .unitType⟩ prog = some cf := by
+    simp only [emitFunc]
+    simp [h1]
+  have h3 : renderChecked ⟨"main", [], [⟨0, .const 0 .unit :: body, .return_ v⟩],
+      0, .unitType⟩ cf = some (Morph.Clif.renderFuncFor "main" t cf) :=
+    renderChecked_of_slot hslot
+  simp [emitClif, h2, h3]
 
 /-- A unit-valued program is refused: its value is the prologue's register. -/
 theorem emitBlock_unit (id : Nat) (body : List Instr)
@@ -346,24 +401,21 @@ theorem emitBlock_encode_none (id : Nat) (body : List Instr) (src : Nat)
   · simp [hsrc]
   · simp [hsrc, henc]
 
-/-- A non-`int` body type refuses: the text's signature is `-> i64`. This
-is the exact form of the old `allI64` refusal — a body that computes a
-comparison and returns an integer now passes, and only a genuinely
-non-integer result is turned away. -/
-theorem emitBlock_typ_nonint (id : Nat) (body : List Instr) (src : Nat)
+/-- A slotless body type refuses: no header could declare it. This is the
+exact form of the old `allI64` refusal — slotted bodies pass whatever
+their slot is, and only genuinely unrepresentable results (unit,
+non-first-order, undefined) are turned away. -/
+theorem emitBlock_typslot_none (id : Nat) (body : List Instr) (src : Nat)
     {cs : Morph.Clif.Func} (prog : Program := { funcs := [] })
     (henc : Morph.Clif.blockEncode ⟨id, body, .return_ src⟩ prog = some cs)
-    (htyp : Morph.Clif.bodyResultTyp cs.instrs cs.retSrc ≠ some .intType) :
+    (hslot : bodySlotTyp cs.instrs cs.retSrc = none) :
     emitBlock ⟨id, .const 0 .unit :: body, .return_ src⟩ prog = none := by
   simp only [emitBlock]
   by_cases hsrc : src = 0
   · simp [hsrc]
   · rw [if_neg hsrc, henc]
     dsimp only
-    cases hb : Morph.Clif.bodyResultTyp cs.instrs cs.retSrc with
-    | none => rfl
-    | some t =>
-        cases t <;> first | exact absurd hb htyp | rfl
+    rw [hslot]
 
 /-- A successful emission is a single block, the entry block, carrying the
 prologue. -/
@@ -379,38 +431,50 @@ theorem emitFunc_sound {f : Func} {prog : Program} {cf : Morph.Clif.Func}
     · simp at h
   · simp at h
 
-/-- The artifact text is the preamble plus the rendering of the encoded
-function. -/
+/-- The artifact text is the preamble plus the computed-header rendering
+of the encoded function. -/
 theorem emitClif_sound {f : Func} {prog : Program} {s : String}
     (h : emitClif f prog = some s) :
-    ∃ cf : Morph.Clif.Func, emitFunc f prog = some cf ∧
-      s = preamble prog ++ Morph.Clif.renderFunc cf := by
+    ∃ cf t, emitFunc f prog = some cf ∧
+      bodySlotTyp cf.instrs cf.retSrc = some t ∧
+      s = preamble prog ++ Morph.Clif.renderFuncFor f.name t cf := by
   unfold emitClif at h
   cases hf : emitFunc f prog with
-  | none => rw [hf] at h; simp at h
-  | some cf => rw [hf] at h; simp only [Option.map_some, Option.some.injEq] at h
-               exact ⟨cf, rfl, h.symm⟩
+  | none =>
+      rw [hf] at h
+      simp at h
+  | some cf =>
+      rw [hf] at h
+      dsimp only at h
+      cases hr : renderChecked f cf with
+      | none =>
+          rw [hr] at h
+          simp at h
+      | some text =>
+          rw [hr] at h
+          dsimp only at h
+          simp only [Option.some.injEq] at h
+          obtain ⟨t, hslot, htext⟩ := renderChecked_some hr
+          exact ⟨cf, t, rfl, hslot, by rw [htext] at h; exact h.symm⟩
 
-/-- A successful program emission pairs every function with its encoding,
-and the text is the preamble plus every declared rendering. -/
+/-- A successful program emission renders every function under its
+computed header, and the text is the preamble plus the renderings. -/
 theorem emitProg_sound {prog : Program} {s : String}
     (h : emitProg prog = some s) :
-    ∃ fcs, prog.funcs.mapM (fun f => (emitFunc f prog).map
-        (fun cf => (f, cf))) = some fcs ∧
-      s = preamble prog ++
-        (fcs.map fun (f, cf) => Morph.Clif.renderFuncFor f.name f.retType cf).foldl
-          (· ++ ·) "" := by
+    ∃ texts, (prog.funcs.mapM fun f => (emitFunc f prog).bind fun cf =>
+        renderChecked f cf) = some texts ∧
+      s = preamble prog ++ texts.foldl (· ++ ·) "" := by
   unfold emitProg at h
-  cases hm : prog.funcs.mapM (fun f => (emitFunc f prog).map
-    (fun cf => (f, cf))) with
+  cases hm : (prog.funcs.mapM fun f => (emitFunc f prog).bind fun cf =>
+    renderChecked f cf) with
   | none =>
       rw [hm] at h
       simp at h
-  | some fcs =>
+  | some texts =>
       rw [hm] at h
       dsimp only at h
       simp only [Option.some.injEq] at h
-      exact ⟨fcs, rfl, h.symm⟩
+      exact ⟨texts, rfl, h.symm⟩
 
 /-- `lowerProgram`'s shape, stated so the emitter's gate is visibly vacuous on
 lowered functions: the body starts with the unit prologue and the block is the
