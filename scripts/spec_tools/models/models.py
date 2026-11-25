@@ -109,12 +109,20 @@ class LinkCheckingConfig:
         check_orphaned_sections: Whether to check for orphaned sections
         check_duplicate_links: Whether to check for duplicate links
         check_self_references: Whether to check for self-references
+        check_file_references: Whether to validate bare `.md` mentions
+            (prose references such as `` `other_spec.md` ``) in addition to
+            markdown links. Off by default: prose mentions are not links, and
+            a corpus that quotes filenames as examples (naming conventions,
+            planned specs) legitimately names files that do not exist. The
+            project standard is markdown links, so `check-links` compares
+            against that unless this is enabled.
     """
 
     check_broken_links: bool = True
     check_orphaned_sections: bool = True
     check_duplicate_links: bool = True
     check_self_references: bool = False
+    check_file_references: bool = False
 
 
 @dataclass

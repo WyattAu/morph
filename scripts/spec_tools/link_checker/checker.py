@@ -66,12 +66,12 @@ class SpecLinkChecker:
             sections = self.section_validator.extract_sections(filepath)
             self.section_cache[filepath] = sections
 
-            # Find all links
+            # Find all links. Bare `.md` mentions are prose, not links, so
+            # they are only validated when the config asks for them.
             markdown_links = self.markdown_parser.parse(content, filepath)
-            file_refs = self.file_ref_parser.parse(content, filepath)
-
-            # Combine all links
-            all_links = markdown_links + file_refs
+            all_links = list(markdown_links)
+            if self.config.check_file_references:
+                all_links += self.file_ref_parser.parse(content, filepath)
 
             # Create report
             report = LinkReport(
@@ -163,8 +163,11 @@ class SpecLinkChecker:
         Returns:
             True if link is valid, False otherwise
         """
-        # Check cache first
-        cached_result = self.link_cache.get(link.url)
+        # Check cache first. Relative links resolve against the referring
+        # file's directory, so the key must carry it: the same bare name in
+        # two directories is two different targets.
+        cache_key = f"{link.file_path.parent}\x00{link.url}"
+        cached_result = self.link_cache.get(cache_key)
         if cached_result is not None:
             return cached_result
 
@@ -185,7 +188,7 @@ class SpecLinkChecker:
             is_valid = False
 
         # Cache result
-        self.link_cache.set(link.url, is_valid)
+        self.link_cache.set(cache_key, is_valid)
 
         return is_valid
 

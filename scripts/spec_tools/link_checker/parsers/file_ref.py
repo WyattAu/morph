@@ -42,8 +42,10 @@ class FileReferenceParser:
         links = []
         lines = content.split("\n")
 
-        # First, find all markdown links to avoid double-counting
-        markdown_link_positions = self._find_markdown_link_positions(content)
+        # First, find all markdown links to avoid double-counting. The whole
+        # `[text](url)` extent is excluded: both the link text and the
+        # destination are already checked by the markdown parser.
+        markdown_link_spans = self._find_markdown_link_spans(content)
 
         for line_num, line in enumerate(lines, start=1):
             matches = list(self._file_ref_pattern.finditer(line))
@@ -52,7 +54,7 @@ class FileReferenceParser:
                 column = match.start() + 1
 
                 # Skip if this is part of a markdown link
-                if self._is_in_markdown_link(line_num, column, markdown_link_positions):
+                if self._is_in_markdown_link(line_num, column, markdown_link_spans):
                     continue
 
                 links.append(
@@ -69,38 +71,38 @@ class FileReferenceParser:
 
         return links
 
-    def _find_markdown_link_positions(self, content: str) -> List[tuple]:
-        """Find positions of all markdown links in content.
+    def _find_markdown_link_spans(self, content: str) -> List[tuple]:
+        """Find the full span of every markdown link in content.
 
         Args:
             content: Content to search
 
         Returns:
-            List of (line_number, column) tuples
+            List of (line_number, start_column, end_column) tuples, 1-based and
+            inclusive, covering the whole `[text](url)` extent.
         """
-        positions = []
+        spans = []
         lines = content.split("\n")
 
         for line_num, line in enumerate(lines, start=1):
-            matches = list(self._markdown_link_pattern.finditer(line))
-            for match in matches:
-                column = match.start() + 1
-                positions.append((line_num, column))
+            for match in self._markdown_link_pattern.finditer(line):
+                spans.append((line_num, match.start() + 1, match.end()))
 
-        return positions
+        return spans
 
-    def _is_in_markdown_link(self, line_num: int, column: int, markdown_links: List[tuple]) -> bool:
-        """Check if position is within a markdown link.
+    def _is_in_markdown_link(self, line_num: int, column: int, markdown_link_spans: List[tuple]) -> bool:
+        """Check if a position falls inside a markdown link's span.
 
         Args:
             line_num: Line number to check
             column: Column number to check
-            markdown_links: List of markdown link positions
+            markdown_link_spans: (line, start, end) spans from
+                `_find_markdown_link_spans`
 
         Returns:
             True if position is within a markdown link, False otherwise
         """
-        for link_line, link_col in markdown_links:
-            if link_line == line_num and abs(link_col - column) < 10:
+        for link_line, start, end in markdown_link_spans:
+            if link_line == line_num and start <= column <= end:
                 return True
         return False

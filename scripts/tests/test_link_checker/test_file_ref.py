@@ -34,20 +34,38 @@ class TestFileReferenceParser:
         links = parser.parse(content, Path("test.md"))
         assert len(links) == 3
 
-    def test_find_markdown_link_positions(self):
+    def test_find_markdown_link_spans(self):
         parser = FileReferenceParser()
         content = "Line1\n[link](file.md) here\nLine3\n"
-        positions = parser._find_markdown_link_positions(content)
-        assert len(positions) == 1
-        assert positions[0] == (2, 1)
+        spans = parser._find_markdown_link_spans(content)
+        assert len(spans) == 1
+        line, start, end = spans[0]
+        assert line == 2
+        assert start == 1
+        # The span covers `[link](file.md)`, i.e. the whole link extent.
+        assert end == len("[link](file.md)")
 
     def test_is_in_markdown_link(self):
         parser = FileReferenceParser()
-        md_links = [(1, 5)]
-        assert parser._is_in_markdown_link(1, 5, md_links) is True
-        assert parser._is_in_markdown_link(1, 1, md_links) is True
-        assert parser._is_in_markdown_link(1, 20, md_links) is False
-        assert parser._is_in_markdown_link(2, 5, md_links) is False
+        spans = [(1, 5, 9)]
+        assert parser._is_in_markdown_link(1, 5, spans) is True
+        assert parser._is_in_markdown_link(1, 9, spans) is True
+        assert parser._is_in_markdown_link(1, 4, spans) is False
+        assert parser._is_in_markdown_link(1, 20, spans) is False
+        assert parser._is_in_markdown_link(2, 5, spans) is False
+
+    def test_parse_skips_link_text_and_destination(self):
+        # Both the text and the destination name a `.md` file; neither may be
+        # reported as a bare reference.
+        parser = FileReferenceParser()
+        content = "See [`other.md`](other.md) for info.\n"
+        assert parser.parse(content, Path("test.md")) == []
+
+    def test_parse_reports_bare_ref_after_link(self):
+        parser = FileReferenceParser()
+        content = "[link](a.md) then plain b.md here.\n"
+        links = parser.parse(content, Path("test.md"))
+        assert [link.url for link in links] == ["b.md"]
 
     def test_parse_no_refs(self):
         parser = FileReferenceParser()

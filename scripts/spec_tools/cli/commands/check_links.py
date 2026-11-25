@@ -31,6 +31,10 @@ def run_check_links_command(args: Any, config: Config) -> int:
         print(f"Error: Path not found: {path}", file=sys.stderr)
         return 1
 
+    # Bare `.md` mentions are opt-in (see LinkCheckingConfig)
+    if getattr(args, "check_file_refs", False):
+        config.link_checking.check_file_references = True
+
     # Create link checker with config
     checker = SpecLinkChecker(config.link_checking)
 

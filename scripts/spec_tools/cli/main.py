@@ -182,6 +182,15 @@ For more information on a specific command, use:
         help="File or directory to check",
     )
     links_parser.add_argument(
+        "--check-file-refs",
+        action="store_true",
+        help=(
+            "Also validate bare `.md` mentions in prose (off by default: "
+            "prose references are not links, and examples may name files "
+            "that do not exist)"
+        ),
+    )
+    links_parser.add_argument(
         "--output",
         type=str,
         help="Output file for the link report (default: stdout)",

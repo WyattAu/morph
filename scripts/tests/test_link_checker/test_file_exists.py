@@ -170,3 +170,59 @@ class TestFileExistsValidator:
         ]
         validator.validate_batch(links)
         assert links[0].is_valid is True
+
+
+class TestCandidatePathFallback:
+    """Relative refs resolve against the file's directory, then its ancestors."""
+
+    def test_candidate_paths_most_specific_first(self, temp_dir):
+        validator = FileExistsValidator()
+        filepath = temp_dir / "spec" / "language" / "doc.md"
+        filepath.parent.mkdir(parents=True)
+        filepath.write_text("", encoding="utf-8")
+        link = LinkInfo(
+            text="link",
+            url="other.md",
+            line_number=1,
+            file_path=filepath,
+            link_type=LinkType.MARKDOWN,
+        )
+
+        candidates = validator.candidate_paths(link)
+
+        assert candidates[0] == filepath.parent / "other.md"
+        assert candidates[1] == filepath.parent.parent / "other.md"
+
+    def test_validate_falls_back_to_ancestor(self, temp_dir):
+        validator = FileExistsValidator()
+        spec_root = temp_dir / "spec"
+        nested = spec_root / "language"
+        nested.mkdir(parents=True)
+        (spec_root / "root_spec.md").write_text("# Root\n", encoding="utf-8")
+        filepath = nested / "doc.md"
+        filepath.write_text("", encoding="utf-8")
+        link = LinkInfo(
+            text="link",
+            url="spec/root_spec.md",
+            line_number=1,
+            file_path=filepath,
+            link_type=LinkType.MARKDOWN,
+        )
+
+        # `nested/spec/root_spec.md` does not exist; the repo-root reading does.
+        assert validator.validate(link) is True
+
+    def test_validate_still_fails_when_no_candidate_exists(self, temp_dir):
+        validator = FileExistsValidator()
+        filepath = temp_dir / "doc.md"
+        filepath.write_text("", encoding="utf-8")
+        link = LinkInfo(
+            text="link",
+            url="nowhere/absent_spec.md",
+            line_number=1,
+            file_path=filepath,
+            link_type=LinkType.MARKDOWN,
+        )
+
+        assert validator.validate(link) is False
+        assert link.is_valid is False

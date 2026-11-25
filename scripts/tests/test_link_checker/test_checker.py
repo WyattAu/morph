@@ -287,3 +287,57 @@ Details about section 2.
 
         result = checker.check_file(filepath)
         assert result.duplicate_count == 0
+
+
+class TestBareFileReferencePolicy:
+    """Bare `.md` prose mentions are opt-in.
+
+    Prose mentions are not links: a corpus that quotes filenames as examples
+    (naming conventions, planned specs) legitimately names files that do not
+    exist. `check-links` therefore reports markdown links only unless
+    `check_file_references` is enabled, which keeps it in agreement with the
+    repo's `scripts/cross-ref-validate.sh` gate.
+    """
+
+    CONTENT = """# Specification
+
+See [the guide](guide.md) for details.
+
+The planned `future_spec.md` is not written yet.
+"""
+
+    def test_bare_refs_ignored_by_default(self, temp_dir):
+        (temp_dir / "guide.md").write_text("# Guide\n", encoding="utf-8")
+        filepath = temp_dir / "test.md"
+        filepath.write_text(self.CONTENT, encoding="utf-8")
+
+        checker = SpecLinkChecker(LinkCheckingConfig())
+        report = checker.check_file(filepath)
+
+        assert report.broken_links == []
+        assert report.valid_links == 1
+
+    def test_bare_refs_checked_when_enabled(self, temp_dir):
+        (temp_dir / "guide.md").write_text("# Guide\n", encoding="utf-8")
+        filepath = temp_dir / "test.md"
+        filepath.write_text(self.CONTENT, encoding="utf-8")
+
+        checker = SpecLinkChecker(LinkCheckingConfig(check_file_references=True))
+        report = checker.check_file(filepath)
+
+        assert [link.url for link in report.broken_links] == ["future_spec.md"]
+
+    def test_same_bare_ref_resolves_per_directory(self, temp_dir):
+        """A shared bare name must not leak one directory's result to another."""
+        sub_a = temp_dir / "a"
+        sub_b = temp_dir / "b"
+        sub_a.mkdir()
+        sub_b.mkdir()
+        (sub_a / "shared.md").write_text("# Shared\n", encoding="utf-8")
+        (sub_a / "doc.md").write_text("See `shared.md`.\n", encoding="utf-8")
+        (sub_b / "doc.md").write_text("See `shared.md`.\n", encoding="utf-8")
+
+        checker = SpecLinkChecker(LinkCheckingConfig(check_file_references=True))
+
+        assert checker.check_file(sub_a / "doc.md").broken_links == []
+        assert len(checker.check_file(sub_b / "doc.md").broken_links) == 1

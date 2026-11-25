@@ -329,38 +329,38 @@ Current versions of all Morph specifications:
 | ../security/security_flow_spec.md | 2.0.0 | L2 | Security |
 | ../security_ocap_spec.md | 1.0.0 | L2 | Security |
 | ../security/infrastructure_safety_contracts_spec.md | 1.0.0 | L2 | Security |
-| ../tooling/agent_planning_mdp_spec.md | 1.0.0 | L2 | Tooling |
-| ../tooling/analysis_abstract_interp_spec.md | 1.0.0 | L2 | Tooling |
-| ../tooling/compiler_bisimulation_spec.md | 1.0.0 | L2 | Tooling |
-| ../tooling/comptime_partial_eval_spec.md | 1.0.0 | L2 | Tooling |
-| ../tooling/context_comonad_spec.md | 1.0.0 | L2 | Tooling |
-| ../tooling/context_temporal_logic_spec.md | 1.0.0 | L2 | Tooling |
-| ../tooling/deterministic_time_spec.md | 1.0.0 | L2 | Tooling |
-| ../tooling/diagnose_protocol_spec.md | 1.0.0 | L2 | Tooling |
-| ../tooling/distributed_crdt_spec.md | 1.0.0 | L3 | Distributed |
-| ../tooling/fuzzing_combinatorial_spec.md | 1.0.0 | L2 | Tooling |
-| ../tooling/graph_rewriting_spec.md | 1.0.0 | L2 | Tooling |
-| ../tooling/history_persistent_tree_spec.md | 1.0.0 | L2 | Tooling |
-| ../tooling/hot_reload_projection_spec.md | 1.0.0 | L2 | Tooling |
-| ../tooling/learning_theory_spec.md | 1.0.0 | L2 | Tooling |
-| ../tooling/meta_modal_logic_spec.md | 1.0.0 | L2 | Tooling |
-| ../tooling/metaprogramming_spec.md | 1.0.0 | L2 | Tooling |
-| ../tooling/operational_semantics_spec.md | 1.0.0 | L2 | Tooling |
-| ../tooling/parsing_island_grammar_spec.md | 1.0.0 | L2 | Tooling |
-| ../tooling/pattern_coverage_matrix_spec.md | 1.0.0 | L2 | Tooling |
-| ../tooling/protocol_session_types_spec.md | 1.0.0 | L2 | Tooling |
-| ../tooling/reactive_frp_spec.md | 1.0.0 | L2 | Tooling |
-| ../tooling/realtime_mtl_spec.md | 1.0.0 | L2 | Tooling |
-| ../tooling/registry_merkle_spec.md | 1.0.0 | L1 | Registry |
-| ../tooling/semantic_trie_spec.md | 1.0.0 | L2 | Tooling |
-| ../tooling/semantic_vector_spec.md | 1.0.0 | L2 | Tooling |
-| ../tooling/serialization_isomorphism_spec.md | 1.0.0 | L2 | Tooling |
-| ../tooling/symbolic_execution_fuzz_spec.md | 1.0.0 | L2 | Tooling |
-| ../tooling/synthesis_inhabitation_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/_future_research/agent_planning_mdp_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/_future_research/analysis_abstract_interp_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/_future_research/compiler_bisimulation_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/_future_research/comptime_partial_eval_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/_future_research/context_comonad_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/_future_research/context_temporal_logic_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/_future_research/deterministic_time_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/_future_research/diagnose_protocol_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/_future_research/distributed_crdt_spec.md | 1.0.0 | L3 | Distributed |
+| ../tooling/_future_research/fuzzing_combinatorial_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/_future_research/graph_rewriting_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/_future_research/history_persistent_tree_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/_future_research/hot_reload_projection_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/_future_research/learning_theory_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/_future_research/meta_modal_logic_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/_future_research/metaprogramming_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/_future_research/operational_semantics_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/_future_research/parsing_island_grammar_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/_future_research/pattern_coverage_matrix_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/_future_research/protocol_session_types_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/_future_research/reactive_frp_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/_future_research/realtime_mtl_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/_future_research/registry_merkle_spec.md | 1.0.0 | L1 | Registry |
+| ../tooling/_future_research/semantic_trie_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/_future_research/semantic_vector_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/_future_research/serialization_isomorphism_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/_future_research/symbolic_execution_fuzz_spec.md | 1.0.0 | L2 | Tooling |
+| ../tooling/_future_research/synthesis_inhabitation_spec.md | 1.0.0 | L2 | Tooling |
 | ../optimization/optimization_manifold_spec.md | 1.0.0 | L2 | Optimization |
 | ../optimization/optimization_bayesian_spec.md | 1.0.0 | L2 | Optimization |
 | ../optimization/optimization_search_engine_specification.md | 1.0.0 | L2 | Optimization |
-| ../distributed_vector_clock_spec.md | 1.0.0 | L3 | Distributed |
+| ../tooling/_future_research/distributed_vector_clock_spec.md | 1.0.0 | L3 | Distributed |
 | ../financial/financial_spec.md | 1.0.0 | L4 | Financial |
 | ../math/maths_spec.md | 1.0.0 | L4 | Math |
 | ../math/unit_group_theory_spec.md | 1.0.0 | L4 | Math |
@@ -448,8 +448,8 @@ Specifications depending on memory model:
 | Dependent Spec | Memory Model Version | Compatible? | Required Version |
 |----------------|----------------------|---------------|------------------|
 | ../concurrency/execution_model_spec.md | 2.2.0 | Yes | ≥ 2.0.0 |
-| ../distributed_vector_clock_spec.md | 1.0.0 | Yes | ≥ 1.0.0 |
-| ../tooling/distributed_crdt_spec.md | 1.0.0 | Yes | ≥ 1.0.0 |
+| ../tooling/_future_research/distributed_vector_clock_spec.md | 1.0.0 | Yes | ≥ 1.0.0 |
+| ../tooling/_future_research/distributed_crdt_spec.md | 1.0.0 | Yes | ≥ 1.0.0 |
 
 **VCOMP-REQ-015:* THE system SHALL validate memory model version dependencies.
 

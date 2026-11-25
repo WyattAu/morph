@@ -157,6 +157,7 @@ class ConfigManager:
             check_orphaned_sections=link_checking_data.get("check_orphaned_sections", True),
             check_duplicate_links=link_checking_data.get("check_duplicate_links", True),
             check_self_references=link_checking_data.get("check_self_references", False),
+            check_file_references=link_checking_data.get("check_file_references", False),
         )
 
         # Parse output config

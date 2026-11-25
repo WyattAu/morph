@@ -90,6 +90,7 @@ class ConfigManager:
                 "check_orphaned_sections": config.link_checking.check_orphaned_sections,
                 "check_duplicate_links": config.link_checking.check_duplicate_links,
                 "check_self_references": config.link_checking.check_self_references,
+                "check_file_references": config.link_checking.check_file_references,
             },
             "output": {
                 "format": config.output.format,
@@ -167,6 +168,7 @@ class ConfigManager:
                 lc = config_dict["link_checking"]
                 config.link_checking.check_broken_links = lc.get("check_broken_links", True)
                 config.link_checking.check_orphaned_sections = lc.get("check_orphaned_sections", True)
+                config.link_checking.check_file_references = lc.get("check_file_references", False)
                 config.link_checking.check_duplicate_links = lc.get("check_duplicate_links", True)
                 config.link_checking.check_self_references = lc.get("check_self_references", False)
 

@@ -244,6 +244,8 @@ spec-tools check-links <path> [options]
 - `--output <path>`: Output file for the link report (default: stdout)
 - `--format <format>`: Output format (text or json, default: text)
 - `--config <path>`: Path to configuration file (default: `.spec-tools.yaml`)
+- `--check-file-refs`: Also validate bare `.md` mentions in prose (off by
+  default; see below)
 
 **Examples:**
 ```bash
@@ -255,13 +257,24 @@ spec-tools check-links spec/ --output link-report.txt
 
 # Output in JSON format
 spec-tools check-links spec/ --format json
+
+# Also validate prose mentions such as `other_spec.md`
+spec-tools check-links spec/ --check-file-refs
 ```
 
 **What it checks:**
-- Markdown links to other files
+- Markdown links to other files, resolved relative to the referring file,
+  falling back to the enclosing directory roots
 - Section references within files
-- File references
 - External URLs (skipped by default)
+- Bare `.md` mentions in prose, only with `--check-file-refs`
+
+Prose mentions are opt-in on purpose: a corpus that quotes filenames as
+illustrations (naming-convention tables, planned specs, deliberate typos in
+examples) legitimately names files that do not exist, and reporting those as
+broken links trains readers to ignore the report. The Morph repository gates
+on markdown links only, via `spec-tools check-links spec/` and
+`scripts/cross-ref-validate.sh`.
 
 ---
 
