@@ -94,4 +94,4 @@ while IFS= read -r dir; do
 
     echo "| $module | $spec_display | $lemmas_display | $examples_display | $theorems | $sorries | $status |"
 
-done < <(find "$SPECS_DIR" -mindepth 1 -maxdepth 1 -type d | sort) | tee "$REPORT_FILE"
+done < <(find "$SPECS_DIR" -mindepth 1 -maxdepth 1 -type d | LC_ALL=C sort) | tee "$REPORT_FILE"
