@@ -139,9 +139,12 @@ def write (b : Block) (offset : Nat) (byte : MemByte) : Block :=
   else
     b
 
-/-- Mark block as freed -/
+/-- Mark block as freed, scrubbing its bytes to `undef` (S6 provisional:
+the S5 pins proved mark-without-scrub leaves an unsafe state; scrubbing
+makes `free` preserve `HeapSafe`. Revertible if the S5 attack orders
+checked wrappers instead — see the `HeapSafe` section notes. -/
 def freeBlock (b : Block) : Block :=
-  { b with state := BlockState.freed }
+  { b with state := BlockState.freed, bytes := Array.replicate b.size MemByte.undef }
 
 end Block
 
@@ -391,16 +394,22 @@ use-after-free):
   half is the conjunction of the first two with the pointer API's
   existing allocated-check in `check_pointer_valid`).
 
-Known boundary, exhibited by the S5 pins rather than hidden: `Memory.free`
-marks without scrubbing, so write-then-free leaves an unsafe state, and
-`Block.read`/`getBlock?` observe freed bytes that `check_pointer_valid`
-refuses. S6's preservation work must close this — either by scrubbing in
-`free` or by checked partial wrappers (`Block.write`/`read` are total,
-so the §4 `heapWrite_safe` shape's `= some h'` already presumes them,
-C8-refusal style). Compatibility note (verified 2026-11-25): no
-pin in `Morph/Tests/Memory.lean` observes a freed block's bytes
-(the `free` pins check only the state flip and the missing-id
-no-op), so scrub-in-`free` would break nothing pinned.
+Closed boundary (S6): `Block.freeBlock` scrubs to `undef`, so
+`Memory.free` preserves `HeapSafe` unconditionally — the write-then-free
+state the S5 pins exhibited as unsafe is now safe, and the old byte
+reads back as `undef`. Provisional (revertible if the S5 attack orders
+checked wrappers instead): the scrub default stands in for the attack
+per the sprint's dated-decision rule. Residual bypass, exhibited by
+the `writeFreed` pin rather than hidden: a defined byte written
+directly into an already-freed block and installed by hand still
+violates the freed clause — no `Memory`-level path builds it, and the
+S6 write theorem carries the allocated premise accordingly.
+Compatibility note (verified 2026-11-25): no pre-existing pin in
+`Morph/Tests/Memory.lean` observed a freed block's bytes (the `free`
+pins check only the state flip and the missing-id no-op), so the
+scrub broke nothing pinned. Total-op deviation from the §4
+`heapWrite_safe` sketch (`= some h'`): no partial memory ops exist,
+so preservation is stated over the total ops (`Morph.Proofs.Memory`).
 -/
 
 namespace Memory

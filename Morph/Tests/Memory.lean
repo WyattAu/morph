@@ -271,13 +271,15 @@ end AlignmentTests
 
 section HeapSafePins
 
-/-! ## `HeapSafe` pins (S5)
+/-! ## `HeapSafe` pins (S5, closed S6)
 
-Success case plus boundary case, mirroring the C8 pins: empty and
-freshly-allocated memories are safe; write-then-free through the API
-leaves an unsafe state (freed block with a lingering defined byte),
-observable through the block API though refused at the pointer level.
-The boundary is exhibited, not hidden — S6 must close it. -/
+Success case plus boundary case, mirroring the C8 pins. S5 exhibited
+the hole (write-then-free left a lingering defined byte); S6 closed
+it by scrubbing in `Block.freeBlock`, so write-then-free is now safe
+and the old byte reads back as `undef`. The remaining boundary needs
+direct block-API misuse — writing a defined byte into an already-freed
+block and installing it by hand — which no `Memory`-level path
+performs (`Memory.free` always scrubs). -/
 
   /-- Empty memory is safe, vacuously. -/
   example : Memory.HeapSafe Memory.empty := by
@@ -299,14 +301,30 @@ The boundary is exhibited, not hidden — S6 must close it. -/
       let m' : Memory := { m with blocks := Memory.updateBlock m.blocks id wb }
       m'.free id
 
-  /-- ...and it violates the freed clause, so the whole predicate. -/
-  example : ¬ Memory.HeapSafe writeThenFree := by
+  /-- ...and it satisfies the whole predicate: the scrub closed the
+  S5 hole. -/
+  example : Memory.HeapSafe writeThenFree := by
     native_decide
 
-  /-- The witness: the old byte is still observable through the block
-  API (`getBlock?` + `Block.read` perform no state check). -/
+  /-- The witness: the old byte now reads back as `undef` through the
+  block API — nothing lingers for a later read. -/
   example : ((writeThenFree.getBlock? { id := 0 }).map (fun b => b.read 0)
-      == some (MemByte.value 7)) = true := by
+      == some MemByte.undef) = true := by
+    native_decide
+
+  /-- The remaining boundary: a defined byte written directly into an
+  already-freed block, installed by hand. No `Memory`-level path builds
+  this (`Memory.free` always scrubs); it takes block-API misuse. -/
+  def writeFreed : Memory :=
+    let (m, id) := Memory.empty.allocate 4 1
+    match Memory.getBlock? m id with
+    | none => m
+    | some b =>
+      let wb := Block.write (Block.freeBlock b) 0 (MemByte.value 7)
+      { m with blocks := Memory.updateBlock m.blocks id wb }
+
+  /-- ...and it violates the freed clause, so the whole predicate. -/
+  example : ¬ Memory.HeapSafe writeFreed := by
     native_decide
 
   /-- While the pointer API refuses the same block (`check_pointer_valid`
