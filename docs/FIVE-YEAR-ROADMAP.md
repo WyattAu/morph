@@ -111,6 +111,22 @@ miss rules).
 - H2 — Morph 1.0 + draft standard + conformance suite; 3–5 pilot users
   (≥1 external); "verified programming" tutorial path, every chapter
   `lake build`-checked.
+- H2 — Generation-friendliness acceptance criteria (paradigm-agnostic —
+  they serve LLM, diffusion, and JEPA-style predictors equally, so the
+  language bets on verifiable generation, not on any one ML paradigm):
+  every refusal/error is a stable machine-parseable value (code + span
+  + violated predicate); `morph fmt` output is canonical; the AST has a
+  stable serialized form for tooling (specified alongside LSP v1); each
+  fragment predicate is published as a consumable emitter grammar. The
+  existing corpus/pins/oracles stay generator-consumable.
+- H2 — Control-plane thesis to test with pilots (not a commitment):
+  Morph's ML-adjacent role is the harness around models, not the
+  numerics inside them — actors for serving, capabilities for
+  sandboxing untrusted (possibly model-generated) code, D5 taint
+  tracking for training-data provenance. ML tensor/autodiff/GPU
+  features are explicitly declined (C8 precedent: refuse what you
+  cannot verify); if ever proposed, they go through the decision
+  register with that refusal as the default.
 
 **Exit criteria:** 1.0 + draft standard + conformance suite; LSP v1;
 ≥3 external pilots with published case studies (including every
