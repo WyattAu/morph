@@ -33,6 +33,15 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 >
 > Remaining on this view: the metrics table below is still the loop-134
 > baseline and has not been re-measured.
+>
+> Measured 2026-11-25: 309 `.lean` files in `Morph/` (~105k lines), 2549
+> theorems repo-wide / 1635 in `Specs/`, 68 Lean spec modules, 29 test files,
+> 0 `sorry`, `lake build Morph Morph.Tests` green with 0 warnings (32
+> unused-simp-arg/var warnings in `Proofs/Branch` cleared same day),
+> `check.sh` 22/22, corpus 13/13, `cross-ref-validate.sh` 2021/2021 PASS,
+> spec lint 0 errors / 105 warnings (19 waived). Stage C closed except full
+> CLIF `call` codegen (needs ABI/layout design); both CLIF encoders pin call
+> refusal with theorems.
 
 ---
 

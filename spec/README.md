@@ -81,7 +81,7 @@ This directory contains all formal specifications for the Morph programming lang
   - [license_deontic_logic_spec.md](licensing/license_deontic_logic_spec.md)
   - [licensing_spec.md](licensing/licensing_spec.md)
 - **distributed/** - Distributed systems specifications
-  - [distributed_vector_clock_spec.md(tooling/_future_research/distributed_vector_clock_spec.md)
+  - [distributed_vector_clock_spec.md](tooling/_future_research/distributed_vector_clock_spec.md)
 - **scheduler/** - Task scheduling specifications
   - [scheduler_randomized_stealing_spec.md](scheduler_randomized_stealing_spec.md)
 - **storage/** - Storage specifications

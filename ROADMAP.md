@@ -12,18 +12,17 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 
 | Metric | Value |
 |---|---|
-| `lake build Morph` | 328 jobs, 0 errors, 2 sorry warnings |
-| `lake build Morph.Tests` | 186 jobs, 0 errors |
+| `lake build Morph Morph.Tests` | green, 0 errors, 0 warnings (measured 2026-11-25) |
 | Python spec-tools | 836 tests, 96% coverage (as of 2026-10-30) |
-| `.lean` files | 155 (209 as of 2026-10-30) |
-| Lines of Lean | ~16,165 (~42k as of 2026-10-30) |
-| Spec modules | 43 (58 as of 2026-10-30) |
-| Real theorems/lemmas (Specs/) | 787 (1116 total as of 2026-10-30) |
-| `sorry` declarations | 6 (all Preservation.lean) — **0 as of 2026-10-30, §1.1 done** |
+| `.lean` files | 309 in `Morph/` (311 with root files; measured 2026-11-25) |
+| Lines of Lean | ~105,000 (measured 2026-11-25) |
+| Spec modules | 68 (measured 2026-11-25) |
+| Real theorems/lemmas | 2549 repo-wide / 1635 in `Specs/` (measured 2026-11-25) |
+| `sorry` declarations | **0** (measured 2026-11-25) |
 | `example : True := trivial` stubs | 0 |
 | Pre-commit hook | 7-step gate (lake build, sorry scan, stub detect, pytest, ruff, mypy, spec-tools lint) |
 | CI/CD | 4 GitHub Actions + GitLab CI + Jenkins |
-| Cross-reference integrity | 735 broken links fixed, 26 point to nonexistent files |
+| Cross-reference integrity | repo gate `scripts/cross-ref-validate.sh` 2021/2021 PASS (measured 2026-11-25); 12 malformed link-syntax sites repaired (GLOSSARY/README/memory/type); `spec-tools check-links` still reports 107, all code-span/mermaid phantoms or same-dir links the gate accepts (tool resolver conflict, not content) |
 | Documentation site | Landing page + 5 doc pages (specs, architecture, tools, ADRs) |
 
 ### Audit Findings (Resolved)
@@ -36,13 +35,14 @@ Lean 4 v4.27.0 | Lake 5.0.0 | mathlib4 + batteries + aesop
 | 735 broken cross-references in spec/ | Fixed systematic path resolution |
 | spec-tools CLI called with multiple positional args | Fixed: iterate files individually |
 | GitHub Pages not deployed | Blocked by GitHub billing; workflow correct |
+| 6 `sorry` declarations (audit-era) | Was blocking zero-warning CI gate | §1.1 done 2026-10-30; still 0, verified 2026-11-25 |
+| 12 malformed spec link-syntax sites | Rendered as text, broken under every resolver | Brackets repaired 2026-11-25 (GLOSSARY ×8, README, memory_model ×2, type_system) |
 
 ### Audit Findings (Outstanding)
 
 | Finding | Impact | Resolution Path |
 |---|---|---|
-| 6 `sorry` declarations | Blocks zero-warning CI gate | Section 1.1 |
-| 26 broken links to nonexistent files | Spec integrity | Create missing files or remove links |
+| `spec-tools check-links` reports 107 broken | Spec-tool noise (phantoms) + resolver conflict with the repo gate | Fix the tool's resolver to be file-relative (gate semantics); until then the repo gate is the standard — do NOT "fix" content links to satisfy spec-tools, it breaks the gate |
 | CI/CD not running (GitHub billing) | No automated verification | Resolve billing |
 | Section numbering warnings in specs (3868) | Lint noise | Normalize numbering or suppress |
 | `impl/roadmap.md` describes Rust/C++ runtime not yet started | Future work | Section 6 |

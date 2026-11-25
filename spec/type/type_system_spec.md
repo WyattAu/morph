@@ -96,7 +96,7 @@ The Type System Specification is closely related to several other Morph specific
 - [`spec/optimization/optimization_bayesian_spec.md`](../optimization/optimization_bayesian_spec.md) - Bayesian optimization strategies
 
 * Distributed Systems Specifications:*
-- [`spec/distributed_vector_clock_spec.md`(../tooling/_future_research/distributed_vector_clock_spec.md) - Vector clocks for distributed causality
+- [`spec/distributed_vector_clock_spec.md`](../tooling/_future_research/distributed_vector_clock_spec.md) - Vector clocks for distributed causality
 - [`spec/tooling/distributed_crdt_spec.md`](../tooling/_future_research/distributed_crdt_spec.md) - CRDTs for distributed data structures
 
 * Standard Library Specifications:*

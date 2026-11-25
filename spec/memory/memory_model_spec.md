@@ -74,7 +74,7 @@ The Memory Model Specification is closely related to several other Morph specifi
 - [`spec/concurrency/concurrency_process_algebra_spec.md`](../concurrency/concurrency_process_algebra_spec.md) - Process algebra formalization of concurrent communication
 
 * Distributed Systems Specifications:*
-- [`spec/distributed_vector_clock_spec.md`(../tooling/_future_research/distributed_vector_clock_spec.md) - Vector clocks for distributed causality and sequential consistency
+- [`spec/distributed_vector_clock_spec.md`](../tooling/_future_research/distributed_vector_clock_spec.md) - Vector clocks for distributed causality and sequential consistency
 - [`spec/tooling/deterministic_time_spec.md`](../tooling/_future_research/deterministic_time_spec.md) - Deterministic time simulation for debugging
 
 * Note:* These cross-references help readers navigate to Morph specification ecosystem by providing links to related specifications that provide complementary or detailed information about concepts referenced in this document.
@@ -625,7 +625,7 @@ $$ \forall o_1, o_2 \in \text{Operations}, o_1 \prec o_2 \implies \text{Visible}
 
 * Note on Distributed Consistency:*
 - Sequential consistency applies to local memory operations within a single actor
-- Distributed systems use vector clocks for causal consistency (see [`distributed_vector_clock_spec.md`(../tooling/_future_research/distributed_vector_clock_spec.md))
+- Distributed systems use vector clocks for causal consistency (see [`distributed_vector_clock_spec.md`](../tooling/_future_research/distributed_vector_clock_spec.md))
 - Vector clocks provide causal ordering, not sequential consistency
 - Sequential consistency is only guaranteed within a single actor's memory space
 

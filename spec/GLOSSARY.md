@@ -228,7 +228,7 @@ This glossary provides comprehensive definitions of terms, acronyms, and concept
 **Definition:** A consistency model for distributed systems where operations that are causally related are seen in the same order by all processes, but concurrent operations may be seen in different orders.
 
 **Context:** Distributed Systems, Concurrency  
-**Related Specifications:** [`spec/distributed_vector_clock_spec.md`(./tooling/_future_research/distributed_vector_clock_spec.md)
+**Related Specifications:** [`spec/distributed_vector_clock_spec.md`](./tooling/_future_research/distributed_vector_clock_spec.md)
 
 **See Also:** Vector Clock, Happens-Before Relation, CRDT
 
@@ -238,7 +238,7 @@ This glossary provides comprehensive definitions of terms, acronyms, and concept
 **Definition:** A partial order on events in a distributed system based on their causal relationships. Event A causally precedes event B if A must have happened before B.
 
 **Context:** Distributed Systems, Concurrency  
-**Related Specifications:** [`spec/distributed_vector_clock_spec.md`(./tooling/_future_research/distributed_vector_clock_spec.md)
+**Related Specifications:** [`spec/distributed_vector_clock_spec.md`](./tooling/_future_research/distributed_vector_clock_spec.md)
 
 **See Also:** Happens-Before Relation, Vector Clock, Causal Consistency
 
@@ -268,7 +268,7 @@ This glossary provides comprehensive definitions of terms, acronyms, and concept
 **Definition:** Two or more events in a distributed system that are not causally related and can occur in any order. Concurrent events are detected using vector clocks.
 
 **Context:** Distributed Systems, Concurrency  
-**Related Specifications:** [`spec/distributed_vector_clock_spec.md`(./tooling/_future_research/distributed_vector_clock_spec.md)
+**Related Specifications:** [`spec/distributed_vector_clock_spec.md`](./tooling/_future_research/distributed_vector_clock_spec.md)
 
 **See Also:** Causal Ordering, Vector Clock, Happens-Before Relation
 
@@ -442,7 +442,7 @@ This glossary provides comprehensive definitions of terms, acronyms, and concept
 **Definition:** A system whose components are located on different networked computers. Morph provides distributed system support through vector clocks, CRDTs, and distributed consensus.
 
 **Context:** Distributed Systems, Concurrency  
-**Related Specifications:** [`spec/distributed_vector_clock_spec.md`(./tooling/_future_research/distributed_vector_clock_spec.md), [`spec/tooling/distributed_crdt_spec.md`](./tooling/_future_research/distributed_crdt_spec.md)
+**Related Specifications:** [`spec/distributed_vector_clock_spec.md`](./tooling/_future_research/distributed_vector_clock_spec.md), [`spec/tooling/distributed_crdt_spec.md`](./tooling/_future_research/distributed_crdt_spec.md)
 
 **See Also:** Vector Clock, CRDT, Consensus
 
@@ -628,7 +628,7 @@ This glossary provides comprehensive definitions of terms, acronyms, and concept
 **Definition:** A partial order on events in a distributed system that captures causal relationships. Event A happens-before event B if A must have occurred before B.
 
 **Context:** Distributed Systems, Concurrency  
-**Related Specifications:** [`spec/distributed_vector_clock_spec.md`(./tooling/_future_research/distributed_vector_clock_spec.md)
+**Related Specifications:** [`spec/distributed_vector_clock_spec.md`](./tooling/_future_research/distributed_vector_clock_spec.md)
 
 **See Also:** Causal Ordering, Vector Clock, Causal Consistency
 
@@ -1058,7 +1058,7 @@ This glossary provides comprehensive definitions of terms, acronyms, and concept
 **Definition:** A binary relation that is reflexive, antisymmetric, and transitive. Partial orders are used in Morph for lattices, version ordering, and causal ordering.
 
 **Context:** Mathematics, Type System, Distributed Systems  
-**Related Specifications:** [`spec/build/build_lattice_spec.md`](./build/build_lattice_spec.md), [`spec/distributed_vector_clock_spec.md`(./tooling/_future_research/distributed_vector_clock_spec.md)
+**Related Specifications:** [`spec/build/build_lattice_spec.md`](./build/build_lattice_spec.md), [`spec/distributed_vector_clock_spec.md`](./tooling/_future_research/distributed_vector_clock_spec.md)
 
 **See Also:** Lattice, Total Order, Causal Ordering
 
@@ -1712,7 +1712,7 @@ This glossary provides comprehensive definitions of terms, acronyms, and concept
 **Definition:** A data structure for tracking causal relationships in distributed systems. Each process maintains a vector of logical clocks, one for each process in the system.
 
 **Context:** Distributed Systems, Concurrency  
-**Related Specifications:** [`spec/distributed_vector_clock_spec.md`(./tooling/_future_research/distributed_vector_clock_spec.md)
+**Related Specifications:** [`spec/distributed_vector_clock_spec.md`](./tooling/_future_research/distributed_vector_clock_spec.md)
 
 **See Also:** Causal Ordering, Happens-Before Relation, Causal Consistency
 
@@ -1846,7 +1846,7 @@ For detailed information about specific concepts, please refer to the following 
 - **Security:** [`spec/security/security_flow_spec.md`](./security/security_flow_spec.md)
 - **Tooling:** [`spec/tooling/metaprogramming_spec.md`](./tooling/_future_research/metaprogramming_spec.md)
 - **Optimization:** [`spec/optimization/optimization_manifold_spec.md`](./optimization/optimization_manifold_spec.md)
-- **Distributed Systems:** [`spec/distributed_vector_clock_spec.md`(./tooling/_future_research/distributed_vector_clock_spec.md)
+- **Distributed Systems:** [`spec/distributed_vector_clock_spec.md`](./tooling/_future_research/distributed_vector_clock_spec.md)
 - **Financial:** [`spec/financial/financial_spec.md`](./financial/financial_spec.md)
 - **Math:** [`spec/math/maths_spec.md`](./math/maths_spec.md)
 - **UI:** [`spec/ui/ui_constraint_algebra_spec.md`](./ui/ui_constraint_algebra_spec.md)
