@@ -14,10 +14,20 @@
 
 ## In flight: multi-function call artifacts (directive item 1)
 
-State (2026-11-26): `toCallProg` extraction + the Driver call stage landed
-(compiling, tree green). `morph build` on a call program now reaches the
-call lowering and reports a sharper refusal: **the emitted call program is
-not renderable (unit-typed bodies, unslotted results)**.
+State (2026-11-26, after a first blocked attempt): `toCallProg` extraction
++ the Driver call stage landed (pushed `e2fde7d`); `morph build` on a call
+program reaches the call lowering and reports a sharper refusal: **the
+emitted call program is not renderable (unit-typed bodies, unslotted
+results)**.
+
+**Blocked attempt (reverted 2026-11-26).** Computing `lowerFunc`'s return
+type on the fly (`inferBody` over the MIR instructions) broke
+`Morph/Proofs/Call/Correct.lean` — `lowerFunc_inv` (its statement,
+destructure site at :1465, and the `lowerCallProg_correct` program-shape
+literals) all hardcode the `.unitType` output. The churn is mechanical but
+spans the 2,350-line file; reverted to keep the tree green (the working
+HIRFunc/Correct/Evidence deltas were eaten twice by dev-tree flaps during
+the edit — re-derive from this note, not from a flapping read).
 
 **Discovered blocker (the real next loop).** `lowerFunc`/`lowerCallProg`
 hardcode `.unitType` return types, and a proper fix is a small **MIR-side
