@@ -132,6 +132,17 @@ theorem actors_progress :
 Names and signatures are placeholders. The statements are recorded here so
 reviewers can attack them before any proof begins.
 
+**Landed (S16 pulled forward, 2026-11-26).** Per maintainer direction the
+S16 slot was pulled ahead of the review window: the Reading-A `stepActor`
+(ADR-033) is in `Morph/Runtime.lean` — fuel-bounded, round-robin, with the
+`.stuck` outcome the sketch presumes — and `Morph/ActorProgress.lean`
+defines `WFActors` (distinct ids), `DeadlockWitness` (the scheduled actor,
+its pool position, and its failing evaluation), and proves `actors_progress`
+at the sketch's shape, **without** the `WFActors` hypothesis (a stuck step
+is witnessed whether or not the system is well-formed — stronger than the
+sketch). The D3 global invariant (§7) remains the open call; `WFActors`
+preservation is the first candidate pin once it lands.
+
 ## 5. Work items (scoping work — the proofs come later)
 
 1. ~~Inventory existing lemmas over `Memory.lean`/`Runtime.lean`/`Borrows.lean`~~

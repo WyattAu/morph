@@ -149,6 +149,13 @@
   (drafting deferred here from S10–S11 deliberately).
 - **Exit:** predicate + progress statement circulated for attack.
 
+> **Pulled forward 2026-11-26** (maintainer "proceed all" at S9): the
+> Reading-A `stepActor` landed in `Morph/Runtime.lean` (fuel + `.stuck`
+> outcome, ADR-033), and `Morph/ActorProgress.lean` defines `WFActors`,
+> `DeadlockWitness`, and the proved `actors_progress` — exit met, minus the
+> D3 global invariant (still §7-open). Remaining S16 work: the invariant
+> choice and its preservation pins.
+
 ### S17–S18 — `stepActor` invariant (wks 33–36)
 
 - Prove the step preserves the per-actor invariant and the chosen global

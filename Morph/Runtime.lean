@@ -4,6 +4,7 @@ SPDX-License-Identifier: Apache-2.0 -/
 import Morph.Core
 import Morph.Syntax
 import Morph.Semantics
+import Morph.Executable
 
 namespace Morph.Runtime
 
@@ -129,20 +130,36 @@ def recv (system : ActorSystem) (actorId : Nat) : Option (ActorSystem × Expr) :
       let actors' := system.actors.map (fun a => if a.id == actorId then actor' else a)
       some ({ system with actors := actors' }, msg)
 
-/-- Step one actor's evaluation by one step. Actors take turns in a
-    round-robin schedule. This function steps the next actor in the pool
-    and advances the turn counter. -/
-def stepActor (system : ActorSystem) (turn : Nat) (_heap : Heap) (_stack : Stack) :
-    ActorSystem × Heap × Stack :=
-  if system.actors.isEmpty then (system, _heap, _stack)
-  else
-    let idx := turn % system.actors.length
-    match system.actors[idx]? with
-    | none => (system, _heap, _stack)
-    | some _actor =>
-      -- Attempt to step the actor's current expression
-      -- (full evaluation integration deferred to Phase 6.3 completion)
-      (system, _heap, _stack)
+/-- The outcome of one scheduler step (D-8 Reading A, ADR-033): `stepped`
+means the scheduled actor made progress — or the pool is empty and no actor
+was scheduled; `stuck` means the scheduled actor's state expression failed
+to evaluate within the fuel budget, and the step is witnessed (see
+`Morph.ActorProgress`). -/
+inductive ActorStepOutcome where
+  | stepped
+  | stuck
+deriving Repr, BEq, DecidableEq
+
+/-- Step one actor's evaluation. Actors take turns in a round-robin
+schedule (D-8 Reading A, ADR-033): the scheduled actor's state expression is
+evaluated with `fuel` in the empty context; success records the produced
+expression as the actor's new state (a completed actor re-evaluates to
+itself, so completion is idempotent), and failure is `stuck`. An empty pool
+steps trivially. The heap and stack are threaded unchanged (actor steps do
+not touch them in this fragment; D-9 supersedes the memory authority to
+`Memory.lean`, where the store-aware work lives). -/
+def stepActor (fuel : Nat) (system : ActorSystem) (turn : Nat) (heap : Heap)
+    (stack : Stack) : ActorStepOutcome × ActorSystem × Heap × Stack :=
+  match system.actors[turn % system.actors.length]? with
+  | none => (.stepped, system, heap, stack)
+  | some actor =>
+      match Morph.Executable.evalWithFuel fuel Morph.Executable.Context.empty
+          actor.state with
+      | some v =>
+          (.stepped, { system with
+              actors := system.actors.set (turn % system.actors.length)
+                { actor with state := v } }, heap, stack)
+      | none => (.stuck, system, heap, stack)
 
 /-! ## FFI Bridge -/
 
