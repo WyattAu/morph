@@ -105,3 +105,9 @@ artifacts that must first agree, the same lesson D1/D2 recorded.
   (expression evaluation) already run — the fragment predicate decides
   which of those levels (or both) an actor step ranges over. That choice
   is recorded as S16's, not made here.
+
+**Update 2026-11-26 (S16 pulled forward).** The first S16 slice landed:
+`Morph/Runtime.lean` grew the Reading-A `stepActor` (fuel-bounded, `.stuck`
+outcome) and `Morph/ActorProgress.lean` proves `actors_progress` (§4's
+statement, without the `WFActors` hypothesis — stuck steps are witnessed
+unconditionally). See ADR-033 for the interface record.
