@@ -10,6 +10,7 @@ import Morph.Frontend.HIRInterp
 import Morph.Frontend.DocComment
 import Morph.TypeChecker
 import Morph.ClifEmit
+import Morph.HIRFunc
 import Morph.HIRToMIRBranch
 import Morph.ClifCfgEncode
 import Morph.Specs.MorphLanguage.Spec
@@ -224,8 +225,24 @@ def buildClif (src : String) : Outcome :=
               -- branching one takes this branch, and its text is checked by
               -- C6's native rows until C4b's theorem lands.
               match Morph.HIRToMIRCorrect.lowerProgramCFG hprog with
-              | none => .unsupported
-                  "codegen: program is outside the branch fragment (straight-line statements, if, and single-level while; no match statements or declarations inside loop bodies; see docs/STAGEC-SCOPE.md §3)"
+              | none =>
+                  -- Stage C item C8 / build-first item 1: the call fragment.
+                  -- Top-level `fn` declarations become the function table,
+                  -- and statement-level calls to them lower to a
+                  -- multi-function MIR program emitted whole (D-7 option C
+                  -- slice D2).
+                  match Morph.HIRFunc.toCallProg hprog with
+                  | none => .unsupported
+                      "codegen: program is outside the branch fragment (straight-line statements, if, and single-level while; no match statements or declarations inside loop bodies; see docs/STAGEC-SCOPE.md §3)"
+                  | some cprog =>
+                      match Morph.HIRFunc.lowerCallProg cprog with
+                      | none => .unsupported
+                          "codegen: program is outside the call fragment (statement-level calls to top-level functions; callee bodies call-free; no function named main)"
+                      | some mprog =>
+                          match Morph.Codegen.emitProg mprog with
+                          | some text => .value text
+                          | none => .unsupported
+                              "codegen: the emitted call program is not renderable (unit-typed bodies, unslotted results)"
               | some func =>
                   match Morph.Clif.Cfg.emitCfg func with
                   | some text => .value text

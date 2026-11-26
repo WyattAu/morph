@@ -136,6 +136,28 @@ def CallProgOk (p : CallProg) : Prop :=
 
 /-! ## Lowering: functions and statement-level calls -/
 
+/-! ## Extraction: a parsed program becomes a `CallProg` -/
+
+/-- Extract the call fragment from a parsed program: top-level
+`varDecl name _ (.lam params body)` statements become the function table
+(in source order) and every other statement stays in `main`. Refuses: a
+duplicate function name, an assignment to a function name, and a program
+with no functions (that is the straight-line fragment's job). -/
+def toCallProg (p : HIR.Program) : Option CallProg :=
+  go [] [] p.stmts
+where
+  go : List Func → List HIR.Stmt → List HIR.Stmt → Option CallProg
+    | funcs, main, [] =>
+        if funcs.isEmpty then none
+        else some ⟨funcs.reverse, main.reverse⟩
+    | funcs, main, .varDecl name _ (.lam params body) :: rest =>
+        if funcs.any (fun f => f.name.name == name.name) then none
+        else go (⟨name, params, body⟩ :: funcs) main rest
+    | funcs, main, .assign name e :: rest =>
+        if funcs.any (fun f => f.name.name == name.name) then none
+        else go funcs (.assign name e :: main) rest
+    | funcs, main, s :: rest => go funcs (s :: main) rest
+
 /-- Lower call arguments left to right through `lowerExpr`, collecting
 the argument registers. `lowerExpr` returns `none` on `.app`, so nested
 calls in argument position are refused here, not later. -/
