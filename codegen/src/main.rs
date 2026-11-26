@@ -36,9 +36,9 @@ use cranelift_object::{ObjectBuilder, ObjectModule};
 /// The symbol the artifact is exported under, and what the runner calls.
 const ENTRY_SYMBOL: &str = "morph_main";
 
-/// The runner: prints the function's i64 result as decimal, the same shape as
-/// `morph run`'s output for the corresponding program.
-const RUNNER_SOURCE: &str = "\
+/// The runner for integer-valued programs: prints the function's i64 result
+/// as decimal, the same shape as `morph run`'s output.
+const RUNNER_SOURCE_I64: &str = "\
 #include <stdio.h>
 extern long morph_main(void);
 int main(void) {
@@ -46,6 +46,25 @@ int main(void) {
     return 0;
 }
 ";
+
+/// The runner for boolean-valued programs: `icmp` results are i8 in this
+/// dialect, and `morph run` prints them as true/false.
+const RUNNER_SOURCE_I8: &str = "\
+#include <stdio.h>
+extern signed char morph_main(void);
+int main(void) {
+    printf(\"%s\\n\", morph_main() ? \"true\" : \"false\");
+    return 0;
+}
+";
+
+/// The result kinds the stage B subset emits: integers (i64) and booleans
+/// (i8 — Cranelift's `icmp` result type).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RetKind {
+    I64,
+    I8,
+}
 
 fn usage() -> String {
     "usage: morph-clif <input.clif> [-o <executable>]\n".to_string()
@@ -91,13 +110,16 @@ fn run() -> Result<(), String> {
     }
     let func = funcs.remove(0);
 
-    let want_ret = [AbiParam::new(types::I64)];
-    if !func.signature.params.is_empty() || func.signature.returns != want_ret {
-        return Err(format!(
-            "expected signature `() -> i64`, found {:?}",
-            func.signature
-        ));
-    }
+    let ret_ty = match func.signature.returns.as_slice() {
+        [t] if t.value_type == types::I64 => RetKind::I64,
+        [t] if t.value_type == types::I8 => RetKind::I8,
+        _ => {
+            return Err(format!(
+                "expected signature `() -> i64` or `() -> i8`, found {:?}",
+                func.signature
+            ))
+        }
+    };
 
     let mut flag_builder = settings::builder();
     // The subset is straight-line integer arithmetic; a faster opt level changes
@@ -145,8 +167,12 @@ fn run() -> Result<(), String> {
         p.with_file_name(format!("{name}-native"))
     });
 
+    let runner_source = match ret_ty {
+        RetKind::I64 => RUNNER_SOURCE_I64,
+        RetKind::I8 => RUNNER_SOURCE_I8,
+    };
     let runner_path = obj_path.with_extension("runner.c");
-    fs::write(&runner_path, RUNNER_SOURCE)
+    fs::write(&runner_path, runner_source)
         .map_err(|e| format!("{}: {e}", runner_path.display()))?;
 
     let status = Command::new("cc")
