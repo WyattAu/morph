@@ -68,15 +68,28 @@ theorem actors_progress (system : ActorSystem) (fuel turn : Nat)
   cases hidx : system.actors[turn % system.actors.length]? with
   | none => intro heq; simp at heq
   | some actor =>
-      intro heq
-      simp at heq
       cases hval : evalWithFuel fuel Context.empty actor.state with
       | none =>
-          rw [hval] at heq
+          intro heq
           exact ⟨⟨actor, turn % system.actors.length, hidx, rfl, hval⟩⟩
-      | some v =>
-          rw [hval] at heq
-          simp at heq
+      | some v => intro heq; simp [stepActor, hval] at heq
+
+/-- **Stuck steps contain themselves**: when a step is stuck, the returned
+system is the input system — the failed evaluation left every other actor's
+state, every mailbox, and `nextId` untouched. This is the D3 containment
+fact under Reading A, and it is definitional: the stuck branch returns the
+input system verbatim. -/
+theorem stepActor_stuck_system_unchanged (system : ActorSystem) (fuel turn : Nat)
+    (heap : Heap) (stack : Stack)
+    (h : (stepActor fuel system turn heap stack).1 = .stuck) :
+    (stepActor fuel system turn heap stack).2.1 = system := by
+  unfold stepActor
+  cases hidx : system.actors[turn % system.actors.length]? with
+  | none => rfl
+  | some actor =>
+      cases hval : evalWithFuel fuel Context.empty actor.state with
+      | none => simp [stepActor, hval] at h ⊢
+      | some v => simp [stepActor, hidx, hval] at h
 
 /-! ## Pins -/
 
