@@ -33,8 +33,10 @@ scope the audit reacts to, and is now also the Stage A–D build order.
    validation vs. verified lowering — pick one per backend).
 4. **ABI/layout lemmas go load-bearing.** `AbiAlignmentAlgebra` and
    `AbiDataRefinement` become code-generation correctness lemmas. Note:
-   `SPEC_CONTRADICTIONS.md` #11 must be resolved first — the current
-   Props overstate and cannot be the basis of lowering proofs.
+   `SPEC_CONTRADICTIONS.md` #11 is **resolved** (loop 111): the validated
+   conditional forms (`spec_type_refinement_holds`,
+   `spec_data_validation_holds`, `spec_layout_compatibility_holds`) are the
+   lowering basis.
 5. **Commands.** `morph build` (binaries for the first-order fragment),
    `morph test` (golden + property suites). Both are thin IO over Driver
    functions, golden-tested like the existing eight commands.

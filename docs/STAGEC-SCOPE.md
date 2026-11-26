@@ -2,9 +2,11 @@
 
 Status: design record, loop 154 (2026-11-08); **revised loops 159–187** as
 items landed and the CLIF block model was re-read against Cranelift's actual
-surface. C1–C7, C8 (HIR→MIR bridge + MIR executor), and C9 are in the tree;
-open is only the C8 CLIF `call` encoder (the target side models calls and
-refuses to encode them — see the C8 row). Follows `docs/STAGEB-SCOPE.md`
+surface, **completed by the D-7 option B/C slices** (typed signatures,
+slotted calls, program-aware emission, slotted body gate — the D-7 encoder
+closed the last C8 gap). C1–C9 are in the tree; the only deferred remainder
+is machine-level ABI/layout support *below* CLIF, which is Cranelift TCB
+under ADR-032 §3 (see the C8 row). Follows `docs/STAGEB-SCOPE.md`
 (closed, B1–B9) and the staging in `docs/ERA2-BACKEND-SCOPE.md`. Governed by
 ADR-032 (Cranelift, verified lowering) and D-4 (`docs/STAGEA-PREP-125.md` §1,
 confirmed as a decision in ADR-032 §Status). Moves no gates: G-1, G-3, G-7
