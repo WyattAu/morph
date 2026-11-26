@@ -183,6 +183,12 @@ def lowerFunc (f : Func) : Option MIR.Func :=
     match lowerExpr ρ (f.params.length + 1) f.body with
     | none => none
     | some (v, is, _) =>
+        -- TODO (build-first item 1, next loop): the declared return type must
+        -- be inferred from the body (MIR-side type inference over `is`/`v` --
+        -- `Morph.Clif.bodyResultTyp` computes over CLIF instructions, which
+        -- the lowering does not produce). Until then every callee is declared
+        -- unit-typed, and the D-7 slot gate refuses call-bearing artifacts at
+        -- emission (see docs/BUILD-FIRST-LEDGER.md).
         some ⟨f.name.name, (List.range' 1 f.params.length).map (·, .unitType),
           [⟨0, [.const 0 .unit] ++ is, .return_ v⟩], 0, .unitType⟩
   else none
@@ -285,7 +291,8 @@ def lowerCallProg (p : CallProg) : Option MIR.Program :=
         match lowerCallStmts p.funcs [] 1 0 p.main with
         | none => none
         | some (_, v, is, _) =>
-            some ⟨⟨"main", [], [⟨0, [.const 0 .unit] ++ is, .return_ v⟩],
-              0, .unitType⟩ :: funcsMIR⟩
+        -- TODO (build-first item 1): computed main return type, as above.
+        some ⟨⟨"main", [], [⟨0, [.const 0 .unit] ++ is, .return_ v⟩],
+          0, .unitType⟩ :: funcsMIR⟩
 
 end Morph.HIRFunc

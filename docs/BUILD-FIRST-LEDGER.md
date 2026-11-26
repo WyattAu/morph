@@ -14,32 +14,33 @@
 
 ## In flight: multi-function call artifacts (directive item 1)
 
-State: `toCallProg` extracts top-level `fn` declarations into the function
-table and the rest into `main`; `lowerCallProg` lowers to a multi-function
-`MIR.Program`; `emitProg` refuses it because **`lowerFunc`/`lowerCallProg`
-hardcode `.unitType` return types** (the D-7 slot gate `clifTyOfTyp
-unitType = none` then refuses the call instruction itself).
+State (2026-11-26): `toCallProg` extraction + the Driver call stage landed
+(compiling, tree green). `morph build` on a call program now reaches the
+call lowering and reports a sharper refusal: **the emitted call program is
+not renderable (unit-typed bodies, unslotted results)**.
 
-Next steps, in order:
+**Discovered blocker (the real next loop).** `lowerFunc`/`lowerCallProg`
+hardcode `.unitType` return types, and a proper fix is a small **MIR-side
+type inference**, not a tail edit:
 
-1. `lowerFunc`: compute the body's result type via `Morph.Clif.bodyResultTyp
-   is v` (in `Morph/ClifTarget.lean:742`; HIRFunc must add
-   `import Morph.ClifTarget` — no cycle) and set `retType := τ`, refusing
-   unslotted bodies (`none`). Same for the synthetic `main` in
-   `lowerCallProg` (`bodyResultTyp is v` over the pre-prologue `is`).
-2. **Proof churn expected**: `Morph/Proofs/Call/Correct.lean` (2,350 lines)
-   cases on `lowerCallProg`'s output shape — the `.unitType` literals in its
-   construction will become `τ`. Iterate: `lake build Morph.HIRFunc`, then
-   `Morph.Proofs.Call`, fixing `simp only [lowerCallProg] at h` sites.
-3. `morph build` a call program; inspect the emitted CLIF (multi-function +
-   preamble + call instructions); confirm `cranelift-reader` accepts it
-   (preamble format: `docs/ClifEmit.lean` §Signature-declaration preamble,
-   `sigSuffix`/`retSuffix`).
-4. `morph-clif`: multi-function support — compile every function, declare
-   callees `Linkage::Local`, export the module's `main` as `morph_main`;
-   runner dispatch on main's return kind (i64/i8 — done).
-5. Corpus: add a call case to `tests/codegen/corpus/` + `manifest.tsv`;
-   `native.sh` → 15/15.
+- `Morph.Clif.bodyResultTyp` computes over **CLIF** instructions; the
+  lowering produces **MIR** instructions (`const`/`binop`/`unop`/`copy`) —
+  different types, no direct reuse (first attempted, reverted).
+- Required: `bodyTypeOf : List (ValId × Typ) → List Instr → Reg → Option Typ`
+  over MIR instructions — `const` via `Morph.Clif.valueTyp` (the marshal
+  table), `binop`/`unop` carry their own `τ`, `copy` propagates, other
+  instructions refuse. Return type = the final register's type; also needed
+  for the synthetic `main`.
+- **Param types** are the harder half: `fn x -> x` (identity) is untypable
+  from the body — param types must come from **use sites** (operator-required
+  operand types) or from call sites (all sites must agree). Identity
+  functions stay refused in v1; document it.
+- Then the proof churn: `Morph/Proofs/Call/Correct.lean` (2,350 lines) cases
+  on `lowerCallProg`'s output — the `.unitType` literals become computed
+  `τ`s. Then `morph-clif` multi-function support, then the corpus case.
+
+Interim behavior: call programs build to the call lowering and are refused
+at emission with the sharpened message — honest, not silent.
 
 ## Also open
 
