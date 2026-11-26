@@ -8,7 +8,7 @@ Enclosure: `docs/AUDIT-PACKET-0.1.md`.
 - PL background: operational semantics, type soundness, or verified
   compilation — able to read Lean 4 and judge a Progress/Preservation claim.
 - Verification background: proof engineering at scale — able to assess
-  whether 2,081 theorems with 0 sorry/0 axioms actually cover the CLI
+  whether 2,609 theorems with 0 sorry/0 axioms actually cover the CLI
   surface, and to spot spec-vs-code gaps (cf. packet §3).
 - One reviewer should be comfortable with the Python spec-lint tooling
   (or willing to treat it as out of scope explicitly).
