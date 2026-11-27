@@ -396,7 +396,7 @@ example : Morph.Codegen.emitClif
     ⟨"main", [], [⟨0, [.const 0 .unit, .call (some 2) "add" [0, 1]], .return_ 2⟩],
       0, Typ.intType⟩ progAdd
     = some ("function %add(i64, i64) -> i64\n" ++
-      "function %main() -> i64 {\nblock0:\n  v2 = call %add(v0, v1) -> i64\n  return v2\n}\n") := rfl
+      "function %main() -> i64 {\n    sig0 = (i64, i64) -> i64\n    fn0 = %add sig0\nblock0:\n  v2 = call fn0(v0, v1)\n  return v2\n}\n") := rfl
 
 /-! ## Bool-call acceptance pins (D-7 option B, slice C1)
 
@@ -465,7 +465,7 @@ example : Morph.Codegen.preamble progBool
 /-- ...and the artifact calls into it. -/
 example : Morph.Codegen.emitClif isEqMainMIR progBool
     = some ("function %iseq(i64, i64) -> i8\n" ++
-      "function %main() -> i64 {\nblock0:\n  v0 = iconst.i64 1\n  v1 = iconst.i64 1\n  v2 = call %iseq(v0, v1) -> i8\n  v3 = iconst.i64 0\n  return v3\n}\n") := by
+      "function %main() -> i64 {\n    sig0 = (i64, i64) -> i8\n    fn0 = %iseq sig0\nblock0:\n  v0 = iconst.i64 1\n  v1 = iconst.i64 1\n  v2 = call fn0(v0, v1)\n  v3 = iconst.i64 0\n  return v3\n}\n") := by
   native_decide
 
 /-! ## Gate succession pins (D-7 option B, slice C2)
@@ -513,7 +513,7 @@ example : Morph.Clif.renderFuncFor "iseq" Typ.boolType ⟨[], [.icmp 2 .eq 0 1],
 
 /-- A void header takes no suffix, like the declaration. -/
 example : Morph.Clif.renderFuncFor "unitfn" Typ.unitType ⟨[], [], 0⟩
-    = "function %unitfn() {\nblock0:\n\n  return v0\n}\n" := rfl
+    = "function %unitfn() {\nblock0:\n  return v0\n}\n" := rfl
 
 /-! ## Program emission pins (D-7 option C, slice D2)
 
@@ -544,16 +544,16 @@ def progAddFull : Morph.MIR.Program := ⟨[addMainFull, addMIRFull]⟩
 /-- It emits end to end: callee preamble, entry, callee. -/
 example : Morph.Codegen.emitProg progAddFull
     = some ("function %add(i64, i64) -> i64\n" ++
-      "function %main() -> i64 {\nblock0:\n  v0 = iconst.i64 5\n  v1 = iconst.i64 7\n  v2 = call %add(v0, v1) -> i64\n  return v2\n}\n" ++
-      "function %add(v0: i64, v1: i64) -> i64 {\nblock0:\n  v2 = iadd v0, v1\n  return v2\n}\n") := by
+      "function %main() -> i64 {\n    sig0 = (i64, i64) -> i64\n    fn0 = %add sig0\nblock0:\n  v0 = iconst.i64 5\n  v1 = iconst.i64 7\n  v2 = call fn0(v0, v1)\n  return v2\n}\n" ++
+      "function %add(i64, i64) -> i64 {\nblock0(v0: i64, v1: i64):\n  v2 = iadd v0, v1\n  return v2\n}\n") := by
   native_decide
 
 /-- ...and the mixed program emits end to end: preamble, int entry,
 bool callee under its computed header. -/
 example : Morph.Codegen.emitProg progBool
     = some ("function %iseq(i64, i64) -> i8\n" ++
-      "function %main() -> i64 {\nblock0:\n  v0 = iconst.i64 1\n  v1 = iconst.i64 1\n  v2 = call %iseq(v0, v1) -> i8\n  v3 = iconst.i64 0\n  return v3\n}\n" ++
-      "function %iseq(v0: i64, v1: i64) -> i8 {\nblock0:\n  v2 = icmp eq v0, v1\n  return v2\n}\n") := by
+      "function %main() -> i64 {\n    sig0 = (i64, i64) -> i8\n    fn0 = %iseq sig0\nblock0:\n  v0 = iconst.i64 1\n  v1 = iconst.i64 1\n  v2 = call fn0(v0, v1)\n  v3 = iconst.i64 0\n  return v3\n}\n" ++
+      "function %iseq(i64, i64) -> i8 {\nblock0(v0: i64, v1: i64):\n  v2 = icmp eq v0, v1\n  return v2\n}\n") := by
   native_decide
 
 end Morph.Tests.ClifCall

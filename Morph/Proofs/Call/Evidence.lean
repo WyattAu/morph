@@ -324,6 +324,7 @@ example : Morph.Codegen.preamble progTEv
 body. -/
 example : Morph.Codegen.emitClif addMainMIRT progTEv
     = some ("function %add(i64, i64) -> i64\n" ++
-      "function %main() -> i64 {\nblock0:\n  v1 = iconst.i64 1\n  v2 = iconst.i64 2\n  v3 = call %add(v2, v1) -> i64\n  return v3\n}\n") := rfl
+      "function %main() -> i64 {\n    sig0 = (i64, i64) -> i64\n    fn0 = %add sig0\nblock0:\n  v1 = iconst.i64 1\n  v2 = iconst.i64 2\n  v3 = call fn0(v2, v1)\n  return v3\n}\n") := by
+  native_decide
 
 end Morph.Proofs.Call

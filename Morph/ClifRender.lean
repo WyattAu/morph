@@ -400,21 +400,78 @@ def Instr.text : Instr → String
         String.intercalate ", " (args.map (fun a => "v" ++ toString a)) ++
         ")" ++ retSuffix ret
 
+/-- Top-level declarations live in HIRLower's `free:` namespace; the ABI names
+functions the way the source spelled them. -/
+def abiName (s : String) : String :=
+  if s.take 5 == "free:" then toString (s.drop 5) else s
+
+/-- The declared type of a call's result in the Cranelift text: the marshal
+table's slot type. The fallback never fires on admitted programs — the
+emitter's body gate (`bodySlotTyp`) refuses unslotted results first. -/
+def retTyText : Typ → String
+  | τ => match clifTyOfTyp τ with
+         | some t => ClifTy.text t
+         | none => "i64"
+
 /-- The CLIF text for a function. Not proved to be its own inverse here: the
-reader of this text is `cranelift-reader`, a trusted component per ADR-032 §3. -/
+reader of this text is `cranelift-reader`, a trusted component per ADR-032 §3.
+
+Parameter text is split in two, matching the format: the *header* names only
+the parameter types (`(i64, i64)`), and the entry *block* binds the value
+registers (`block0(v1: i64, v2: i64):`) the body then references. -/
 def paramText : List (Reg × Typ) → String
   | [] => "()"
   | ps => "(" ++ String.intercalate ", "
+      (ps.map fun _ => "i64") ++ ")"
+
+def blockParams : List (Reg × Typ) → String
+  | [] => ""
+  | ps => "(" ++ String.intercalate ", "
       (ps.map fun p => "v" ++ toString p.1 ++ ": i64") ++ ")"
+
+/-- The Cranelift per-function declarations a call needs: a signature line
+and an `fn` reference bound to the callee's ABI name. Calls are numbered in
+body order; `i` is how many calls came before this one. -/
+def callDeclText (i : Nat) (fn : String) (args : List ValId) (ret : Typ) : String :=
+  "    sig" ++ toString i ++ " = (" ++
+    String.intercalate ", " (args.map fun _ => "i64") ++ ") -> " ++ retTyText ret ++ "\n" ++
+  "    fn" ++ toString i ++ " = %" ++ abiName fn ++ " sig" ++ toString i ++ "\n"
+
+/-- The body line for one instruction, given its call index. -/
+def instrLine (i : Nat) (ins : Instr) : String :=
+  match ins with
+  | .call d fn args _ =>
+      "  v" ++ toString d ++ " = call fn" ++ toString i ++ "(" ++
+        String.intercalate ", " (args.map fun a => "v" ++ toString a) ++ ")"
+  | ins => Instr.text ins
+
+/-- Calls advance the per-function call counter by one. -/
+def callDelta : Instr → Nat
+  | .call _ _ _ _ => 1
+  | _ => 0
+
+def bodyText : Nat → List Instr → String
+  | _, [] => ""
+  | i, ins :: rest => instrLine i ins ++ "\n" ++ bodyText (i + callDelta ins) rest
+
+/-- The `sig`/`fn` declaration lines for every call in `ins`, in body order. -/
+def callDeclTexts : Nat → List Instr → String
+  | _, [] => ""
+  | i, .call _ fn args ret :: rest =>
+      callDeclText i fn args ret ++ callDeclTexts (i + 1) rest
+  | i, _ :: rest => callDeclTexts i rest
 
 /-- Named rendering (D-7 option C, slice D1): the header names the
 function and declares its return slot, matching the line `sigDecl`
-contributes to the preamble. Bodies stay parameter-free (single
-block, registers pre-bound), so only the header generalizes. -/
+contributes to the preamble. Call-bearing functions add the per-function
+`sig`/`fn` declarations Cranelift's text format requires; parameter-free
+ones render byte-identically to the historic form. -/
 def renderFuncFor (name : String) (ret : Typ) (f : Func) : String :=
-  "function %" ++ name ++ paramText f.params ++ retSuffix ret ++ " {\nblock0:\n" ++
-    String.intercalate "\n" (f.instrs.map Instr.text) ++
-    "\n  return v" ++ toString f.retSrc ++ "\n}\n"
+  "function %" ++ name ++ paramText f.params ++ retSuffix ret ++ " {\n" ++
+    callDeclTexts 0 f.instrs ++
+    "block0" ++ blockParams f.params ++ ":\n" ++
+    bodyText 0 f.instrs ++
+    "  return v" ++ toString f.retSrc ++ "\n}\n"
 
 /-- The historic renderer is the `main`/`intType` case. -/
 def renderFunc (f : Func) : String := renderFuncFor "main" .intType f

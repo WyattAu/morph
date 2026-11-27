@@ -225,7 +225,7 @@ def sigDecl (f : Func) : Option String :=
   match f.params.mapM (fun p => paramSlot p.2) with
   | none => none
   | some ts =>
-      some ("function %" ++ f.name ++ "(" ++
+      some ("function %" ++ Morph.Clif.abiName f.name ++ "(" ++
         String.intercalate ", " (ts.map Morph.Clif.ClifTy.text) ++ ")" ++
         Morph.Clif.retSuffix f.retType ++ "\n")
 
