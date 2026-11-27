@@ -12,22 +12,32 @@
 | Stage D groundwork | ✅ pushed `f4da26f`/`eba1d95`/`b072a8d` | ADR-033; `Morph/ActorProgress.lean` (`actors_progress`, containment); `docs/STAGE-D3-INVARIANT-MEMO.md` (A/B/C decision ask, deadline 2026-12-18) |
 | Call-fragment extraction (`toCallProg`) + Driver call stage | ✅ compiles, tree green, **NOT committed** | `Morph/HIRFunc.lean` (`toCallProg`), `Morph/Driver.lean` (buildClif call stage → `Morph.Codegen.emitProg`) |
 
-## In flight: multi-function call artifacts (directive item 1)
+## Landed: callee return-type inference + multi-function emission (7608fd9)
 
-State (2026-11-26, after a first blocked attempt): `toCallProg` extraction
-+ the Driver call stage landed (pushed `e2fde7d`); `morph build` on a call
-program reaches the call lowering and reports a sharper refusal: **the
-emitted call program is not renderable (unit-typed bodies, unslotted
-results)**.
+`lowerFunc`/`lowerCallProg` compute declared return types from the body
+(`inferBody`: marshal-table typing over the MIR instructions — `const`
+via `Morph.Clif.valueTyp`, `binop`/`unop` carry their own `τ`, `copy`
+propagates, `call` resolves through the callee table, everything else
+refuses; identity functions are untypable and refuse, documented per the
+D-4 contract). `lowerFunc_inv` exposes `τ` + the inference equation;
+`Correct.lean`'s consumers (name lemma, destructure at :1465,
+`lowerCallProg_correct`'s program shape) updated; evidence pins use
+`.intType` returns. The call fragment now lowers to a multi-function
+`MIR.Program` that emits whole via `Morph.Codegen.emitProg` (D-7 option C
+slice D2): preamble + main + callees + `call` instructions.
 
-**Blocked attempt (reverted 2026-11-26).** Computing `lowerFunc`'s return
-type on the fly (`inferBody` over the MIR instructions) broke
-`Morph/Proofs/Call/Correct.lean` — `lowerFunc_inv` (its statement,
-destructure site at :1465, and the `lowerCallProg_correct` program-shape
-literals) all hardcode the `.unitType` output. The churn is mechanical but
-spans the 2,350-line file; reverted to keep the tree green (the working
-HIRFunc/Correct/Evidence deltas were eaten twice by dev-tree flaps during
-the edit — re-derive from this note, not from a flapping read).
+**Still open (the next loop):** the Rust `morph-clif` driver compiles
+single-function modules only — the emitted multi-function artifact has a
+duplicate `%main` signature-declaration line (the D-7 preamble declares
+every function including the entry — the reader treats sig-only lines as
+imports, so import+definition of `%main` reads as a redefinition) and a
+missing declaration for callees whose parameter types are `.unitType`
+placeholders (the marshal filter drops their sig). The driver side needs:
+multi-function compilation, `main` exported as `morph_main`, callees as
+local linkages; the Lean side needs: param-typed signatures for callees
+(the param types come from call sites — `inferBody` over the caller with
+the callee table gives the actuals' types), entry excluded from the
+preamble. Plus a calls corpus case (`native.sh` → 15/15).
 
 **Discovered blocker (the real next loop).** `lowerFunc`/`lowerCallProg`
 hardcode `.unitType` return types, and a proper fix is a small **MIR-side
