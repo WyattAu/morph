@@ -62,49 +62,57 @@ type inference**, not a tail edit:
 Interim behavior: call programs build to the call lowering and are refused
 at emission with the sharpened message — honest, not silent.
 
-## Next loop: CLIF function parameters (multi-function artifacts, item 1 cont.)
+## Landed: CLIF function parameters + the multi-function driver (2ebebf1..51e044d)
 
-The emitted multi-function artifact has a structural gap: the CLIF `Func`
-model (`Morph/ClifTarget.lean`: `instrs` + `retSrc`) has **no parameters** —
-a callee like `%free:f` receives `v1` at its call site but declares no way
-to bind it. The call-fragment lowering (loop 187) produces correct MIR
-`call` instructions, and `emitProg` emits the whole program — but the
-rendered callee headers declare `()` while callers pass arguments.
+The item-1 loop landed in three slices, all differential-tested:
 
-The loop, in order:
+- **2ebebf1** — the model: `Morph.Clif.Func` gains `params : List (Reg × Typ)`;
+  `blockEncode` threads a params argument into the emitted header
+  (`blockEncode_params`: the header declares exactly the caller's list);
+  `emitFunc` passes the lowered MIR function's params through;
+  `toksFunc`/`parseFunc`/`parseParamPairs` round-trip them (proved);
+  `blockEncode_return` generalized over the params argument, `clif_correct`
+  recovers `params = []` via `blockEncode_params`.
+- **1c08d48** — the dialect: artifacts render in the form
+  `cranelift-reader` 0.137 actually parses (checked empirically against the
+  reader): headers name parameter *types* (`(i64, i64)`), the entry block
+  binds value registers (`block0(v1: i64, v2: i64):`), call-bearing bodies
+  carry per-function `sig0 = (…) -> …` / `fn0 = %callee sig0` declarations
+  and the call line uses the numeric form (`call fn0(v0, v1)`).
+  `abiName` strips HIRLower's internal `free:` prefix at the rendering
+  boundary only — MIR keeps the raw name, so the Correct.lean call-fragment
+  proofs are untouched.
+- **51e044d** — the driver: `morph-clif` filters the ABI documentation lines
+  (the reader's grammar has no decl-only form), rewrites symbolic fn
+  references to the relocatable user-name encoding (`fn0 = u0:<FuncId>
+  sig0` — testcase targets panic in cranelift-module's relocation path;
+  FuncId == file position over definitions only), declares everything
+  before defining anything (`%main` exports as `morph_main`; callees stay
+  `Linkage::Local`), and refuses a parameter-taking `%main` (the runner
+  calls it with none).
 
-1. `Morph.Clif.Func` gains `params : List (Reg × Typ)`; `renderFunc` emits
-   them in the header (Cranelift block-parameter style); `parseFunc`
-   round-trips them (the `toksFunc`/`parseFunc` inverse proofs gain the
-   params case).
-2. `lowerFunc` fills `params := (params.zip actualTypes)` — the actual
-   types come from the call sites in `main`, collected during
-   `lowerCallStmts` (each `.call`'s actual registers are typed by
-   `inferBody` at that point; all sites to one callee must agree — v1
-   refuses disagreement, mirroring the D-4 gate).
-3. `morph-clif` compiles multi-function modules: declare every function
-   (entry exported as `morph_main`, callees `Linkage::Local`), define all,
-   link; the runner is unchanged (it calls `morph_main()`).
-4. Corpus: a calls program (`let f = fn x -> x * 2; let y = f 21; y`) —
-   `native.sh` → 15/15.
+Result: `tests/codegen/native.sh` → **15/15** (new `calls_add.hum`:
+`let add = fn a b -> a + b; let r = add 2 3; r`), `tests/codegen/check.sh`
+→ **23/23** rejection goldens hold, Morph + Morph.Tests green, 0 sorry.
 
-Known sharp edges, stated:
+Known sharp edges (follow-ups, none blocking):
 
-- Identity functions (`fn x -> x`) are untypable by body inference (the
-  result flows straight from the parameter) and refuse at lowering — the
-  D-4 contract documents the refusal; typed surface parameters (a
-  `fn`-type annotation) would lift it later.
-- The CLIF `Func` model has no parameters, so the rendered callee header
-  declares `()` while callers pass registers (`call %f(v0, v1)`) and the
-  callee body reads registers the header never binds — a structural gap
-  that step 1 closes (params in the model, rendered in the header).
-  Until then, `morph-clif` reports the multi-function artifact as
-  unsupported rather than miscompiling it.
+- `u0:<FuncId>` encodes declaration order; the driver derives it from file
+  positions. A future artifact that lets callees reference each other keeps
+  working (same mapping) but multi-level call chains are still refused by
+  the fragment (`callee bodies call-free`).
+- The ld warnings (`DT_TEXTREL in a PIE`) are cosmetic for the current
+  runner shape; a `-no-pie` link or `Linkage::Export` on callees would
+  silence them if they ever matter.
+- Identity functions (`fn x -> x`) still refuse (typed surface parameters
+  would lift it); the v1 int-actuals contract stands.
 
 ## Also open
 
 - D3 invariant decision: `docs/STAGE-D3-INVARIANT-MEMO.md` (A/B/C, deadline
-  2026-12-18; default A on silence — ADR-033 mechanism).
+  2026-12-18; default A on silence — ADR-033 mechanism). **Decided A
+  2026-11-27, recorded as ADR-034; the `ActorStmts` fragment + progress
+  restatement is the next proof work.**
 - Audit invites: deferred by directive; draft send-ready for first launch.
 - Stale worktree `/tmp/opencode/bl2` was pruned 2026-11-26; re-check if it
   reappears (tmpfs).

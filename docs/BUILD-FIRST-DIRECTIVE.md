@@ -45,9 +45,23 @@ Build order, each item end-to-end (proved side + driver side + runner side):
 - Zero `sorry`, zero stubs; proof scope is never cut to meet a milestone
   (five-year roadmap principle 1).
 - D-4: `morph build` stays a strict, explicitly-listed subset with golden
-  rejections (`tests/codegen/check.sh` 22/22).
+  rejections (`tests/codegen/check.sh` 23/23).
 - One-directional claims only: `compile_correct`-family theorems prove
   success-implies-agreement; the CLIF→bytes boundary stays in Cranelift's
   TCB (ADR-032 §3).
-- The differential corpus (`native.sh`) must stay at 14/14 — every new
+- The differential corpus (`native.sh`) must stay at 15/15 — every new
   driver capability lands with a corpus case.
+
+## Progress (2026-11-27)
+
+- **Item 1 (calls) is landed** through the first milestone: the CLIF
+  `Func` model carries params, artifacts render in the dialect
+  `cranelift-reader` parses, and `morph-clif` compiles whole call
+  programs natively (`docs/BUILD-FIRST-LEDGER.md` §"Landed: CLIF function
+  parameters + the multi-function driver", commits `2ebebf1`..`51e044d`).
+  `native.sh` is 15/15, `check.sh` 23/23.
+- Item 1's remainder: the runner ABI past `i64`/`i8` (strings, pointers,
+  units — the marshal table's remaining rows) so multi-type calls
+  (`stringType`→`addr` etc.) cross natively, not just int ones.
+- Next: item 2 (real I/O in the runner) — a `print` intrinsic plus
+  runtime `io.rs` plumbing, with its own corpus case.
