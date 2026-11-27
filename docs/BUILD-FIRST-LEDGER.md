@@ -88,10 +88,18 @@ The loop, in order:
 4. Corpus: a calls program (`let f = fn x -> x * 2; let y = f 21; y`) —
    `native.sh` → 15/15.
 
-Known sharp edge, stated: identity functions (`fn x -> x`) are untypable
-by body inference (the result flows straight from the parameter) and
-refuse at lowering — the D-4 contract documents the refusal; typed
-surface parameters (a `fn`-type annotation) would lift it later.
+Known sharp edges, stated:
+
+- Identity functions (`fn x -> x`) are untypable by body inference (the
+  result flows straight from the parameter) and refuse at lowering — the
+  D-4 contract documents the refusal; typed surface parameters (a
+  `fn`-type annotation) would lift it later.
+- The CLIF `Func` model has no parameters, so the rendered callee header
+  declares `()` while callers pass registers (`call %f(v0, v1)`) and the
+  callee body reads registers the header never binds — a structural gap
+  that step 1 closes (params in the model, rendered in the header).
+  Until then, `morph-clif` reports the multi-function artifact as
+  unsupported rather than miscompiling it.
 
 ## Also open
 
