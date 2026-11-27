@@ -62,6 +62,37 @@ type inference**, not a tail edit:
 Interim behavior: call programs build to the call lowering and are refused
 at emission with the sharpened message — honest, not silent.
 
+## Next loop: CLIF function parameters (multi-function artifacts, item 1 cont.)
+
+The emitted multi-function artifact has a structural gap: the CLIF `Func`
+model (`Morph/ClifTarget.lean`: `instrs` + `retSrc`) has **no parameters** —
+a callee like `%free:f` receives `v1` at its call site but declares no way
+to bind it. The call-fragment lowering (loop 187) produces correct MIR
+`call` instructions, and `emitProg` emits the whole program — but the
+rendered callee headers declare `()` while callers pass arguments.
+
+The loop, in order:
+
+1. `Morph.Clif.Func` gains `params : List (Reg × Typ)`; `renderFunc` emits
+   them in the header (Cranelift block-parameter style); `parseFunc`
+   round-trips them (the `toksFunc`/`parseFunc` inverse proofs gain the
+   params case).
+2. `lowerFunc` fills `params := (params.zip actualTypes)` — the actual
+   types come from the call sites in `main`, collected during
+   `lowerCallStmts` (each `.call`'s actual registers are typed by
+   `inferBody` at that point; all sites to one callee must agree — v1
+   refuses disagreement, mirroring the D-4 gate).
+3. `morph-clif` compiles multi-function modules: declare every function
+   (entry exported as `morph_main`, callees `Linkage::Local`), define all,
+   link; the runner is unchanged (it calls `morph_main()`).
+4. Corpus: a calls program (`let f = fn x -> x * 2; let y = f 21; y`) —
+   `native.sh` → 15/15.
+
+Known sharp edge, stated: identity functions (`fn x -> x`) are untypable
+by body inference (the result flows straight from the parameter) and
+refuse at lowering — the D-4 contract documents the refusal; typed
+surface parameters (a `fn`-type annotation) would lift it later.
+
 ## Also open
 
 - D3 invariant decision: `docs/STAGE-D3-INVARIANT-MEMO.md` (A/B/C, deadline
