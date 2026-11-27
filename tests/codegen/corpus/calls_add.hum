@@ -1,0 +1,3 @@
+let add = fn a b -> a + b;
+let r = add 2 3;
+r

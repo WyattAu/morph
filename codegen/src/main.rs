@@ -97,26 +97,90 @@ fn run() -> Result<(), String> {
 
     let text = fs::read_to_string(&input).map_err(|e| format!("{}: {e}", input.display()))?;
 
-    // The reader is the trusted entry point: whatever the artifact says, this is
-    // where it becomes a `Function`. A rejection here is a bug in the printer,
-    // not in the driver, so the message is passed through unhidden.
-    let mut funcs = cranelift_reader::parse_functions(&text)
-        .map_err(|e| format!("CLIF reader rejected the artifact: {e}"))?;
-    if funcs.len() != 1 {
-        return Err(format!(
-            "expected exactly one function, found {} (stage B emits single-function modules)",
-            funcs.len()
-        ));
-    }
-    let func = funcs.remove(0);
+    // Morph artifacts open with ABI documentation lines (`function %name(sig)
+    // -> ret` with no body). The reader's grammar has no form for them — a bare
+    // header would swallow the next `function` keyword as a calling convention —
+    // so the trusted driver drops them before the reader sees the text. What
+    // remains is exactly the definitions, and each definition's own header is
+    // the signature truth the reader checks.
+    // Function names in file order — the declaration order below makes each
+    // function's position its `FuncId`, which is what a `u0:<n>` reference
+    // encodes.
+    let names: Vec<&str> = text
+        .lines()
+        .filter_map(|l| {
+            let t = l.trim_start();
+            // Definitions only: decl-only lines are dropped below and must not
+            // shift the positions the references encode.
+            if !(t.starts_with("function ") && t.contains('{')) {
+                return None;
+            }
+            let rest = t.strip_prefix("function ")?.trim_start_matches('%');
+            let end = rest.find('(').unwrap_or(rest.len());
+            Some(&rest[..end])
+        })
+        .collect();
 
-    let ret_ty = match func.signature.returns.as_slice() {
+    let program_text: String = text
+        .lines()
+        .filter_map(|l| {
+            let t = l.trim_start();
+            if t.starts_with("function ") && !t.contains('{') {
+                return None; // ABI documentation line, not a definition
+            }
+            // The artifact references callees symbolically (`fn0 = %add sig0`),
+            // but cranelift-module can only relocate `ExternalName::user`
+            // targets — a user name encodes the callee's FuncId as `u0:<n>`,
+            // and testcase (`%name`) targets panic in the relocation path (they
+            // exist for filetests only). Rewrite each symbolic reference to the
+            // numeric encoding of the position the callee will be declared at.
+            if t.starts_with("fn") && t.contains(" = %") {
+                if let Some((lhs, rest)) = t.split_once(" = %") {
+                    let mut parts = rest.split_whitespace();
+                    let name = parts.next().unwrap_or("");
+                    let sig = parts.next().unwrap_or("");
+                    if let Some(idx) = names.iter().position(|n| *n == name) {
+                        return Some(format!("{lhs} = u0:{idx} {sig}"));
+                    }
+                }
+            }
+            Some(l.to_string())
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let program_text = format!("{program_text}\n");
+
+    // The reader is the trusted entry point: whatever the filtered text says,
+    // this is where it becomes a `Function`. A rejection here is a bug in the
+    // printer, not in the driver, so the message is passed through unhidden.
+    let mut funcs = cranelift_reader::parse_functions(&program_text)
+        .map_err(|e| format!("CLIF reader rejected the artifact: {e}"))?;
+    if funcs.is_empty() {
+        return Err("artifact contains no function definitions".to_string());
+    }
+    // The entry is `%main`; every other function is a callee it calls. The
+    // reader's Display for a symbolic name carries the `%`, so strip it before
+    // comparing (and keep the raw form for declarations — that is exactly the
+    // string cranelift-module uses when it resolves the call references).
+    let main_idx = funcs
+        .iter()
+        .position(|f| {
+            let n = f.name.to_string();
+            n.trim_start_matches('%') == "main"
+        })
+        .ok_or("artifact has no %main entry function")?;
+    if !funcs[main_idx].signature.params.is_empty() {
+        return Err(
+            "the entry function %main takes parameters; the runner calls it with none".to_string(),
+        );
+    }
+    let ret_ty = match funcs[main_idx].signature.returns.as_slice() {
         [t] if t.value_type == types::I64 => RetKind::I64,
         [t] if t.value_type == types::I8 => RetKind::I8,
         _ => {
             return Err(format!(
-                "expected signature `() -> i64` or `() -> i8`, found {:?}",
-                func.signature
+                "expected signature `() -> i64` or `() -> i8` on %main, found {:?}",
+                funcs[main_idx].signature
             ))
         }
     };
@@ -137,17 +201,29 @@ fn run() -> Result<(), String> {
         .map_err(|e| format!("object builder: {e}"))?;
     let mut module = ObjectModule::new(obj_builder);
 
-    let func_id = module
-        .declare_function(ENTRY_SYMBOL, Linkage::Export, &func.signature)
-        .map_err(|e| format!("declaring {ENTRY_SYMBOL}: {e}"))?;
+    // Declare everything before defining anything, so the `sig`/`fn` references
+    // in a call-bearing body bind inside this module. The entry exports under
+    // `morph_main` (a name that cannot collide with C's `main`); callees keep
+    // their artifact names, local to the object.
+    let mut func_ids = Vec::with_capacity(funcs.len());
+    for (i, f) in funcs.iter().enumerate() {
+        let (symbol, linkage) = if i == main_idx {
+            (ENTRY_SYMBOL.to_string(), Linkage::Export)
+        } else {
+            (f.name.to_string(), Linkage::Local)
+        };
+        let id = module
+            .declare_function(&symbol, linkage, &f.signature)
+            .map_err(|e| format!("declaring {symbol}: {e}"))?;
+        func_ids.push(id);
+    }
 
-    // The text's own name (`%main`) never reaches the object: the symbol comes
-    // from `declare_function`, so the artifact stays a plain CLIF module while the
-    // runner gets a name that cannot collide with C's `main`.
-    let mut ctx = Context::for_function(func);
-    module
-        .define_function(func_id, &mut ctx)
-        .map_err(|e| format!("compiling {ENTRY_SYMBOL}: {e}"))?;
+    for (i, f) in funcs.into_iter().enumerate() {
+        let mut ctx = Context::for_function(f);
+        module
+            .define_function(func_ids[i], &mut ctx)
+            .map_err(|e| format!("compiling function {}: {e}", func_ids[i]))?;
+    }
 
     let product = module.finish();
     let bytes = product
