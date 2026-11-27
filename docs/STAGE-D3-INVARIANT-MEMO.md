@@ -73,9 +73,15 @@ preferred claims the tree can carry today.
 
 ## Decision block
 
-- **Decision:** pick A / B / C (or a combination — A+B is coherent).
-- **Deadline:** end of the audit review window, 2026-12-18 (the remediation
-  sprints S13–S15 should not start with D3's statement unknown).
-- **On silence:** A proceeds as a provisional ADR (ADR-033 mechanism), and
-  S16's remaining work scopes to the `ActorStmts` fragment + progress over
-  it. A late switch to B costs the budget-arithmetic lemma, not a refactor.
+- **DECIDED 2026-11-27 (explicit, ahead of deadline): A — crash
+  containment.** Recorded as **ADR-034** (provisional, revisable): D3's
+  invariant is crash containment (`stepActor_stuck_system_unchanged`,
+  proved) + witnessed progress (`actors_progress`, proved) — both against
+  the Reading-A executable step, unconditional at this strength.
+- B (mailbox boundedness) is queued as a D4-adjacent theorem after the
+  `ActorStmts` fragment lands; its rigorous form needs the fragment's
+  send/recv discipline (an undrafted design). C (ranked/WF bridge) stays
+  in D4.
+- The S16 remainder is unchanged: the `ActorStmts` fragment predicate,
+  with `actors_progress` restated over it if the fragment's well-
+  formedness strengthens the statement.
