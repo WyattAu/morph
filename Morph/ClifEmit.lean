@@ -212,19 +212,30 @@ return is void and takes no suffix (via `retSuffix`). The preamble of
 the empty program is empty, so every existing statement about the
 one-argument form holds unchanged. -/
 
-/-- One signature declaration for the emission preamble. -/
+/-- One signature declaration for the emission preamble. A parameter
+typed `.unitType` is the lowering's unchecked-metadata placeholder (the
+call fragment's v1 contract: int actuals only), and takes an i64 slot;
+every other parameter goes through the marshal table and refuses
+non-first-order types. -/
+def paramSlot : Morph.Core.Typ → Option Morph.Clif.ClifTy
+  | .unitType => some .i64
+  | τ => Morph.Clif.clifTyOfTyp τ
+
 def sigDecl (f : Func) : Option String :=
-  match f.params.mapM (fun p => Morph.Clif.clifTyOfTyp p.2) with
+  match f.params.mapM (fun p => paramSlot p.2) with
   | none => none
   | some ts =>
       some ("function %" ++ f.name ++ "(" ++
         String.intercalate ", " (ts.map Morph.Clif.ClifTy.text) ++ ")" ++
         Morph.Clif.retSuffix f.retType ++ "\n")
 
-/-- The emission preamble: the declarations of every function in the
-program that has one, concatenated. -/
+/-- The emission preamble: the declarations of every *callee* in the
+program that has one. The entry function (`main`) is excluded — it is
+defined in the module, and a signature-only line would read as an import
+of the very function the module defines. -/
 def preamble (prog : Program) : String :=
-  (prog.funcs.filterMap sigDecl).foldl (· ++ ·) ""
+  (prog.funcs.filter (fun f => f.name != "main")
+    |>.filterMap sigDecl).foldl (· ++ ·) ""
 
 /-- The empty program declares nothing, so the default-program emitter
 is byte-for-byte the historic one. -/

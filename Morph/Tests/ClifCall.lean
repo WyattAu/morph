@@ -457,13 +457,14 @@ def isEqMainMIR : Morph.MIR.Func :=
 /-- A two-function program. -/
 def progBool : Morph.MIR.Program := ⟨[isEqMainMIR, isEqMIR]⟩
 
-/-- Its preamble declares the `.i8` result. -/
+/-- Its preamble declares the `.i8` result — the callee only; the entry
+is defined in the module and is excluded from the declarations. -/
 example : Morph.Codegen.preamble progBool
-    = "function %main() -> i64\nfunction %iseq(i64, i64) -> i8\n" := rfl
+    = "function %iseq(i64, i64) -> i8\n" := rfl
 
 /-- ...and the artifact calls into it. -/
 example : Morph.Codegen.emitClif isEqMainMIR progBool
-    = some ("function %main() -> i64\nfunction %iseq(i64, i64) -> i8\n" ++
+    = some ("function %iseq(i64, i64) -> i8\n" ++
       "function %main() -> i64 {\nblock0:\n  v0 = iconst.i64 1\n  v1 = iconst.i64 1\n  v2 = call %iseq(v0, v1) -> i8\n  v3 = iconst.i64 0\n  return v3\n}\n") := by
   native_decide
 
@@ -540,9 +541,9 @@ def addMainFull : Morph.MIR.Func :=
 /-- A two-function program. -/
 def progAddFull : Morph.MIR.Program := ⟨[addMainFull, addMIRFull]⟩
 
-/-- It emits end to end: preamble, entry, callee. -/
+/-- It emits end to end: callee preamble, entry, callee. -/
 example : Morph.Codegen.emitProg progAddFull
-    = some ("function %main() -> i64\nfunction %add(i64, i64) -> i64\n" ++
+    = some ("function %add(i64, i64) -> i64\n" ++
       "function %main() -> i64 {\nblock0:\n  v0 = iconst.i64 5\n  v1 = iconst.i64 7\n  v2 = call %add(v0, v1) -> i64\n  return v2\n}\n" ++
       "function %add() -> i64 {\nblock0:\n  v2 = iadd v0, v1\n  return v2\n}\n") := by
   native_decide
@@ -550,7 +551,7 @@ example : Morph.Codegen.emitProg progAddFull
 /-- ...and the mixed program emits end to end: preamble, int entry,
 bool callee under its computed header. -/
 example : Morph.Codegen.emitProg progBool
-    = some ("function %main() -> i64\nfunction %iseq(i64, i64) -> i8\n" ++
+    = some ("function %iseq(i64, i64) -> i8\n" ++
       "function %main() -> i64 {\nblock0:\n  v0 = iconst.i64 1\n  v1 = iconst.i64 1\n  v2 = call %iseq(v0, v1) -> i8\n  v3 = iconst.i64 0\n  return v3\n}\n" ++
       "function %iseq() -> i8 {\nblock0:\n  v2 = icmp eq v0, v1\n  return v2\n}\n") := by
   native_decide

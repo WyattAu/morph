@@ -314,13 +314,16 @@ def addMainMIRT : Morph.MIR.Func :=
 /-- The typed program. -/
 def progTEv : Morph.MIR.Program := ⟨[addMainMIRT, addMIRT]⟩
 
-/-- Its preamble declares both functions. -/
+/-- Its preamble declares the callee (the entry is defined in the
+module, so declaring it would read as an import of the very function
+being defined). -/
 example : Morph.Codegen.preamble progTEv
-    = "function %main() -> i64\nfunction %add(i64, i64) -> i64\n" := rfl
+    = "function %add(i64, i64) -> i64\n" := rfl
 
-/-- ...and the entry emits the preamble ahead of the call-bearing body. -/
+/-- ...and the entry emits the callee preamble ahead of the call-bearing
+body. -/
 example : Morph.Codegen.emitClif addMainMIRT progTEv
-    = some ("function %main() -> i64\nfunction %add(i64, i64) -> i64\n" ++
+    = some ("function %add(i64, i64) -> i64\n" ++
       "function %main() -> i64 {\nblock0:\n  v1 = iconst.i64 1\n  v2 = iconst.i64 2\n  v3 = call %add(v2, v1) -> i64\n  return v3\n}\n") := rfl
 
 end Morph.Proofs.Call
