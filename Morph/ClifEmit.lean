@@ -262,7 +262,7 @@ def bodySlotTyp (cs : List Morph.Clif.Instr) (ret : Nat) : Option Morph.Core.Typ
 when the body gate fails. -/
 def renderChecked (f : Func) (cf : Morph.Clif.Func) : Option String :=
   match bodySlotTyp cf.instrs cf.retSrc with
-  | some t => some (Morph.Clif.renderFuncFor f.name t cf)
+  | some t => some (Morph.Clif.renderFuncFor (Morph.Clif.abiName f.name) t cf)
   | none => none
 
 /-- `renderChecked` succeeds exactly on slotted bodies, with the
@@ -270,7 +270,7 @@ computed header. -/
 theorem renderChecked_of_slot {f : Func} {cf : Morph.Clif.Func}
     {t : Morph.Core.Typ}
     (hslot : bodySlotTyp cf.instrs cf.retSrc = some t) :
-    renderChecked f cf = some (Morph.Clif.renderFuncFor f.name t cf) := by
+    renderChecked f cf = some (Morph.Clif.renderFuncFor (Morph.Clif.abiName f.name) t cf) := by
   cases hg : bodySlotTyp cf.instrs cf.retSrc with
   | none =>
       rw [hg] at hslot
@@ -284,7 +284,7 @@ theorem renderChecked_of_slot {f : Func} {cf : Morph.Clif.Func}
 theorem renderChecked_some {f : Func} {cf : Morph.Clif.Func} {text : String}
     (h : renderChecked f cf = some text) :
     ∃ t, bodySlotTyp cf.instrs cf.retSrc = some t ∧
-      text = Morph.Clif.renderFuncFor f.name t cf := by
+      text = Morph.Clif.renderFuncFor (Morph.Clif.abiName f.name) t cf := by
   cases hg : bodySlotTyp cf.instrs cf.retSrc with
   | none =>
       have hnone : renderChecked f cf = none := by simp [renderChecked, hg]
@@ -292,7 +292,7 @@ theorem renderChecked_some {f : Func} {cf : Morph.Clif.Func} {text : String}
       simp at h
   | some t =>
       have hsome : renderChecked f cf =
-          some (Morph.Clif.renderFuncFor f.name t cf) :=
+          some (Morph.Clif.renderFuncFor (Morph.Clif.abiName f.name) t cf) :=
         renderChecked_of_slot hg
       rw [hsome, Option.some.injEq] at h
       exact ⟨t, rfl, h.symm⟩
@@ -397,10 +397,9 @@ theorem emitClif_lowered (body : List Instr) (v : Nat) (hv : v ≠ 0)
       0, .unitType⟩ prog = some cf := by
     simp only [emitFunc]
     simp [h1]
-  have h3 : renderChecked ⟨"main", [], [⟨0, .const 0 .unit :: body, .return_ v⟩],
-      0, .unitType⟩ cf = some (Morph.Clif.renderFuncFor "main" t cf) :=
-    renderChecked_of_slot hslot
-  simp [emitClif, h2, h3]
+  have h3 := renderChecked_of_slot
+    (f := ⟨"main", [], [⟨0, .const 0 .unit :: body, .return_ v⟩], 0, .unitType⟩) hslot
+  simp [emitClif, h2, h3, Morph.Clif.abiName_main]
 
 /-- A unit-valued program is refused: its value is the prologue's register. -/
 theorem emitBlock_unit (id : Nat) (body : List Instr)
@@ -454,7 +453,7 @@ theorem emitClif_sound {f : Func} {prog : Program} {s : String}
     (h : emitClif f prog = some s) :
     ∃ cf t, emitFunc f prog = some cf ∧
       bodySlotTyp cf.instrs cf.retSrc = some t ∧
-      s = preamble prog ++ Morph.Clif.renderFuncFor f.name t cf := by
+      s = preamble prog ++ Morph.Clif.renderFuncFor (Morph.Clif.abiName f.name) t cf := by
   unfold emitClif at h
   cases hf : emitFunc f prog with
   | none =>

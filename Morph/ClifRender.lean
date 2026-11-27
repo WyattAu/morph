@@ -405,6 +405,8 @@ functions the way the source spelled them. -/
 def abiName (s : String) : String :=
   if s.take 5 == "free:" then toString (s.drop 5) else s
 
+theorem abiName_main : abiName "main" = "main" := by native_decide
+
 /-- The declared type of a call's result in the Cranelift text: the marshal
 table's slot type. The fallback never fires on admitted programs — the
 emitter's body gate (`bodySlotTyp`) refuses unslotted results first. -/

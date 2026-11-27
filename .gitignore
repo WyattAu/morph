@@ -221,3 +221,4 @@ __marimo__/
 
 # spec-tools generated config
 .spec-tools.yaml
+corpus/*.clif
