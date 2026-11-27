@@ -72,7 +72,7 @@ theorem clif_correct_program {prog : HIR.Program} {instrs : List Morph.MIR.Instr
     (hss : StraightStmts 256 prog.stmts)
     (hrun : runHIRStmts fuelH [] prog.stmts (.value (.lit .unit)) = (out, henv'))
     (hval : runValue? out = some (.lit (.int n)))
-    (henc : Morph.Clif.blockEncode ⟨0, instrs, .return_ v⟩ = some cf)
+    (henc : Morph.Clif.blockEncode ⟨0, instrs, .return_ v⟩ [] = some cf)
     (htr : Morph.Clif.Trace instrs (Morph.MIR.Env.update (fun _ => none) 0 .unit) m')
     (hret : m' v = some (.int n)) :
     execFunc 2

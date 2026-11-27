@@ -199,7 +199,7 @@ def singleBlockFunc (instrs : List Instr) (src : Reg) : Func :=
 suffices: a returning block is reached in one traversal. This is the lemma that
 keeps B4 a theorem about the single-block surface instead of restating it. -/
 theorem run_singleBlockFunc (fuel : Nat) (instrs : List Instr) (src : Reg) :
-    run (fuel + 1) (singleBlockFunc instrs src) = Morph.Clif.run ⟨instrs, src⟩ := by
+    run (fuel + 1) (singleBlockFunc instrs src) = Morph.Clif.run ⟨[], instrs, src⟩ := by
   simp only [run, singleBlockFunc, findBlock, List.find?_cons, beq_self_eq_true]
   rw [runFuel_succ]
   simp only [runBlock, runTerm, Morph.Clif.run]

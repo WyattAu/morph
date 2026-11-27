@@ -139,11 +139,29 @@ theorem instrEncodes_cons {prog : Morph.MIR.Program} {i : Morph.MIR.Instr}
 return register. Multi-block bodies are rejected — the Stage B fragment is
 `StraightStmts`-shaped, and control flow is a separate obligation. -/
 def blockEncode (b : Morph.MIR.Block)
+    (params : List (Reg × Typ))
     (prog : Morph.MIR.Program := { funcs := [] }) : Option Func :=
   match b.terminator with
   | .return_ src =>
-      (instrEncodes b.instrs prog).map fun is => { instrs := is, retSrc := src }
+      (instrEncodes b.instrs prog).map fun is =>
+        { params := params, instrs := is, retSrc := src }
   | _ => none
+
+/-- `blockEncode` fills the emitted function's `params` field with its own
+argument — the header the caller asked for, not a guess. -/
+theorem blockEncode_params {params : List (Reg × Typ)}
+    {prog : Morph.MIR.Program} {is : List Morph.MIR.Instr}
+    {src : Morph.MIR.ValId} {cf : Func}
+    (h : blockEncode ⟨0, is, .return_ src⟩ params prog = some cf) :
+    cf.params = params := by
+  simp only [blockEncode] at h
+  cases hc : instrEncodes is prog with
+  | none =>
+    rw [hc] at h
+    exact absurd h (by simp)
+  | some cs =>
+    rw [hc] at h
+    exact (Func.mk.inj (Option.some.inj h)).1.symm
 
 /-! Rejections, stated so that later case analysis can discharge them by `simp`. -/
 

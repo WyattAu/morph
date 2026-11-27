@@ -308,8 +308,8 @@ theorem trace_transport {is : List Morph.MIR.Instr} {m₁ m₂ m₁' : Morph.MIR
 /-- Invert `blockEncode`: the emitted function's body is the encoding of the
 block's instruction list, and its return register is the block's. -/
 theorem blockEncode_return {instrs : List Morph.MIR.Instr} {ret : ValId}
-    {is' : List Instr} {rc : Reg}
-    (h : blockEncode ⟨0, instrs, .return_ ret⟩ = some ⟨is', rc⟩) :
+    {ps : List (Reg × Typ)} {is' : List Instr} {rc : Reg}
+    (h : blockEncode ⟨0, instrs, .return_ ret⟩ ps = some ⟨ps, is', rc⟩) :
     instrEncodes instrs = some is' ∧ rc = ret := by
   simp only [blockEncode] at h
   cases hc : instrEncodes instrs with
@@ -319,8 +319,8 @@ theorem blockEncode_return {instrs : List Morph.MIR.Instr} {ret : ValId}
   | some cs =>
     rw [hc] at h
     -- `simp only` matches syntactically, so expose the `Option.map` redex first.
-    have heq : Func.mk cs ret = Func.mk is' rc := Option.some.inj h
-    obtain ⟨h1, h2⟩ : cs = is' ∧ ret = rc := Func.mk.inj heq
+    have heq : Func.mk ps cs ret = Func.mk ps is' rc := Option.some.inj h
+    obtain ⟨_, h1, h2⟩ := Func.mk.inj heq
     -- `cases hc :` replaced `instrEncodes instrs` in the goal by `some cs`, so
     -- the branch closes reflexively; `hc` restores the general statement.
     rw [← h1, ← h2]
@@ -334,12 +334,16 @@ which is what `lowerProgram` produces; `Clif.run` starts from the empty register
 file, and the difference at register 0 is invisible (`trace_transport`). -/
 theorem clif_correct {instrs : List Morph.MIR.Instr} {ret : ValId} {cf : Func}
     {m' : Morph.MIR.Env} {w : Int}
-    (henc : blockEncode ⟨0, instrs, .return_ ret⟩ = some cf)
+    (henc : blockEncode ⟨0, instrs, .return_ ret⟩ [] = some cf)
     (htr : Trace instrs (Morph.MIR.Env.update (fun _ => none) 0 .unit) m')
     (hret : m' ret = some (.int w)) :
     run cf = some (.int w) := by
   cases cf with
-  | mk is' rc =>
+  | mk params is' rc =>
+    -- `blockEncode … []` fills the params field with its own argument, so the
+    -- destructured function carries no parameters; the inverse lemma applies.
+    have hps : params = [] := blockEncode_params henc
+    subst hps
     obtain ⟨hcs, hrc⟩ := blockEncode_return henc
     obtain ⟨m₂, htr₂, hag⟩ := trace_transport htr (agrees_prologue (fun _ => none))
     have hrun := run_simulate htr₂ hcs
@@ -383,7 +387,7 @@ theorem callee_correct {is : List Morph.MIR.Instr} {cs : List Instr}
     (hregs : ps.map Prod.fst = rs)
     (hm : Morph.MIR.bindCallArgs ps ws = some menv)
     (hc : bindCArgs rs ws = some cenv)
-    (hbody : cf.body = ⟨cs, ret⟩)
+    (hbody : cf.body = ⟨[], cs, ret⟩)
     (hsig : cf.sig = rs)
     (htr : Trace is menv m') (henc : instrEncodes is = some cs)
     (hret : m' ret = some w) :
@@ -427,7 +431,7 @@ theorem tcallee_correct {is : List Morph.MIR.Instr} {cs : List Instr}
     (h : ps = ts)
     (hm : Morph.MIR.bindCallArgs ps ws = some menv)
     (ht : bindTArgs ts ws = some tenv)
-    (hbody : cf.body = ⟨cs, ret⟩)
+    (hbody : cf.body = ⟨[], cs, ret⟩)
     (hsig : cf.tsig = ts)
     (htr : Trace is menv m') (henc : instrEncodes is = some cs)
     (hret : m' ret = some w) :

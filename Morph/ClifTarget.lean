@@ -112,6 +112,7 @@ inductive Instr where
 whose value is returned. Stage B's fragment is single-block by construction
 (`StraightStmts 256`), so there is no terminator beyond the return. -/
 structure Func where
+  params : List (Reg × Typ)
   instrs : List Instr
   retSrc : Reg
   deriving Repr, BEq

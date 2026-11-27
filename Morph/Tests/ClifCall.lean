@@ -66,7 +66,7 @@ example (menv cenv)
   bindCallArgs_bindCArgs_agree rfl hm hc
 
 /-- A two-argument adder, as a CLIF callable. -/
-def addCF : CFunc := ⟨"add", [0, 1], ⟨[.iadd 2 0 1], 2⟩⟩
+def addCF : CFunc := ⟨"add", [0, 1], ⟨[], [.iadd 2 0 1], 2⟩⟩
 
 /-- A call-bearing block is refused by the CFG encoder. -/
 example : Cfg.encodeBlock (⟨"f", [], [], 0, .unitType⟩ : Morph.MIR.Func)
@@ -287,7 +287,7 @@ example : callResolved progAdd (.call (some 2) "add" [0, 1]) :=
 
 /-- The typed `add` callable. -/
 def addTCF : TCFunc :=
-  ⟨"add", [(0, Typ.intType), (1, Typ.intType)], ⟨[.iadd 2 0 1], 2⟩⟩
+  ⟨"add", [(0, Typ.intType), (1, Typ.intType)], ⟨[], [.iadd 2 0 1], 2⟩⟩
 
 /-- A one-callable typed program. -/
 def tprogAdd : TCProgram := [addTCF]
@@ -359,7 +359,7 @@ example : (stepIn tprogAdd
 /-- The emitter still refuses call-bearing bodies under the default
 (empty) program. -/
 example : Morph.Codegen.emitBlock
-    ⟨0, [.const 0 .unit, .call (some 2) "add" [0, 1]], .return_ 2⟩ = none :=
+    ⟨0, [.const 0 .unit, .call (some 2) "add" [0, 1]], .return_ 2⟩ [] = none :=
   rfl
 
 /-! ## Preamble and program-aware emission pins (D-7 option B, slice B2) -/
@@ -388,8 +388,8 @@ example : Morph.Codegen.preamble progAdd
 
 /-- With a program, the emitter admits the int-world call. -/
 example : Morph.Codegen.emitBlock
-    ⟨0, [.const 0 .unit, .call (some 2) "add" [0, 1]], .return_ 2⟩ progAdd
-    = some ⟨[Morph.Clif.Instr.call 2 "add" [0, 1] Typ.intType], 2⟩ := rfl
+    ⟨0, [.const 0 .unit, .call (some 2) "add" [0, 1]], .return_ 2⟩ [] progAdd
+    = some ⟨[], [Morph.Clif.Instr.call 2 "add" [0, 1] Typ.intType], 2⟩ := rfl
 
 /-- ...and the artifact carries the preamble ahead of the body. -/
 example : Morph.Codegen.emitClif
@@ -423,7 +423,7 @@ example : Morph.Codegen.sigDecl isEqMIR
 /-- The typed `iseq` callable. -/
 def isEqTC : TCFunc :=
   ⟨"iseq", [(0, Typ.intType), (1, Typ.intType)],
-    ⟨[.icmp 2 .eq 0 1], 2⟩⟩
+    ⟨[], [.icmp 2 .eq 0 1], 2⟩⟩
 
 /-- A bool call runs. -/
 example : (runTCall [isEqTC] "iseq" [.int 1, .int 1]).map
@@ -477,8 +477,8 @@ and a boolean result emits under its computed `-> i8` header. -/
 /-- Compare-then-int emits: the gate is the computed type. -/
 example : Morph.Codegen.emitBlock
     ⟨0, [.const 0 .unit, .const 0 (.int 1), .const 1 (.int 1),
-      .binop 2 .eq 0 1 .boolType, .const 3 (.int 7)], .return_ 3⟩
-    = some ⟨[.iconst 0 1, .iconst 1 1,
+      .binop 2 .eq 0 1 .boolType, .const 3 (.int 7)], .return_ 3⟩ []
+    = some ⟨[], [.iconst 0 1, .iconst 1 1,
       .icmp 2 .eq 0 1, .iconst 3 7], 3⟩ := rfl
 
 /-- ...with the comparison printed in the artifact. -/
@@ -492,8 +492,8 @@ example : Morph.Codegen.emitClif
 /-- ...and a boolean result emits under its computed header. -/
 example : Morph.Codegen.emitBlock
     ⟨0, [.const 0 .unit, .const 0 (.int 1), .const 1 (.int 1),
-      .binop 2 .eq 0 1 .boolType], .return_ 2⟩
-    = some ⟨[.iconst 0 1, .iconst 1 1, .icmp 2 .eq 0 1], 2⟩ := rfl
+      .binop 2 .eq 0 1 .boolType], .return_ 2⟩ []
+    = some ⟨[], [.iconst 0 1, .iconst 1 1, .icmp 2 .eq 0 1], 2⟩ := rfl
 
 /-- The single-function boolean artifact. -/
 example : Morph.Codegen.emitClif
@@ -508,11 +508,11 @@ the line `sigDecl` contributes to the preamble; the historic
 renderer is the `main`/`intType` case (`renderFuncFor_main`). -/
 
 /-- A named body header matches its preamble declaration. -/
-example : Morph.Clif.renderFuncFor "iseq" Typ.boolType ⟨[.icmp 2 .eq 0 1], 2⟩
+example : Morph.Clif.renderFuncFor "iseq" Typ.boolType ⟨[], [.icmp 2 .eq 0 1], 2⟩
     = "function %iseq() -> i8 {\nblock0:\n  v2 = icmp eq v0, v1\n  return v2\n}\n" := rfl
 
 /-- A void header takes no suffix, like the declaration. -/
-example : Morph.Clif.renderFuncFor "unitfn" Typ.unitType ⟨[], 0⟩
+example : Morph.Clif.renderFuncFor "unitfn" Typ.unitType ⟨[], [], 0⟩
     = "function %unitfn() {\nblock0:\n\n  return v0\n}\n" := rfl
 
 /-! ## Program emission pins (D-7 option C, slice D2)
@@ -545,7 +545,7 @@ def progAddFull : Morph.MIR.Program := ⟨[addMainFull, addMIRFull]⟩
 example : Morph.Codegen.emitProg progAddFull
     = some ("function %add(i64, i64) -> i64\n" ++
       "function %main() -> i64 {\nblock0:\n  v0 = iconst.i64 5\n  v1 = iconst.i64 7\n  v2 = call %add(v0, v1) -> i64\n  return v2\n}\n" ++
-      "function %add() -> i64 {\nblock0:\n  v2 = iadd v0, v1\n  return v2\n}\n") := by
+      "function %add(v0: i64, v1: i64) -> i64 {\nblock0:\n  v2 = iadd v0, v1\n  return v2\n}\n") := by
   native_decide
 
 /-- ...and the mixed program emits end to end: preamble, int entry,
@@ -553,7 +553,7 @@ bool callee under its computed header. -/
 example : Morph.Codegen.emitProg progBool
     = some ("function %iseq(i64, i64) -> i8\n" ++
       "function %main() -> i64 {\nblock0:\n  v0 = iconst.i64 1\n  v1 = iconst.i64 1\n  v2 = call %iseq(v0, v1) -> i8\n  v3 = iconst.i64 0\n  return v3\n}\n" ++
-      "function %iseq() -> i8 {\nblock0:\n  v2 = icmp eq v0, v1\n  return v2\n}\n") := by
+      "function %iseq(v0: i64, v1: i64) -> i8 {\nblock0:\n  v2 = icmp eq v0, v1\n  return v2\n}\n") := by
   native_decide
 
 end Morph.Tests.ClifCall

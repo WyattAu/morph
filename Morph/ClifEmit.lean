@@ -311,13 +311,14 @@ but a function `-> i64` that reads an undefined `v0` is not CLIF, so the printer
 refuses it rather than write an artifact no reader can accept. This is the same
 shape as the encoder's other narrowing decisions: the model admits more than the
 text does, deliberately and visibly. -/
-def emitBlock (b : Block) (prog : Program := { funcs := [] }) : Option Morph.Clif.Func :=
+def emitBlock (b : Block) (params : List (Morph.Clif.Reg × Morph.Core.Typ))
+    (prog : Program := { funcs := [] }) : Option Morph.Clif.Func :=
   match b.terminator with
   | .return_ src =>
       match b.instrs with
       | .const 0 .unit :: body =>
           if src = 0 then none
-          else match Morph.Clif.blockEncode ⟨b.id, body, .return_ src⟩ prog with
+          else match Morph.Clif.blockEncode ⟨b.id, body, .return_ src⟩ params prog with
                | none => none
                | some cf =>
                    match bodySlotTyp cf.instrs cf.retSrc with
@@ -330,7 +331,11 @@ def emitBlock (b : Block) (prog : Program := { funcs := [] }) : Option Morph.Cli
 the unit prologue. -/
 def emitFunc (f : Func) (prog : Program := { funcs := [] }) : Option Morph.Clif.Func :=
   match f.blocks with
-  | [b] => if b.id = f.entry then emitBlock b prog else none
+  | [b] =>
+      -- `blockEncode` fills the CLIF function's params field with this list,
+      -- so the header declares exactly the lowered parameters.
+      if b.id = f.entry then emitBlock b f.params prog
+      else none
   | _ => none
 
 /-- The artifact text for a lowered MIR function: the program's signature
@@ -367,10 +372,11 @@ the lemma the gate above rests on: the prologue disappears from the
 artifact and nothing else about the body changes. The `src ≠ 0` premise
 is the unit case, which `emitBlock` refuses. -/
 theorem emitBlock_prologue (id : Nat) (body : List Instr) (src : Nat) (hsrc : src ≠ 0)
+    (ps : List (Morph.Clif.Reg × Morph.Core.Typ))
     {cf : Morph.Clif.Func} {t : Morph.Core.Typ} (prog : Program := { funcs := [] })
-    (henc : Morph.Clif.blockEncode ⟨id, body, .return_ src⟩ prog = some cf)
+    (henc : Morph.Clif.blockEncode ⟨id, body, .return_ src⟩ ps prog = some cf)
     (hslot : bodySlotTyp cf.instrs cf.retSrc = some t) :
-    emitBlock ⟨id, .const 0 .unit :: body, .return_ src⟩ prog = some cf := by
+    emitBlock ⟨id, .const 0 .unit :: body, .return_ src⟩ ps prog = some cf := by
   simp only [emitBlock]
   rw [if_neg hsrc, henc]
   dsimp only
@@ -381,12 +387,12 @@ the preamble plus the computed-header rendering, with no prologue
 instruction in it. -/
 theorem emitClif_lowered (body : List Instr) (v : Nat) (hv : v ≠ 0)
     {cf : Morph.Clif.Func} {t : Morph.Core.Typ} (prog : Program := { funcs := [] })
-    (henc : Morph.Clif.blockEncode ⟨0, body, .return_ v⟩ prog = some cf)
+    (henc : Morph.Clif.blockEncode ⟨0, body, .return_ v⟩ [] prog = some cf)
     (hslot : bodySlotTyp cf.instrs cf.retSrc = some t) :
     emitClif ⟨"main", [], [⟨0, .const 0 .unit :: body, .return_ v⟩], 0, .unitType⟩ prog
       = some (preamble prog ++ Morph.Clif.renderFuncFor "main" t cf) := by
-  have h1 : emitBlock ⟨0, .const 0 .unit :: body, .return_ v⟩ prog = some cf :=
-    emitBlock_prologue 0 body v hv prog henc hslot
+  have h1 : emitBlock ⟨0, .const 0 .unit :: body, .return_ v⟩ [] prog = some cf :=
+    emitBlock_prologue 0 body v hv [] prog henc hslot
   have h2 : emitFunc ⟨"main", [], [⟨0, .const 0 .unit :: body, .return_ v⟩],
       0, .unitType⟩ prog = some cf := by
     simp only [emitFunc]
@@ -399,14 +405,14 @@ theorem emitClif_lowered (body : List Instr) (v : Nat) (hv : v ≠ 0)
 /-- A unit-valued program is refused: its value is the prologue's register. -/
 theorem emitBlock_unit (id : Nat) (body : List Instr)
     (prog : Program := { funcs := [] }) :
-    emitBlock ⟨id, .const 0 .unit :: body, .return_ 0⟩ prog = none := by
+    emitBlock ⟨id, .const 0 .unit :: body, .return_ 0⟩ [] prog = none := by
   simp [emitBlock]
 
 /-- Encode failure refuses: nothing to type. -/
 theorem emitBlock_encode_none (id : Nat) (body : List Instr) (src : Nat)
     (prog : Program := { funcs := [] })
-    (henc : Morph.Clif.blockEncode ⟨id, body, .return_ src⟩ prog = none) :
-    emitBlock ⟨id, .const 0 .unit :: body, .return_ src⟩ prog = none := by
+    (henc : Morph.Clif.blockEncode ⟨id, body, .return_ src⟩ [] prog = none) :
+    emitBlock ⟨id, .const 0 .unit :: body, .return_ src⟩ [] prog = none := by
   simp only [emitBlock]
   by_cases hsrc : src = 0
   · simp [hsrc]
@@ -418,9 +424,9 @@ their slot is, and only genuinely unrepresentable results (unit,
 non-first-order, undefined) are turned away. -/
 theorem emitBlock_typslot_none (id : Nat) (body : List Instr) (src : Nat)
     {cs : Morph.Clif.Func} (prog : Program := { funcs := [] })
-    (henc : Morph.Clif.blockEncode ⟨id, body, .return_ src⟩ prog = some cs)
+    (henc : Morph.Clif.blockEncode ⟨id, body, .return_ src⟩ [] prog = some cs)
     (hslot : bodySlotTyp cs.instrs cs.retSrc = none) :
-    emitBlock ⟨id, .const 0 .unit :: body, .return_ src⟩ prog = none := by
+    emitBlock ⟨id, .const 0 .unit :: body, .return_ src⟩ [] prog = none := by
   simp only [emitBlock]
   by_cases hsrc : src = 0
   · simp [hsrc]
@@ -432,7 +438,7 @@ theorem emitBlock_typslot_none (id : Nat) (body : List Instr) (src : Nat)
 prologue. -/
 theorem emitFunc_sound {f : Func} {prog : Program} {cf : Morph.Clif.Func}
     (h : emitFunc f prog = some cf) :
-    ∃ b : Block, f.blocks = [b] ∧ b.id = f.entry ∧ emitBlock b prog = some cf := by
+    ∃ b : Block, f.blocks = [b] ∧ b.id = f.entry ∧ emitBlock b f.params prog = some cf := by
   unfold emitFunc at h
   split at h
   · rename_i b hblocks

@@ -195,16 +195,40 @@ theorem parseInstrs_succ (n : Nat) (toks : List Tok) :
 /-- The token stream of a whole function: a `function` marker, the instruction
 count, the instructions, then the returned register. -/
 def toksFunc (f : Func) : List Tok :=
-  .kw .fn :: .arity f.instrs.length ::
-    (f.instrs.flatMap toksInstr ++ [.kw .ret, .reg f.retSrc])
+  .kw .fn :: .arity f.params.length ::
+    (f.params.map (fun p => [.reg p.1, .typ p.2])).flatten ++
+    (.arity f.instrs.length ::
+      (f.instrs.flatMap toksInstr ++ [.kw .ret, .reg f.retSrc]))
 
 /-- Read a whole function. The arity header bounds the body, and the return
 marker closes it; anything left over is rejected, so a stream that encodes a
 prefix of a function is not a function. -/
+def parseParamPairs : Nat → List Tok → Option (List (Reg × Typ) × List Tok)
+  | 0, toks => some ([], toks)
+  | n + 1, .reg r :: .typ τ :: rest =>
+      match parseParamPairs n rest with
+      | some (ps, rest') => some ((r, τ) :: ps, rest')
+      | none => none
+  | _, _ => none
+
+theorem parseParamPairs_roundtrip (ps : List (Reg × Typ)) (rest : List Tok) :
+    parseParamPairs ps.length ((ps.map (fun p => [.reg p.1, .typ p.2])).flatten ++ rest)
+      = some (ps, rest) := by
+  induction ps generalizing rest with
+  | nil => rfl
+  | cons p ps ih =>
+      simp only [List.length_cons, List.map_cons, List.flatten_cons,
+        List.cons_append, List.nil_append, parseParamPairs, ih]
+
+/-- Read a whole function: the parameter pairs, the body arity, the
+instructions, then the returned register. -/
 def parseFunc : List Tok → Option Func
-  | .kw .fn :: .arity n :: rest =>
-    match parseInstrs n rest with
-    | some (is, .kw .ret :: .reg r :: []) => some ⟨is, r⟩
+  | .kw .fn :: .arity pn :: rest =>
+    match parseParamPairs pn rest with
+    | some (ps, .arity n :: rest') =>
+      match parseInstrs n rest' with
+      | some (is, .kw .ret :: .reg r :: []) => some ⟨ps, is, r⟩
+      | _ => none
     | _ => none
   | _ => none
 
@@ -225,11 +249,14 @@ theorem parseInstrs_toksInstrs (is : List Instr) (rest : List Tok) :
 /-- **B5's round trip.** Every `Func` survives print-then-parse unchanged. -/
 theorem parseFunc_toksFunc (f : Func) : parseFunc (toksFunc f) = some f := by
   cases f with
-  | mk instrs retSrc =>
-    show parseFunc (.kw .fn :: .arity instrs.length ::
-      (instrs.flatMap toksInstr ++ [.kw .ret, .reg retSrc]))
-      = some ⟨instrs, retSrc⟩
-    simp only [parseFunc, parseInstrs_toksInstrs]
+  | mk params instrs retSrc =>
+    show parseFunc (.kw .fn :: .arity params.length ::
+      (params.map (fun p => [.reg p.1, .typ p.2])).flatten ++
+      (.arity instrs.length ::
+        (instrs.flatMap toksInstr ++ [.kw .ret, .reg retSrc])))
+      = some ⟨params, instrs, retSrc⟩
+    simp only [List.cons_append, List.append_assoc, parseFunc,
+      parseParamPairs_roundtrip, parseInstrs_toksInstrs]
 
 /-- Nothing may follow the return: a printed stream is not merely *accepted*, it
 is accepted at exactly its own length. Together with `parseFunc_toksFunc` this
@@ -237,14 +264,15 @@ says the printer's image is the parser's domain, not a subset of it. -/
 theorem parseFunc_toksFunc_append (f : Func) (t : Tok) :
     parseFunc (toksFunc f ++ [t]) = none := by
   cases f with
-  | mk instrs retSrc =>
-    show parseFunc (.kw .fn :: .arity instrs.length ::
-      ((instrs.flatMap toksInstr ++ [.kw .ret, .reg retSrc]) ++ [t])) = none
-    rw [show (instrs.flatMap toksInstr ++ [.kw .ret, .reg retSrc]) ++ [t]
-          = instrs.flatMap toksInstr ++ ([.kw .ret, .reg retSrc] ++ [t]) from by simp]
-    have hlist : ([.kw .ret, .reg retSrc] ++ [t]) = [.kw .ret, .reg retSrc, t] := rfl
-    rw [hlist]
-    simp only [parseFunc, parseInstrs_toksInstrs]
+  | mk params instrs retSrc =>
+    show parseFunc (.kw .fn :: .arity params.length ::
+      ((params.map (fun p => [.reg p.1, .typ p.2])).flatten ++
+        (.arity instrs.length ::
+          (instrs.flatMap toksInstr ++ [.kw .ret, .reg retSrc]))) ++ [t])
+      = none
+    simp only [List.append_assoc, List.cons_append,
+      show ([.kw .ret, .reg retSrc] ++ [t]) = [.kw .ret, .reg retSrc, t] from rfl,
+      parseFunc, parseParamPairs_roundtrip, parseInstrs_toksInstrs]
 
 /-! ## Signature declarations (D-7 option B, slice B2)
 
@@ -374,19 +402,22 @@ def Instr.text : Instr → String
 
 /-- The CLIF text for a function. Not proved to be its own inverse here: the
 reader of this text is `cranelift-reader`, a trusted component per ADR-032 §3. -/
-def renderFunc (f : Func) : String :=
-  "function %main() -> i64 {\nblock0:\n" ++
-    String.intercalate "\n" (f.instrs.map Instr.text) ++
-    "\n  return v" ++ toString f.retSrc ++ "\n}\n"
+def paramText : List (Reg × Typ) → String
+  | [] => "()"
+  | ps => "(" ++ String.intercalate ", "
+      (ps.map fun p => "v" ++ toString p.1 ++ ": i64") ++ ")"
 
 /-- Named rendering (D-7 option C, slice D1): the header names the
 function and declares its return slot, matching the line `sigDecl`
 contributes to the preamble. Bodies stay parameter-free (single
 block, registers pre-bound), so only the header generalizes. -/
 def renderFuncFor (name : String) (ret : Typ) (f : Func) : String :=
-  "function %" ++ name ++ "()" ++ retSuffix ret ++ " {\nblock0:\n" ++
+  "function %" ++ name ++ paramText f.params ++ retSuffix ret ++ " {\nblock0:\n" ++
     String.intercalate "\n" (f.instrs.map Instr.text) ++
     "\n  return v" ++ toString f.retSrc ++ "\n}\n"
+
+/-- The historic renderer is the `main`/`intType` case. -/
+def renderFunc (f : Func) : String := renderFuncFor "main" .intType f
 
 /-- The historic renderer is the `main`/`intType` case. -/
 theorem renderFuncFor_main (f : Func) :

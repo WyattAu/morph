@@ -256,7 +256,7 @@ unchanged beside the typed view.
 registers, the encoded body. -/
 def addTEv : Morph.Clif.TCFunc :=
   ⟨"add", [(1, Typ.intType), (2, Typ.intType)],
-    ⟨[Morph.Clif.Instr.iadd 3 1 2], 3⟩⟩
+    ⟨[], [Morph.Clif.Instr.iadd 3 1 2], 3⟩⟩
 
 /-- One-callable typed program. -/
 def tprogEv : Morph.Clif.TCProgram := [addTEv]
