@@ -2,6 +2,7 @@
 SPDX-License-Identifier: Apache-2.0
 -/
 
+import Morph.ClifTarget
 import Morph.HIRToMIR
 
 /-!
@@ -172,25 +173,59 @@ def lowerArgs (ρ : List (HIR.Id × ValId)) :
           | none => none
           | some (vs, ias, s2) => some (va :: vs, ia ++ ias, s2)
 
+/-- The declared result type of a lowered callee, by name: the `call`
+instruction's result type comes from its callee. -/
+def calleeRet (rets : List (String × Typ)) (fn : String) : Option Typ :=
+  rets.find? (fun p => p.1 == fn) |>.map Prod.snd
+
+/-- The type of register `v` after running straight-line instructions `is`
+from the entry typing environment `env`: `const` values carry the marshal
+table's type, `binop`/`unop` carry their own, `copy` propagates, `call`
+resolves through the callee table, everything else refuses. Parameters are
+untyped at entry — a body whose result flows straight from a parameter
+(identity functions) is untypable and refuses, which the D-4 contract
+documents. -/
+def inferBody (rets : List (String × Typ)) (env : List (ValId × Typ)) :
+    List Instr → ValId → Option Typ
+  | [], r => (env.find? (fun p => p.1 == r)).map (·.2)
+  | .const dst val :: is, r =>
+      match Morph.Clif.valueTyp val with
+      | none => none
+      | some τ => inferBody rets ((dst, τ) :: env) is r
+  | .binop dst _ _ _ τ :: is, r => inferBody rets ((dst, τ) :: env) is r
+  | .unop dst _ _ τ :: is, r => inferBody rets ((dst, τ) :: env) is r
+  | .copy dst src :: is, r =>
+      match (env.find? (fun p => p.1 == src)).map (·.2) with
+      | some τ => inferBody rets ((dst, τ) :: env) is r
+      | none => inferBody rets env is r
+  | .call dst fn _ :: is, r =>
+      match calleeRet rets fn with
+      | some τ =>
+          match dst with
+          | some d => inferBody rets ((d, τ) :: env) is r
+          | none => inferBody rets env is r
+      | none => none
+  | _ :: is, r => inferBody rets env is r
+
 /-- Lower one function to a single-block MIR function. Parameters bind to
 registers `1..n` (`0` stays the unit prologue, mirroring `lowerProgram`);
 parameter types are unchecked metadata on both sides (`MIR.bindCallArgs`
 ignores them), so they are `.unitType`. The body must be call-free: it
-runs through the call-free block executor. -/
+runs through the call-free block executor. The declared return type is the
+body's computed type (`inferBody`) — a callee whose result occupies no
+CLIF slot is refused here rather than accepted as a `call` the encoder
+would refuse later. -/
 def lowerFunc (f : Func) : Option MIR.Func :=
   if exprNoApp f.body then
     let ρ := List.zip f.params (List.range' 1 f.params.length)
     match lowerExpr ρ (f.params.length + 1) f.body with
     | none => none
     | some (v, is, _) =>
-        -- TODO (build-first item 1, next loop): the declared return type must
-        -- be inferred from the body (MIR-side type inference over `is`/`v` --
-        -- `Morph.Clif.bodyResultTyp` computes over CLIF instructions, which
-        -- the lowering does not produce). Until then every callee is declared
-        -- unit-typed, and the D-7 slot gate refuses call-bearing artifacts at
-        -- emission (see docs/BUILD-FIRST-LEDGER.md).
-        some ⟨f.name.name, (List.range' 1 f.params.length).map (·, .unitType),
-          [⟨0, [.const 0 .unit] ++ is, .return_ v⟩], 0, .unitType⟩
+        match inferBody [] [] is v with
+        | none => none
+        | some τ =>
+            some ⟨f.name.name, (List.range' 1 f.params.length).map (·, .unitType),
+              [⟨0, [.const 0 .unit] ++ is, .return_ v⟩], 0, τ⟩
   else none
 
 /-- Lower straight-line statements with statement-level calls. Every
@@ -291,8 +326,11 @@ def lowerCallProg (p : CallProg) : Option MIR.Program :=
         match lowerCallStmts p.funcs [] 1 0 p.main with
         | none => none
         | some (_, v, is, _) =>
-        -- TODO (build-first item 1): computed main return type, as above.
-        some ⟨⟨"main", [], [⟨0, [.const 0 .unit] ++ is, .return_ v⟩],
-          0, .unitType⟩ :: funcsMIR⟩
+        let rets := funcsMIR.map (fun mf => (mf.name, mf.retType))
+        match inferBody rets [] is v with
+        | none => none
+        | some τ =>
+            some ⟨⟨"main", [], [⟨0, [.const 0 .unit] ++ is, .return_ v⟩],
+              0, τ⟩ :: funcsMIR⟩
 
 end Morph.HIRFunc

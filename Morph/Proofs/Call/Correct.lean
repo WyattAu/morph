@@ -430,8 +430,9 @@ theorem lowerFunc_name {f : Func} {mf : MIR.Func}
       | some p =>
           obtain ⟨v, is, s⟩ := p
           simp only [hbody] at h
-          obtain rfl := Option.some.inj h
-          rfl
+          cases hinf : inferBody [] [] is v with
+          | none => rw [hinf] at h; simp at h
+          | some τ => rw [hinf] at h; obtain rfl := Option.some.inj h; rfl
   · next hno => simp at h
 
 /-- Successful lookup returns a table member. -/
@@ -912,11 +913,12 @@ theorem LamEnv_append {tab : List Func} {l₁ l₂ : HEnv}
 /-- A lowered function exposes its body lowering and its shape. -/
 theorem lowerFunc_inv {f : Func} {mf : MIR.Func}
     (h : lowerFunc f = some mf) :
-    ∃ v is s', lowerExpr (List.zip f.params (List.range' 1 f.params.length))
+    ∃ v is s' τ, lowerExpr (List.zip f.params (List.range' 1 f.params.length))
         (f.params.length + 1) f.body = some (v, is, s') ∧
       exprNoApp f.body = true ∧
+      inferBody [] [] is v = some τ ∧
       mf = ⟨f.name.name, (List.range' 1 f.params.length).map (fun (x : ValId) => (x, Typ.unitType)),
-        [⟨0, [.const 0 .unit] ++ is, .return_ v⟩], 0, .unitType⟩ := by
+        [⟨0, [.const 0 .unit] ++ is, .return_ v⟩], 0, τ⟩ := by
   unfold lowerFunc at h
   cases hno : exprNoApp f.body with
   | false => simp [hno] at h
@@ -928,8 +930,13 @@ theorem lowerFunc_inv {f : Func} {mf : MIR.Func}
       | some q =>
           obtain ⟨v, is, s'⟩ := q
           simp only [hle] at h
-          obtain rfl := Option.some.inj h
-          exact ⟨v, is, s', rfl, rfl, rfl⟩
+          cases hinf : inferBody [] [] is v with
+          | none => rw [hinf] at h; simp at h
+          | some τ =>
+              rw [hinf] at h
+              simp only [hinf] at h
+              refine ⟨v, is, s', τ, rfl, rfl, hinf, ?_⟩
+              exact Option.some.inj h.symm
 
 /-- The argument values a lowered call delivers, as `Value`s. -/
 theorem lowerArgs_agree_vals (ρ : List (HIR.Id × ValId)) :
@@ -1456,7 +1463,7 @@ theorem callStep_agree (tab : List Func) (ρ : List (HIR.Id × ValId))
     rw [← hparams']
     exact hndp f hmem'
   obtain ⟨mfC, hlowC⟩ := mapM_mem_some hmap (findHIRFunc_mem hfind)
-  obtain ⟨vC, isC, sC, hleC, _, hshapeC⟩ := lowerFunc_inv hlowC
+  obtain ⟨vC, isC, sC, τC, hleC, hnoC, hinfC, hshapeC⟩ := lowerFunc_inv hlowC
   rw [hparams', hbody'] at hleC
   have hfname : f.name.name = fid.name :=
     congrArg HIR.Id.name (findHIRFunc_name hfind)
@@ -2327,63 +2334,68 @@ theorem lowerCallProg_correct (p : CallProg) (prog : MIR.Program)
         obtain ⟨ρ', v, is, s'⟩ := q
         rw [hst] at h
         simp only [] at h
-        have hprog : prog =
-            ⟨⟨"main", [], [⟨0, [.const 0 .unit] ++ is, .return_ v⟩], 0,
-              .unitType⟩ :: funcsMIR⟩ :=
-          (Option.some.inj h).symm
-        have hnomain : ∀ f ∈ p.funcs, f.name.name ≠ "main" := by
-          intro f hmem hcon
-          have h1 : p.funcs.any (fun f => f.name.name == "main") = true := by
-            rw [List.any_eq_true]
-            exact ⟨f, hmem, by simp [hcon]⟩
-          rw [hg] at h1
-          exact Bool.noConfusion h1
-        have hres : ∀ (fid : HIR.Id) (f : Func) (mf : MIR.Func),
-            findHIRFunc p.funcs fid = some f → lowerFunc f = some mf →
-            findFunc prog fid.name = some mf := by
-          intro fid f mf hfind hlow
-          have hmem : f ∈ p.funcs := findHIRFunc_mem hfind
-          obtain ⟨mf', hlow'⟩ := mapM_mem_some hm hmem
-          have hmeq : mf' = mf := Option.some.inj (hlow'.symm.trans hlow)
-          subst hmeq
-          rw [hprog]
-          exact findFunc_lowerCallProg hm rfl hnomain hnodup hfind hlow
-        have hfindMain : findFunc prog "main" =
-            some (⟨"main", [], [⟨0, [.const 0 .unit] ++ is, .return_ v⟩], 0,
-              .unitType⟩ : MIR.Func) := by
-          rw [hprog]
-          simp [findFunc]
-        have hconst : execInstrsCall prog (fuelM + 1) none
-            ⟨fun _ => none, store⟩ [.const 0 .unit] =
-            some ⟨Morph.MIR.Env.update (fun _ => none) 0 .unit, store⟩ :=
-          rfl
-        obtain ⟨fenv', hexec', hreg', hstore', hrel'⟩ :=
-          lowerCallStmts_total p.funcs prog funcsMIR fuelM hm hndp hnodupId hres
-            [] 1 0 p.main ρ' v is s' hst (FreshAbove_nil 1) Nat.zero_lt_one
-            .unit (lamEnv p.funcs)
-            ⟨Morph.MIR.Env.update (fun _ => none) 0 .unit, store⟩
-            (lamEnv_self p.funcs) (RelEnv_nil _ _) (prologue_env_zero store)
-            fuelH henv' out w hrun hval
-        have hblock : execInstrsCall prog (fuelM + 1) none
-            ⟨fun _ => none, store⟩ ([.const 0 .unit] ++ is) = some fenv' := by
-          rw [execInstrsCall_append, hconst]
-          exact hexec'
-        have hfindBlk : findBlock
-            (⟨"main", [], [⟨0, [.const 0 .unit] ++ is, .return_ v⟩], 0,
-              .unitType⟩ : MIR.Func)
-            (⟨"main", [], [⟨0, [.const 0 .unit] ++ is, .return_ v⟩], 0,
-              .unitType⟩ : MIR.Func).entry =
-            some (⟨0, [.const 0 .unit] ++ is, .return_ v⟩ : MIR.Block) :=
-          findBlock_singleton _ _ rfl rfl
-        have hexecBlk : execBlockCall prog (fuelM + 1)
-            (⟨"main", [], [⟨0, [.const 0 .unit] ++ is, .return_ v⟩], 0,
-              .unitType⟩ : MIR.Func)
-            none (⟨0, [.const 0 .unit] ++ is, .return_ v⟩ : MIR.Block)
-            ⟨fun _ => none, store⟩ = some w := by
-          simp only [execBlockCall, hblock, hreg']
-        refine ⟨⟨"main", [], [⟨0, [.const 0 .unit] ++ is, .return_ v⟩], 0,
-          .unitType⟩, hfindMain, ?_⟩
-        simp only [execFuncCall, hfindBlk]
-        exact hexecBlk
+        cases hinf : inferBody
+            (List.map (fun mf => (mf.name, mf.retType)) funcsMIR) [] is v with
+        | none => rw [hinf] at h; simp at h
+        | some τ =>
+          rw [hinf] at h
+          have hprog : prog =
+              ⟨⟨"main", [], [⟨0, [.const 0 .unit] ++ is, .return_ v⟩], 0,
+                τ⟩ :: funcsMIR⟩ :=
+            (Option.some.inj h).symm
+          have hnomain : ∀ f ∈ p.funcs, f.name.name ≠ "main" := by
+            intro f hmem hcon
+            have h1 : p.funcs.any (fun f => f.name.name == "main") = true := by
+              rw [List.any_eq_true]
+              exact ⟨f, hmem, by simp [hcon]⟩
+            rw [hg] at h1
+            exact Bool.noConfusion h1
+          have hres : ∀ (fid : HIR.Id) (f : Func) (mf : MIR.Func),
+              findHIRFunc p.funcs fid = some f → lowerFunc f = some mf →
+              findFunc prog fid.name = some mf := by
+            intro fid f mf hfind hlow
+            have hmem : f ∈ p.funcs := findHIRFunc_mem hfind
+            obtain ⟨mf', hlow'⟩ := mapM_mem_some hm hmem
+            have hmeq : mf' = mf := Option.some.inj (hlow'.symm.trans hlow)
+            subst hmeq
+            rw [hprog]
+            exact findFunc_lowerCallProg hm rfl hnomain hnodup hfind hlow
+          have hfindMain : findFunc prog "main" =
+              some (⟨"main", [], [⟨0, [.const 0 .unit] ++ is, .return_ v⟩], 0,
+                τ⟩ : MIR.Func) := by
+            rw [hprog]
+            simp [findFunc]
+          have hconst : execInstrsCall prog (fuelM + 1) none
+              ⟨fun _ => none, store⟩ [.const 0 .unit] =
+              some ⟨Morph.MIR.Env.update (fun _ => none) 0 .unit, store⟩ :=
+            rfl
+          obtain ⟨fenv', hexec', hreg', hstore', hrel'⟩ :=
+            lowerCallStmts_total p.funcs prog funcsMIR fuelM hm hndp hnodupId hres
+              [] 1 0 p.main ρ' v is s' hst (FreshAbove_nil 1) Nat.zero_lt_one
+              .unit (lamEnv p.funcs)
+              ⟨Morph.MIR.Env.update (fun _ => none) 0 .unit, store⟩
+              (lamEnv_self p.funcs) (RelEnv_nil _ _) (prologue_env_zero store)
+              fuelH henv' out w hrun hval
+          have hblock : execInstrsCall prog (fuelM + 1) none
+              ⟨fun _ => none, store⟩ ([.const 0 .unit] ++ is) = some fenv' := by
+            rw [execInstrsCall_append, hconst]
+            exact hexec'
+          have hfindBlk : findBlock
+              (⟨"main", [], [⟨0, [.const 0 .unit] ++ is, .return_ v⟩], 0,
+                τ⟩ : MIR.Func)
+              (⟨"main", [], [⟨0, [.const 0 .unit] ++ is, .return_ v⟩], 0,
+                τ⟩ : MIR.Func).entry =
+              some (⟨0, [.const 0 .unit] ++ is, .return_ v⟩ : MIR.Block) :=
+            findBlock_singleton _ _ rfl rfl
+          have hexecBlk : execBlockCall prog (fuelM + 1)
+              (⟨"main", [], [⟨0, [.const 0 .unit] ++ is, .return_ v⟩], 0,
+                τ⟩ : MIR.Func)
+              none (⟨0, [.const 0 .unit] ++ is, .return_ v⟩ : MIR.Block)
+              ⟨fun _ => none, store⟩ = some w := by
+            simp only [execBlockCall, hblock, hreg']
+          refine ⟨⟨"main", [], [⟨0, [.const 0 .unit] ++ is, .return_ v⟩], 0,
+            τ⟩, hfindMain, ?_⟩
+          simp only [execFuncCall, hfindBlk]
+          exact hexecBlk
 
 end Morph.Proofs.Call

@@ -60,14 +60,14 @@ example : FuncOk addFunc := by
 def addMIR : MIR.Func :=
   ⟨"add", [(1, .unitType), (2, .unitType)],
     [⟨0, [.const 0 .unit, .binop 3 .add 1 2 .intType], .return_ 3⟩],
-    0, .unitType⟩
+    0, .intType⟩
 
 /-- The lowered entry: constants for the actuals, one `.call`, return. -/
 def addMainMIR : MIR.Func :=
   ⟨"main", [],
     [⟨0, [.const 0 .unit, .const 1 (.int 1), .const 2 (.int 2),
       .call (some 3) "add" [2, 1]], .return_ 3⟩],
-    0, .unitType⟩
+    0, .intType⟩
 
 /-- `lowerCallProg` produces exactly the two-function program. -/
 example : lowerCallProg addProg == some ⟨[addMainMIR, addMIR]⟩ := by
@@ -115,7 +115,7 @@ def addVarMainMIR : MIR.Func :=
     [⟨0, [.const 0 .unit, .const 1 (.int 1), .const 2 (.int 2),
       .call (some 3) "add" [2, 1], .const 4 (.int 10),
       .binop 5 .add 3 4 .intType], .return_ 5⟩],
-    0, .unitType⟩
+    0, .intType⟩
 
 example : lowerCallProg addVarProg == some ⟨[addVarMainMIR, addMIR]⟩ := by
   native_decide
@@ -144,7 +144,7 @@ def addAssignMainMIR : MIR.Func :=
   ⟨"main", [],
     [⟨0, [.const 0 .unit, .const 1 (.int 0), .const 2 (.int 3),
       .const 3 (.int 4), .call (some 4) "add" [3, 2]], .return_ 4⟩],
-    0, .unitType⟩
+    0, .intType⟩
 
 example : lowerCallProg addAssignProg == some ⟨[addAssignMainMIR, addMIR]⟩ := by
   native_decide
@@ -214,14 +214,14 @@ def subProg : Morph.HIRFunc.CallProg :=
 def subMIR : MIR.Func :=
   ⟨"sub", [(1, .unitType), (2, .unitType)],
     [⟨0, [.const 0 .unit, .binop 3 .sub 2 1 .intType], .return_ 3⟩],
-    0, .unitType⟩
+    0, .intType⟩
 
 /-- The lowered entry: actuals delivered back-to-front. -/
 def subMainMIR : MIR.Func :=
   ⟨"main", [],
     [⟨0, [.const 0 .unit, .const 1 (.int 5), .const 2 (.int 3),
       .call (some 3) "sub" [2, 1]], .return_ 3⟩],
-    0, .unitType⟩
+    0, .intType⟩
 
 example : lowerCallProg subProg == some ⟨[subMainMIR, subMIR]⟩ := by
   native_decide
